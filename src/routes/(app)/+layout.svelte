@@ -26,7 +26,7 @@
         {/each}
     </Navbar.Content>
     <Navbar.Edge>
-        <Button text="He"></Button>
+        <Button href="/settings" variant="nav" text="" icon="settings"></Button>
     </Navbar.Edge>
 </Navbar.Root>
 <div class="expand flex" id="page-content-wrapper">
@@ -36,5 +36,7 @@
 <style>
     #page-content-wrapper {
         flex-direction: column;
+        align-items: start;
+        justify-content: start;
     }
 </style>

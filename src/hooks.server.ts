@@ -21,7 +21,6 @@ export const handle: Handle = async ({ event, resolve }) => {
             },
         },
     );
-
     event.locals.getUser = async (latestFromServer = false) => {
         const { data: claimsData, error: claimsError } =
             await event.locals.supabase.auth.getClaims();
@@ -41,14 +40,6 @@ export const handle: Handle = async ({ event, resolve }) => {
         }
 
         const { claims } = claimsData;
-        let name;
-        if (claims.sub) {
-            name = event.locals.supabase
-                .from("Profiles")
-                .select("username")
-                .eq("id", claims.sub)
-                .limit(1);
-        }
         if (latestFromServer) {
             const { data: userData, error: userError } =
                 await event.locals.supabase.auth.getUser();
@@ -68,12 +59,10 @@ export const handle: Handle = async ({ event, resolve }) => {
             }
 
             const { user } = userData;
-
             return {
                 error: null,
                 user: {
                     id: user.id,
-                    username: name,
                     email: user.email || null,
                     phone: user.phone || null,
                     user_metadata: user.user_metadata || null,
@@ -83,12 +72,10 @@ export const handle: Handle = async ({ event, resolve }) => {
                 },
             };
         }
-
         return {
             error: null,
             user: {
                 id: claims.sub,
-                username: name,
                 email: claims.email || null,
                 phone: claims.phone || null,
                 user_metadata: claims.user_metadata || null,

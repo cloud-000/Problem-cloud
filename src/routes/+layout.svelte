@@ -1,17 +1,19 @@
 <script lang="ts">
     import favicon from "$lib/assets/favicon.svg";
     import "$lib/global.css";
+    import { setAppState, AppState } from "$lib/appState.svelte";
     import { onMount } from "svelte";
-    import { deviceDetails } from "$lib/deviceDetails.svelte";
-    import { Theme } from "$lib/utils/Theme";
-    // import {PUBLIC_TEST_EMAIL, PUBLIC_TEST_PASSWORD} from "$env/static/public"
     import {
         PUBLIC_TEST_EMAIL,
         PUBLIC_TEST_PASSWORD,
     } from "$env/static/public";
+    import { deviceDetails } from "$lib/deviceDetails.svelte";
+    import { Theme } from "$lib/utils/Theme";
+    import { getRating } from "$lib/db/supabaseClient.js";
     // import { setUserSession } from "$lib/user.svelte";
 
     let { data: pData, children } = $props();
+    const app = setAppState(new AppState());
 
     console.log("Hello from +layout.svelte");
     if (!pData.data.user) {
@@ -24,12 +26,20 @@
             console.log(data);
             console.log("HIII");
         })();
+    } else {
+        app.username = pData.data.user?.user_metadata.username;
+        app.uuid = pData.data.user?.user_metadata.sub;
+        app.email = pData.data.user?.email;
+        // app.username = pData.data.user.id
     }
+    (async () => {
+        app.rating = await getRating(pData.supabase, app.uuid);
+    })();
 
     onMount(() => {
         console.log(`This should only run once ${Date.now()}`);
         Theme.init();
-        Theme.storeTheme(
+        app.addTheme(
             new Theme("plain", {
                 "c bg": "rgb(255, 255, 255)",
                 "c bg m": "rgb(244, 246, 248)",
@@ -41,7 +51,7 @@
                 "c accent bg": "rgb(219, 233, 254)",
             }),
         );
-        Theme.storeTheme(
+        app.addTheme(
             new Theme("dark", {
                 "c bg": "rgb(57 63 75)",
                 "c bg m": "rgb(46 51 60)",
@@ -53,7 +63,7 @@
                 "c accent bg": "rgb(169 186 230)",
             }),
         );
-        Theme.theme = "plain";
+        app.theme = "dark";
     });
 </script>
 

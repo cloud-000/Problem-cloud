@@ -4,7 +4,6 @@ import type { Database } from "$lib/database.types.ts"; // import generated type
 declare global {
     type UserData = {
         id: string;
-        username: Promise;
         email: string | null;
         phone: string | null;
         user_metadata: UserMetadata | null;
