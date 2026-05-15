@@ -10,6 +10,7 @@
     .navbar-content {
         flex: 1;
         justify-content: flex-start;
+        flex-direction: column;
     }
     @scope (.mobile) {
         @media (orientation: portrait) {

@@ -16,7 +16,7 @@
         overflow: hidden;
         flex-shrink: 0;
         padding: 8px;
-        border-right: var(--bd-size) solid var(--c-bd);
+        border-right: var(--border-size) solid var(--color-sidebar-border);
         box-sizing: border-box;
     }
     .navbar-root[data-state="open"] {
@@ -40,10 +40,10 @@
                 width: 100% !important;
                 height: fit-content;
                 border-right: none;
-                border-top: var(--bd-size) solid var(--c-bd);
+                border-top: var(--border-size) solid var(--color-sidebar-border);
             }
         }
-        :global(.button) {
+        .navbar-root:global(.button) {
             width: fit-content;
         }
     }

@@ -11,4 +11,3 @@ if (typeof window !== "undefined") {
         deviceDetails.isMobile = e.matches;
     });
 }
-console.log("Hi gus");

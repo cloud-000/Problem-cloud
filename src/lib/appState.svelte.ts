@@ -26,10 +26,15 @@ export class AppState {
         Theme.storeTheme(theme);
         this.themes.push(theme);
     }
+    #theme: string | null = $state("");
     set theme(value: string) {
+        this.#theme = value;
         Theme.theme = value;
     }
-    get theme(): Theme | null {
+    get theme(): string | null {
+        return this.#theme;
+    }
+    getTheme() {
         return Theme.currentTheme ?? null;
     }
 }

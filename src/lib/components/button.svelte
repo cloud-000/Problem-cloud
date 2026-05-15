@@ -1,12 +1,12 @@
 <script lang="ts">
     import Icon from "./icon.svelte";
     let {
-        text = "Hello World",
         icon = "Home",
         href = "",
         variant = "",
         active = false,
         mobileHelp = false,
+        children = null,
     } = $props();
 </script>
 
@@ -18,9 +18,7 @@
     {#if icon}
         <Icon text={icon} --fill={active ? "1" : "0"} />
     {/if}
-    {#if text}
-        <span>{text}</span>
-    {/if}
+    {@render children?.()}
 </a>
 
 <style>
@@ -37,11 +35,11 @@
         cursor: pointer;
         align-items: center;
         justify-content: center;
-        font-size: var(--text-size);
-        color: var(--c-text);
-        background-color: transparent;
-        border: var(--bd-size) solid var(--c-bd);
-        border-radius: var(--bd-r);
+        font-size: var(--text-base);
+        color: var(--color-primary-foreground);
+        background-color: var(--color-primary);
+        border: var(--border-size) solid var(--color-border);
+        border-radius: var(--radius-lg);
         box-sizing: border-box;
         padding: 8px 16px;
         gap: 8px;
@@ -49,16 +47,18 @@
         box-sizing: border-box;
     }
     .nav {
+        background-color: transparent;
+        color: var(--foreground);
         border: none;
         transition:
             background 0.2s ease,
             box-shadow 0.2s ease;
         &:hover {
-            background-color: var(--c-bg-m);
+            background-color: var(--color-accent);
         }
         &[data-active] {
-            color: var(--c-accent);
-            background-color: var(--c-accent-bg);
+            color: var(--color-primary-foreground);
+            background-color: var(--color-primary);
         }
     }
     @scope (.mobile) {

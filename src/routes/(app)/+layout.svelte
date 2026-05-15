@@ -15,18 +15,19 @@
     <Navbar.Content>
         {#each navItems as item}
             <Button
-                text={item.label}
                 icon={item.icon}
                 href={item.href}
                 variant="nav"
                 active={page.url.pathname == item.href}
                 mobileHelp
-            />
+            >
+                {item.label}
+            </Button>
             <!-- <a href={item.href}>{item.label}</a> -->
         {/each}
     </Navbar.Content>
     <Navbar.Edge>
-        <Button href="/settings" variant="nav" text="" icon="settings"></Button>
+        <Button href="/settings" variant="nav" icon="settings"></Button>
     </Navbar.Edge>
 </Navbar.Root>
 <div class="expand flex" id="page-content-wrapper">
@@ -38,5 +39,6 @@
         flex-direction: column;
         align-items: start;
         justify-content: start;
+        padding: var(--text-xs);
     }
 </style>

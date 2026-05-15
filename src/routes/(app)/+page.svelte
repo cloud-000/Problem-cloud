@@ -15,5 +15,9 @@
     // await getRating(data.supabase, data.data.user?.id ?? null)
 </script>
 
-<h1 class="no-select">Welcome {app.username}</h1>
-<p>Your rating: {app.rating}</p>
+<span class="no-select text-3xl"
+    >Welcome
+    <span class="bg-primary">{app.username}</span>
+</span>
+<p>Rating: {app.rating}</p>
+<span class="text-2xl">Recent problems</span>

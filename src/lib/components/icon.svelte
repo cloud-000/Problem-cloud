@@ -6,7 +6,7 @@
 
 <style>
     .material-symbols-rounded {
-        font-size: calc(var(--font-size) + 4px) !important;
+        font-size: var(--text-xl) !important;
         /*--fill: 0;*/
         --weight: 400;
         --grad: 0;
