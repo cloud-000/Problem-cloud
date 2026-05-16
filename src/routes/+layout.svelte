@@ -68,6 +68,8 @@
 
                 "primary foreground": "rgb(50, 108, 236)",
                 primary: "rgb(219, 233, 254)",
+
+                accent: "oklch(0.97 0 0)",
             }),
         );
 
@@ -86,15 +88,17 @@
                 background: "rgb(57 63 75)",
                 // "c bg m": "rgb(46 51 60)",
                 foreground: "rgb(200 204 211)",
-                secondary: "rgb(107 112 124)",
+                // secondary: "green",
+                // "secondary foreground": "rgb(107 112 124)",
                 border: "rgb(100, 110, 120)",
 
-                "primary foreground": "rgb(64 134 232)",
-                primary: "rgb(169 186 230)",
+                "primary foreground": "rgb(110 160 230) ",
+                primary: "color-mix(in srgb, rgb(34 121 250) 20%, transparent)",
+                accent: "rgb(70 75 88)",
             }),
         );
 
-        app.theme = "plain";
+        app.theme = "dark";
     });
 </script>
 

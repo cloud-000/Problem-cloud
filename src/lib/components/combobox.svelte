@@ -3,12 +3,22 @@
     import { tick } from "svelte";
     import * as Command from "$lib/components/ui/command/index.js";
     import { Input } from "$lib/components/ui/input/.";
+    interface itemType {
+        value: any;
+        label: string;
+    }
     let {
+        class: className = "",
         value = $bindable(""),
-        items = [{ value: "Test", label: "Hello" }],
+        items = [],
         placeholder = "Type Something",
         emptyMessage = "Nothing found :(",
-        props = {},
+    }: {
+        class?: string;
+        value?: string;
+        items: itemType[];
+        placeholder?: string;
+        emptyMessage?: string;
     } = $props();
 
     let open = $state(false);
@@ -31,12 +41,14 @@
     }
 </script>
 
-<div {...props}>
-    <div class="border flex flex-row combobox-select overflow-x-auto">
+<div class={className}>
+    <div
+        class="box-border border flex flex-row combobox-select overflow-x-auto p-1"
+    >
         <div class="flex flex-row w-fit gap-1 combobox-selection-wrapper">
             {#each selectedValues as selected}
                 <div
-                    class="border flex flex-row justify-center items-center rounded-md bg-muted px-2 gap-1 combobox-item"
+                    class="whitespace-pre border flex flex-row justify-center items-center rounded-md bg-muted px-2 gap-1 combobox-item"
                 >
                     <span> {selected.label} </span>
                     <button
@@ -53,9 +65,9 @@
                 </div>
             {/each}
         </div>
-        <div class="grow min-w-50 no-select">
+        <div class="grow no-select min-w-[150px] h-full">
             <!-- <ChevronsUpDownIcon class="ms-2 size-4 shrink-0 opacity-50" /> -->
-            <Input
+            <input
                 bind:value
                 onfocus={() => {
                     open = true;
@@ -91,8 +103,8 @@
                         }
                     }
                 }}
-                bind:ref={triggerRef}
-                class="border-none"
+                bind:this={triggerRef}
+                class="border-none w-full h-full"
                 {placeholder}
             />
         </div>
@@ -100,12 +112,15 @@
     <div
         class="p-0 {open
             ? ''
-            : 'hidden'} border rounded-md shadow-sm combobox-popover"
+            : 'hidden'} border shadow-sm combobox-popover bg-red-700"
     >
-        <Command.Root bind:ref={listRef}>
+        <Command.Root bind:ref={listRef} shouldFilter={false}>
             <!-- <Command.Input placeholder="Search framework..." /> -->
             <Command.List>
-                <Command.Empty>{emptyMessage}</Command.Empty>
+                <Command.Empty
+                    class={unselectValues.length === 0 ? "" : "hidden"}
+                    >{emptyMessage}</Command.Empty
+                >
                 <Command.Group>
                     {#each unselectValues as item}
                         <Command.Item
@@ -130,12 +145,7 @@
     .combobox-select {
         border-radius: var(--radius);
         scrollbar-width: thin;
-        /*scrollbar-color: red orange;*/
-    }
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-        background-color: white;
+        align-items: center;
     }
 
     ::-webkit-scrollbar-thumb {

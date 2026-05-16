@@ -10,8 +10,8 @@
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
+    --popover: var(--accent);
+    --popover-foreground: var(--accent-foreground);
     --primary: rgb(219, 233, 254); /*oklch(0.205 0 0);*/
     --primary-foreground: rgb(50, 108, 236);
     --secondary: oklch(0.97 0 0);
@@ -19,7 +19,7 @@
     --muted: oklch(0.97 0 0);
     --muted-foreground: oklch(0.556 0 0);
     --accent: /*rgb(219, 233, 254);*/ oklch(0.97 0 0);
-    --accent-foreground: /*(rgb(50, 108, 236);*/ oklch(0.205 0 0);
+    --accent-foreground: /*(rgb(50, 108, 236);*/ var(--foreground);
     --destructive: #eb4034;
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
