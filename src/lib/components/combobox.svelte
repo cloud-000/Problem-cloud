@@ -109,14 +109,14 @@
             />
         </div>
     </div>
-    <div
-        class="p-0 {open
-            ? ''
-            : 'hidden'} border shadow-sm combobox-popover bg-red-700"
-    >
-        <Command.Root bind:ref={listRef} shouldFilter={false}>
+    <div class="p-0 {open ? '' : 'hidden'} combobox-popover">
+        <Command.Root
+            bind:ref={listRef}
+            shouldFilter={false}
+            class="border shadow-md"
+        >
             <!-- <Command.Input placeholder="Search framework..." /> -->
-            <Command.List>
+            <Command.List class="rounded-none">
                 <Command.Empty
                     class={unselectValues.length === 0 ? "" : "hidden"}
                     >{emptyMessage}</Command.Empty
@@ -128,6 +128,7 @@
                             onSelect={() => {
                                 selectedValues.push(item);
                             }}
+                            class="transition-colors duration-300 ease-in-out"
                         >
                             <!-- <CheckIcon
                                 class={cn("me-2 size-4", "text-transparent")}

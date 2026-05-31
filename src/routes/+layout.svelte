@@ -48,53 +48,50 @@
         Theme.init();
 
         app.addTheme(
-            /*new Theme("plain", {
-                "c bg": "rgb(255, 255, 255)",
-                "c bg m": "rgb(244, 246, 248)",
-                "c text": "rgb(9, 9, 11)",
-                "c text2": "rgb(113, 113, 122)",
-                "c bd": "rgb(208, 217, 224)",
-                "c shadow": "rgb(103 103 120 / 30%)",
-                "c accent": "rgb(50, 108, 236)",
-                "c accent bg": "rgb(219, 233, 254)",
-            }),*/
             new Theme("plain", {
                 background: "rgb(255, 255, 255)",
-                // "c bg m": "rgb(244, 246, 248)",
                 foreground: "rgb(9, 9, 11)",
-                secondary: "rgb(113, 113, 122)",
-                border: "rgb(208, 217, 224)",
-                // "c shadow": "rgb(103 103 120 / 30%)",
-
-                "primary foreground": "rgb(50, 108, 236)",
+                card: "rgb(255, 255, 255)",
+                "card foreground": "rgb(9, 9, 11)",
+                popover: "rgb(255, 255, 255)",
+                "popover foreground": "rgb(9, 9, 11)",
                 primary: "rgb(219, 233, 254)",
-
-                accent: "oklch(0.97 0 0)",
+                "primary foreground": "rgb(50, 108, 236)",
+                secondary: "rgb(244, 244, 245)",
+                "secondary foreground": "rgb(24, 24, 27)",
+                muted: "rgb(244, 244, 245)",
+                "muted foreground": "rgb(113, 113, 122)",
+                accent: "rgb(244, 244, 245)",
+                "accent foreground": "rgb(24, 24, 27)",
+                destructive: "rgb(239, 68, 68)",
+                "destructive foreground": "rgb(250, 250, 250)",
+                border: "rgb(228, 228, 231)",
+                input: "rgb(228, 228, 231)",
+                ring: "rgb(24, 24, 27)",
             }),
         );
 
         app.addTheme(
-            /*new Theme("dark", {
-                "c bg": "rgb(57 63 75)",
-                "c bg m": "rgb(46 51 60)",
-                "c text": "rgb(200 204 211)",
-                "c text2": "rgb(107 112 124)",
-                "c bd": "rgb(54 57 62)",
-                "c shadow": "rgb(200 204 211)",
-                "c accent": "rgb(64 134 232)",
-                "c accent bg": "rgb(169 186 230)",
-            }),*/
             new Theme("dark", {
                 background: "rgb(57 63 75)",
-                // "c bg m": "rgb(46 51 60)",
                 foreground: "rgb(200 204 211)",
-                // secondary: "green",
-                // "secondary foreground": "rgb(107 112 124)",
-                border: "rgb(100, 110, 120)",
-
-                "primary foreground": "rgb(110 160 230) ",
+                card: "rgb(57 63 75)",
+                "card foreground": "rgb(200 204 211)",
+                popover: "rgb(57 63 75)",
+                "popover foreground": "rgb(200 204 211)",
                 primary: "color-mix(in srgb, rgb(34 121 250) 20%, transparent)",
+                "primary foreground": "rgb(110 160 230)",
+                secondary: "rgb(70 75 88)",
+                "secondary foreground": "rgb(200 204 211)",
+                muted: "rgb(70 75 88)",
+                "muted foreground": "rgb(150 155 168)",
                 accent: "rgb(70 75 88)",
+                "accent foreground": "rgb(200 204 211)",
+                destructive: "rgb(127, 29, 29)",
+                "destructive foreground": "rgb(200 204 211)",
+                border: "rgb(100, 110, 120)",
+                input: "rgb(100, 110, 120)",
+                ring: "rgb(110 160 230)",
             }),
         );
 

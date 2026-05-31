@@ -28,12 +28,10 @@ export class Theme {
         this.name = e;
     }
     activate(_doc: Document = document) {
-        Object.keys(this.theme).forEach((t) =>
-            (_doc.querySelector(":root") as HTMLElement)?.style.setProperty(
-                Theme.toCss(t),
-                this.theme[t] ?? "",
-            ),
-        );
+        const root = _doc.documentElement;
+        Object.keys(this.theme).forEach((t) => {
+            root.style.setProperty(Theme.toCss(t), this.theme[t] ?? "");
+        });
     }
     toString() {
         return `${this.name}${JSON.stringify(this.theme)}`;
