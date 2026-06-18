@@ -1,0 +1,67 @@
+import { createServerClient } from "@supabase/ssr";
+import { type Handle, redirect } from "@sveltejs/kit";
+import { sequence } from "@sveltejs/kit/hooks";
+import {
+    PUBLIC_SUPABASE_URL,
+    PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+} from "$env/static/public";
+
+const supabase: Handle = async ({ event, resolve }) => {
+    event.locals.supabase = createServerClient(
+        PUBLIC_SUPABASE_URL,
+        PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+        {
+            cookies: {
+                getAll: () => event.cookies.getAll(),
+                setAll: (cookiesToSet) => {
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        event.cookies.set(name, value, {
+                            ...options,
+                            path: "/",
+                        });
+                    });
+                },
+            },
+        },
+    );
+
+    // Validates the JWT locally (or via getUser as fallback) — never trust
+    // getSession() alone on the server, since cookie data can be spoofed.
+    event.locals.safeGetSession = async () => {
+        const { data: claimsData, error } =
+            await event.locals.supabase.auth.getClaims();
+        if (error || !claimsData?.claims) {
+            return { session: null, user: null };
+        }
+        const {
+            data: { session },
+        } = await event.locals.supabase.auth.getSession();
+        return { session, user: claimsData.claims };
+    };
+
+    return resolve(event, {
+        filterSerializedResponseHeaders(name) {
+            return (
+                name === "content-range" || name === "x-supabase-api-version"
+            );
+        },
+    });
+};
+
+const authGuard: Handle = async ({ event, resolve }) => {
+    const { session, user } = await event.locals.safeGetSession();
+    event.locals.session = session;
+    event.locals.user = user;
+
+    if (!event.locals.session && event.url.pathname.startsWith("/private")) {
+        redirect(303, "/auth/login");
+    }
+
+    if (event.locals.session && event.url.pathname === "/auth/login") {
+        redirect(303, "/private");
+    }
+
+    return resolve(event);
+};
+
+export const handle: Handle = sequence(supabase, authGuard);
