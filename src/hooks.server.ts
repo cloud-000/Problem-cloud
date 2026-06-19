@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 import {
@@ -36,7 +37,26 @@ const supabase: Handle = async ({ event, resolve }) => {
         const {
             data: { session },
         } = await event.locals.supabase.auth.getSession();
-        return { session, user: claimsData.claims };
+
+        const claims = claimsData.claims as any;
+        const user: User = {
+            id: claims.sub ?? "",
+            created_at: claims.created_at || (claims.iat
+                ? new Date(claims.iat * 1000).toISOString()
+                : new Date().toISOString()),
+            aud: claims.aud ?? "authenticated",
+            role: claims.role,
+            email: claims.email,
+            email_confirmed_at: claims.email_verified
+                ? new Date().toISOString()
+                : undefined,
+            phone: claims.phone,
+            app_metadata: claims.app_metadata || {},
+            user_metadata: claims.user_metadata || {},
+            is_anonymous: claims.is_anonymous,
+        };
+
+        return { session, user };
     };
 
     return resolve(event, {
