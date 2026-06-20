@@ -7,6 +7,7 @@
     $inspect(profile);
 </script>
 
+<h1>Hello {profile?.username}</h1>
 {#if session}
     <p>Logged in</p>
     <form action="/auth/logout" method="POST" use:enhance>
