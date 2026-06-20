@@ -1,284 +1,323 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&display=swap");
 
 @import "tailwindcss";
 @plugin '@tailwindcss/forms';
 
-@theme {
-    /* Brand & Accent */
-    --color-primary: #cc785c;
-    --color-primary-active: #a9583e;
-    --color-primary-disabled: #e6dfd8;
-    --color-accent-teal: #5db8a6;
-    --color-accent-amber: #e8a55a;
+:root {
+    /* ==========================================================================
+       1. COLOR SYSTEM (Semantic & DESIGN.md Mapping)
+       ========================================================================== */
 
-    /* Surfaces */
-    --color-canvas: #faf9f5;
-    --color-surface-soft: #f5f0e8;
-    --color-surface-card: #efe9de;
-    --color-surface-cream-strong: #e8e0d2;
-    --color-surface-dark: #181715;
-    --color-surface-dark-elevated: #252320;
-    --color-surface-dark-soft: #1f1e1b;
-    --color-hairline: #e6dfd8;
-    --color-hairline-soft: #ebe6df;
+    /* Core Semantic Backgrounds & Text */
+    --background: #f8fafc;                  /* Surface Level 0 (Slate-50) */
+    --foreground: #191c1e;                  /* default on-background */
+    --background-foreground: #191c1e;
 
-    /* Text Colors */
-    --color-ink: #141413;
-    --color-body-strong: #252523;
-    --color-body: #3d3d3a;
-    --color-muted: #6c6a64;
-    --color-muted-soft: #8e8b82;
-    --color-on-primary: #ffffff;
-    --color-on-dark: #faf9f5;
-    --color-on-dark-soft: #a09d96;
+    /* Core Semantic Brand Colors */
+    --primary: #0f172a;                     /* Deep Navy (#0F172A) */
+    --primary-foreground: #ffffff;
+    --primary-container: #131b2e;
+    --on-primary-container: #7c839b;
+    --inverse-primary: #bec6e0;
 
-    /* Semantic Colors */
-    --color-success: #5db872;
-    --color-warning: #d4a017;
-    --color-error: #c64545;
+    --secondary: #334155;                   /* Slate Blue (#334155) */
+    --secondary-foreground: #ffffff;
+    --secondary-container: #d5e3fd;
+    --on-secondary-container: #57657b;
+
+    --tertiary: #000000;
+    --on-tertiary: #ffffff;
+    --tertiary-container: #001e2c;
+    --on-tertiary-container: #008ebf;
+
+    /* Surfaces & Containers */
+    --surface: #f7f9fb;
+    --surface-dim: #d8dadc;
+    --surface-bright: #f7f9fb;
+    --surface-container-lowest: #ffffff;    /* Surface Level 1 (Card/Work surface) */
+    --surface-container-low: #f2f4f6;
+    --surface-container: #eceef0;
+    --surface-container-high: #e6e8ea;
+    --surface-container-highest: #e0e3e5;
+    --on-surface: #191c1e;
+    --on-surface-variant: #45464d;
+    --inverse-surface: #2d3133;
+    --inverse-on-surface: #eff1f3;
+    --surface-variant: #e0e3e5;
+    --surface-tint: #565e74;
+
+    /* Borders & Outlines */
+    --border: #e2e8f0;                      /* 1px Slate-200 for spreadsheet / card outlines */
+    --input: #cbd5e1;                       /* Slate-300 standard inputs */
+    --ring: #0f172a;                        /* Primary Navy on focus */
+    --outline: #76777d;
+    --outline-variant: #c6c6cd;
+
+    /* Interactive / Muted states */
+    --muted: #f1f5f9;                       /* Slate-100 (hover background) */
+    --muted-foreground: #475569;            /* Slate-600 */
+
+    /* Errors & Destructive Actions */
+    --error: #ba1a1a;
+    --on-error: #ffffff;
+    --error-container: #ffdad6;
+    --on-error-container: #93000a;
+    --destructive: #ba1a1a;
+    --destructive-foreground: #ffffff;
+
+    /* Fixed Roles */
+    --primary-fixed: #dae2fd;
+    --primary-fixed-dim: #bec6e0;
+    --on-primary-fixed: #131b2e;
+    --on-primary-fixed-variant: #3f465c;
+    --secondary-fixed: #d5e3fd;
+    --secondary-fixed-dim: #b9c7e0;
+    --on-secondary-fixed: #0d1c2f;
+    --on-secondary-fixed-variant: #3a485c;
+    --tertiary-fixed: #c4e7ff;
+    --tertiary-fixed-dim: #7bd0ff;
+    --on-tertiary-fixed: #001e2c;
+    --on-tertiary-fixed-variant: #004c69;
+
+    /* Category Accent Colors (Math disciplines) */
+    --algebra: #4f46e5;                     /* Indigo */
+    --combinatorics: #db2777;                /* Pink */
+    --geometry: #0d9488;                     /* Teal */
+    --number-theory: #ea580c;                /* Orange */
+
+    /* ==========================================================================
+       2. TYPOGRAPHY & SPACING
+       ========================================================================== */
 
     /* Font Families */
-    --font-serif:
-        "Copernicus", "Tiempos Headline", "Cormorant Garamond", "EB Garamond",
-        Garamond, "Times New Roman", serif;
-    --font-sans:
-        "StyreneB", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Roboto, sans-serif;
-    --font-mono:
-        "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-        monospace;
+    --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-serif: "Source Serif 4", "Copernicus", "Tiempos Headline", "Cormorant Garamond", "EB Garamond", Garamond, serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-    /* Spacing Scale */
-    --spacing-xxs: 4px;
-    --spacing-xs: 8px;
-    --spacing-sm: 12px;
+    /* Font Sizes */
+    --text-h1: 32px;
+    --text-h2: 24px;
+    --text-problem-text: 18px;
+    --text-body: 16px;
+    --text-code-notation: 14px;
+    --text-label-caps: 12px;
+
+    /* Border Radii */
+    --radius-sm: 0.125rem;                  /* 2px standard rounded-sm card/button */
+    --radius-default: 0.25rem;              /* 4px standard default */
+    --radius-md: 0.375rem;                  /* 6px */
+    --radius-lg: 0.5rem;                    /* 8px workspace container */
+    --radius-xl: 0.75rem;                   /* 12px */
+    --radius-full: 9999px;                  /* chips / rounded-full */
+
+    /* Border Thicknesses */
+    --border-width-sm: 1px;
+    --border-width-default: 1px;
+    --border-width-md: 2px;
+    --border-width-lg: 4px;
+
+    /* Spacing Scale (Multiples of 4px) */
+    --spacing-unit: 4px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
     --spacing-md: 16px;
     --spacing-lg: 24px;
-    --spacing-xl: 32px;
-    --spacing-xxl: 48px;
-    --spacing-section: 96px;
-
-    /* Border Radius */
-    --radius-xs: 4px;
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
-    --radius-pill: 9999px;
-    --radius-full: 9999px;
-
-    /* Shadows */
-    --shadow-subtle: 0 1px 3px rgba(20, 20, 19, 0.08);
-
-    /* Typography Font Sizes */
-    --text-display-xl: 64px;
-    --text-display-lg: 48px;
-    --text-display-md: 36px;
-    --text-display-sm: 28px;
-    --text-title-lg: 22px;
-    --text-title-md: 18px;
-    --text-title-sm: 16px;
-    --text-body-md: 16px;
-    --text-body-sm: 14px;
-    --text-caption: 13px;
-    --text-caption-uppercase: 12px;
-    --text-code: 14px;
-    --text-button: 14px;
-    --text-nav-link: 14px;
+    --spacing-xl: 40px;
+    --spacing-gutter: 16px;
+    --spacing-margin: 24px;
 }
 
-/* Base Body Styles */
-@layer base {
-    html,
-    body {
-        background-color: var(--color-canvas);
-        color: var(--color-ink);
-        font-family: var(--font-sans);
-        margin: 0;
-        padding: 0;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
+@theme {
+    /* Color mapping from :root */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-background-foreground: var(--background-foreground);
 
-    /* Make sure default headings use serif style */
-    h1,
-    h2,
-    h3,
-    h4 {
-        font-family: var(--font-serif);
-        font-weight: 400;
-    }
-}
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary-container: var(--primary-container);
+    --color-on-primary-container: var(--on-primary-container);
+    --color-inverse-primary: var(--inverse-primary);
 
-/* Typography Token Utility Classes & CSS Custom Variables mapping */
-:root {
-    /* Direct mapping for easy Svelte / inline style usage */
-    --colors-primary: var(--color-primary);
-    --colors-primary-active: var(--color-primary-active);
-    --colors-primary-disabled: var(--color-primary-disabled);
-    --colors-accent-teal: var(--color-accent-teal);
-    --colors-accent-amber: var(--color-accent-amber);
-    --colors-canvas: var(--color-canvas);
-    --colors-surface-soft: var(--color-surface-soft);
-    --colors-surface-card: var(--color-surface-card);
-    --colors-surface-cream-strong: var(--color-surface-cream-strong);
-    --colors-surface-dark: var(--color-surface-dark);
-    --colors-surface-dark-elevated: var(--color-surface-dark-elevated);
-    --colors-surface-dark-soft: var(--color-surface-dark-soft);
-    --colors-hairline: var(--color-hairline);
-    --colors-hairline-soft: var(--color-hairline-soft);
-    --colors-ink: var(--color-ink);
-    --colors-body-strong: var(--color-body-strong);
-    --colors-body: var(--color-body);
-    --colors-muted: var(--color-muted);
-    --colors-muted-soft: var(--color-muted-soft);
-    --colors-on-primary: var(--color-on-primary);
-    --colors-on-dark: var(--color-on-dark);
-    --colors-on-dark-soft: var(--color-on-dark-soft);
-    --colors-success: var(--color-success);
-    --colors-warning: var(--color-warning);
-    --colors-error: var(--color-error);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary-container: var(--secondary-container);
+    --color-on-secondary-container: var(--on-secondary-container);
 
-    --rounded-xs: var(--radius-xs);
-    --rounded-sm: var(--radius-sm);
-    --rounded-md: var(--radius-md);
-    --rounded-lg: var(--radius-lg);
-    --rounded-xl: var(--radius-xl);
-    --rounded-pill: var(--radius-pill);
-    --rounded-full: var(--radius-full);
+    --color-tertiary: var(--tertiary);
+    --color-on-tertiary: var(--on-tertiary);
+    --color-tertiary-container: var(--tertiary-container);
+    --color-on-tertiary-container: var(--on-tertiary-container);
 
-    --spacing-xxs: var(--spacing-xxs);
+    --color-surface: var(--surface);
+    --color-surface-dim: var(--surface-dim);
+    --color-surface-bright: var(--surface-bright);
+    --color-surface-container-lowest: var(--surface-container-lowest);
+    --color-surface-container-low: var(--surface-container-low);
+    --color-surface-container: var(--surface-container);
+    --color-surface-container-high: var(--surface-container-high);
+    --color-surface-container-highest: var(--surface-container-highest);
+    --color-on-surface: var(--on-surface);
+    --color-on-surface-variant: var(--on-surface-variant);
+    --color-inverse-surface: var(--inverse-surface);
+    --color-inverse-on-surface: var(--inverse-on-surface);
+    --color-surface-variant: var(--surface-variant);
+    --color-surface-tint: var(--surface-tint);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-outline: var(--outline);
+    --color-outline-variant: var(--outline-variant);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-error: var(--error);
+    --color-on-error: var(--on-error);
+    --color-error-container: var(--error-container);
+    --color-on-error-container: var(--on-error-container);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-primary-fixed: var(--primary-fixed);
+    --color-primary-fixed-dim: var(--primary-fixed-dim);
+    --color-on-primary-fixed: var(--on-primary-fixed);
+    --color-on-primary-fixed-variant: var(--on-primary-fixed-variant);
+    --color-secondary-fixed: var(--secondary-fixed);
+    --color-secondary-fixed-dim: var(--secondary-fixed-dim);
+    --color-on-secondary-fixed: var(--on-secondary-fixed);
+    --color-on-secondary-fixed-variant: var(--on-secondary-fixed-variant);
+    --color-tertiary-fixed: var(--tertiary-fixed);
+    --color-tertiary-fixed-dim: var(--tertiary-fixed-dim);
+    --color-on-tertiary-fixed: var(--on-tertiary-fixed);
+    --color-on-tertiary-fixed-variant: var(--on-tertiary-fixed-variant);
+
+    --color-algebra: var(--color-algebra);
+    --color-combinatorics: var(--color-combinatorics);
+    --color-geometry: var(--color-geometry);
+    --color-number-theory: var(--color-number-theory);
+
+    /* Font Family mapping */
+    --font-sans: var(--font-sans);
+    --font-serif: var(--font-serif);
+    --font-mono: var(--font-mono);
+
+    /* Font Size mapping */
+    --text-h1: var(--text-h1);
+    --text-h2: var(--text-h2);
+    --text-problem-text: var(--text-problem-text);
+    --text-body: var(--text-body);
+    --text-code-notation: var(--text-code-notation);
+    --text-label-caps: var(--text-label-caps);
+
+    /* Border Radii mapping */
+    --radius-sm: var(--radius-sm);
+    --radius-default: var(--radius-default);
+    --radius-md: var(--radius-md);
+    --radius-lg: var(--radius-lg);
+    --radius-xl: var(--radius-xl);
+    --radius-full: var(--radius-full);
+
+    /* Border Thicknesses mapping */
+    --border-width-sm: var(--border-width-sm);
+    --border-width-default: var(--border-width-default);
+    --border-width-md: var(--border-width-md);
+    --border-width-lg: var(--border-width-lg);
+
+    /* Spacing Scale mapping */
+    --spacing-unit: var(--spacing-unit);
     --spacing-xs: var(--spacing-xs);
     --spacing-sm: var(--spacing-sm);
     --spacing-md: var(--spacing-md);
     --spacing-lg: var(--spacing-lg);
     --spacing-xl: var(--spacing-xl);
-    --spacing-xxl: var(--spacing-xxl);
-    --spacing-section: var(--spacing-section);
+    --spacing-gutter: var(--spacing-gutter);
+    --spacing-margin: var(--spacing-margin);
 }
 
-/* Typography helper classes matching DESIGN.md */
-.typography-display-xl {
-    font-family: var(--font-serif);
-    font-size: var(--text-display-xl);
-    font-weight: 400;
-    line-height: 1.05;
-    letter-spacing: -1.5px;
-}
+/* ==========================================================================
+   3. BASE STYLES
+   ========================================================================== */
+@layer base {
+    html,
+    body {
+        background-color: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        margin: 0;
+        padding: 0;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: "ss03" 1;
+    }
 
-.typography-display-lg {
-    font-family: var(--font-serif);
-    font-size: var(--text-display-lg);
-    font-weight: 400;
-    line-height: 1.1;
-    letter-spacing: -1px;
-}
-
-.typography-display-md {
-    font-family: var(--font-serif);
-    font-size: var(--text-display-md);
-    font-weight: 400;
-    line-height: 1.15;
-    letter-spacing: -0.5px;
-}
-
-.typography-display-sm {
-    font-family: var(--font-serif);
-    font-size: var(--text-display-sm);
-    font-weight: 400;
-    line-height: 1.2;
-    letter-spacing: -0.3px;
-}
-
-.typography-title-lg {
-    font-family: var(--font-sans);
-    font-size: var(--text-title-lg);
-    font-weight: 500;
-    line-height: 1.3;
-    letter-spacing: 0;
-}
-
-.typography-title-md {
-    font-family: var(--font-sans);
-    font-size: var(--text-title-md);
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0;
-}
-
-.typography-title-sm {
-    font-family: var(--font-sans);
-    font-size: var(--text-title-sm);
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0;
-}
-
-.typography-body-md {
-    font-family: var(--font-sans);
-    font-size: var(--text-body-md);
-    font-weight: 400;
-    line-height: 1.55;
-    letter-spacing: 0;
-}
-
-.typography-body-sm {
-    font-family: var(--font-sans);
-    font-size: var(--text-body-sm);
-    font-weight: 400;
-    line-height: 1.55;
-    letter-spacing: 0;
-}
-
-.typography-caption {
-    font-family: var(--font-sans);
-    font-size: var(--text-caption);
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0;
-}
-
-.typography-caption-uppercase {
-    font-family: var(--font-sans);
-    font-size: var(--text-caption-uppercase);
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-}
-
-.typography-code {
-    font-family: var(--font-mono);
-    font-size: var(--text-code);
-    font-weight: 400;
-    line-height: 1.6;
-    letter-spacing: 0;
-}
-
-.typography-button {
-    font-family: var(--font-sans);
-    font-size: var(--text-button);
-    font-weight: 500;
-    line-height: 1;
-    letter-spacing: 0;
-}
-
-.typography-nav-link {
-    font-family: var(--font-sans);
-    font-size: var(--text-nav-link);
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0;
-}
-
-/* Custom adjustment for Cormorant Garamond font weights and rendering */
-@supports (font-family: "Cormorant Garamond") {
-    .typography-display-xl,
-    .typography-display-lg,
-    .typography-display-md,
-    .typography-display-sm {
-        font-family: "Cormorant Garamond", var(--font-serif);
-        font-weight: 500;
+    /* Standard academic heading styles matching DESIGN.md */
+    h1 {
+        font-family: var(--font-sans);
+        font-size: var(--text-h1);
+        font-weight: 700;
+        line-height: 1.2;
         letter-spacing: -0.02em;
     }
+
+    h2 {
+        font-family: var(--font-sans);
+        font-size: var(--text-h2);
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    /* Code & Mono formatting */
+    code, pre {
+        font-family: var(--font-mono);
+    }
+}
+
+/* ==========================================================================
+   4. CUSTOM UTILITY CLASSES
+   ========================================================================== */
+@utility text-h1 {
+    font-family: var(--font-sans);
+    font-size: var(--text-h1);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+@utility text-h2 {
+    font-family: var(--font-sans);
+    font-size: var(--text-h2);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+@utility text-problem-text {
+    font-family: var(--font-serif);
+    font-size: var(--text-problem-text);
+    font-weight: 400;
+    line-height: 1.6;
+}
+
+@utility text-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+@utility text-code-notation {
+    font-family: var(--font-mono);
+    font-size: var(--text-code-notation);
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+@utility text-label-caps {
+    font-family: var(--font-sans);
+    font-size: var(--text-label-caps);
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
 }

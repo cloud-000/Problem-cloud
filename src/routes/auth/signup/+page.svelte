@@ -12,6 +12,12 @@
             placeholder: "Enter Email",
         },
         {
+            name: "username",
+            type: "text",
+            label: "Username",
+            placeholder: "What do you want to be called?",
+        },
+        {
             name: "password",
             type: "password",
             label: "Password",
@@ -35,13 +41,13 @@
 {/if}
 
 <div class="flex flex-col gap-xl">
-    <Button type="submit" variant="default">Log In</Button>
+    <Button type="submit" variant="default">Sign up</Button>
     <div class="text-primary/50 flex flex-row items-center h-max w-fit gap-xs">
-        <span class="h-fit">Don't have an account?</span><Button
+        <span class="h-fit">Already have an account?</span><Button
             type="button"
-            href="/auth/signup"
+            href="/auth/login"
             variant="ghost"
-            class="underline">Sign up</Button
+            class="underline">Log In</Button
         >
     </div>
 </div>
