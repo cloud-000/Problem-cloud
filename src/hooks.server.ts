@@ -6,9 +6,10 @@ import {
     PUBLIC_SUPABASE_URL,
     PUBLIC_SUPABASE_PUBLISHABLE_KEY,
 } from "$env/static/public";
+import type { Database } from "$lib/types/database.types";
 
 const supabase: Handle = async ({ event, resolve }) => {
-    event.locals.supabase = createServerClient(
+    event.locals.supabase = createServerClient<Database>(
         PUBLIC_SUPABASE_URL,
         PUBLIC_SUPABASE_PUBLISHABLE_KEY,
         {

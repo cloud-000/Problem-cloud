@@ -106,3 +106,8 @@ create or replace trigger on_auth_user_deleted
   after delete on auth.users
   for each row
   execute function public.handle_deleted_user();
+
+-- Grant permissions for roles
+grant select on public.profiles to anon;
+grant select, update on public.profiles to authenticated;
+grant all on public.profiles to service_role;

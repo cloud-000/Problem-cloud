@@ -8,19 +8,20 @@ import {
     PUBLIC_SUPABASE_PUBLISHABLE_KEY,
 } from "$env/static/public";
 import type { LayoutLoad } from "./$types";
+import type { Database } from "$lib/types/database.types";
 
 export const load: LayoutLoad = async ({ data, depends, fetch }) => {
     depends("supabase:auth");
 
     const supabase = isBrowser()
-        ? createBrowserClient(
+        ? createBrowserClient<Database>(
               PUBLIC_SUPABASE_URL,
               PUBLIC_SUPABASE_PUBLISHABLE_KEY,
               {
                   global: { fetch },
               },
           )
-        : createServerClient(
+        : createServerClient<Database>(
               PUBLIC_SUPABASE_URL,
               PUBLIC_SUPABASE_PUBLISHABLE_KEY,
               {
@@ -29,7 +30,7 @@ export const load: LayoutLoad = async ({ data, depends, fetch }) => {
               },
           );
 
-    const { session, user } = data;
+    const { session, user, profile } = data;
 
-    return { supabase, session, user };
+    return { supabase, session, user, profile };
 };
