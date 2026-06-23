@@ -1,0 +1,82 @@
+-- Normalized contest identity: series -> tests
+-- production_problems is a denormalized snapshot built from these (plus problem content).
+
+-- A contest series (e.g. "AMC 10", "Putnam").
+create table public.series (
+  id          bigint generated always as identity primary key,
+  name        text not null unique,
+  aops_id     integer default -1,
+  is_official boolean not null default false
+);
+
+-- A specific test within a series (e.g. "AMC 10A 2024").
+create table public.tests (
+  id               bigint generated always as identity primary key,
+  series_id        bigint references public.series(id) on delete cascade,
+  name             text not null,
+  year             integer,
+  aops_category_id text unique,
+  type             text,
+  is_computational boolean not null default false,
+  difficulty       integer default 0,
+  quality          integer default 0
+);
+
+create index tests_series_id_idx on public.tests(series_id);
+
+-- Denormalized, "built" problem rows for browsing/practice.
+create table public.problems (
+  id                 bigint generated always as identity primary key,
+
+  -- relational link back to the source test
+  test_id            bigint references public.tests(id) on delete cascade,
+  n                  integer not null,        -- problem number within the test
+
+  -- content
+  statement          text,                  -- statement parts
+  choices            text[],                  -- choice texts; null if not MCQ
+  answer_index       integer default -1,      -- 0-based index into choices; -1 = unknown
+  official_solutions text[],                  -- official solution content strings; null if none
+
+  -- metadata
+  topic              text,
+  tags               text[],                  -- tags
+  is_computational   boolean not null default false,
+  difficulty         integer default 0,
+  quality            integer default 0,
+  verified           boolean not null default false,
+  notes              text,
+
+  built_at           timestamp with time zone not null default now(),
+
+  unique (test_id, n)
+);
+
+create index problems_test_id_idx on public.problems(test_id);
+
+-- Enable Row Level Security (RLS)
+alter table public.series enable row level security;
+alter table public.tests enable row level security;
+alter table public.problems enable row level security;
+
+-- RLS Policies: world-readable, writes go through service_role (build pipeline).
+create policy "Series are viewable by everyone."
+  on public.series for select
+  using ( true );
+
+create policy "Tests are viewable by everyone."
+  on public.tests for select
+  using ( true );
+
+create policy "Problems are viewable by everyone."
+  on public.problems for select
+  using ( true );
+
+-- Grant permissions for roles
+grant select on public.series to anon, authenticated;
+grant select on public.tests to anon, authenticated;
+grant select on public.problems to anon, authenticated;
+
+grant all on public.series to service_role;
+grant all on public.tests to service_role;
+grant all on public.problems to service_role;

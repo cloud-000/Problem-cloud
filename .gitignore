@@ -27,3 +27,8 @@ vite.config.ts.timestamp-*
 # Supabase
 supabase/.branches/
 supabase/.temp/
+supabase/migrations/
+supabase/seed.sql
+
+# Claude
+CLAUDE.md
