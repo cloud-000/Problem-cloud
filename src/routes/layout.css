@@ -14,8 +14,8 @@
     --background-foreground: #191c1e;
 
     /* Core Semantic Brand Colors */
-    --primary: #0f172a; /* Deep Navy (#0F172A) */
-    --primary-foreground: #ffffff;
+    --primary: rgb(219, 233, 254); /* Deep Navy (#0F172A) */
+    --primary-foreground: rgb(50, 108, 236);
     --primary-container: #131b2e;
     --on-primary-container: #7c839b;
     --inverse-primary: #bec6e0;

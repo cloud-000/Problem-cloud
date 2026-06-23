@@ -1,17 +1,53 @@
 <script lang="ts">
     import * as Sidebar from "$lib/components/sidebar";
+    import { ToastContainer } from "$lib/components/toast";
     import { page } from "$app/state";
     import { enhance } from "$app/forms";
     import { Icon } from "$lib/components/icon/.";
     import { cn } from "$lib/utils.js";
+    import { toasts, type Toast } from "$lib/state/toast.svelte";
+    import {
+        fetchUnread,
+        subscribeToNotifications,
+        markRead,
+        toToast,
+    } from "$lib/notifications";
 
     let { data, children } = $props();
-    let { session, profile } = $derived(data);
+    let { supabase, session, user, profile } = $derived(data);
+
+    // Surface notifications as toasts for authenticated users: replay unread ones on
+    // load, then stream new inserts in real time. Auto-dismiss leaves them unread; only
+    // an explicit close persists a read record (see markRead below).
+    $effect(() => {
+        if (!user) return;
+        const userId = user.id;
+
+        fetchUnread(supabase, userId).then((rows) => {
+            for (const row of rows) toasts.add(toToast(row));
+        });
+
+        const channel = subscribeToNotifications(supabase, userId, (row) => {
+            toasts.add(toToast(row));
+        });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    });
+
+    // Only DB-backed toasts (with a notificationId) get a persisted read record;
+    // client-only toasts dismiss purely on the client.
+    function onToastClose(toast: Toast) {
+        if (user && toast.notificationId != null)
+            markRead(supabase, user.id, toast.notificationId);
+    }
 
     let tabs = [
         { href: "/", icon: "home", label: "Home" },
         { href: "/practice", icon: "sprint", label: "Train" },
         { href: "/library", icon: "category_search", label: "Find" },
+        { href: "/testing-features", icon: "labs", label: "Test" }, // Testing page
     ];
     // Sidebar state
     let expanded = $state(true);
@@ -23,13 +59,11 @@
     <Sidebar.Root bind:expanded>
         <Sidebar.Header class="justify-between">
             {#if expanded}
-                <div class="flex items-center gap-2">
-                    <Icon
-                        class="text-primary font-bold animate-pulse"
-                        fontsize="24px">cloud</Icon
+                <div class="flex items-center gap-2 text-primary-foreground">
+                    <Icon class="font-bold animate-pulse" fontsize="24px"
+                        >cloud</Icon
                     >
-                    <span
-                        class="text-base font-semibold tracking-tight text-primary"
+                    <span class="text-base font-semibold tracking-tight"
                         >ProblemCloud</span
                     >
                 </div>
@@ -122,7 +156,9 @@
         </Sidebar.Footer>
     </Sidebar.Root>
 
-    <div class="flex flex-col flex-1 h-full overflow-y-auto">
+    <div class="flex flex-col flex-1 h-full overflow-y-auto p-sm">
         {@render children()}
     </div>
+
+    <ToastContainer onDismiss={onToastClose} />
 </div>
