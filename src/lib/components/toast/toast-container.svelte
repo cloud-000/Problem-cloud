@@ -14,6 +14,9 @@
 <script lang="ts">
     import Toast from "./toast.svelte";
     import { toasts } from "$lib/state/toast.svelte";
+    import { fly } from "svelte/transition";
+    import { flip } from "svelte/animate";
+    import { cubicOut } from "svelte/easing";
 
     let {
         class: className,
@@ -38,11 +41,17 @@
     {...restProps}
 >
     {#each toasts.toasts as toast (toast.id)}
-        <Toast
-            severity={toast.severity}
-            title={toast.title}
-            message={toast.message}
-            onDismiss={() => dismiss(toast)}
-        />
+        <div
+            in:fly={{ x: 24, duration: 250, easing: cubicOut }}
+            out:fly={{ x: 24, duration: 200, easing: cubicOut }}
+            animate:flip={{ duration: 200, easing: cubicOut }}
+        >
+            <Toast
+                severity={toast.severity}
+                title={toast.title}
+                message={toast.message}
+                onDismiss={() => dismiss(toast)}
+            />
+        </div>
     {/each}
 </div>

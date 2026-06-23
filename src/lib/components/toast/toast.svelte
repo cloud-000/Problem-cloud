@@ -5,7 +5,7 @@
     import type { ToastSeverity } from "$lib/state/toast.svelte";
 
     export const toastVariants = tv({
-        base: "pointer-events-auto flex w-80 items-start gap-3 rounded-md border border-l-4 border-border bg-surface-container-high p-sm text-foreground shadow-lg",
+        base: "pointer-events-auto flex w-80 items-start gap-3 rounded-md border border-l-4 border-border bg-surface-container-high p-sm text-foreground shadow-lg origin-bottom-right transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl",
         variants: {
             severity: {
                 info: "border-l-primary [&_[data-slot=toast-icon]]:text-primary",
@@ -76,6 +76,7 @@
         size="icon-xs"
         aria-label="Dismiss notification"
         onclick={onDismiss}
+        class="opacity-50 hover:opacity-100 transition-opacity duration-300"
     >
         <Icon name="close" />
     </Button>
