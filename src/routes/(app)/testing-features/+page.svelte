@@ -26,6 +26,12 @@
             description: "Two-handle range slider with push behavior.",
             href: "/testing-features/range-slider",
         },
+        {
+            icon: "toggle_on",
+            name: "Toggle & Switch",
+            description: "Accessible toggle button and switch components.",
+            href: "/testing-features/toggle",
+        },
     ];
 </script>
 
