@@ -76,7 +76,7 @@
 
 <span
     bind:this={ref}
-    class={cn("material-symbols-rounded inline-block select-none align-middle", className)}
+    class={cn("material-symbols-rounded inline-flex items-center justify-center align-middle leading-none size-[1em] select-none", className)}
     style={computedStyle}
     {...restProps}
 >
