@@ -30,5 +30,6 @@ supabase/.temp/
 supabase/migrations/
 supabase/seed.sql
 
-# Claude
+# AI
 CLAUDE.md
+AGENTS.md

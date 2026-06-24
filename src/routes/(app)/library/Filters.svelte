@@ -1,5 +1,7 @@
 <script lang="ts">
     import { Input } from "$lib/components/input";
+    import { Button } from "$lib/components/button";
+    import { Icon } from "$lib/components/icon";
     import { Combobox, type Option } from "$lib/components/combobox";
     import { RangeSlider } from "$lib/components/range-slider";
     import { TriStateSwitch, type TriState } from "$lib/components/toggle";
@@ -43,9 +45,27 @@
     let quality = $state<[number, number]>(f.quality ?? [...QUALITY_RANGE]);
     let verified = $state<TriState>(boolToTri(f.verified));
 
-    // Parents locked in by drilling — shown read-only, not as editable filters.
-    const lockedSeries = frame.context.series;
-    const lockedTest = frame.context.test;
+    // Parents locked in by drilling — shown as removable scope chips. Reactive so
+    // clearing one re-runs the patch effect (dropping its id) and reveals the series
+    // combobox when series scope is removed.
+    let lockedSeries = $state(frame.context.series);
+    let lockedTest = $state(frame.context.test);
+
+    /** "×" on the test chip — broaden to the series scope. */
+    function removeTestScope() {
+        lockedTest = undefined;
+        store.clearScope("test");
+    }
+
+    /** "×" on the series chip — fully unscope (cascades to the test). */
+    function removeSeriesScope() {
+        lockedSeries = undefined;
+        lockedTest = undefined;
+        // A drilled frame seeds seriesSel from f.seriesId; clear it so the patch
+        // effect doesn't re-apply the series via its `?? seriesSel[0]` fallback.
+        seriesSel = [];
+        store.clearScope("series");
+    }
 
     /** Treat an untouched (full-range) slider as "no filter" so null-valued rows show. */
     function rangeOrUndef(
@@ -108,15 +128,35 @@
             <div class="flex flex-wrap gap-1.5">
                 {#if lockedSeries}
                     <span
-                        class="rounded-full bg-surface-container px-2.5 py-0.5 text-xs"
-                        >{lockedSeries.name}</span
+                        class="inline-flex items-center gap-1 rounded-full bg-surface-container py-0.5 pr-1 pl-2.5 text-xs"
                     >
+                        {lockedSeries.name}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove ${lockedSeries.name} scope`}
+                            onclick={removeSeriesScope}
+                        >
+                            <Icon fontsize={14}>close</Icon>
+                        </Button>
+                    </span>
                 {/if}
                 {#if lockedTest}
                     <span
-                        class="rounded-full bg-surface-container px-2.5 py-0.5 text-xs"
-                        >{lockedTest.name}</span
+                        class="inline-flex items-center gap-1 rounded-full bg-surface-container py-0.5 pr-1 pl-2.5 text-xs"
                     >
+                        {lockedTest.name}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove ${lockedTest.name} scope`}
+                            onclick={removeTestScope}
+                        >
+                            <Icon fontsize={14}>close</Icon>
+                        </Button>
+                    </span>
                 {/if}
             </div>
         </div>

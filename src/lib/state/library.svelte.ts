@@ -84,4 +84,23 @@ export class LibraryStore {
             this.current.filters = { ...this.current.filters, ...partial };
         });
     }
+
+    /**
+     * Remove a locked drill-down scope from the current frame (the chip "×").
+     * Removing the series cascades to the test, since a test scope can't outlive
+     * the series it was reached through. The matching filter ids are dropped
+     * separately by the filter UI's reactive patch once its locals clear.
+     */
+    clearScope(which: "series" | "test") {
+        untrack(() => {
+            const ctx = { ...this.current.context };
+            if (which === "series") {
+                delete ctx.series;
+                delete ctx.test;
+            } else {
+                delete ctx.test;
+            }
+            this.current.context = ctx;
+        });
+    }
 }

@@ -1,8 +1,7 @@
 <script lang="ts">
     import { Icon } from "$lib/components/icon";
-    import { MathStatement } from "$lib/components/math-statement";
+    import { Problem } from "$lib/components/problem";
     import {
-        TOPIC_LABELS,
         type ProblemRow,
         type SeriesRow,
         type TestRow,
@@ -80,30 +79,7 @@
     {:else}
         {#each results as row (row.id)}
             {@const p = row as ProblemRow}
-            <div
-                class="flex flex-col gap-2 rounded-lg border border-border bg-surface-container-low p-3"
-            >
-                <div class="flex items-start gap-2">
-                    <span class="shrink-0 font-medium text-muted-foreground">
-                        #{p.n + 1}
-                    </span>
-                    <MathStatement
-                        text={p.statement ?? ""}
-                        class="min-w-0 text-sm"
-                    />
-                </div>
-                <div class="flex flex-wrap items-center gap-1.5">
-                    {#if p.tests?.name}{@render badge(p.tests.name)}{/if}
-                    {#if p.topic}{@render badge(TOPIC_LABELS[p.topic] ?? p.topic)}{/if}
-                    {#each p.tags ?? [] as tag}{@render badge(`#${tag}`)}{/each}
-                    {@render badge(`difficulty ${p.difficulty ?? 0}`)}
-                    {@render badge(`quality ${p.quality ?? 0}`)}
-                    {#if p.is_computational}{@render badge(
-                            "computational",
-                        )}{/if}
-                    {#if p.verified}{@render badge("verified")}{/if}
-                </div>
-            </div>
+            <Problem problem={p} mode="preview" />
         {/each}
     {/if}
 </div>
