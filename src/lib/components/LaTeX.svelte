@@ -29,6 +29,7 @@
     const macros = {
         "\\sun": "\\odot",
         "\\mbox": "\\text",
+        "\\bigskip": "\\space",
     };
 
     // Rebuild the visible output from the pristine source, then let KaTeX
