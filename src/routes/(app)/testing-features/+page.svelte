@@ -20,6 +20,12 @@
             description: "BBCode + LaTeX + Asymptote rendering.",
             href: "/testing-features/latex",
         },
+        {
+            icon: "tune",
+            name: "Range Slider",
+            description: "Two-handle range slider with push behavior.",
+            href: "/testing-features/range-slider",
+        },
     ];
 </script>
 
