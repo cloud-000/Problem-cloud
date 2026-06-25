@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { LinkMenu } from "$lib/components/link-menu";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
     import { TOPIC_LABELS, type ProblemRow } from "$lib/library";
@@ -44,6 +45,17 @@
         problem.official_solutions?.length ?? 0,
     );
     let problemAnswer = $state<ProblemAnswer | null>(null);
+
+    let aopsLinks = $derived(
+        problem.aops_id != null
+            ? [
+                  {
+                      label: "Art of Problem Solving",
+                      href: `https://artofproblemsolving.com/community/h${problem.aops_id}`,
+                  },
+              ]
+            : [],
+    );
 
     export function trigger(useAnimation: boolean): boolean | null {
         return problemAnswer?.trigger(useAnimation) ?? null;
@@ -99,19 +111,21 @@
                 </Toggle>
             {/if}
 
+            <LinkMenu links={aopsLinks} label="Open in Art of Problem Solving" />
+
             <div class="group/details relative">
                 <Button
                     variant="ghost"
                     size="icon-xs"
                     aria-label="Problem details"
-                    class="peer"
+                    class="peer text-muted-foreground opacity-50 transition-opacity group-hover/details:opacity-100 hover:opacity-100 focus-visible:opacity-100"
                 >
                 <Icon name="info" />
             </Button>
 
             <div
                 role="tooltip"
-                class="absolute top-7 right-0 z-20 hidden w-80 rounded-lg border border-border bg-surface-container-highest p-3 text-xs shadow-lg group-hover/details:block peer-focus-visible:block peer-focus:block"
+                class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
             >
                 <div class="mb-2 flex items-center gap-1.5 font-medium">
                     <Icon name="bug_report" />

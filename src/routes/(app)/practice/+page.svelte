@@ -1,18 +1,12 @@
 <script lang="ts">
     import type { PageData } from "./$types";
     import { Button } from "$lib/components/button";
-    import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
     import { MathStatement } from "$lib/components/math-statement";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import {
-        Switch,
-        TriStateSwitch,
-        type TriState,
-    } from "$lib/components/toggle";
+    import { ProblemAnswer } from "$lib/components/problem";
+    import { type TriState } from "$lib/components/toggle";
     import {
         DIFFICULTY_RANGE,
-        TOPICS,
         TOPIC_LABELS,
         type ProblemRow,
     } from "$lib/library";
@@ -23,11 +17,10 @@
     } from "$lib/trainer";
     import { cn } from "$lib/utils";
     import { onMount } from "svelte";
+    import SettingsPanel from "./SettingsPanel.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase } = $derived(data);
-
-    const CHOICE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     let topic = $state<string[]>([]);
     let difficulty = $state<[number, number]>([...DIFFICULTY_RANGE]);
@@ -39,6 +32,7 @@
     let loading = $state(false);
     let error = $state<string | null>(null);
     let selectedChoice = $state<number | null>(null);
+    let answer = $state("");
     let submitted = $state(false);
     let correct = $state<boolean | null>(null);
     let flagged = $state(false);
@@ -89,27 +83,9 @@
             : `${seconds}s`;
     }
 
-    function choiceText(choice: string) {
-        const trimmed = choice.trim();
-        if (
-            trimmed.includes("$") ||
-            trimmed.includes("\\(") ||
-            trimmed.includes("\\[")
-        ) {
-            return trimmed;
-        }
-        return `$${trimmed}$`;
-    }
-
     function topicLabel(code: string | null | undefined) {
         if (!code) return null;
         return TOPIC_LABELS[code] ?? code;
-    }
-
-    function computationalLabel(value: TriState) {
-        if (value === "on") return "Computational";
-        if (value === "off") return "Not computational";
-        return "Any";
     }
 
     async function loadProblem(settings = currentSettings()) {
@@ -120,6 +96,7 @@
         error = null;
         problem = null;
         selectedChoice = null;
+        answer = "";
         submitted = false;
         correct = null;
         flagged = false;
@@ -218,341 +195,230 @@
     });
 </script>
 
-{#snippet stat(label: string, value: string | number)}
-    <div class="flex flex-col gap-0.5">
-        <span class="text-label-caps font-medium text-muted-foreground"
-            >{label}</span
-        >
-        <span class="font-mono text-sm text-foreground">{value}</span>
-    </div>
-{/snippet}
-
-{#snippet badge(text: string)}
-    <span
-        class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground"
+<div class="flex h-full w-full flex-col gap-1 p-0">
+    <!-- Top utility bar: Settings toggle, Solved/Accuracy stats, Timer -->
+    <div
+        class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2"
     >
-        {text}
-    </span>
-{/snippet}
-
-{#snippet settingsPanel()}
-    <aside
-        class={cn(
-            "flex flex-col gap-4 rounded-lg border border-border bg-surface-container-lowest p-4 lg:w-72 lg:shrink-0",
-            showSettings ? "flex" : "hidden",
-            "lg:flex",
-        )}
-    >
-        <div class="flex items-center justify-between gap-3">
-            <div>
-                <h2 class="text-sm font-semibold">Settings</h2>
-                <p class="text-xs text-muted-foreground">
-                    Applies to the next generated problem.
-                </p>
-            </div>
-            <Button
-                class="lg:hidden"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close settings"
-                onclick={() => (showSettings = false)}
-            >
-                <Icon name="close" />
-            </Button>
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-medium text-muted-foreground">Topic</span>
-            <Combobox
-                bind:value={topic}
-                options={TOPICS}
-                strict
-                placeholder="Any topic"
-                inputPlaceholder="Add topic"
-            />
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-medium text-muted-foreground">
-                Difficulty ({difficulty[0]}-{difficulty[1]})
-            </span>
-            <RangeSlider
-                bind:value={difficulty}
-                min={DIFFICULTY_RANGE[0]}
-                max={DIFFICULTY_RANGE[1]}
-                step={1}
-                label="Difficulty"
-            />
-        </div>
-
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-muted-foreground">
-                    Verified only
-                </span>
-                <span class="text-xs text-muted-foreground">
-                    {verifiedOnly ? "Verified" : "Any"}
-                </span>
-            </div>
-            <Switch bind:checked={verifiedOnly} size="sm" />
-        </div>
-
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-muted-foreground">
-                    Computational
-                </span>
-                <span class="text-xs text-muted-foreground">
-                    {computationalLabel(computational)}
-                </span>
-            </div>
-            <TriStateSwitch bind:value={computational} size="sm" />
-        </div>
-
         <Button
-            variant="outline"
-            class="w-full"
-            onclick={() => {
-                topic = [];
-                difficulty = [...DIFFICULTY_RANGE];
-                verifiedOnly = false;
-                computational = "neutral";
-            }}
+            variant="ghost"
+            size="sm"
+            class={cn(
+                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
+                showSettings && "bg-muted text-foreground",
+            )}
+            onclick={() => (showSettings = !showSettings)}
+            aria-expanded={showSettings}
+            aria-label="Toggle settings"
         >
-            Reset settings
+            <Icon name="tune" class="size-[1em] shrink-0 leading-none" />
+            <span class="leading-none">Settings</span>
         </Button>
-    </aside>
-{/snippet}
 
-<div class="flex min-h-full flex-col gap-4 p-4 lg:p-6">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-            <div>
-                <h1 class="text-h2 font-semibold tracking-normal">Train</h1>
-                <p class="text-sm text-muted-foreground">
-                    Focused practice, one problem at a time.
-                </p>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-            <div
-                class="hidden items-center gap-5 rounded-md border border-border bg-surface-container-lowest px-3 py-2 sm:flex"
-            >
-                {@render stat("Solved", completedAttempts.length)}
-                {@render stat("Accuracy", accuracy)}
-                {@render stat("Skipped", skippedAttempts)}
-            </div>
-            <Button
-                class="lg:hidden"
-                variant="outline"
-                size="icon"
-                aria-label="Open settings"
-                onclick={() => (showSettings = !showSettings)}
-            >
-                <Icon name="tune" />
-            </Button>
-        </div>
-    </header>
-
-    <div class="flex flex-1 flex-col gap-4 lg:flex-row">
-        <main
-            class="flex min-h-[min(720px,calc(100vh-9rem))] min-w-0 flex-1 items-center justify-center"
+        <div
+            class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground"
         >
-            <section
-                class="flex w-full max-w-3xl flex-col gap-5 rounded-lg border border-border bg-surface-container-lowest p-4 shadow-xs sm:p-6"
+            <span
+                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
             >
-                {#if loading}
+                Solved <span class="text-foreground"
+                    >{completedAttempts.length}</span
+                >
+            </span>
+            <span
+                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
+            >
+                Accuracy <span class="text-foreground">{accuracy}</span>
+            </span>
+            <span
+                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
+            >
+                Skipped <span class="text-foreground">{skippedAttempts}</span>
+            </span>
+            {#if problem}
+                <span
+                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5"
+                >
+                    <Icon
+                        name="schedule"
+                        class="size-[1em] shrink-0 leading-none"
+                    />
+                    <span class="leading-none">{formatElapsed(elapsedMs)}</span>
+                </span>
+            {/if}
+        </div>
+    </div>
+
+    <!-- Main Content Area: Problem + Collapsible Settings Panel -->
+    <div
+        class="flex flex-1 flex-col lg:flex-row gap-1 items-stretch justify-center w-full min-h-0 h-full"
+    >
+        <main
+            class="flex-1 w-full min-w-0 flex flex-col justify-between pt-2 h-full"
+        >
+            {#if loading}
+                <div
+                    class="flex-1 flex flex-col items-center justify-center gap-3 text-center"
+                >
+                    <Icon
+                        name="progress_activity"
+                        class="animate-spin text-muted-foreground"
+                        fontsize={24}
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        Generating problem...
+                    </p>
+                </div>
+            {:else if error}
+                <div
+                    class="flex-1 flex flex-col items-center justify-center gap-4 text-center"
+                >
                     <div
-                        class="flex min-h-80 flex-col items-center justify-center gap-3 text-center"
+                        class="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive"
                     >
-                        <Icon
-                            name="progress_activity"
-                            class="animate-spin text-muted-foreground"
-                            fontsize={28}
-                        />
-                        <p class="text-sm text-muted-foreground">
-                            Generating problem...
+                        <Icon name="error" fontsize={20} />
+                    </div>
+                    <div class="flex max-w-sm flex-col gap-1">
+                        <h2 class="text-sm font-semibold">
+                            Could not load a problem
+                        </h2>
+                        <p class="text-xs text-muted-foreground">{error}</p>
+                    </div>
+                    <Button size="sm" onclick={() => loadProblem()}
+                        >Retry</Button
+                    >
+                </div>
+            {:else if !problem}
+                <div
+                    class="flex-1 flex flex-col items-center justify-center gap-4 text-center"
+                >
+                    <div
+                        class="flex size-10 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
+                    >
+                        <Icon name="filter_alt_off" fontsize={20} />
+                    </div>
+                    <div class="flex max-w-sm flex-col gap-1">
+                        <h2 class="text-sm font-semibold">
+                            No matching problems
+                        </h2>
+                        <p class="text-xs text-muted-foreground">
+                            Try broadening the settings, then generate again.
                         </p>
                     </div>
-                {:else if error}
-                    <div
-                        class="flex min-h-80 flex-col items-center justify-center gap-4 text-center"
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => loadProblem()}
                     >
-                        <div
-                            class="flex size-11 items-center justify-center rounded-full bg-destructive/10 text-destructive"
-                        >
-                            <Icon name="error" fontsize={24} />
-                        </div>
-                        <div class="flex max-w-md flex-col gap-1">
-                            <h2 class="font-semibold">
-                                Could not load a problem
-                            </h2>
-                            <p class="text-sm text-muted-foreground">{error}</p>
-                        </div>
-                        <Button onclick={() => loadProblem()}>Retry</Button>
+                        Try again
+                    </Button>
+                </div>
+            {:else}
+                <div
+                    class="mx-auto flex min-h-0 w-full flex-1 flex-col px-0 bg-transparent"
+                >
+                    <!-- Metadata row: Unobtrusive dot-separated text above the problem -->
+                    <div
+                        class="mb-2 flex items-center justify-start gap-2 px-4 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground select-none bg-transparent"
+                    >
+                        {#if problem.tests?.name}
+                            <span>{problem.tests.name}</span>
+                            <span class="text-border">•</span>
+                        {/if}
+                        <span>Problem {problem.n + 1}</span>
+                        {#if topicLabel(problem.topic)}
+                            <span class="text-border">•</span>
+                            <span>{topicLabel(problem.topic)}</span>
+                        {/if}
                     </div>
-                {:else if !problem}
-                    <div
-                        class="flex min-h-80 flex-col items-center justify-center gap-4 text-center"
-                    >
-                        <div
-                            class="flex size-11 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-                        >
-                            <Icon name="filter_alt_off" fontsize={24} />
-                        </div>
-                        <div class="flex max-w-md flex-col gap-1">
-                            <h2 class="font-semibold">No matching problems</h2>
-                            <p class="text-sm text-muted-foreground">
-                                Try broadening the settings, then generate
-                                again.
-                            </p>
-                        </div>
-                        <Button variant="outline" onclick={() => loadProblem()}>
-                            Try again
-                        </Button>
-                    </div>
-                {:else}
-                    <div
-                        class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3"
-                    >
-                        <div
-                            class="flex min-w-0 flex-wrap items-center gap-1.5"
-                        >
-                            {#if problem.tests?.name}
-                                {@render badge(problem.tests.name)}
-                            {/if}
-                            {@render badge(`Problem ${problem.n + 1}`)}
-                            {#if topicLabel(problem.topic)}
-                                {@render badge(topicLabel(problem.topic) ?? "")}
-                            {/if}
-                        </div>
 
-                        <div class="flex items-center gap-2">
-                            <span
-                                class="font-mono text-sm text-muted-foreground"
-                            >
-                                {formatElapsed(elapsedMs)}
-                            </span>
+                    <!-- Problem statement and choices: Centered vertically using flex-grow -->
+                    <div
+                        class="flex-1 flex flex-col justify-center items-center gap-4 w-full min-h-0 overflow-y-auto py-4 px-6"
+                    >
+                        <div
+                            class="flex h-full min-h-fit w-full items-center justify-center"
+                        >
+                            <MathStatement
+                                text={problem.statement ?? ""}
+                                class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
+                            />
+                        </div>
+                        <div class="w-full">
+                            <ProblemAnswer
+                                choices={problem.choices}
+                                answerIndex={problem.answer_index}
+                                bind:answer
+                                bind:selectedChoice
+                                showAnswerState={submitted}
+                                disabled={submitted}
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Footer with ghosted Flag/Skip and primary Next/Submit buttons -->
+                    <footer
+                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50"
+                    >
+                        <div class="flex items-center gap-1">
                             <Button
-                                variant={flagged ? "secondary" : "ghost"}
-                                size="icon-sm"
-                                aria-label={flagged
-                                    ? "Unflag problem"
-                                    : "Flag problem"}
-                                aria-pressed={flagged}
-                                onclick={toggleFlag}
+                                variant="ghost"
+                                disabled={submitted}
+                                onclick={skipProblem}
+                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-3 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
                             >
-                                <Icon name="flag" fill={flagged} />
+                                <Icon name="skip_next" />
+                                Skip
                             </Button>
-                        </div>
-                    </div>
 
-                    <div class="flex flex-col gap-6">
-                        <MathStatement
-                            text={problem.statement ?? ""}
-                            class="mx-auto min-w-0 max-w-2xl text-center text-problem-text leading-8"
-                        />
-
-                        <div class="mx-auto grid w-full max-w-2xl gap-2">
-                            {#each problem.choices ?? [] as choice, i (i)}
-                                {@const selected = selectedChoice === i}
-                                {@const isCorrect =
-                                    submitted && problem.answer_index === i}
-                                {@const isIncorrect =
-                                    submitted &&
-                                    selected &&
-                                    problem.answer_index !== i}
-                                <button
-                                    type="button"
-                                    disabled={submitted}
-                                    aria-pressed={selected}
-                                    class={cn(
-                                        "flex min-h-12 w-full items-start gap-3 rounded-md border border-border bg-background px-3 py-3 text-left text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none",
-                                        selected &&
-                                            !submitted &&
-                                            "border-primary bg-primary/30",
-                                        isCorrect &&
-                                            "border-correct bg-correct/10",
-                                        isIncorrect &&
-                                            "border-destructive bg-destructive/10",
-                                    )}
-                                    onclick={() => (selectedChoice = i)}
-                                >
-                                    <span
-                                        class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container font-mono text-xs font-semibold text-muted-foreground"
-                                    >
-                                        {CHOICE_LABELS[i] ?? i + 1}
-                                    </span>
-                                    <MathStatement
-                                        text={choiceText(choice)}
-                                        class="min-w-0 flex-1 leading-6"
-                                    />
-                                </button>
-                            {/each}
-                        </div>
-
-                        {#if submitted}
-                            <div
+                            <Button
+                                variant="ghost"
+                                onclick={toggleFlag}
                                 class={cn(
-                                    "mx-auto flex w-full max-w-2xl items-center justify-between gap-3 rounded-md border px-3 py-2",
-                                    correct
-                                        ? "border-correct bg-correct/10"
-                                        : "border-destructive bg-destructive/10",
+                                    "font-normal text-xs px-3 py-1.5 h-auto gap-1 [&_svg]:size-3.5",
+                                    flagged
+                                        ? "text-unsure hover:text-unsure/80"
+                                        : "text-muted-foreground hover:text-foreground",
                                 )}
                             >
-                                <div class="flex items-center gap-2">
-                                    <Icon
-                                        name={correct
-                                            ? "check_circle"
-                                            : "cancel"}
-                                        class={correct
-                                            ? "text-correct"
-                                            : "text-destructive"}
-                                    />
-                                    <span class="text-sm font-medium">
-                                        {correct ? "Correct" : "Not quite"}
-                                    </span>
-                                </div>
-                                <span
-                                    class="font-mono text-sm text-muted-foreground"
+                                <Icon name="flag" fill={flagged} />
+                                {flagged ? "Flagged" : "Flag"}
+                            </Button>
+                        </div>
+
+                        <div>
+                            {#if submitted}
+                                <Button
+                                    onclick={() => loadProblem()}
+                                    class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
                                 >
-                                    {formatElapsed(elapsedMs)}
-                                </span>
-                            </div>
-                        {/if}
-                    </div>
-
-                    <footer
-                        class="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3"
-                    >
-                        <Button
-                            variant="ghost"
-                            disabled={submitted}
-                            onclick={skipProblem}
-                        >
-                            <Icon name="skip_next" />
-                            Skip
-                        </Button>
-
-                        {#if submitted}
-                            <Button onclick={() => loadProblem()}>
-                                Next
-                                <Icon name="arrow_forward" />
-                            </Button>
-                        {:else}
-                            <Button
-                                disabled={selectedChoice == null}
-                                onclick={submitAnswer}
-                            >
-                                Submit
-                            </Button>
-                        {/if}
+                                    Next
+                                    <Icon name="arrow_forward" />
+                                </Button>
+                            {:else}
+                                <Button
+                                    disabled={selectedChoice == null}
+                                    onclick={submitAnswer}
+                                    class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
+                                >
+                                    Submit
+                                </Button>
+                            {/if}
+                        </div>
                     </footer>
-                {/if}
-            </section>
+                </div>
+            {/if}
         </main>
 
-        {@render settingsPanel()}
+        <!-- Sidebar settings panel -->
+        {#if showSettings}
+            <SettingsPanel
+                bind:topic
+                bind:difficulty
+                bind:verifiedOnly
+                bind:computational
+                onClose={() => (showSettings = false)}
+            />
+        {/if}
     </div>
 </div>

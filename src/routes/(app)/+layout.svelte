@@ -157,7 +157,7 @@
         </Sidebar.Footer>
     </Sidebar.Root>
 
-    <div class="flex flex-col flex-1 h-full overflow-y-auto p-sm">
+    <div class="flex flex-col flex-1 h-full overflow-y-auto p-0">
         {@render children()}
     </div>
 

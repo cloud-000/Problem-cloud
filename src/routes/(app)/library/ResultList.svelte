@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Icon } from "$lib/components/icon";
+    import { LinkMenu } from "$lib/components/link-menu";
     import { Problem } from "$lib/components/problem";
     import {
         type ProblemRow,
@@ -43,28 +44,53 @@
     {#if level === "series"}
         {#each results as row (row.id)}
             {@const s = row as SeriesRow}
-            <button
-                type="button"
-                class="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-container-low p-3 text-left transition-colors hover:bg-surface-container"
-                onclick={() => store.drillToTests(s)}
+            {@const aopsLinks =
+                s.aops_id != null
+                    ? [
+                          {
+                              label: "Art of Problem Solving",
+                              href: `https://artofproblemsolving.com/community/c${s.aops_id}`,
+                          },
+                      ]
+                    : []}
+            <div
+                class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
             >
-                <span class="flex items-center gap-2 font-medium">
+                <button
+                    type="button"
+                    class="flex flex-1 items-center gap-2 p-3 text-left font-medium"
+                    onclick={() => store.drillToTests(s)}
+                >
                     {s.name}
                     {#if s.is_official}{@render badge("official")}{/if}
-                </span>
+                </button>
+                <LinkMenu
+                    links={aopsLinks}
+                    label="Open in Art of Problem Solving"
+                />
                 <Icon name="chevron_right" class="text-muted-foreground" />
-            </button>
+            </div>
         {/each}
     {:else if level === "tests"}
         {#each results as row (row.id)}
             {@const t = row as TestRow}
-            <button
-                type="button"
-                class="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-container-low p-3 text-left transition-colors hover:bg-surface-container"
-                onclick={() =>
-                    store.drillToProblems(store.current.context.series, t)}
+            {@const aopsLinks = t.aops_category_id
+                ? [
+                      {
+                          label: "Art of Problem Solving",
+                          href: `https://artofproblemsolving.com/community/c${t.aops_category_id}`,
+                      },
+                  ]
+                : []}
+            <div
+                class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
             >
-                <span class="flex flex-col gap-1">
+                <button
+                    type="button"
+                    class="flex flex-1 flex-col gap-1 p-3 text-left"
+                    onclick={() =>
+                        store.drillToProblems(store.current.context.series, t)}
+                >
                     <span class="font-medium">{t.name}</span>
                     <span class="flex flex-wrap items-center gap-1.5">
                         {#if t.series?.name}{@render badge(t.series.name)}{/if}
@@ -74,9 +100,13 @@
                                 "computational",
                             )}{/if}
                     </span>
-                </span>
+                </button>
+                <LinkMenu
+                    links={aopsLinks}
+                    label="Open in Art of Problem Solving"
+                />
                 <Icon name="chevron_right" class="text-muted-foreground" />
-            </button>
+            </div>
         {/each}
     {:else}
         {#each results as row (row.id)}
