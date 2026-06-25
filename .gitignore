@@ -29,6 +29,7 @@ supabase/.branches/
 supabase/.temp/
 supabase/migrations/
 supabase/seed.sql
+supabase/snippets/sample-seed.sql
 
 # AI
 CLAUDE.md
