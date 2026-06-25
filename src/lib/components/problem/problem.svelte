@@ -15,6 +15,7 @@
         mode?: ProblemMode;
         showAnswerState?: boolean;
         disabled?: boolean;
+        isInstantFeedback?: boolean;
         class?: string;
     };
 
@@ -25,6 +26,7 @@
         mode = "practice",
         showAnswerState = false,
         disabled = false,
+        isInstantFeedback = false,
         class: className,
     }: Props = $props();
 
@@ -34,6 +36,11 @@
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
+    let problemAnswer = $state<ProblemAnswer | null>(null);
+
+    export function trigger(useAnimation: boolean): boolean | null {
+        return problemAnswer?.trigger(useAnimation) ?? null;
+    }
 </script>
 
 {#snippet badge(text: string)}
@@ -114,12 +121,14 @@
     />
 
     <ProblemAnswer
+        bind:this={problemAnswer}
         choices={problem.choices}
         answerIndex={problem.answer_index}
         bind:answer
         bind:selectedChoice
         {showAnswerState}
         {disabled}
+        {isInstantFeedback}
     />
 
     {#if mode !== "preview"}

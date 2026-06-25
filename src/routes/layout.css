@@ -65,6 +65,18 @@
     --destructive: #ba1a1a;
     --destructive-foreground: #ffffff;
 
+    /*Correct Actions*/
+    --correct: #32a852;
+    --on-correct: #ffffff;
+    --correct-container: #a8edbb;
+    --on-correct-container: #144220;
+
+    /*Unsure actions*/
+    --unsure: #fcba03;
+    --on-unsure: #ffffff;
+    --unsure-container: #fef3c7;
+    --on-unsure-container: #78350f;
+
     /* Fixed Roles */
     --primary-fixed: #dae2fd;
     --primary-fixed-dim: #bec6e0;
@@ -185,6 +197,16 @@
     --color-on-error-container: var(--on-error-container);
     --color-destructive: var(--destructive);
     --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-correct: var(--correct);
+    --color-on-correct: var(--on-correct);
+    --color-correct-container: var(--correct-container);
+    --color-on-correct-container: var(--on-correct-container);
+
+    --color-unsure: var(--unsure);
+    --color-on-unsure: var(--on-unsure);
+    --color-unsure-container: var(--unsure-container);
+    --color-on-unsure-container: var(--on-unsure-container);
 
     --color-primary-fixed: var(--primary-fixed);
     --color-primary-fixed-dim: var(--primary-fixed-dim);
@@ -350,6 +372,27 @@
 
 @utility animate-cmb-flash {
     animation: cmb-flash 320ms ease-in-out;
+}
+
+@keyframes answer-shake {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+    15%,
+    45%,
+    75% {
+        transform: translateX(-4px);
+    }
+    30%,
+    60%,
+    90% {
+        transform: translateX(4px);
+    }
+}
+
+@utility animate-answer-shake {
+    animation: answer-shake 360ms ease-in-out;
 }
 
 /* Hide the scrollbar on horizontally-scrolling tracks (e.g. combobox pills). */

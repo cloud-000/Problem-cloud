@@ -13,11 +13,13 @@
         results,
         loading,
         error,
+        isInstantFeedback = false,
     }: {
         store: LibraryStore;
         results: (SeriesRow | TestRow | ProblemRow)[];
         loading: boolean;
         error: string | null;
+        isInstantFeedback?: boolean;
     } = $props();
 
     const level = $derived(store.current.level);
@@ -79,7 +81,7 @@
     {:else}
         {#each results as row (row.id)}
             {@const p = row as ProblemRow}
-            <Problem problem={p} mode="preview" />
+            <Problem problem={p} mode="preview" {isInstantFeedback} />
         {/each}
     {/if}
 </div>

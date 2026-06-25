@@ -1,6 +1,7 @@
 <script lang="ts">
     import LaTeX from "$lib/components/LaTeX.svelte";
     import { Input } from "$lib/components/input";
+    import { toasts } from "$lib/state/toast.svelte";
     import { cn } from "$lib/utils";
 
     type Props = {
@@ -10,6 +11,7 @@
         selectedChoice?: number | null;
         showAnswerState?: boolean;
         disabled?: boolean;
+        isInstantFeedback?: boolean;
     };
 
     let {
@@ -19,29 +21,111 @@
         selectedChoice = $bindable<number | null>(null),
         showAnswerState = false,
         disabled = false,
+        isInstantFeedback = false,
     }: Props = $props();
 
     const CHOICE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const FEEDBACK_DURATION = 900;
 
     let normalizedChoices = $derived(choices ?? []);
     let isMcq = $derived(normalizedChoices.length > 0);
     let canShowAnswerState = $derived(
         showAnswerState && answerIndex != null && answerIndex >= 0,
     );
+    let feedback = $state<{
+        result: boolean | null;
+        target: number | "input" | null;
+    } | null>(null);
+    let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
     function choose(index: number) {
         if (disabled) return;
         selectedChoice = index;
     }
+
+    function chooseWithFeedback(index: number) {
+        choose(index);
+        if (isInstantFeedback) trigger(true);
+    }
+
+    function triggerAfterInput() {
+        if (!isInstantFeedback) return;
+        queueMicrotask(() => trigger(true));
+    }
+
+    function clearFeedbackTimer() {
+        if (!feedbackTimer) return;
+        clearTimeout(feedbackTimer);
+        feedbackTimer = null;
+    }
+
+    function validAnswerIndex() {
+        return (
+            answerIndex != null &&
+            answerIndex >= 0 &&
+            answerIndex < normalizedChoices.length
+        );
+    }
+
+    function checkAnswer(): boolean | null {
+        if (!validAnswerIndex()) return null;
+
+        if (isMcq) {
+            if (selectedChoice == null) return null;
+            return selectedChoice === answerIndex;
+        }
+
+        const response = answer.trim();
+        if (!response) return null;
+
+        return response === normalizedChoices[answerIndex as number]?.trim();
+    }
+
+    function feedbackMessage(result: boolean | null) {
+        if (result !== null) return null;
+        if (!validAnswerIndex()) return "Answer unavailable.";
+        if (isMcq && selectedChoice == null) return "Choose an answer first.";
+        return "Enter an answer first.";
+    }
+
+    function playFeedback(result: boolean | null) {
+        clearFeedbackTimer();
+        feedback = {
+            result,
+            target: isMcq ? selectedChoice : "input",
+        };
+
+        const message = feedbackMessage(result);
+        if (message) toasts.warning(message, { duration: FEEDBACK_DURATION });
+
+        feedbackTimer = setTimeout(() => {
+            feedback = null;
+            feedbackTimer = null;
+        }, FEEDBACK_DURATION);
+    }
+
+    export function trigger(useAnimation: boolean): boolean | null {
+        const result = checkAnswer();
+        if (useAnimation) playFeedback(result);
+        return result;
+    }
 </script>
 
 {#if isMcq}
-    <div class="grid gap-2">
+    <div
+        class={cn(
+            "grid gap-2 rounded-md",
+            feedback?.result === null &&
+                feedback.target == null &&
+                "bg-unsure/10 ring-2 ring-unsure/40",
+        )}
+    >
         {#each normalizedChoices as choice, i (i)}
             {@const selected = selectedChoice === i}
             {@const correct = canShowAnswerState && answerIndex === i}
             {@const incorrect =
                 canShowAnswerState && selected && answerIndex !== i}
+            {@const feedbackActive = feedback?.target === i}
             <button
                 type="button"
                 {disabled}
@@ -49,10 +133,19 @@
                 class={cn(
                     "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
                     selected && "border-primary bg-primary/30",
-                    correct && "border-tertiary bg-tertiary/10",
+                    correct && "border-correct bg-correct/10",
                     incorrect && "border-destructive bg-destructive/10",
+                    feedbackActive &&
+                        feedback?.result === true &&
+                        "border-correct bg-correct/10",
+                    feedbackActive &&
+                        feedback?.result === false &&
+                        "border-destructive bg-destructive/10 animate-answer-shake",
+                    feedbackActive &&
+                        feedback?.result === null &&
+                        "border-unsure bg-unsure/10",
                 )}
-                onclick={() => choose(i)}
+                onclick={() => chooseWithFeedback(i)}
             >
                 <span class="shrink-0 font-medium text-muted-foreground">
                     {CHOICE_LABELS[i] ?? String(i + 1)}.
@@ -62,7 +155,20 @@
         {/each}
     </div>
 {:else}
-    <div class="max-w-sm">
+    <div
+        class={cn(
+            "max-w-sm rounded-md",
+            feedback?.target === "input" &&
+                feedback.result === true &&
+                "ring-3 ring-correct/40",
+            feedback?.target === "input" &&
+                feedback.result === false &&
+                "animate-answer-shake ring-3 ring-destructive/40",
+            feedback?.target === "input" &&
+                feedback.result === null &&
+                "ring-3 ring-unsure/40",
+        )}
+    >
         <Input
             bind:value={answer}
             {disabled}
@@ -70,6 +176,7 @@
             autocomplete="off"
             spellcheck={false}
             aria-label="Answer"
+            oninput={triggerAfterInput}
         />
     </div>
 {/if}

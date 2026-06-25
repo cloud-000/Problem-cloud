@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import type { Option } from "$lib/components/combobox";
+    import { Select } from "$lib/components/select";
     import {
         fetchSeries,
         fetchTests,
@@ -30,6 +31,11 @@
         tests: "Tests",
         problems: "Problems",
     };
+
+    const selectOptions = LEVELS.map((lvl) => ({
+        value: lvl,
+        label: LEVEL_LABELS[lvl],
+    }));
 
     // Series options for the filter comboboxes, fetched once.
     let seriesOptions = $state<Option[]>([]);
@@ -153,15 +159,12 @@
             <Icon name="arrow_forward" />
         </Button>
 
-        <select
-            class="h-9 rounded-md border border-input bg-transparent px-2.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        <Select
+            class="w-32"
+            options={selectOptions}
             value={store.current.level}
-            onchange={(e) => store.setLevel(e.currentTarget.value as Level)}
-        >
-            {#each LEVELS as lvl}
-                <option value={lvl}>{LEVEL_LABELS[lvl]}</option>
-            {/each}
-        </select>
+            onchange={(val) => store.setLevel(val as Level)}
+        />
 
         <span class="text-sm text-muted-foreground">
             {results.length}{hasMore ? "+" : ""} result{results.length === 1 &&
@@ -186,7 +189,13 @@
 
         <!-- Results -->
         <main class="min-w-0 flex-1">
-            <ResultList {store} {results} {loading} error={errorMsg} />
+            <ResultList
+                {store}
+                {results}
+                {loading}
+                error={errorMsg}
+                isInstantFeedback
+            />
 
             <!-- Infinite-scroll sentinel while more pages exist; an end marker
                  once the feed is exhausted (but not for an empty result set,
