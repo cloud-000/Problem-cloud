@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
     import { TOPIC_LABELS, type ProblemRow } from "$lib/library";
     import { cn } from "$lib/utils";
@@ -16,6 +17,8 @@
         showAnswerState?: boolean;
         disabled?: boolean;
         isInstantFeedback?: boolean;
+        /** Enables debugging affordances, e.g. the raw-text statement toggle. */
+        debug?: boolean;
         class?: string;
     };
 
@@ -27,8 +30,12 @@
         showAnswerState = false,
         disabled = false,
         isInstantFeedback = false,
+        debug = false,
         class: className,
     }: Props = $props();
+
+    // Show the raw statement string instead of the rendered math. Debug-only.
+    let showRaw = $state(false);
 
     let topicLabel = $derived(
         problem.topic ? (TOPIC_LABELS[problem.topic] ?? problem.topic) : null,
@@ -78,13 +85,27 @@
             {#if problem.verified}{@render badge("verified")}{/if}
         </div>
 
-        <div class="group/details relative shrink-0">
-            <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Problem details"
-                class="peer"
-            >
+        <div class="flex shrink-0 items-center gap-1">
+            {#if debug}
+                <Toggle
+                    variant="ghost"
+                    size="sm"
+                    class="px-1.5"
+                    bind:pressed={showRaw}
+                    aria-label="Toggle raw statement text"
+                    title="Toggle raw statement text"
+                >
+                    <Icon name="code" />
+                </Toggle>
+            {/if}
+
+            <div class="group/details relative">
+                <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Problem details"
+                    class="peer"
+                >
                 <Icon name="info" />
             </Button>
 
@@ -112,13 +133,20 @@
                     {@render detail("notes", problem.notes)}
                 </div>
             </div>
+            </div>
         </div>
     </header>
 
-    <MathStatement
-        text={problem.statement ?? ""}
-        class="min-w-0 text-sm leading-6"
-    />
+    {#if debug && showRaw}
+        <pre
+            class="min-w-0 overflow-x-auto rounded-md bg-surface-container p-2 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-foreground">{problem.statement ??
+                ""}</pre>
+    {:else}
+        <MathStatement
+            text={problem.statement ?? ""}
+            class="min-w-0 text-sm leading-6"
+        />
+    {/if}
 
     <ProblemAnswer
         bind:this={problemAnswer}

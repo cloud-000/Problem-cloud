@@ -46,7 +46,8 @@
     let tabs = [
         { href: "/", icon: "home", label: "Home" },
         { href: "/practice", icon: "sprint", label: "Train" },
-        { href: "/library", icon: "category_search", label: "Find" },
+        { href: "/library", icon: "book_5", label: "Explore" },
+        { href: "/find", icon: "category_search", label: "Find" },
         { href: "/testing-features", icon: "labs", label: "Test" }, // Testing page
     ];
     // Sidebar state

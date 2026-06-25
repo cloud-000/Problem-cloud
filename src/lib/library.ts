@@ -152,6 +152,41 @@ export async function fetchProblems(
     return (data ?? []) as unknown as ProblemRow[];
 }
 
+/**
+ * Look up rows by id for a given level. Used by the Find page (debugging / ad-hoc
+ * lookup). Unlike {@link fetchProblems}, problems LEFT-join their test (`tests(...)`
+ * not `tests!inner`) so a problem with a null `test_id` still surfaces.
+ */
+export async function fetchByIds(
+    supabase: Supabase,
+    level: Level,
+    ids: number[],
+): Promise<(SeriesRow | TestRow | ProblemRow)[]> {
+    if (ids.length === 0) return [];
+    if (level === "series") {
+        const { data, error } = await supabase
+            .from("series")
+            .select("*")
+            .in("id", ids);
+        if (error) throw error;
+        return data ?? [];
+    }
+    if (level === "tests") {
+        const { data, error } = await supabase
+            .from("tests")
+            .select("*, series(name)")
+            .in("id", ids);
+        if (error) throw error;
+        return (data ?? []) as unknown as TestRow[];
+    }
+    const { data, error } = await supabase
+        .from("problems")
+        .select("*, tests(name, series_id, series(name))")
+        .in("id", ids);
+    if (error) throw error;
+    return (data ?? []) as unknown as ProblemRow[];
+}
+
 /** Lightweight `{id, name}` list to populate the series filter combobox. */
 export async function fetchAllSeries(
     supabase: Supabase,
