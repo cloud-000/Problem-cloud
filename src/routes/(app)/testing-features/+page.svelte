@@ -32,6 +32,12 @@
             description: "Accessible toggle button and switch components.",
             href: "/testing-features/toggle",
         },
+        {
+            icon: "calendar_month",
+            name: "Date Picker",
+            description: "Timezone-safe calendar and range constraints selector.",
+            href: "/testing-features/date-picker",
+        },
     ];
 </script>
 

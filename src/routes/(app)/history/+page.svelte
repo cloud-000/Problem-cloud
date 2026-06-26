@@ -5,6 +5,7 @@
     import { Combobox } from "$lib/components/combobox";
     import { Select } from "$lib/components/select";
     import { Input } from "$lib/components/input";
+    import { DatePicker } from "$lib/components/date-picker";
     import { Problem } from "$lib/components/problem";
     import { fetchRecentSubmissions, type RecentSubmissionRow } from "$lib/progress";
     import { cn } from "$lib/utils";
@@ -304,11 +305,11 @@
             {#if timeRange === "custom"}
                 <div class="flex flex-col gap-1.5 md:w-40 w-full">
                     <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Start Date</span>
-                    <Input type="date" bind:value={startDate} />
+                    <DatePicker bind:value={startDate} placeholder="Start date" max={endDate || undefined} />
                 </div>
                 <div class="flex flex-col gap-1.5 md:w-40 w-full">
                     <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">End Date</span>
-                    <Input type="date" bind:value={endDate} />
+                    <DatePicker bind:value={endDate} placeholder="End date" min={startDate || undefined} />
                 </div>
             {/if}
 
