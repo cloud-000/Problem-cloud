@@ -78,3 +78,24 @@ export async function fetchDueReviews(
         .map((row) => (row as unknown as { problems: ProblemRow | null }).problems)
         .filter((p): p is ProblemRow => p != null);
 }
+
+export type RecentSubmissionRow = Tables<"submissions"> & {
+    problems: ProblemRow | null;
+};
+
+/**
+ * Fetch the current user's submissions with embedded problem + test + series data.
+ * RLS scopes the query to only return the authenticated user's records.
+ */
+export async function fetchRecentSubmissions(
+    supabase: Supabase,
+    limit = 100,
+): Promise<RecentSubmissionRow[]> {
+    const { data, error } = await supabase
+        .from("submissions")
+        .select("*, problems(*, tests(name, series_id, series(name)))")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+    if (error) throw error;
+    return (data ?? []) as unknown as RecentSubmissionRow[];
+}
