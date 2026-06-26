@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
 import type { TriState } from "$lib/components/toggle";
 import type { Option } from "$lib/components/combobox";
+import type { ProblemProgress } from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -14,7 +15,23 @@ export type ProblemRow = Tables<"problems"> & {
         series_id: number | null;
         series?: { name: string } | null;
     } | null;
+    /** The current user's interaction state, normalized to a single row (or null). */
+    progress?: ProblemProgress | null;
 };
+
+// The current user's progress fields, embedded via the problem_progress FK. RLS
+// scopes the embed to the signed-in user, so it returns a 0/1-element array per
+// problem (always empty for anonymous users).
+const PROGRESS_SELECT =
+    "problem_progress(times_correct, times_reviewed, last_correct, next_review_at, solved)";
+
+/** Collapse the embedded `problem_progress` array (0/1 rows) into `progress`. */
+function withProgress<T extends { problem_progress?: ProblemProgress[] | null }>(
+    row: T,
+): Omit<T, "problem_progress"> & { progress: ProblemProgress | null } {
+    const { problem_progress, ...rest } = row;
+    return { ...rest, progress: problem_progress?.[0] ?? null };
+}
 
 export type Level = "series" | "tests" | "problems";
 export const LEVELS: Level[] = ["series", "tests", "problems"];
@@ -132,7 +149,7 @@ export async function fetchProblems(
     // `tests!inner` so filtering through the relationship (series scope) works.
     let q = supabase
         .from("problems")
-        .select("*, tests!inner(name, series_id, series(name))");
+        .select(`*, tests!inner(name, series_id, series(name)), ${PROGRESS_SELECT}`);
     if (f.testId != null) q = q.eq("test_id", f.testId);
     else if (f.seriesId != null) q = q.eq("tests.series_id", f.seriesId);
     if (f.topic?.length) q = q.in("topic", f.topic);
@@ -149,7 +166,9 @@ export async function fetchProblems(
         .order("id")
         .range(...pageRange(page));
     if (error) throw error;
-    return (data ?? []) as unknown as ProblemRow[];
+    return ((data ?? []) as unknown as Array<
+        ProblemRow & { problem_progress?: ProblemProgress[] | null }
+    >).map(withProgress);
 }
 
 /**
@@ -181,10 +200,12 @@ export async function fetchByIds(
     }
     const { data, error } = await supabase
         .from("problems")
-        .select("*, tests(name, series_id, series(name))")
+        .select(`*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}`)
         .in("id", ids);
     if (error) throw error;
-    return (data ?? []) as unknown as ProblemRow[];
+    return ((data ?? []) as unknown as Array<
+        ProblemRow & { problem_progress?: ProblemProgress[] | null }
+    >).map(withProgress);
 }
 
 /** Lightweight `{id, name}` list to populate the series filter combobox. */

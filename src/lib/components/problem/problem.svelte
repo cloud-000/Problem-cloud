@@ -5,6 +5,7 @@
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
     import { TOPIC_LABELS, type ProblemRow } from "$lib/library";
+    import { statusFor } from "$lib/progress";
     import { cn } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
 
@@ -41,6 +42,8 @@
     let topicLabel = $derived(
         problem.topic ? (TOPIC_LABELS[problem.topic] ?? problem.topic) : null,
     );
+    // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
+    let status = $derived(statusFor(problem.progress));
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
@@ -95,6 +98,21 @@
             {#if problem.tests?.name}{@render badge(problem.tests.name)}{/if}
             {#if topicLabel}{@render badge(topicLabel)}{/if}
             {#if problem.verified}{@render badge("verified")}{/if}
+            {#if status === "solved"}
+                <span
+                    class="inline-flex items-center gap-1 rounded-full bg-correct/10 px-2 py-0.5 text-xs font-medium text-correct"
+                >
+                    <Icon name="check_circle" class="size-[1em]" fill />
+                    Solved
+                </span>
+            {:else if status === "attempted"}
+                <span
+                    class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 text-xs font-medium text-unsure"
+                >
+                    <Icon name="history" class="size-[1em]" />
+                    Attempted
+                </span>
+            {/if}
         </div>
 
         <div class="flex shrink-0 items-center gap-1">

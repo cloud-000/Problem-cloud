@@ -15,12 +15,13 @@
         type PracticeAttempt,
         type PracticeSettings,
     } from "$lib/trainer";
+    import { recordSubmission } from "$lib/progress";
     import { cn } from "$lib/utils";
     import { onMount } from "svelte";
     import SettingsPanel from "./SettingsPanel.svelte";
 
     let { data }: { data: PageData } = $props();
-    let { supabase } = $derived(data);
+    let { supabase, user } = $derived(data);
 
     let topic = $state<string[]>([]);
     let difficulty = $state<[number, number]>([...DIFFICULTY_RANGE]);
@@ -147,22 +148,48 @@
                 flagged,
             },
         ];
+
+        if (user) {
+            recordSubmission(supabase, user.id, {
+                problemId: problem.id,
+                selectedChoice,
+                isCorrect,
+                skipped: false,
+                flagged,
+                elapsedMs: elapsed,
+                source: "practice",
+            });
+        }
     }
 
     function skipProblem() {
         if (!problem || loading) return;
 
+        const elapsed = Math.max(0, Date.now() - startedAt);
         attempts = [
             ...attempts,
             {
                 problemId: problem.id,
                 selectedChoice,
                 correct: null,
-                elapsedMs: Math.max(0, Date.now() - startedAt),
+                elapsedMs: elapsed,
                 skipped: true,
                 flagged,
             },
         ];
+
+        if (user) {
+            recordSubmission(supabase, user.id, {
+                problemId: problem.id,
+                selectedChoice: null,
+                isCorrect: null,
+                skipped: true,
+                flagged,
+                elapsedMs: elapsed,
+                source: "practice",
+            });
+        }
+
         loadProblem();
     }
 
