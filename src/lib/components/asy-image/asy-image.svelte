@@ -4,6 +4,7 @@
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Theme } from "$lib/utils/Theme.svelte";
 
     let {
         imageSrc,
@@ -16,8 +17,12 @@
     } = $props();
 
     let view = $state<"image" | "code">("image");
-    let inverted = $state(false);
     let expanded = $state(false);
+
+    // State to track user's manual override of the theme's default inversion.
+    // If null, it defaults to the active theme's isDark value.
+    let userInverted = $state<boolean | null>(null);
+    let inverted = $derived(userInverted ?? Theme.isDark);
 
     // Luminance-only inversion: flips black<->white backgrounds while keeping
     // colored strokes roughly true. Applied to the <img> only.
@@ -85,7 +90,7 @@
                 variant="ghost"
                 size="icon-xs"
                 title={inverted ? "Light" : "Dark"}
-                onclick={() => (inverted = !inverted)}
+                onclick={() => (userInverted = !inverted)}
             >
                 <Icon name="invert_colors" fill={inverted} />
             </Button>

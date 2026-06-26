@@ -49,6 +49,7 @@
         { href: "/library", icon: "book_5", label: "Explore" },
         { href: "/history", icon: "history", label: "History" },
         { href: "/find", icon: "category_search", label: "Find" },
+        { href: "/settings", icon: "settings", label: "Settings" },
         { href: "/testing-features", icon: "labs", label: "Test" }, // Testing page
     ];
     // Sidebar state
