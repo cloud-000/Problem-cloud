@@ -5,5 +5,6 @@ export {
     statusTagVariants,
     type StatusKind,
     type StatusTagSize,
+    type StatusTagTone,
     type StatusTagAction,
 } from "./status-tag.svelte";

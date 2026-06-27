@@ -144,21 +144,33 @@ export async function setCurrentProblem(
     if (error) throw error;
 }
 
+/** A prior submission in a session: which problem, and how it went. */
+export type SessionAttempt = {
+    problemId: number;
+    isCorrect: boolean | null;
+    skipped: boolean;
+};
+
 /**
- * The problem ids already attempted (answered or skipped) in a session, used to
- * seed the draw-state so a resumed session doesn't re-show problems it has
- * already covered. RLS scopes rows to the authenticated user.
+ * The problems already attempted (answered or skipped) in a session, with their
+ * outcome. Used to seed the draw-state so a resumed session doesn't re-show
+ * problems it has already covered, and to restore the live solved/incorrect/
+ * skipped tallies. RLS scopes rows to the authenticated user.
  */
-export async function fetchSessionProblemIds(
+export async function fetchSessionAttempts(
     supabase: Supabase,
     sessionId: number,
-): Promise<number[]> {
+): Promise<SessionAttempt[]> {
     const { data, error } = await supabase
         .from("submissions")
-        .select("problem_id")
+        .select("problem_id, is_correct, skipped")
         .eq("session_id", sessionId);
     if (error) throw error;
-    return (data ?? []).map((row) => row.problem_id);
+    return (data ?? []).map((row) => ({
+        problemId: row.problem_id,
+        isCorrect: row.is_correct,
+        skipped: row.skipped,
+    }));
 }
 
 /**

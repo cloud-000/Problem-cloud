@@ -142,7 +142,9 @@
                 class="flex items-center gap-3 min-w-0 flex-1 text-left outline-none cursor-pointer select-none"
             >
                 <div class="flex flex-col min-w-0">
-                    <span class="text-sm font-semibold text-foreground truncate">
+                    <span
+                        class="text-sm font-semibold text-foreground truncate"
+                    >
                         {session.name ?? "Untitled session"}
                     </span>
                     <span class="text-xs text-muted-foreground mt-0.5">

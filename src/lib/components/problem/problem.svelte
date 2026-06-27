@@ -5,7 +5,7 @@
     import { LinkMenu } from "$lib/components/link-menu";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
-    import { TOPIC_LABELS, type ProblemRow } from "$lib/library";
+    import { topicLabel, type ProblemRow } from "$lib/library";
     import { statusFor } from "$lib/progress";
     import { cn } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
@@ -40,9 +40,7 @@
     // Show the raw statement string instead of the rendered math. Debug-only.
     let showRaw = $state(false);
 
-    let topicLabel = $derived(
-        problem.topic ? (TOPIC_LABELS[problem.topic] ?? problem.topic) : null,
-    );
+    let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
     let officialSolutionCount = $derived(
@@ -97,7 +95,7 @@
                 #{problem.n + 1}
             </span>
             {#if problem.tests?.name}{@render badge(problem.tests.name)}{/if}
-            {#if topicLabel}{@render badge(topicLabel)}{/if}
+            {#if topicName}{@render badge(topicName)}{/if}
             {#if problem.verified}{@render badge("verified")}{/if}
             {#if status === "solved"}
                 <StatusTag status="solved" size="sm" />

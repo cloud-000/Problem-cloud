@@ -54,6 +54,12 @@ export const TOPIC_LABELS: Record<string, string> = Object.fromEntries(
     }),
 );
 
+/** Stored topic code → display label, falling back to the raw code. */
+export function topicLabel(code: string | null | undefined): string | null {
+    if (!code) return null;
+    return TOPIC_LABELS[code] ?? code;
+}
+
 export const DIFFICULTY_RANGE: [number, number] = [0, 100];
 export const QUALITY_RANGE: [number, number] = [0, 100];
 export const YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()];

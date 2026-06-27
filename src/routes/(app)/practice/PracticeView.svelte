@@ -8,8 +8,8 @@
     import { type TriState } from "$lib/components/toggle";
     import {
         DIFFICULTY_RANGE,
-        TOPIC_LABELS,
         boolToTri,
+        topicLabel,
         triToBool,
         type ProblemRow,
     } from "$lib/library";
@@ -26,12 +26,14 @@
     import {
         endSession,
         fetchSession,
-        fetchSessionProblemIds,
+        fetchSessionAttempts,
         setCurrentProblem,
         updateSessionSettings,
         type PracticeSessionRow,
     } from "$lib/sessions";
-    import { cn } from "$lib/utils";
+    import { cn, formatElapsed } from "$lib/utils";
+    import { StatusTag } from "$lib/components/status-tag";
+    import { SegmentBar } from "$lib/components/segment-bar";
     import { onMount } from "svelte";
     import SettingsPanel, {
         COUNTER_RANGE,
@@ -89,6 +91,15 @@
     let currentSessionId = $derived(activeSession?.id ?? null);
     let sessionAttemptCount = $state(0);
     let sessionBusy = $state(false);
+
+    // Outcome tallies carried over from prior work in a resumed session, added to
+    // the live (in-memory) counts so the indicators reflect the whole session.
+    let priorCorrect = $state(0);
+    let priorIncorrect = $state(0);
+    let priorSkipped = $state(0);
+    // Time accrued before this view: the session's trigger-maintained total at
+    // resume (0 for root / a fresh session). Live time is added on top below.
+    let priorTotalMs = $derived(activeSession?.total_time_ms ?? 0);
 
     // Last settings snapshot persisted to the session, to skip redundant writes.
     let lastPersistedSettings = "";
@@ -230,24 +241,55 @@
     let isLatest = $derived(historyIndex === history.length - 1);
     let canGoBack = $derived(historyIndex > 0);
 
-    let elapsedMs = $derived(
-        problem && !submitted && isLatest
-            ? Math.max(0, timerNow - startedAt)
-            : frozenElapsedMs,
+    // Elapsed time for the on-screen problem at a given clock reading: the live
+    // count for the latest unanswered one, otherwise its frozen value. `elapsedMs`
+    // passes the reactive (throttled) `timerNow` to drive the ticking display;
+    // `liveElapsed()` passes a fresh `Date.now()` for an exact, non-reactive
+    // snapshot at event/persist time (so those paths don't subscribe to the timer).
+    function elapsedAt(now: number) {
+        return problem && !submitted && isLatest
+            ? Math.max(0, now - startedAt)
+            : frozenElapsedMs;
+    }
+
+    let elapsedMs = $derived(elapsedAt(timerNow));
+
+    // Total time across the whole session: the prior total plus every problem in
+    // this view's history, substituting the live count for the on-screen one.
+    let totalElapsedMs = $derived(
+        history.reduce(
+            (sum, entry, i) =>
+                sum + (i === historyIndex ? elapsedMs : entry.elapsedMs),
+            priorTotalMs,
+        ),
     );
+    // The timer chip swaps between the current problem and the session total.
+    let timerMode = $state<"problem" | "total">("problem");
+
     let completedAttempts = $derived(
         attempts.filter((attempt) => attempt.correct !== null),
     );
-    let correctAttempts = $derived(
+    let liveCorrect = $derived(
         completedAttempts.filter((attempt) => attempt.correct).length,
     );
-    let skippedAttempts = $derived(
-        attempts.filter((attempt) => attempt.skipped).length,
+    // Session totals: prior work (seeded on resume) plus this view's live counts.
+    let correctAttempts = $derived(priorCorrect + liveCorrect);
+    let incorrectAttempts = $derived(
+        priorIncorrect + (completedAttempts.length - liveCorrect),
     );
-    let accuracy = $derived(
-        completedAttempts.length === 0
-            ? "0%"
-            : `${Math.round((correctAttempts / completedAttempts.length) * 100)}%`,
+    let skippedAttempts = $derived(
+        priorSkipped + attempts.filter((attempt) => attempt.skipped).length,
+    );
+
+    // Shared class for inline (text-sized) icons throughout the view.
+    const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
+    // Hoisted out of the template so they aren't recomputed in both the
+    // {#if} guard and the rendered value.
+    let topicName = $derived(problem ? topicLabel(problem.topic) : null);
+    let lastReviewedLabel = $derived(
+        currentProgress
+            ? formatReviewDate(currentProgress.lastSubmissionAt)
+            : null,
     );
 
     function counterFilter(key: keyof CounterRanges): [number, number] | null {
@@ -271,20 +313,6 @@
         };
     }
 
-    function formatElapsed(ms: number) {
-        const totalSeconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return minutes > 0
-            ? `${minutes}:${String(seconds).padStart(2, "0")}`
-            : `${seconds}s`;
-    }
-
-    function topicLabel(code: string | null | undefined) {
-        if (!code) return null;
-        return TOPIC_LABELS[code] ?? code;
-    }
-
     // Compact "last reviewed" label: relative for recent, short date otherwise.
     function formatReviewDate(iso: string | null) {
         if (!iso) return null;
@@ -299,12 +327,9 @@
         });
     }
 
-    // Elapsed time for the on-screen problem: live counter for the latest
-    // unanswered one, otherwise its frozen value.
+    // Exact, non-reactive elapsed snapshot for event handlers / persistence.
     function liveElapsed() {
-        return problem && !submitted && isLatest
-            ? Math.max(0, Date.now() - startedAt)
-            : frozenElapsedMs;
+        return elapsedAt(Date.now());
     }
 
     // Save the live view state back into its history entry before navigating away.
@@ -556,15 +581,19 @@
                     // Baseline so the first load doesn't re-persist the snapshot.
                     lastPersistedSettings = JSON.stringify(currentSettings());
 
-                    // Seed draw-state + the live count from prior work so the
-                    // queue doesn't repeat and the indicator stays continuous.
-                    const priorIds = await fetchSessionProblemIds(
-                        supabase,
-                        s.id,
-                    );
-                    for (const id of priorIds) session.shownIds.add(id);
-                    session.drawIndex = priorIds.length;
-                    sessionAttemptCount = priorIds.length;
+                    // Seed draw-state + the live counts from prior work so the
+                    // queue doesn't repeat and the indicators stay continuous.
+                    const prior = await fetchSessionAttempts(supabase, s.id);
+                    for (const a of prior) session.shownIds.add(a.problemId);
+                    session.drawIndex = prior.length;
+                    sessionAttemptCount = prior.length;
+                    priorSkipped = prior.filter((a) => a.skipped).length;
+                    priorCorrect = prior.filter(
+                        (a) => a.isCorrect === true,
+                    ).length;
+                    priorIncorrect = prior.filter(
+                        (a) => a.isCorrect === false,
+                    ).length;
 
                     // Resume the in-progress problem instead of generating a new
                     // one, continuing its elapsed timer where it left off.
@@ -618,21 +647,27 @@
     });
 </script>
 
-<div class="flex h-full w-full flex-col gap-1 p-0">
+{#snippet statChip(value: number, color: string)}
+    <span
+        class="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-surface-container-low px-2.5 font-mono tabular-nums"
+        style:color
+    >
+        {value}
+    </span>
+{/snippet}
+
+<div class="flex h-full w-full flex-col gap-1">
     <!-- Top utility bar: back to hub, session context, Settings, stats, timer -->
     <div
         class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none"
     >
-        <div class="flex items-center gap-0">
+        <div class="flex items-center">
             <a
                 href="/practice"
                 class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 aria-label="Back to sessions"
             >
-                <Icon
-                    name="arrow_back"
-                    class="size-[1em] shrink-0 leading-none"
-                />
+                <Icon name="arrow_back" class={iconCls} />
             </a>
 
             <Button
@@ -646,50 +681,12 @@
                 aria-expanded={showSettings}
                 aria-label="Toggle settings"
             >
-                <Icon name="tune" class="size-[1em] shrink-0 leading-none" />
+                <Icon name="tune" class={iconCls} />
             </Button>
 
-            <!-- Current filing context: a named session (with live tally + End)
-                 or the implicit root (ungrouped work). -->
             {#if activeSession}
-                <div
-                    class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-2.5 text-xs text-primary"
-                >
-                    <Icon
-                        name="play_circle"
-                        class="size-[1em] shrink-0 leading-none"
-                    />
-                    <span class="leading-none font-medium">
-                        {activeSession.name ?? "Session"}
-                    </span>
-                    <span class="text-primary/60">·</span>
-                    <span class="leading-none font-mono"
-                        >{sessionAttemptCount}</span
-                    >
-                    <button
-                        type="button"
-                        class="ml-0.5 inline-flex items-center rounded px-1 py-0.5 hover:bg-primary/20 disabled:opacity-50"
-                        onclick={finishSession}
-                        disabled={sessionBusy}
-                        aria-label="End session"
-                        title="End session"
-                    >
-                        <Icon
-                            name="stop_circle"
-                            class="size-[1em] shrink-0 leading-none"
-                        />
-                    </button>
-                </div>
-            {:else}
-                <div
-                    class="inline-flex h-8 items-center gap-1.5 rounded-md bg-surface-container px-2.5 text-xs text-muted-foreground"
-                    title="Ungrouped practice — not filed into a session"
-                >
-                    <Icon
-                        name="filter_none"
-                        class="size-[1em] shrink-0 leading-none"
-                    />
-                    <span class="leading-none">Ungrouped</span>
+                <div class="flex flex-row gap-1 opacity-50">
+                    <span>{activeSession.name}</span>
                 </div>
             {/if}
         </div>
@@ -697,33 +694,48 @@
         <div
             class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground"
         >
-            <span
-                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
-            >
-                Solved <span class="text-foreground"
-                    >{completedAttempts.length}</span
-                >
-            </span>
-            <span
-                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
-            >
-                Accuracy <span class="text-foreground">{accuracy}</span>
-            </span>
-            <span
-                class="inline-flex h-8 items-center rounded-md bg-surface-container-low px-2.5"
-            >
-                Skipped <span class="text-foreground">{skippedAttempts}</span>
-            </span>
+            {@render statChip(correctAttempts, "var(--color-correct)")}
+            {@render statChip(incorrectAttempts, "var(--color-destructive)")}
+            {@render statChip(skippedAttempts, "var(--color-unsure)")}
+            <SegmentBar
+                class="w-36 h-2"
+                segments={[
+                    {
+                        value: correctAttempts,
+                        color: "var(--color-correct)",
+                        label: "Solved",
+                    },
+                    {
+                        value: incorrectAttempts,
+                        color: "var(--color-destructive)",
+                        label: "Incorrect",
+                    },
+                    {
+                        value: skippedAttempts,
+                        color: "var(--color-unsure)",
+                        label: "Skipped",
+                    },
+                ]}
+            />
             {#if problem}
-                <span
-                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5"
+                {@const isTotal = timerMode === "total"}
+                <button
+                    type="button"
+                    onclick={() =>
+                        (timerMode = isTotal ? "problem" : "total")}
+                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
+                    title={isTotal
+                        ? "Total session time — click for this problem"
+                        : "Time on this problem — click for session total"}
+                    aria-label={isTotal
+                        ? "Total session time"
+                        : "Time on this problem"}
                 >
-                    <Icon
-                        name="schedule"
-                        class="size-[1em] shrink-0 leading-none"
-                    />
-                    <span class="leading-none">{formatElapsed(elapsedMs)}</span>
-                </span>
+                    <Icon name={isTotal ? "timelapse" : "schedule"} class={iconCls} />
+                    <span class="leading-none">
+                        {formatElapsed(isTotal ? totalElapsedMs : elapsedMs)}
+                    </span>
+                </button>
             {/if}
         </div>
     </div>
@@ -812,9 +824,7 @@
                     </div>
                 </div>
             {:else}
-                <div
-                    class="mx-auto flex min-h-0 w-full flex-1 flex-col px-0 bg-transparent"
-                >
+                <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
                     <!-- Metadata row: source/series/topic on the left, review status on the right -->
                     <div
                         class="mb-2 flex items-center justify-between gap-3 px-4 select-none bg-transparent"
@@ -826,10 +836,10 @@
                                 <span>{problem.tests.name}</span>
                                 <span class="text-border">•</span>
                             {/if}
-                            <span>Problem {problem.n + 1}</span>
-                            {#if topicLabel(problem.topic)}
+                            <span>#{problem.n + 1}</span>
+                            {#if topicName}
                                 <span class="text-border">•</span>
-                                <span>{topicLabel(problem.topic)}</span>
+                                <span>{topicName}</span>
                             {/if}
                         </div>
 
@@ -837,26 +847,18 @@
                             class="flex items-center gap-2 text-[11px] text-muted-foreground"
                         >
                             {#if currentSource === "review"}
-                                <span
-                                    class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary"
-                                >
-                                    <Icon
-                                        name="history"
-                                        class="size-[1em] shrink-0 leading-none"
-                                    />
-                                    Review
-                                </span>
+                                <StatusTag status="review" size="sm" />
                                 {#if currentProgress}
                                     <span
                                         class="inline-flex items-center gap-1"
                                     >
                                         <Icon
                                             name="visibility"
-                                            class="size-[1em] shrink-0 leading-none"
+                                            class={iconCls}
                                         />
                                         Seen {currentProgress.timesSeen}×
                                     </span>
-                                    {#if formatReviewDate(currentProgress.lastSubmissionAt)}
+                                    {#if lastReviewedLabel}
                                         <span class="text-border">•</span>
                                         <span
                                             class="inline-flex items-center gap-1"
@@ -864,24 +866,14 @@
                                         >
                                             <Icon
                                                 name="schedule"
-                                                class="size-[1em] shrink-0 leading-none"
+                                                class={iconCls}
                                             />
-                                            {formatReviewDate(
-                                                currentProgress.lastSubmissionAt,
-                                            )}
+                                            {lastReviewedLabel}
                                         </span>
                                     {/if}
                                 {/if}
                             {:else}
-                                <span
-                                    class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 font-medium"
-                                >
-                                    <Icon
-                                        name="auto_awesome"
-                                        class="size-[1em] shrink-0 leading-none"
-                                    />
-                                    New
-                                </span>
+                                <StatusTag status="new" size="sm" />
                             {/if}
                         </div>
                     </div>

@@ -38,6 +38,12 @@
             description: "Timezone-safe calendar and range constraints selector.",
             href: "/testing-features/date-picker",
         },
+        {
+            icon: "data_usage",
+            name: "Segment Bar",
+            description: "Proportional segmented bar from a list of value/color sections.",
+            href: "/testing-features/segment-bar",
+        },
     ];
 </script>
 

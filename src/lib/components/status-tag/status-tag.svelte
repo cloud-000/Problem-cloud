@@ -14,6 +14,7 @@
                     "bg-surface-container text-muted-foreground border-border/50",
                 primary:
                     "bg-primary text-primary-foreground border-primary shadow-xs",
+                accent: "bg-primary text-primary-foreground border-primary",
             },
             size: {
                 sm: "gap-1 px-2 py-0.5 text-xs",
@@ -23,7 +24,9 @@
         defaultVariants: { size: "md" },
     });
 
-    type Tone = NonNullable<VariantProps<typeof statusTagVariants>["tone"]>;
+    export type StatusTagTone = NonNullable<
+        VariantProps<typeof statusTagVariants>["tone"]
+    >;
     export type StatusTagSize = VariantProps<typeof statusTagVariants>["size"];
 
     /** The reusable outcome/state kinds used across practice, history, and explore. */
@@ -34,9 +37,17 @@
         | "solved"
         | "attempted"
         | "active"
-        | "ended";
+        | "ended"
+        | "review"
+        | "new"
+        | "ungrouped";
 
-    type Meta = { icon: string; fill: boolean; label: string; tone: Tone };
+    type Meta = {
+        icon: string;
+        fill: boolean;
+        label: string;
+        tone: StatusTagTone;
+    };
 
     /** Icon + default label + tone per status. Single source of truth for the look. */
     export const STATUS_META: Record<StatusKind, Meta> = {
@@ -82,6 +93,24 @@
             label: "Ended",
             tone: "neutral",
         },
+        review: {
+            icon: "history",
+            fill: false,
+            label: "Review",
+            tone: "accent",
+        },
+        new: {
+            icon: "auto_awesome",
+            fill: false,
+            label: "New",
+            tone: "neutral",
+        },
+        ungrouped: {
+            icon: "filter_none",
+            fill: false,
+            label: "Ungrouped",
+            tone: "neutral",
+        },
     };
 </script>
 
@@ -101,6 +130,8 @@
         label,
         size = "md",
         action,
+        tone,
+        icon = true,
         disabled = false,
         class: className,
         children,
@@ -115,11 +146,16 @@
          * morphs into this action (icon + label, button styling) on hover/focus.
          */
         action?: StatusTagAction;
+        /** Override the kind's default tone (e.g. a softer accent in a header). */
+        tone?: StatusTagTone;
+        /** Set false to render the label/children only, without the leading icon. */
+        icon?: boolean;
         disabled?: boolean;
     } & HTMLAttributes<HTMLElement> = $props();
 
     let meta = $derived(STATUS_META[status]);
-    let iconSize = $derived(size === "sm" ? "size-[1em]" : "size-[1.1em]");
+    let resolvedTone = $derived(tone ?? meta.tone);
+    let iconSize = $derived(size === "sm" ? "1em" : "1.1em");
     let gapClass = $derived(size === "sm" ? "gap-1" : "gap-1.5");
 </script>
 
@@ -132,7 +168,7 @@
         aria-label={action.label}
         title={action.label}
         class={cn(
-            statusTagVariants({ tone: meta.tone, size }),
+            statusTagVariants({ tone: resolvedTone, size }),
             "group cursor-pointer shadow-xs transition disabled:pointer-events-none",
             "hover:bg-primary hover:text-primary-foreground hover:border-primary hover:brightness-95 hover:shadow-sm",
             "focus-visible:bg-primary focus-visible:text-primary-foreground focus-visible:border-primary focus-visible:brightness-95 focus-visible:outline-none",
@@ -147,11 +183,14 @@
                 gapClass,
             )}
         >
-            <Icon
-                name={meta.icon}
-                fill={meta.fill}
-                class={cn(iconSize, "shrink-0 leading-none")}
-            />
+            {#if icon}
+                <Icon
+                    name={meta.icon}
+                    fill={meta.fill}
+                    fontsize={iconSize}
+                    class="shrink-0 leading-none"
+                />
+            {/if}
             {label ?? meta.label}
         </span>
         <!-- Hover/focus: the action -->
@@ -163,21 +202,25 @@
         >
             <Icon
                 name={action.icon}
-                class={cn(iconSize, "shrink-0 leading-none")}
+                fontsize={iconSize}
+                class="shrink-0 leading-none"
             />
             {action.label}
         </span>
     </button>
 {:else}
     <span
-        class={cn(statusTagVariants({ tone: meta.tone, size }), className)}
+        class={cn(statusTagVariants({ tone: resolvedTone, size }), className)}
         {...restProps}
     >
-        <Icon
-            name={meta.icon}
-            fill={meta.fill}
-            class={cn(iconSize, "shrink-0 leading-none")}
-        />
+        {#if icon}
+            <Icon
+                name={meta.icon}
+                fill={meta.fill}
+                fontsize={iconSize}
+                class="shrink-0 leading-none"
+            />
+        {/if}
         {#if children}{@render children()}{:else}{label ?? meta.label}{/if}
     </span>
 {/if}
