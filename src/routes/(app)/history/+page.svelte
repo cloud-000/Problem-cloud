@@ -2,6 +2,7 @@
     import type { PageData } from "./$types";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { StatusTag } from "$lib/components/status-tag";
     import { Combobox } from "$lib/components/combobox";
     import { Select } from "$lib/components/select";
     import { Input } from "$lib/components/input";
@@ -372,22 +373,14 @@
                                     >
                                         <div class="flex items-center gap-3 min-w-0 flex-1">
                                             <!-- Outcome Indicator Badge -->
-                                            {#if sub.skipped}
-                                                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container text-xs font-semibold text-unsure border border-border/50 shrink-0">
-                                                    <Icon name="skip_next" class="size-[1.1em] text-unsure" />
-                                                    <span>Skipped</span>
-                                                </div>
-                                            {:else if sub.is_correct}
-                                                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-correct/10 text-xs font-semibold text-correct border border-correct/20 shrink-0">
-                                                    <Icon name="check_circle" class="size-[1.1em] text-correct" fill />
-                                                    <span>Correct</span>
-                                                </div>
-                                            {:else}
-                                                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/15 text-xs font-semibold text-destructive border border-destructive/20 shrink-0">
-                                                    <Icon name="cancel" class="size-[1.1em] text-destructive" fill />
-                                                    <span>Incorrect</span>
-                                                </div>
-                                            {/if}
+                                            <StatusTag
+                                                class="shrink-0"
+                                                status={sub.skipped
+                                                    ? "skipped"
+                                                    : sub.is_correct
+                                                      ? "correct"
+                                                      : "incorrect"}
+                                            />
 
                                             <!-- Metadata: Test name and Problem number -->
                                             <div class="flex flex-col min-w-0">

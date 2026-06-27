@@ -105,6 +105,81 @@ export type Database = {
           },
         ]
       }
+      practice_sessions: {
+        Row: {
+          created_at: string
+          current_elapsed_ms: number
+          current_problem_id: number | null
+          ended_at: string | null
+          id: number
+          last_submission_at: string | null
+          name: string | null
+          settings: Json
+          started_at: string
+          status: string
+          times_correct: number
+          times_reviewed: number
+          times_seen: number
+          times_skipped: number
+          total_time_ms: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_elapsed_ms?: number
+          current_problem_id?: number | null
+          ended_at?: string | null
+          id?: never
+          last_submission_at?: string | null
+          name?: string | null
+          settings?: Json
+          started_at?: string
+          status?: string
+          times_correct?: number
+          times_reviewed?: number
+          times_seen?: number
+          times_skipped?: number
+          total_time_ms?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_elapsed_ms?: number
+          current_problem_id?: number | null
+          ended_at?: string | null
+          id?: never
+          last_submission_at?: string | null
+          name?: string | null
+          settings?: Json
+          started_at?: string
+          status?: string
+          times_correct?: number
+          times_reviewed?: number
+          times_seen?: number
+          times_skipped?: number
+          total_time_ms?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_sessions_current_problem_id_fkey"
+            columns: ["current_problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       problem_progress: {
         Row: {
           created_at: string
@@ -302,6 +377,7 @@ export type Database = {
           is_correct: boolean | null
           problem_id: number
           selected_choice: number | null
+          session_id: number | null
           skipped: boolean
           source: string | null
           user_id: string
@@ -314,6 +390,7 @@ export type Database = {
           is_correct?: boolean | null
           problem_id: number
           selected_choice?: number | null
+          session_id?: number | null
           skipped?: boolean
           source?: string | null
           user_id: string
@@ -326,6 +403,7 @@ export type Database = {
           is_correct?: boolean | null
           problem_id?: number
           selected_choice?: number | null
+          session_id?: number | null
           skipped?: boolean
           source?: string | null
           user_id?: string
@@ -336,6 +414,13 @@ export type Database = {
             columns: ["problem_id"]
             isOneToOne: false
             referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "practice_sessions"
             referencedColumns: ["id"]
           },
           {

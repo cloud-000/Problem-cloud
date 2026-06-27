@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import { DIFFICULTY_RANGE, type ProblemRow } from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -73,6 +73,28 @@ const MIXED_PATTERN: PracticeSource[] = ["review", "practice", "practice"];
 
 export function createSession(): PracticeSession {
     return { shownIds: new Set<number>(), drawIndex: 0 };
+}
+
+/**
+ * The canonical default practice settings. Used to seed the panel for root
+ * (ungrouped) practice and to snapshot settings when starting a new session
+ * from the hub (where there is no live panel to read from).
+ */
+export function defaultPracticeSettings(): PracticeSettings {
+    return {
+        mode: "new",
+        topic: [],
+        difficulty: [...DIFFICULTY_RANGE],
+        verifiedOnly: false,
+        computational: null,
+        timesSeen: null,
+        timesReviewed: null,
+        timesCorrect: null,
+        timesSkipped: null,
+        lastSubmissionDays: null,
+        lastOutcome: "any",
+        includeUnscheduled: false,
+    };
 }
 
 /** PostgREST `in` list literal, or null when there is nothing to exclude. */

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { StatusTag } from "$lib/components/status-tag";
     import { LinkMenu } from "$lib/components/link-menu";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
@@ -99,19 +100,9 @@
             {#if topicLabel}{@render badge(topicLabel)}{/if}
             {#if problem.verified}{@render badge("verified")}{/if}
             {#if status === "solved"}
-                <span
-                    class="inline-flex items-center gap-1 rounded-full bg-correct/10 px-2 py-0.5 text-xs font-medium text-correct"
-                >
-                    <Icon name="check_circle" class="size-[1em]" fill />
-                    Solved
-                </span>
+                <StatusTag status="solved" size="sm" />
             {:else if status === "attempted"}
-                <span
-                    class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 text-xs font-medium text-unsure"
-                >
-                    <Icon name="history" class="size-[1em]" />
-                    Attempted
-                </span>
+                <StatusTag status="attempted" size="sm" />
             {/if}
         </div>
 

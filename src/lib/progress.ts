@@ -32,6 +32,8 @@ export type SubmissionInput = {
     flagged: boolean;
     elapsedMs: number;
     source: SubmissionSource;
+    /** Practice session this submission belongs to; null = root (ungrouped). */
+    sessionId: number | null;
 };
 
 /**
@@ -53,6 +55,7 @@ export async function recordSubmission(
         flagged: input.flagged,
         elapsed_ms: input.elapsedMs,
         source: input.source,
+        session_id: input.sessionId,
     });
     if (error) console.error("Failed to record submission:", error);
 }
@@ -94,6 +97,26 @@ export async function fetchRecentSubmissions(
     const { data, error } = await supabase
         .from("submissions")
         .select("*, problems(*, tests(name, series_id, series(name)))")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+    if (error) throw error;
+    return (data ?? []) as unknown as RecentSubmissionRow[];
+}
+
+/**
+ * Fetch the submissions belonging to a single practice session, newest first,
+ * with embedded problem + test + series data. RLS scopes the query to the
+ * authenticated user's own records.
+ */
+export async function fetchSessionSubmissions(
+    supabase: Supabase,
+    sessionId: number,
+    limit = 100,
+): Promise<RecentSubmissionRow[]> {
+    const { data, error } = await supabase
+        .from("submissions")
+        .select("*, problems(*, tests(name, series_id, series(name)))")
+        .eq("session_id", sessionId)
         .order("created_at", { ascending: false })
         .limit(limit);
     if (error) throw error;

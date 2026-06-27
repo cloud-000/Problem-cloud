@@ -65,6 +65,7 @@ schema_paths = [
     "./schemas/profiles.sql",
     "./schemas/notifications.sql",
     "./schemas/problems.sql",
+    "./schemas/practice_sessions.sql",
     "./schemas/submissions.sql"
 ]
 

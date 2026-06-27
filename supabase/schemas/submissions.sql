@@ -17,11 +17,13 @@ create table public.submissions (
   flagged         boolean not null default false,
   elapsed_ms      integer,                  -- time spent on this attempt
   source          text,                     -- 'practice' | 'library' | 'review'
+  session_id      bigint references public.practice_sessions(id) on delete set null,
   created_at      timestamp with time zone default now() not null
 );
 
 create index submissions_user_problem_idx on public.submissions(user_id, problem_id);
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
+create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
 
 -- Per-(user, problem) aggregate + SM-2 scheduling state.
 create table public.problem_progress (
@@ -159,6 +161,23 @@ begin
     interval_days = excluded.interval_days,
     next_review_at = excluded.next_review_at,
     updated_at = now();
+
+  -- Bump the session aggregate when this submission belongs to a session.
+  -- Runs as security definer, so it can write the trigger-owned counter columns
+  -- despite clients only holding a column-level update grant on metadata.
+  if new.session_id is not null then
+    update public.practice_sessions set
+      times_seen         = times_seen + 1,
+      times_reviewed     = times_reviewed + (case when new.skipped then 0 else 1 end),
+      times_correct      = times_correct
+                             + (case when not new.skipped and coalesce(new.is_correct, false)
+                                     then 1 else 0 end),
+      times_skipped      = times_skipped + (case when new.skipped then 1 else 0 end),
+      total_time_ms      = total_time_ms + coalesce(new.elapsed_ms, 0),
+      last_submission_at = new.created_at,
+      updated_at         = now()
+    where id = new.session_id;
+  end if;
 
   return new;
 end;
