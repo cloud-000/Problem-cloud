@@ -8,26 +8,79 @@
     import {
         DIFFICULTY_RANGE,
         TOPIC_LABELS,
+        triToBool,
         type ProblemRow,
     } from "$lib/library";
     import {
-        generatePracticeProblem,
+        createSession,
+        nextPracticeProblem,
         type PracticeAttempt,
+        type PracticeMode,
         type PracticeSettings,
+        type PracticeSource,
+        type ProblemProgress,
     } from "$lib/trainer";
     import { recordSubmission } from "$lib/progress";
     import { cn } from "$lib/utils";
     import { onMount } from "svelte";
-    import SettingsPanel from "./SettingsPanel.svelte";
+    import SettingsPanel, {
+        COUNTER_RANGE,
+        type CounterEnabled,
+        type CounterRanges,
+    } from "./SettingsPanel.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
 
+    let mode = $state<PracticeMode>("new");
     let topic = $state<string[]>([]);
     let difficulty = $state<[number, number]>([...DIFFICULTY_RANGE]);
     let verifiedOnly = $state(false);
     let computational = $state<TriState>("neutral");
+    let counterRanges = $state<CounterRanges>({
+        seen: [...COUNTER_RANGE],
+        reviewed: [...COUNTER_RANGE],
+        correct: [...COUNTER_RANGE],
+        skipped: [...COUNTER_RANGE],
+    });
+    let counterEnabled = $state<CounterEnabled>({
+        seen: false,
+        reviewed: false,
+        correct: false,
+        skipped: false,
+    });
+    let lastSubmissionDays = $state<number | null>(null);
+    let lastOutcome = $state<"any" | "correct" | "incorrect">("any");
+    let includeUnscheduled = $state(false);
     let showSettings = $state(false);
+
+    // Review/Mixed need per-user progress. Without a session, pin to New.
+    $effect(() => {
+        if (!user && mode !== "new") mode = "new";
+    });
+
+    // Cross-load draw state for interleaving and forward progress.
+    const session = createSession();
+    let currentSource = $state<PracticeSource>("practice");
+    let currentProgress = $state<ProblemProgress | null>(null);
+
+    // Browser-history-style navigation: every generated problem is appended to
+    // `history`; `historyIndex` points at the one on screen. Past entries are
+    // frozen snapshots; only the latest entry is live (timer runs, answerable).
+    type HistoryEntry = {
+        problem: ProblemRow;
+        source: PracticeSource;
+        progress: ProblemProgress | null;
+        selectedChoice: number | null;
+        answer: string;
+        submitted: boolean;
+        correct: boolean | null;
+        flagged: boolean;
+        elapsedMs: number;
+        attemptIndex: number | null;
+    };
+    let history = $state<HistoryEntry[]>([]);
+    let historyIndex = $state(-1);
 
     let problem = $state<ProblemRow | null>(null);
     let loading = $state(false);
@@ -45,8 +98,11 @@
 
     let loadToken = 0;
 
+    let isLatest = $derived(historyIndex === history.length - 1);
+    let canGoBack = $derived(historyIndex > 0);
+
     let elapsedMs = $derived(
-        problem && !submitted
+        problem && !submitted && isLatest
             ? Math.max(0, timerNow - startedAt)
             : frozenElapsedMs,
     );
@@ -65,13 +121,24 @@
             : `${Math.round((correctAttempts / completedAttempts.length) * 100)}%`,
     );
 
+    function counterFilter(key: keyof CounterRanges): [number, number] | null {
+        return counterEnabled[key] ? [...counterRanges[key]] : null;
+    }
+
     function currentSettings(): PracticeSettings {
         return {
+            mode,
             topic: [...topic],
             difficulty: [difficulty[0], difficulty[1]],
             verifiedOnly,
-            computational:
-                computational === "neutral" ? null : computational === "on",
+            computational: triToBool(computational),
+            timesSeen: counterFilter("seen"),
+            timesReviewed: counterFilter("reviewed"),
+            timesCorrect: counterFilter("correct"),
+            timesSkipped: counterFilter("skipped"),
+            lastSubmissionDays,
+            lastOutcome,
+            includeUnscheduled,
         };
     }
 
@@ -89,9 +156,68 @@
         return TOPIC_LABELS[code] ?? code;
     }
 
+    // Compact "last reviewed" label: relative for recent, short date otherwise.
+    function formatReviewDate(iso: string | null) {
+        if (!iso) return null;
+        const then = new Date(iso);
+        const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+        if (days <= 0) return "today";
+        if (days === 1) return "yesterday";
+        if (days < 30) return `${days}d ago`;
+        return then.toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+        });
+    }
+
+    // Elapsed time for the on-screen problem: live counter for the latest
+    // unanswered one, otherwise its frozen value.
+    function liveElapsed() {
+        return problem && !submitted && isLatest
+            ? Math.max(0, Date.now() - startedAt)
+            : frozenElapsedMs;
+    }
+
+    // Save the live view state back into its history entry before navigating away.
+    function commitCurrent() {
+        const entry = history[historyIndex];
+        if (!entry) return;
+        entry.selectedChoice = selectedChoice;
+        entry.answer = answer;
+        entry.submitted = submitted;
+        entry.correct = correct;
+        entry.flagged = flagged;
+        entry.elapsedMs = liveElapsed();
+        entry.attemptIndex = currentAttemptIndex;
+    }
+
+    // Load a history entry into the live view. The timer only resumes for the
+    // latest unanswered entry; everything else is shown frozen.
+    function restore(index: number) {
+        const entry = history[index];
+        if (!entry) return;
+        historyIndex = index;
+        problem = entry.problem;
+        currentSource = entry.source;
+        currentProgress = entry.progress;
+        selectedChoice = entry.selectedChoice;
+        answer = entry.answer;
+        submitted = entry.submitted;
+        correct = entry.correct;
+        flagged = entry.flagged;
+        currentAttemptIndex = entry.attemptIndex;
+
+        const now = Date.now();
+        timerNow = now;
+        frozenElapsedMs = entry.elapsedMs;
+        startedAt = now - entry.elapsedMs;
+    }
+
     async function loadProblem(settings = currentSettings()) {
         const token = ++loadToken;
         const now = Date.now();
+
+        commitCurrent();
 
         loading = true;
         error = null;
@@ -107,17 +233,38 @@
         timerNow = now;
 
         try {
-            const nextProblem = await generatePracticeProblem(
+            const result = await nextPracticeProblem(
                 supabase,
                 settings,
+                session,
             );
             if (token !== loadToken) return;
 
-            const loadedAt = Date.now();
-            problem = nextProblem;
-            startedAt = loadedAt;
-            timerNow = loadedAt;
-            frozenElapsedMs = 0;
+            if (result.problem) {
+                session.shownIds.add(result.problem.id);
+                session.drawIndex += 1;
+
+                history = [
+                    ...history,
+                    {
+                        problem: result.problem,
+                        source: result.source,
+                        progress: result.progress,
+                        selectedChoice: null,
+                        answer: "",
+                        submitted: false,
+                        correct: null,
+                        flagged: false,
+                        elapsedMs: 0,
+                        attemptIndex: null,
+                    },
+                ];
+                restore(history.length - 1);
+            } else {
+                problem = null;
+                currentSource = result.source;
+                currentProgress = null;
+            }
         } catch (e) {
             if (token !== loadToken) return;
             error = (e as Error).message;
@@ -125,6 +272,15 @@
         } finally {
             if (token === loadToken) loading = false;
         }
+    }
+
+    // Forget which problems were shown this session so the queue can cycle
+    // through them again (e.g. after exhausting the due-review queue, problems
+    // that were skipped and are still due become eligible once more).
+    function resetSession() {
+        session.shownIds.clear();
+        session.drawIndex = 0;
+        loadProblem();
     }
 
     function submitAnswer() {
@@ -157,15 +313,18 @@
                 skipped: false,
                 flagged,
                 elapsedMs: elapsed,
-                source: "practice",
+                source: currentSource,
             });
         }
     }
 
-    function skipProblem() {
-        if (!problem || loading) return;
+    // Record a skip for the current problem (counts toward stats + progress),
+    // without advancing — the caller decides what to load next.
+    function recordSkip() {
+        if (!problem) return;
 
-        const elapsed = Math.max(0, Date.now() - startedAt);
+        const elapsed = liveElapsed();
+        currentAttemptIndex = attempts.length;
         attempts = [
             ...attempts,
             {
@@ -186,11 +345,35 @@
                 skipped: true,
                 flagged,
                 elapsedMs: elapsed,
-                source: "practice",
+                source: currentSource,
             });
         }
+    }
 
-        loadProblem();
+    function goBack() {
+        if (!canGoBack || loading) return;
+        commitCurrent();
+        restore(historyIndex - 1);
+    }
+
+    // Forward steps through history; on the newest problem it acts as Skip
+    // (abandon the current, unanswered problem and generate a new one).
+    function goForward() {
+        if (loading) return;
+        if (isLatest) {
+            if (submitted) return;
+            recordSkip();
+            loadProblem();
+        } else {
+            commitCurrent();
+            restore(historyIndex + 1);
+        }
+    }
+
+    function jumpToLatest() {
+        if (loading || isLatest) return;
+        commitCurrent();
+        restore(history.length - 1);
     }
 
     function toggleFlag() {
@@ -212,7 +395,7 @@
     });
 
     $effect(() => {
-        if (!problem || submitted || loading) return;
+        if (!problem || submitted || loading || !isLatest) return;
 
         const timer = setInterval(() => {
             timerNow = Date.now();
@@ -329,34 +512,109 @@
                             No matching problems
                         </h2>
                         <p class="text-xs text-muted-foreground">
-                            Try broadening the settings, then generate again.
+                            {#if mode === "review" || mode === "mixed"}
+                                You've gone through everything queued this
+                                session. Reset to cycle through them again, or
+                                broaden the settings.
+                            {:else}
+                                Try broadening the settings, then generate
+                                again.
+                            {/if}
                         </p>
                     </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onclick={() => loadProblem()}
-                    >
-                        Try again
-                    </Button>
+                    <div class="flex items-center gap-2">
+                        {#if mode === "review" || mode === "mixed"}
+                            <Button
+                                size="sm"
+                                onclick={resetSession}
+                                class="gap-1.5"
+                            >
+                                <Icon name="restart_alt" />
+                                Reset review queue
+                            </Button>
+                        {/if}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onclick={() => loadProblem()}
+                        >
+                            Try again
+                        </Button>
+                    </div>
                 </div>
             {:else}
                 <div
                     class="mx-auto flex min-h-0 w-full flex-1 flex-col px-0 bg-transparent"
                 >
-                    <!-- Metadata row: Unobtrusive dot-separated text above the problem -->
+                    <!-- Metadata row: source/series/topic on the left, review status on the right -->
                     <div
-                        class="mb-2 flex items-center justify-start gap-2 px-4 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground select-none bg-transparent"
+                        class="mb-2 flex items-center justify-between gap-3 px-4 select-none bg-transparent"
                     >
-                        {#if problem.tests?.name}
-                            <span>{problem.tests.name}</span>
-                            <span class="text-border">•</span>
-                        {/if}
-                        <span>Problem {problem.n + 1}</span>
-                        {#if topicLabel(problem.topic)}
-                            <span class="text-border">•</span>
-                            <span>{topicLabel(problem.topic)}</span>
-                        {/if}
+                        <div
+                            class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground"
+                        >
+                            {#if problem.tests?.name}
+                                <span>{problem.tests.name}</span>
+                                <span class="text-border">•</span>
+                            {/if}
+                            <span>Problem {problem.n + 1}</span>
+                            {#if topicLabel(problem.topic)}
+                                <span class="text-border">•</span>
+                                <span>{topicLabel(problem.topic)}</span>
+                            {/if}
+                        </div>
+
+                        <div
+                            class="flex items-center gap-2 text-[11px] text-muted-foreground"
+                        >
+                            {#if currentSource === "review"}
+                                <span
+                                    class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                >
+                                    <Icon
+                                        name="history"
+                                        class="size-[1em] shrink-0 leading-none"
+                                    />
+                                    Review
+                                </span>
+                                {#if currentProgress}
+                                    <span
+                                        class="inline-flex items-center gap-1"
+                                    >
+                                        <Icon
+                                            name="visibility"
+                                            class="size-[1em] shrink-0 leading-none"
+                                        />
+                                        Seen {currentProgress.timesSeen}×
+                                    </span>
+                                    {#if formatReviewDate(currentProgress.lastSubmissionAt)}
+                                        <span class="text-border">•</span>
+                                        <span
+                                            class="inline-flex items-center gap-1"
+                                            title="Last reviewed"
+                                        >
+                                            <Icon
+                                                name="schedule"
+                                                class="size-[1em] shrink-0 leading-none"
+                                            />
+                                            {formatReviewDate(
+                                                currentProgress.lastSubmissionAt,
+                                            )}
+                                        </span>
+                                    {/if}
+                                {/if}
+                            {:else}
+                                <span
+                                    class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 font-medium"
+                                >
+                                    <Icon
+                                        name="auto_awesome"
+                                        class="size-[1em] shrink-0 leading-none"
+                                    />
+                                    New
+                                </span>
+                            {/if}
+                        </div>
                     </div>
 
                     <!-- Problem statement and choices: Centered vertically using flex-grow -->
@@ -378,7 +636,7 @@
                                 bind:answer
                                 bind:selectedChoice
                                 showAnswerState={submitted}
-                                disabled={submitted}
+                                disabled={submitted || !isLatest}
                             />
                         </div>
                     </div>
@@ -390,12 +648,29 @@
                         <div class="flex items-center gap-1">
                             <Button
                                 variant="ghost"
-                                disabled={submitted}
-                                onclick={skipProblem}
-                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-3 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                                disabled={!canGoBack}
+                                onclick={goBack}
+                                aria-label="Previous problem"
+                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
                             >
-                                <Icon name="skip_next" />
-                                Skip
+                                <Icon name="arrow_back" />
+                            </Button>
+
+                            <Button
+                                variant="ghost"
+                                disabled={isLatest && submitted}
+                                onclick={goForward}
+                                aria-label={isLatest
+                                    ? "Skip problem"
+                                    : "Next problem"}
+                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
+                            >
+                                {#if isLatest}
+                                    <Icon name="skip_next" />
+                                    Skip
+                                {:else}
+                                    <Icon name="arrow_forward" />
+                                {/if}
                             </Button>
 
                             <Button
@@ -414,7 +689,16 @@
                         </div>
 
                         <div>
-                            {#if submitted}
+                            {#if !isLatest}
+                                <Button
+                                    variant="outline"
+                                    onclick={jumpToLatest}
+                                    class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
+                                >
+                                    Latest
+                                    <Icon name="last_page" />
+                                </Button>
+                            {:else if submitted}
                                 <Button
                                     onclick={() => loadProblem()}
                                     class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
@@ -440,10 +724,17 @@
         <!-- Sidebar settings panel -->
         {#if showSettings}
             <SettingsPanel
+                bind:mode
                 bind:topic
                 bind:difficulty
                 bind:verifiedOnly
                 bind:computational
+                {counterRanges}
+                {counterEnabled}
+                bind:lastSubmissionDays
+                bind:lastOutcome
+                bind:includeUnscheduled
+                canReview={!!user}
                 onClose={() => (showSettings = false)}
             />
         {/if}

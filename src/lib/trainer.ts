@@ -4,12 +4,29 @@ import type { ProblemRow } from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
 
+export type PracticeMode = "new" | "review" | "mixed";
+
+export type Range = [number, number];
+
 export type PracticeSettings = {
+    mode: PracticeMode;
+    // Problem-attribute filters — apply to every mode.
     topic: string[];
-    difficulty: [number, number];
+    difficulty: Range;
     verifiedOnly: boolean;
     computational: boolean | null;
+    // Advanced progress filters — apply to the review queue only. `null` = "Any".
+    timesSeen: Range | null;
+    timesReviewed: Range | null;
+    timesCorrect: Range | null;
+    timesSkipped: Range | null;
+    lastSubmissionDays: number | null; // only reviewed within the last N days
+    lastOutcome: "any" | "correct" | "incorrect";
+    // Also surface seen problems with no scheduled review (`next_review_at IS NULL`).
+    includeUnscheduled: boolean;
 };
+
+export type PracticeSource = "practice" | "review";
 
 export type PracticeAttempt = {
     problemId: number;
@@ -20,25 +37,76 @@ export type PracticeAttempt = {
     flagged: boolean;
 };
 
+/** Cross-load state for interleaving and forward progress through queues. */
+export type PracticeSession = {
+    /** Problem ids already shown this session (avoids repeats / advances queues). */
+    shownIds: Set<number>;
+    /** Monotonic draw counter; drives the Mixed-mode interleave pattern. */
+    drawIndex: number;
+};
+
+/** Per-user progress for the shown problem (null for never-seen / New). */
+export type ProblemProgress = {
+    timesSeen: number;
+    timesReviewed: number;
+    timesCorrect: number;
+    timesSkipped: number;
+    lastSubmissionAt: string | null;
+    lastCorrect: boolean | null;
+    nextReviewAt: string | null;
+};
+
+export type PracticeResult = {
+    problem: ProblemRow | null;
+    source: PracticeSource;
+    progress: ProblemProgress | null;
+};
+
 const PROBLEM_SELECT = "*, tests(name, series_id, series(name))";
+const REVIEW_SELECT =
+    "problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, tests(name, series_id, series(name)))";
 const MAX_RANDOM_ATTEMPTS = 6;
 const FALLBACK_PAGE_SIZE = 25;
 
-function applySettings(query: any, settings: PracticeSettings) {
-    let next = query
-        .not("statement", "is", null)
-        .not("choices", "is", null)
-        .gte("answer_index", 0);
+// Mixed-mode interleave: 1 review : 2 new (lead with review so it never starves).
+const MIXED_PATTERN: PracticeSource[] = ["review", "practice", "practice"];
 
-    if (settings.topic.length > 0) next = next.in("topic", settings.topic);
+export function createSession(): PracticeSession {
+    return { shownIds: new Set<number>(), drawIndex: 0 };
+}
+
+/** PostgREST `in` list literal, or null when there is nothing to exclude. */
+function exclusionList(ids: Iterable<number>): string | null {
+    const arr = [...ids];
+    return arr.length ? `(${arr.join(",")})` : null;
+}
+
+/**
+ * Base eligibility + problem-attribute filters. `prefix` targets an embedded
+ * resource ("problems.") when filtering through `problem_progress`, or "" when
+ * querying the `problems` table directly.
+ */
+function applyAttributeFilters(
+    query: any,
+    settings: PracticeSettings,
+    prefix: "" | "problems." = "",
+) {
+    let next = query
+        .not(`${prefix}statement`, "is", null)
+        .not(`${prefix}choices`, "is", null)
+        .gte(`${prefix}answer_index`, 0);
+
+    if (settings.topic.length > 0) {
+        next = next.in(`${prefix}topic`, settings.topic);
+    }
     if (settings.difficulty) {
         next = next
-            .gte("difficulty", settings.difficulty[0])
-            .lte("difficulty", settings.difficulty[1]);
+            .gte(`${prefix}difficulty`, settings.difficulty[0])
+            .lte(`${prefix}difficulty`, settings.difficulty[1]);
     }
-    if (settings.verifiedOnly) next = next.eq("verified", true);
+    if (settings.verifiedOnly) next = next.eq(`${prefix}verified`, true);
     if (settings.computational != null) {
-        next = next.eq("is_computational", settings.computational);
+        next = next.eq(`${prefix}is_computational`, settings.computational);
     }
 
     return next;
@@ -54,51 +122,246 @@ function isEligibleProblem(problem: ProblemRow | null): problem is ProblemRow {
 async function fetchRandomCandidate(
     supabase: Supabase,
     settings: PracticeSettings,
+    exclude: string | null,
     count: number,
 ): Promise<ProblemRow | null> {
     const offset = Math.floor(Math.random() * count);
-    const { data, error } = await applySettings(
+    let query = applyAttributeFilters(
         supabase.from("problems").select(PROBLEM_SELECT),
         settings,
-    )
-        .order("id")
-        .range(offset, offset)
-        .maybeSingle();
+    );
+    if (exclude) query = query.not("id", "in", exclude);
+
+    const { data, error } = await query.order("id").range(offset, offset).maybeSingle();
 
     if (error) throw error;
     return (data as unknown as ProblemRow | null) ?? null;
 }
 
-export async function generatePracticeProblem(
+/**
+ * A problem the user has not seen yet: no `problem_progress` row, and not already
+ * shown this session. Reuses the random-offset selection so picks stay varied.
+ */
+async function fetchNewProblem(
     supabase: Supabase,
     settings: PracticeSettings,
+    session: PracticeSession,
 ): Promise<ProblemRow | null> {
-    const { count, error } = await applySettings(
+    const excludeIds = new Set(session.shownIds);
+
+    // Problems already interacted with (RLS scopes to the current user; anon → none).
+    const { data: seen, error: seenError } = await supabase
+        .from("problem_progress")
+        .select("problem_id");
+    if (seenError) throw seenError;
+    for (const row of seen ?? []) excludeIds.add(row.problem_id);
+
+    const exclude = exclusionList(excludeIds);
+
+    let countQuery = applyAttributeFilters(
         supabase.from("problems").select("id", { count: "exact", head: true }),
         settings,
     );
+    if (exclude) countQuery = countQuery.not("id", "in", exclude);
+    const { count, error } = await countQuery;
 
     if (error) throw error;
     if (!count) return null;
 
     for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
-        const candidate = await fetchRandomCandidate(supabase, settings, count);
+        const candidate = await fetchRandomCandidate(supabase, settings, exclude, count);
         if (isEligibleProblem(candidate)) return candidate;
     }
 
-    const { data, error: fallbackError } = await applySettings(
+    let fallback = applyAttributeFilters(
         supabase.from("problems").select(PROBLEM_SELECT),
         settings,
-    )
+    );
+    if (exclude) fallback = fallback.not("id", "in", exclude);
+    const { data, error: fallbackError } = await fallback
         .order("id")
         .limit(FALLBACK_PAGE_SIZE);
 
     if (fallbackError) throw fallbackError;
 
-    const eligible = ((data ?? []) as unknown as ProblemRow[]).filter(
-        isEligibleProblem,
-    );
+    const eligible = ((data ?? []) as unknown as ProblemRow[]).filter(isEligibleProblem);
     if (eligible.length === 0) return null;
 
     return eligible[Math.floor(Math.random() * eligible.length)];
+}
+
+/**
+ * The most overdue due-for-review problem (`next_review_at <= now`, ascending),
+ * honoring attribute + advanced progress filters and skipping anything already
+ * shown this session so the queue always advances.
+ */
+/** A single queue draw: the chosen problem plus its progress (review queue only). */
+type Draw = { problem: ProblemRow | null; progress: ProblemProgress | null };
+
+/** Row shape returned by the review query: progress columns + embedded problem. */
+type ReviewRow = {
+    next_review_at: string | null;
+    times_seen: number;
+    times_reviewed: number;
+    times_correct: number;
+    times_skipped: number;
+    last_submission_at: string | null;
+    last_correct: boolean | null;
+    problems: ProblemRow | null;
+};
+
+function toProgress(row: ReviewRow): ProblemProgress {
+    return {
+        timesSeen: row.times_seen,
+        timesReviewed: row.times_reviewed,
+        timesCorrect: row.times_correct,
+        timesSkipped: row.times_skipped,
+        lastSubmissionAt: row.last_submission_at,
+        lastCorrect: row.last_correct,
+        nextReviewAt: row.next_review_at,
+    };
+}
+
+/**
+ * Filters shared by every review-queue tier — attribute, progress-counter,
+ * recency, outcome, and session-exclusion. The caller layers on the
+ * `next_review_at` time condition and ordering.
+ */
+function buildReviewBaseQuery(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+) {
+    let query = applyAttributeFilters(
+        supabase.from("problem_progress").select(REVIEW_SELECT),
+        settings,
+        "problems.",
+    );
+
+    const counters: [keyof Database["public"]["Tables"]["problem_progress"]["Row"], Range | null][] =
+        [
+            ["times_seen", settings.timesSeen],
+            ["times_reviewed", settings.timesReviewed],
+            ["times_correct", settings.timesCorrect],
+            ["times_skipped", settings.timesSkipped],
+        ];
+    for (const [column, range] of counters) {
+        if (range) query = query.gte(column, range[0]).lte(column, range[1]);
+    }
+
+    if (settings.lastSubmissionDays != null) {
+        const since = new Date(
+            Date.now() - settings.lastSubmissionDays * 24 * 60 * 60 * 1000,
+        ).toISOString();
+        query = query.gte("last_submission_at", since);
+    }
+
+    if (settings.lastOutcome === "correct") query = query.eq("last_correct", true);
+    else if (settings.lastOutcome === "incorrect") query = query.eq("last_correct", false);
+
+    const exclude = exclusionList(session.shownIds);
+    if (exclude) query = query.not("problem_id", "in", exclude);
+
+    return query;
+}
+
+/** Execute a single-row review query and map it to a Draw. */
+async function runReviewDraw(query: any): Promise<Draw> {
+    const { data, error } = await query.limit(1);
+    if (error) throw error;
+
+    const rows = (data ?? []) as unknown as ReviewRow[];
+    const row = rows.find((r) => isEligibleProblem(r.problems));
+
+    return row?.problems
+        ? { problem: row.problems, progress: toProgress(row) }
+        : { problem: null, progress: null };
+}
+
+/**
+ * The review problem whose scheduled date is nearest to now, preferring dates
+ * that have already passed (closest-passed = least overdue first). When nothing
+ * is due, fall back to the soonest upcoming review in the future. With
+ * `includeUnscheduled`, seen problems that have no scheduled date at all are
+ * considered before the future fallback (they are reviewable at any time).
+ */
+async function fetchDueReviewProblem(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const now = new Date().toISOString();
+
+    // 1. Closest review date that has already passed (nearest to now first).
+    let draw = await runReviewDraw(
+        buildReviewBaseQuery(supabase, settings, session)
+            .not("next_review_at", "is", null)
+            .lte("next_review_at", now)
+            .order("next_review_at", { ascending: false }),
+    );
+    if (draw.problem) return draw;
+
+    // 2. Seen problems with no scheduled review at all (opt-in).
+    if (settings.includeUnscheduled) {
+        draw = await runReviewDraw(
+            buildReviewBaseQuery(supabase, settings, session).is("next_review_at", null),
+        );
+        if (draw.problem) return draw;
+    }
+
+    // 3. Fallback: the soonest upcoming review still in the future.
+    return runReviewDraw(
+        buildReviewBaseQuery(supabase, settings, session)
+            .gt("next_review_at", now)
+            .order("next_review_at", { ascending: true }),
+    );
+}
+
+async function drawFromSource(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+    source: PracticeSource,
+): Promise<Draw> {
+    return source === "review"
+        ? fetchDueReviewProblem(supabase, settings, session)
+        : { problem: await fetchNewProblem(supabase, settings, session), progress: null };
+}
+
+/**
+ * Pick the next practice problem for the active mode. For Mixed, follows the
+ * 1:2 review:new pattern and falls back to the other queue when the preferred
+ * one is empty, so neither new problems nor reviews can starve the other.
+ *
+ * The caller records the returned problem's id in `session.shownIds` and bumps
+ * `session.drawIndex` after a successful draw.
+ */
+export async function nextPracticeProblem(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+): Promise<PracticeResult> {
+    if (settings.mode === "new") {
+        return {
+            problem: await fetchNewProblem(supabase, settings, session),
+            source: "practice",
+            progress: null,
+        };
+    }
+    if (settings.mode === "review") {
+        const draw = await fetchDueReviewProblem(supabase, settings, session);
+        return { problem: draw.problem, source: "review", progress: draw.progress };
+    }
+
+    // Mixed: try the patterned source first, then the other.
+    const preferred = MIXED_PATTERN[session.drawIndex % MIXED_PATTERN.length];
+    const fallback: PracticeSource = preferred === "review" ? "practice" : "review";
+
+    let draw = await drawFromSource(supabase, settings, session, preferred);
+    if (draw.problem) {
+        return { problem: draw.problem, source: preferred, progress: draw.progress };
+    }
+
+    draw = await drawFromSource(supabase, settings, session, fallback);
+    return { problem: draw.problem, source: fallback, progress: draw.progress };
 }
