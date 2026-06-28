@@ -28,7 +28,15 @@
         HTMLAttributes<HTMLDivElement>,
         HTMLDivElement
     > & {
-        /** The selected `[low, high]` range. Two-way bindable. */
+        /**
+         * Single-value mode: render one handle and bind `singleValue` instead of
+         * `value`. The fill runs from `min` to the handle (a plain slider). Bar
+         * drag is disabled; track taps and the handle both move `singleValue`.
+         */
+        single?: boolean;
+        /** The selected value in single mode. Two-way bindable. */
+        singleValue?: number;
+        /** The selected `[low, high]` range (range mode). Two-way bindable. */
         value?: RangeValue;
         /** Lower bound of the scale. */
         min?: number;
@@ -56,6 +64,8 @@
         max = 100,
         step = 1,
         minGap = 0,
+        single = false,
+        singleValue = $bindable(min),
         value = $bindable([min, max]),
         disabled = false,
         showTooltip = true,
@@ -75,8 +85,11 @@
     let barStartLow = 0;
     let barStartHigh = 0;
 
-    const lowPct = $derived(valueToPercent(value[0], min, max));
-    const highPct = $derived(valueToPercent(value[1], min, max));
+    // Unified `[low, high]` pair for positioning: in single mode the low handle is
+    // pinned to `min` (and hidden) so the fill renders as a plain left-anchored bar.
+    const pair = $derived<RangeValue>(single ? [min, singleValue] : value);
+    const lowPct = $derived(valueToPercent(pair[0], min, max));
+    const highPct = $derived(valueToPercent(pair[1], min, max));
 
     function clientXToRawValue(clientX: number): number {
         if (!trackEl) return min;
@@ -90,17 +103,25 @@
     }
 
     function setThumb(i: 0 | 1, v: number) {
+        if (single) {
+            singleValue = clamp(v, min, max);
+            return;
+        }
         const next: RangeValue = i === 0 ? [v, value[1]] : [value[0], v];
         value = applyPush(next, i, min, max, minGap);
     }
 
-    // Tap on the bare track: move the nearest handle there, then drag it.
+    // Tap on the bare track: move the nearest handle there, then drag it. In
+    // single mode there is only one handle, so it always wins.
     function onTrackPointerDown(e: PointerEvent) {
         if (disabled || !trackEl) return;
         e.preventDefault();
         const v = clientXToValue(e.clientX);
-        const i: 0 | 1 =
-            Math.abs(v - value[0]) <= Math.abs(v - value[1]) ? 0 : 1;
+        const i: 0 | 1 = single
+            ? 1
+            : Math.abs(v - value[0]) <= Math.abs(v - value[1])
+              ? 0
+              : 1;
         setThumb(i, v);
         trackEl.setPointerCapture(e.pointerId);
         dragMode = "thumb";
@@ -118,6 +139,11 @@
 
     function startBarDrag(e: PointerEvent) {
         if (disabled || !trackEl) return;
+        // No sliding-window in single mode — treat the fill like the bare track.
+        if (single) {
+            onTrackPointerDown(e);
+            return;
+        }
         e.preventDefault();
         e.stopPropagation();
         trackEl.setPointerCapture(e.pointerId);
@@ -157,7 +183,7 @@
         if (disabled) return;
         const fine = step > 0 ? step : (max - min) / 100;
         const coarse = step > 0 ? step * 10 : (max - min) / 10;
-        let v = value[i];
+        let v = pair[i];
         switch (e.key) {
             case "ArrowRight":
             case "ArrowUp":
@@ -199,12 +225,14 @@
         type="button"
         role="slider"
         tabindex={disabled ? -1 : 0}
-        aria-label={`${label} ${i === 0 ? "minimum" : "maximum"}`}
+        aria-label={single
+            ? label
+            : `${label} ${i === 0 ? "minimum" : "maximum"}`}
         aria-orientation="horizontal"
-        aria-valuemin={i === 0 ? min : value[0]}
-        aria-valuemax={i === 0 ? value[1] : max}
-        aria-valuenow={value[i]}
-        aria-valuetext={formatValue(value[i])}
+        aria-valuemin={i === 0 || single ? min : pair[0]}
+        aria-valuemax={i === 0 && !single ? pair[1] : max}
+        aria-valuenow={pair[i]}
+        aria-valuetext={formatValue(pair[i])}
         aria-disabled={disabled}
         class="absolute top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-input bg-surface-container-lowest shadow-sm transition-[color,box-shadow] outline-none not-disabled:cursor-grab focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-disabled:cursor-grabbing"
         style="left: {pct}%"
@@ -218,7 +246,7 @@
             <span
                 class="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 rounded-md bg-inverse-surface px-1.5 py-0.5 text-label-caps whitespace-nowrap text-inverse-on-surface"
             >
-                {formatValue(value[i])}
+                {formatValue(pair[i])}
             </span>
         {/if}
     </button>
@@ -242,11 +270,18 @@
         >
             <div
                 role="presentation"
-                class="absolute inset-y-0 cursor-grab rounded-full bg-primary active:cursor-grabbing"
-                style="left: {lowPct}%; right: {100 - highPct}%"
+                class={cn(
+                    "absolute inset-y-0 rounded-full bg-primary",
+                    single
+                        ? "cursor-pointer"
+                        : "cursor-grab active:cursor-grabbing",
+                )}
+                style="left: {single ? 0 : lowPct}%; right: {100 - highPct}%"
                 onpointerdown={startBarDrag}
             ></div>
-            {@render thumb(0)}
+            {#if !single}
+                {@render thumb(0)}
+            {/if}
             {@render thumb(1)}
         </div>
     </div>
