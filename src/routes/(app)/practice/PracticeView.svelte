@@ -8,7 +8,7 @@
         type DropdownOption,
     } from "$lib/components/dropdown-menu";
     import { MathStatement } from "$lib/components/math-statement";
-    import { ProblemAnswer } from "$lib/components/problem";
+    import { Problem, ProblemAnswer } from "$lib/components/problem";
     import { type TriState } from "$lib/components/toggle";
     import {
         DIFFICULTY_RANGE,
@@ -19,12 +19,15 @@
     } from "$lib/library";
     import {
         createSession,
+        fetchTestProblems,
+        FORMAT_BEHAVIOR,
         nextPracticeProblem,
         type PracticeAttempt,
         type PracticeMode,
         type PracticeSettings,
         type PracticeSource,
         type ProblemProgress,
+        type SessionFormat,
     } from "$lib/trainer";
     import { recordSubmission } from "$lib/progress";
     import {
@@ -77,6 +80,20 @@
     let showSettings = $state(false);
     let paused = $state(false);
 
+    // Session format. Resolved from the session's settings snapshot on mount and
+    // then fixed for the life of the view ("practice" = the historical free-form
+    // flow; "test" = work a whole test with deferred grading). Older snapshots
+    // predate `format`, so a missing value is treated as "practice".
+    let format = $state<SessionFormat>("practice");
+    let testId = $state<number | null>(null);
+    let timeLimitSeconds = $state<number | null>(null);
+    let isTest = $derived(format === "test");
+    let behavior = $derived(FORMAT_BEHAVIOR[format]);
+    // Test lifecycle: true once the test has been submitted (or re-opened as an
+    // already-ended test), which switches the view over to the results screen.
+    let testFinished = $state(false);
+    let submittingTest = $state(false);
+
     // Review/Mixed need per-user progress. Without a session, pin to New.
     $effect(() => {
         if (!user && mode !== "new") mode = "new";
@@ -110,6 +127,9 @@
     // Write a stored PracticeSettings snapshot back into the panel's bound state
     // (the inverse of currentSettings()), so resuming a session restores its filters.
     function applySettings(s: PracticeSettings) {
+        format = s.format ?? "practice";
+        testId = s.testId ?? null;
+        timeLimitSeconds = s.timeLimitSeconds ?? null;
         mode = s.mode;
         topic = [...s.topic];
         difficulty = [s.difficulty[0], s.difficulty[1]];
@@ -142,6 +162,217 @@
         } catch (e) {
             error = (e as Error).message;
             sessionBusy = false;
+        }
+    }
+
+    // ---- Test format ----------------------------------------------------------
+
+    // Draft answers for an in-progress test live client-side (localStorage) until
+    // the test is submitted: grading is deferred and submissions are append-only,
+    // so there is nowhere server-side to stash unsubmitted answers.
+    type TestDraftAnswer = {
+        problemId: number;
+        selectedChoice: number | null;
+        answer: string;
+        elapsedMs: number;
+        flagged: boolean;
+    };
+    type TestDraft = { historyIndex: number; answers: TestDraftAnswer[] };
+
+    function testDraftKey(sessionId: number) {
+        return `pc:test-draft:${sessionId}`;
+    }
+
+    function loadTestDraft(sessionId: number): TestDraft | null {
+        try {
+            const raw = localStorage.getItem(testDraftKey(sessionId));
+            return raw ? (JSON.parse(raw) as TestDraft) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // Snapshot the current live answer + every history entry to localStorage.
+    // Uses the live vars for the on-screen entry (not yet committed) so a reload
+    // never loses the answer being worked on. Non-reactive; safe to call anywhere.
+    function writeTestDraft() {
+        if (currentSessionId == null) return;
+        const answers: TestDraftAnswer[] = history.map((e, i) =>
+            i === historyIndex
+                ? {
+                      problemId: e.problem.id,
+                      selectedChoice,
+                      answer,
+                      elapsedMs: liveElapsed(),
+                      flagged,
+                  }
+                : {
+                      problemId: e.problem.id,
+                      selectedChoice: e.selectedChoice,
+                      answer: e.answer,
+                      elapsedMs: e.elapsedMs,
+                      flagged: e.flagged,
+                  },
+        );
+        try {
+            localStorage.setItem(
+                testDraftKey(currentSessionId),
+                JSON.stringify({ historyIndex, answers } satisfies TestDraft),
+            );
+        } catch {
+            // Storage unavailable/full — drafts are best-effort.
+        }
+    }
+
+    function clearTestDraft(sessionId: number) {
+        try {
+            localStorage.removeItem(testDraftKey(sessionId));
+        } catch {
+            // ignore
+        }
+    }
+
+    // Build the test's problem set (or the results, if already submitted) into the
+    // history model. Unlike practice, the whole ordered set is known up front and
+    // every entry stays editable until the single final submission.
+    async function initTest(s: PracticeSessionRow) {
+        loading = true;
+        try {
+            if (testId == null) {
+                problem = null;
+                return;
+            }
+
+            // Already submitted → render results from the graded submissions.
+            if (s.status === "ended") {
+                const graded = await fetchSessionHistory(supabase, s.id);
+                // fetchSessionHistory orders by created_at, but a test's rows are
+                // batch-inserted with identical timestamps, so that order is
+                // arbitrary. Re-sort into problem order for the review list.
+                const ordered = [...graded].sort(
+                    (x, y) =>
+                        x.problem.n - y.problem.n || x.problem.id - y.problem.id,
+                );
+                history = ordered.map((a) => ({
+                    problem: a.problem,
+                    source: "practice" as PracticeSource,
+                    progress: null,
+                    selectedChoice: a.selectedChoice,
+                    answer: "",
+                    submitted: !a.skipped,
+                    correct: a.isCorrect,
+                    flagged: a.flagged,
+                    elapsedMs: a.elapsedMs,
+                    attemptIndex: null,
+                }));
+                historyIndex = history.length - 1;
+                testFinished = true;
+                return;
+            }
+
+            // Fresh / in-progress test: all problems, in order, editable.
+            const problems = await fetchTestProblems(supabase, testId);
+            history = problems.map((p) => ({
+                problem: p,
+                source: "practice" as PracticeSource,
+                progress: null,
+                selectedChoice: null,
+                answer: "",
+                submitted: false,
+                correct: null,
+                flagged: false,
+                elapsedMs: 0,
+                attemptIndex: null,
+            }));
+
+            // Restore any in-progress draft (answers + per-problem time + place).
+            const draft = loadTestDraft(s.id);
+            if (draft) {
+                const byId = new Map(
+                    draft.answers.map((a) => [a.problemId, a]),
+                );
+                for (const e of history) {
+                    const a = byId.get(e.problem.id);
+                    if (!a) continue;
+                    e.selectedChoice = a.selectedChoice;
+                    e.answer = a.answer ?? "";
+                    e.elapsedMs = a.elapsedMs ?? 0;
+                    e.flagged = a.flagged ?? false;
+                }
+            }
+
+            if (history.length > 0) {
+                const start =
+                    draft &&
+                    draft.historyIndex >= 0 &&
+                    draft.historyIndex < history.length
+                        ? draft.historyIndex
+                        : 0;
+                restore(start);
+            }
+        } catch (e) {
+            error = (e as Error).message;
+        } finally {
+            loading = false;
+        }
+    }
+
+    // Grade every problem at once, batch-insert the submissions (the DB trigger
+    // drives problem_progress + session aggregates per row), end the session, and
+    // flip to the results screen.
+    async function submitTest() {
+        if (behavior.gradeImmediately || testFinished || submittingTest) return;
+        submittingTest = true;
+        // Snapshot the live timer/answer into the on-screen entry *before*
+        // flipping `testFinished` — that derives `timerRunning` to false, which
+        // would freeze `liveElapsed()` and drop the time spent on this problem.
+        commitCurrent();
+        testFinished = true; // lock the UI immediately
+        try {
+            if (user && currentSessionId != null) {
+                const rows = history.map((e) => {
+                    const skipped = e.selectedChoice == null;
+                    const isCorrect = skipped
+                        ? null
+                        : e.selectedChoice === e.problem.answer_index;
+                    // Reflect the grade on the entry for the results screen.
+                    e.submitted = !skipped;
+                    e.correct = isCorrect;
+                    return {
+                        user_id: user.id,
+                        problem_id: e.problem.id,
+                        selected_choice: e.selectedChoice,
+                        is_correct: isCorrect,
+                        skipped,
+                        flagged: e.flagged,
+                        elapsed_ms: Math.max(0, Math.round(e.elapsedMs)),
+                        source: "test",
+                        session_id: currentSessionId,
+                    };
+                });
+                // Idempotent submit: a prior attempt may have inserted the rows
+                // but failed before ending the session (then the user reloads and
+                // retries). The submissions are append-only with no unique guard,
+                // so re-inserting would duplicate every row and double-count
+                // progress — skip the insert if this session already has any.
+                const { count, error: countError } = await supabase
+                    .from("submissions")
+                    .select("*", { count: "exact", head: true })
+                    .eq("session_id", currentSessionId);
+                if (countError) throw countError;
+                if ((count ?? 0) === 0 && rows.length > 0) {
+                    const { error: insertError } = await supabase
+                        .from("submissions")
+                        .insert(rows);
+                    if (insertError) throw insertError;
+                }
+                await endSession(supabase, currentSessionId);
+                clearTestDraft(currentSessionId);
+            }
+        } catch (e) {
+            error = (e as Error).message;
+        } finally {
+            submittingTest = false;
         }
     }
 
@@ -270,10 +501,24 @@
     // passes the reactive (throttled) `timerNow` to drive the ticking display;
     // `liveElapsed()` passes a fresh `Date.now()` for an exact, non-reactive
     // snapshot at event/persist time (so those paths don't subscribe to the timer).
+    // Whether the on-screen problem's clock is currently ticking. In practice only
+    // the latest, unanswered, unpaused problem runs; in a test the clock runs for
+    // whatever problem is shown until the test is submitted (every problem stays
+    // answerable, and time accrues to whichever one is on screen).
+    let timerRunning = $derived(
+        !!problem &&
+            !loading &&
+            !paused &&
+            // Formats that freeze on navigate only tick the latest, unanswered
+            // problem; non-freezing formats (test) tick whatever is shown until
+            // the run is finished.
+            (behavior.freezeOnNavigate
+                ? !submitted && isLatest
+                : !testFinished),
+    );
+
     function elapsedAt(now: number) {
-        return problem && !submitted && isLatest && !paused
-            ? Math.max(0, now - startedAt)
-            : frozenElapsedMs;
+        return timerRunning ? Math.max(0, now - startedAt) : frozenElapsedMs;
     }
 
     let elapsedMs = $derived(elapsedAt(timerNow));
@@ -290,6 +535,35 @@
     );
     // The timer chip swaps between the current problem and the session total.
     let timerMode = $state<"problem" | "total">("problem");
+
+    // Test countdown: time left from the limit, or null when untimed (count up).
+    let remainingMs = $derived(
+        timeLimitSeconds == null
+            ? null
+            : Math.max(0, timeLimitSeconds * 1000 - totalElapsedMs),
+    );
+
+    // Total time across the test from the committed per-problem values (no live
+    // substitution) — used for the results summary once submitted.
+    let testElapsedTotalMs = $derived(
+        history.reduce((sum, e) => sum + e.elapsedMs, 0),
+    );
+
+    // The pinned test's display name (from the problems' joined test).
+    let testName = $derived(
+        isTest ? (history[0]?.problem.tests?.name ?? null) : null,
+    );
+
+    // Test results tallies (meaningful once `testFinished`).
+    let testCorrect = $derived(
+        history.filter((e) => e.correct === true).length,
+    );
+    let testIncorrect = $derived(
+        history.filter((e) => e.submitted && e.correct === false).length,
+    );
+    let testSkipped = $derived(
+        history.filter((e) => e.selectedChoice == null).length,
+    );
 
     let completedAttempts = $derived(
         attempts.filter((attempt) => attempt.correct !== null),
@@ -324,6 +598,9 @@
     function currentSettings(): PracticeSettings {
         return {
             mode,
+            format,
+            testId,
+            timeLimitSeconds,
             topic: [...topic],
             difficulty: [difficulty[0], difficulty[1]],
             verifiedOnly,
@@ -482,6 +759,9 @@
     }
 
     function submitAnswer() {
+        // Per-answer grading is only for formats that grade immediately; test
+        // defers all grading to submitTest().
+        if (!behavior.gradeImmediately) return;
         if (!problem || selectedChoice == null || submitted) return;
 
         const elapsed = Math.max(0, Date.now() - startedAt);
@@ -564,10 +844,17 @@
         restore(historyIndex - 1);
     }
 
-    // Forward steps through history; on the newest problem it acts as Skip
-    // (abandon the current, unanswered problem and generate a new one).
+    // Forward steps through history; in practice, on the newest problem it acts as
+    // Skip (abandon the current, unanswered problem and generate a new one). In a
+    // test the set is fixed, so forward only ever steps within it.
     function goForward() {
         if (loading) return;
+        if (isTest) {
+            if (isLatest) return;
+            commitCurrent();
+            restore(historyIndex + 1);
+            return;
+        }
         if (isLatest) {
             if (submitted) return;
             recordSkip();
@@ -594,6 +881,7 @@
     }
 
     function togglePause() {
+        if (!behavior.allowPause) return;
         if (!problem || submitted || loading || !isLatest) return;
         if (paused) {
             startedAt = Date.now() - frozenElapsedMs;
@@ -617,6 +905,14 @@
                     applySettings(s.settings as unknown as PracticeSettings);
                     // Baseline so the first load doesn't re-persist the snapshot.
                     lastPersistedSettings = JSON.stringify(currentSettings());
+
+                    // Test format has its own setup (whole problem set up front,
+                    // deferred grading, results on completion) — don't fall through
+                    // to the random/review practice loop.
+                    if (format === "test") {
+                        await initTest(s);
+                        return;
+                    }
 
                     // Rebuild this view's back-navigation history from prior
                     // submissions (oldest first) as frozen entries, so a resumed
@@ -672,7 +968,7 @@
     });
 
     $effect(() => {
-        if (!problem || submitted || loading || !isLatest || paused) return;
+        if (!timerRunning) return;
 
         const timer = setInterval(() => {
             timerNow = Date.now();
@@ -681,9 +977,10 @@
         return () => clearInterval(timer);
     });
 
-    // While a problem is in progress within a session, periodically persist its
-    // elapsed time so a reload/resume continues from roughly where it was.
+    // While a problem is in progress within a (practice) session, periodically
+    // persist its elapsed time so a reload/resume continues from where it was.
     $effect(() => {
+        if (isTest) return;
         const sid = currentSessionId;
         if (sid == null) return;
         if (!problem || submitted || loading || !isLatest || paused) return;
@@ -697,6 +994,38 @@
 
         return () => clearInterval(timer);
     });
+
+    // Test format: persist draft answers/time to localStorage — immediately when
+    // the answer or position changes, and on a 5s heartbeat so elapsed time keeps
+    // pace. Cleared on submit.
+    $effect(() => {
+        if (!isTest || testFinished || currentSessionId == null) return;
+        // Track the inputs we want to snapshot on change.
+        void selectedChoice;
+        void answer;
+        void flagged;
+        void historyIndex;
+        void history.length;
+        // Debounce so rapid changes (e.g. typing a free-response answer) coalesce
+        // into one localStorage write instead of stringifying history per
+        // keystroke. The 5s heartbeat below bounds any data loss.
+        const timer = setTimeout(writeTestDraft, 400);
+        return () => clearTimeout(timer);
+    });
+
+    $effect(() => {
+        if (!isTest || testFinished || currentSessionId == null) return;
+        const timer = setInterval(() => writeTestDraft(), 5000);
+        return () => clearInterval(timer);
+    });
+
+    // Auto-submit a timed test the moment the clock runs out.
+    $effect(() => {
+        if (!isTest || testFinished || submittingTest) return;
+        if (timeLimitSeconds != null && remainingMs === 0) {
+            submitTest();
+        }
+    });
 </script>
 
 {#snippet statChip(value: number, color: string)}
@@ -706,6 +1035,100 @@
     >
         {value}
     </span>
+{/snippet}
+
+{#snippet testResults()}
+    <div class="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
+        <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 pt-4">
+            <!-- Score summary -->
+            <div
+                class="flex flex-col gap-3 rounded-xl border border-border/60 bg-surface-container-lowest p-5"
+            >
+                <div class="flex items-center gap-2">
+                    <Icon name="task_alt" class="text-primary" fontsize={22} />
+                    <h2 class="text-lg font-semibold">Test complete</h2>
+                </div>
+                <div
+                    class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground"
+                >
+                    {@render statChip(testCorrect, "var(--color-correct)")}
+                    {@render statChip(
+                        testIncorrect,
+                        "var(--color-destructive)",
+                    )}
+                    {@render statChip(testSkipped, "var(--color-unsure)")}
+                    <span class="ml-1">
+                        {testCorrect}/{history.length} correct · {formatElapsed(
+                            testElapsedTotalMs,
+                        )}
+                    </span>
+                </div>
+                <SegmentBar
+                    class="h-2"
+                    segments={[
+                        {
+                            value: testCorrect,
+                            color: "var(--color-correct)",
+                            label: "Correct",
+                        },
+                        {
+                            value: testIncorrect,
+                            color: "var(--color-destructive)",
+                            label: "Incorrect",
+                        },
+                        {
+                            value: testSkipped,
+                            color: "var(--color-unsure)",
+                            label: "Skipped",
+                        },
+                    ]}
+                />
+            </div>
+
+            <!-- Per-problem review -->
+            <div class="flex flex-col gap-3">
+                {#each history as entry (entry.problem.id)}
+                    <div
+                        class="rounded-lg border border-border/50 bg-surface-container-lowest p-4"
+                    >
+                        <div class="mb-3 flex items-center gap-2 text-xs">
+                            <span class="font-mono text-muted-foreground">
+                                #{entry.problem.n + 1}
+                            </span>
+                            <StatusTag
+                                size="sm"
+                                status={entry.selectedChoice == null
+                                    ? "skipped"
+                                    : entry.correct
+                                      ? "correct"
+                                      : "incorrect"}
+                            />
+                            {#if entry.flagged}
+                                <Icon
+                                    name="flag"
+                                    class="size-[1.1em] text-unsure"
+                                    fill
+                                />
+                            {/if}
+                        </div>
+                        <Problem
+                            problem={entry.problem}
+                            selectedChoice={entry.selectedChoice}
+                            showAnswerState={true}
+                            disabled={true}
+                            mode="preview"
+                        />
+                    </div>
+                {/each}
+            </div>
+
+            <div class="flex justify-center pt-2">
+                <Button variant="outline" href="/practice">
+                    Back to sessions
+                </Button>
+            </div>
+        </div>
+    </div>
 {/snippet}
 
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
@@ -738,8 +1161,16 @@
             </Button>
 
             {#if activeSession}
-                <div class="flex flex-row gap-1 opacity-50">
-                    <span>{activeSession.name}</span>
+                <div class="flex flex-row items-center gap-1.5">
+                    {#if isTest}
+                        <span
+                            class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                        >
+                            <Icon name="quiz" class="size-[1em]" />
+                            Test
+                        </span>
+                    {/if}
+                    <span class="opacity-50">{activeSession.name}</span>
                 </div>
             {/if}
         </div>
@@ -747,33 +1178,64 @@
         <div
             class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground"
         >
-            {@render statChip(correctAttempts, "var(--color-correct)")}
-            {@render statChip(incorrectAttempts, "var(--color-destructive)")}
-            {@render statChip(skippedAttempts, "var(--color-unsure)")}
-            <SegmentBar
-                class="w-36 h-2"
-                segments={[
-                    {
-                        value: correctAttempts,
-                        color: "var(--color-correct)",
-                        label: "Solved",
-                    },
-                    {
-                        value: incorrectAttempts,
-                        color: "var(--color-destructive)",
-                        label: "Incorrect",
-                    },
-                    {
-                        value: skippedAttempts,
-                        color: "var(--color-unsure)",
-                        label: "Skipped",
-                    },
-                ]}
-            />
-            {#if problem}
+            {#if behavior.showLiveFeedback}
+                {@render statChip(correctAttempts, "var(--color-correct)")}
+                {@render statChip(
+                    incorrectAttempts,
+                    "var(--color-destructive)",
+                )}
+                {@render statChip(skippedAttempts, "var(--color-unsure)")}
+                <SegmentBar
+                    class="w-36 h-2"
+                    segments={[
+                        {
+                            value: correctAttempts,
+                            color: "var(--color-correct)",
+                            label: "Solved",
+                        },
+                        {
+                            value: incorrectAttempts,
+                            color: "var(--color-destructive)",
+                            label: "Incorrect",
+                        },
+                        {
+                            value: skippedAttempts,
+                            color: "var(--color-unsure)",
+                            label: "Skipped",
+                        },
+                    ]}
+                />
+            {/if}
+            {#if isTest}
+                {#if !testFinished && history.length > 0}
+                    {@const timed = timeLimitSeconds != null}
+                    {@const low =
+                        timed && remainingMs != null && remainingMs <= 60_000}
+                    <div
+                        class={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
+                            low
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-surface-container-low",
+                        )}
+                        title={timed ? "Time remaining" : "Elapsed time"}
+                        aria-label={timed ? "Time remaining" : "Elapsed time"}
+                    >
+                        <Icon
+                            name={timed ? "timer" : "schedule"}
+                            class={iconCls}
+                        />
+                        <span class="leading-none tabular-nums">
+                            {formatElapsed(
+                                timed ? (remainingMs ?? 0) : totalElapsedMs,
+                            )}
+                        </span>
+                    </div>
+                {/if}
+            {:else if problem}
                 {@const isTotal = timerMode === "total"}
                 <div class="flex items-center gap-1.5">
-                    {#if !submitted && isLatest}
+                    {#if behavior.allowPause && !submitted && isLatest}
                         <Button
                             variant="ghost"
                             size="icon-sm"
@@ -835,7 +1297,7 @@
                         fontsize={24}
                     />
                     <p class="text-xs text-muted-foreground">
-                        Generating problem...
+                        {isTest ? "Loading test..." : "Generating problem..."}
                     </p>
                 </div>
             {:else if error}
@@ -849,13 +1311,45 @@
                     </div>
                     <div class="flex max-w-sm flex-col gap-1">
                         <h2 class="text-sm font-semibold">
-                            Could not load a problem
+                            {isTest
+                                ? "Could not load the test"
+                                : "Could not load a problem"}
                         </h2>
                         <p class="text-xs text-muted-foreground">{error}</p>
                     </div>
-                    <Button size="sm" onclick={() => loadProblem()}
-                        >Retry</Button
+                    {#if isTest}
+                        <Button
+                            size="sm"
+                            onclick={() => window.location.reload()}>Retry</Button
+                        >
+                    {:else}
+                        <Button size="sm" onclick={() => loadProblem()}
+                            >Retry</Button
+                        >
+                    {/if}
+                </div>
+            {:else if isTest && testFinished}
+                {@render testResults()}
+            {:else if isTest && history.length === 0}
+                <div
+                    class="flex-1 flex flex-col items-center justify-center gap-4 text-center"
+                >
+                    <div
+                        class="flex size-10 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
                     >
+                        <Icon name="quiz" fontsize={20} />
+                    </div>
+                    <div class="flex max-w-sm flex-col gap-1">
+                        <h2 class="text-sm font-semibold">
+                            This test has no answerable problems
+                        </h2>
+                        <p class="text-xs text-muted-foreground">
+                            None of its problems have a statement and choices yet.
+                        </p>
+                    </div>
+                    <Button size="sm" variant="outline" href="/practice">
+                        Back to sessions
+                    </Button>
                 </div>
             {:else if !problem}
                 <div
@@ -939,36 +1433,45 @@
                                 <div
                                     class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
                                 >
-                                    {#if currentSource === "review"}
-                                        <StatusTag status="review" size="sm" />
-                                        {#if currentProgress}
-                                            <span
-                                                class="inline-flex items-center gap-1"
-                                            >
-                                                <Icon
-                                                    name="visibility"
-                                                    class={iconCls}
-                                                />
-                                                Seen {currentProgress.timesSeen}×
-                                            </span>
-                                            {#if lastReviewedLabel}
-                                                <span class="text-border"
-                                                    >•</span
-                                                >
+                                    {#if behavior.showLiveFeedback}
+                                        {#if currentSource === "review"}
+                                            <StatusTag
+                                                status="review"
+                                                size="sm"
+                                            />
+                                            {#if currentProgress}
                                                 <span
                                                     class="inline-flex items-center gap-1"
-                                                    title="Last reviewed"
                                                 >
                                                     <Icon
-                                                        name="schedule"
+                                                        name="visibility"
                                                         class={iconCls}
                                                     />
-                                                    {lastReviewedLabel}
+                                                    Seen {currentProgress.timesSeen}×
                                                 </span>
+                                                {#if lastReviewedLabel}
+                                                    <span class="text-border"
+                                                        >•</span
+                                                    >
+                                                    <span
+                                                        class="inline-flex items-center gap-1"
+                                                        title="Last reviewed"
+                                                    >
+                                                        <Icon
+                                                            name="schedule"
+                                                            class={iconCls}
+                                                        />
+                                                        {lastReviewedLabel}
+                                                    </span>
+                                                {/if}
                                             {/if}
+                                        {:else}
+                                            <StatusTag status="new" size="sm" />
                                         {/if}
-                                    {:else}
-                                        <StatusTag status="new" size="sm" />
+                                    {:else if isTest}
+                                        <span class="font-mono">
+                                            {historyIndex + 1} / {history.length}
+                                        </span>
                                     {/if}
                                 </div>
                             </div>
@@ -986,8 +1489,11 @@
                                     answerIndex={problem.answer_index}
                                     bind:answer
                                     bind:selectedChoice
-                                    showAnswerState={submitted}
-                                    disabled={submitted || !isLatest || paused}
+                                    showAnswerState={behavior.revealAnswerState &&
+                                        submitted}
+                                    disabled={behavior.freezeOnNavigate
+                                        ? submitted || !isLatest || paused
+                                        : false}
                                 />
                             </div>
                         </div>
@@ -1032,78 +1538,129 @@
                         <div
                             class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
                         ></div>
-                        <div class="flex items-center gap-1">
-                            <Button
-                                variant="ghost"
-                                disabled={!canGoBack || paused}
-                                onclick={goBack}
-                                aria-label="Previous problem"
-                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
-                            >
-                                <Icon name="arrow_back" />
-                            </Button>
-                            <DropdownMenu options={moreOptions}>
+                        {#if !behavior.gradeImmediately}
+                            <div class="flex items-center gap-1">
                                 <Button
                                     variant="ghost"
-                                    aria-label="More options"
-                                    class={cn(
-                                        "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
-                                        flagged
-                                            ? "text-unsure hover:text-unsure/80"
-                                            : "text-muted-foreground hover:text-foreground",
-                                    )}
-                                    disabled={paused}
+                                    disabled={!canGoBack}
+                                    onclick={goBack}
+                                    aria-label="Previous problem"
+                                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
                                 >
-                                    <Icon name="more_horiz" />
+                                    <Icon name="arrow_back" />
                                 </Button>
-                            </DropdownMenu>
-                            <Button
-                                variant="ghost"
-                                disabled={(isLatest && submitted) || paused}
-                                onclick={goForward}
-                                aria-label={isLatest
-                                    ? "Skip problem"
-                                    : "Next problem"}
-                                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
-                            >
-                                {#if isLatest}
-                                    <Icon name="skip_next" />
-                                    Skip
-                                {:else}
-                                    <Icon name="arrow_forward" />
-                                {/if}
-                            </Button>
-                        </div>
+                                <DropdownMenu options={moreOptions}>
+                                    <Button
+                                        variant="ghost"
+                                        aria-label="More options"
+                                        class={cn(
+                                            "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
+                                            flagged
+                                                ? "text-unsure hover:text-unsure/80"
+                                                : "text-muted-foreground hover:text-foreground",
+                                        )}
+                                    >
+                                        <Icon name="more_horiz" />
+                                    </Button>
+                                </DropdownMenu>
+                            </div>
 
-                        <div>
-                            {#if !isLatest}
+                            <div>
+                                {#if !isLatest}
+                                    <Button
+                                        variant="ghost"
+                                        onclick={goForward}
+                                        aria-label="Next problem"
+                                        class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                                    >
+                                        <Icon name="arrow_forward" />
+                                    </Button>
+                                {:else}
+                                    <Button
+                                        onclick={submitTest}
+                                        disabled={submittingTest}
+                                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                                    >
+                                        <Icon name="done_all" />
+                                        Submit test
+                                    </Button>
+                                {/if}
+                            </div>
+                        {:else}
+                            <div class="flex items-center gap-1">
                                 <Button
-                                    variant="outline"
-                                    onclick={jumpToLatest}
-                                    disabled={paused}
-                                    class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
+                                    variant="ghost"
+                                    disabled={!canGoBack || paused}
+                                    onclick={goBack}
+                                    aria-label="Previous problem"
+                                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
                                 >
-                                    Latest
-                                    <Icon name="last_page" />
+                                    <Icon name="arrow_back" />
                                 </Button>
-                            {:else if submitted}
+                                <DropdownMenu options={moreOptions}>
+                                    <Button
+                                        variant="ghost"
+                                        aria-label="More options"
+                                        class={cn(
+                                            "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
+                                            flagged
+                                                ? "text-unsure hover:text-unsure/80"
+                                                : "text-muted-foreground hover:text-foreground",
+                                        )}
+                                        disabled={paused}
+                                    >
+                                        <Icon name="more_horiz" />
+                                    </Button>
+                                </DropdownMenu>
                                 <Button
-                                    onclick={() => loadProblem()}
-                                    class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                                    variant="ghost"
+                                    disabled={(isLatest && submitted) || paused}
+                                    onclick={goForward}
+                                    aria-label={isLatest
+                                        ? "Skip problem"
+                                        : "Next problem"}
+                                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
                                 >
-                                    Next
-                                    <Icon name="arrow_forward" />
+                                    {#if isLatest}
+                                        <Icon name="skip_next" />
+                                        Skip
+                                    {:else}
+                                        <Icon name="arrow_forward" />
+                                    {/if}
                                 </Button>
-                            {:else}
-                                <Button
-                                    disabled={selectedChoice == null || paused}
-                                    onclick={submitAnswer}
-                                    class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
-                                >
-                                    Submit
-                                </Button>
-                            {/if}
-                        </div>
+                            </div>
+
+                            <div>
+                                {#if !isLatest}
+                                    <Button
+                                        variant="outline"
+                                        onclick={jumpToLatest}
+                                        disabled={paused}
+                                        class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
+                                    >
+                                        Latest
+                                        <Icon name="last_page" />
+                                    </Button>
+                                {:else if submitted}
+                                    <Button
+                                        onclick={() => loadProblem()}
+                                        class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                                    >
+                                        Next
+                                        <Icon name="arrow_forward" />
+                                    </Button>
+                                {:else}
+                                    <Button
+                                        disabled={selectedChoice == null ||
+                                            paused}
+                                        onclick={submitAnswer}
+                                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
+                                    >
+                                        Submit
+                                    </Button>
+                                {/if}
+                            </div>
+                        {/if}
                     </footer>
                 </div>
             {/if}
@@ -1129,6 +1686,9 @@
                 bind:lastOutcome
                 bind:includeUnscheduled
                 canReview={!!user}
+                {isTest}
+                {testName}
+                {timeLimitSeconds}
                 onClose={() => (showSettings = false)}
             />
         {/if}

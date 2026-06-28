@@ -64,6 +64,9 @@
         lastOutcome = $bindable<"any" | "correct" | "incorrect">("any"),
         includeUnscheduled = $bindable(false),
         canReview = true,
+        isTest = false,
+        testName = null,
+        timeLimitSeconds = null,
         onClose,
     }: {
         mode: PracticeMode;
@@ -77,6 +80,10 @@
         lastOutcome: "any" | "correct" | "incorrect";
         includeUnscheduled: boolean;
         canReview?: boolean;
+        /** Test format: show a read-only summary instead of the editable filters. */
+        isTest?: boolean;
+        testName?: string | null;
+        timeLimitSeconds?: number | null;
         onClose?: () => void;
     } = $props();
 
@@ -110,9 +117,13 @@
 >
     <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
         <div>
-            <h2 class="text-sm font-semibold">Settings</h2>
+            <h2 class="text-sm font-semibold">
+                {isTest ? "Test" : "Settings"}
+            </h2>
             <p class="text-[10px] text-muted-foreground">
-                Applies to the next problem.
+                {isTest
+                    ? "Locked for the duration of the test."
+                    : "Applies to the next problem."}
             </p>
         </div>
         <Button
@@ -126,8 +137,36 @@
         </Button>
     </div>
 
-    <!-- Primary control: New / Due Review / Mixed -->
-    <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+    {#if isTest}
+        <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+                <span class="text-xs font-medium text-muted-foreground"
+                    >Test</span
+                >
+                <span class="text-sm font-semibold text-foreground">
+                    {testName ?? "Selected test"}
+                </span>
+            </div>
+            <div class="flex flex-col gap-1">
+                <span class="text-xs font-medium text-muted-foreground"
+                    >Time limit</span
+                >
+                <span class="text-sm text-foreground">
+                    {timeLimitSeconds == null
+                        ? "Unlimited"
+                        : `${Math.round(timeLimitSeconds / 60)} min`}
+                </span>
+            </div>
+            <p
+                class="rounded-md bg-surface-container-low p-3 text-[11px] leading-relaxed text-muted-foreground"
+            >
+                Answer the problems in any order. Nothing is graded until you
+                submit the test, then you'll see your results.
+            </p>
+        </div>
+    {:else}
+        <!-- Primary control: New / Due Review / Mixed -->
+        <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">Problems</span>
         <div
             class="flex items-center gap-1 rounded-lg border border-border/60 bg-surface-container-low p-1"
@@ -303,12 +342,13 @@
         {/if}
     </div>
 
-    <Button
-        variant="outline"
-        size="sm"
-        class="w-full text-xs"
-        onclick={resetSettings}
-    >
-        Reset settings
-    </Button>
+        <Button
+            variant="outline"
+            size="sm"
+            class="w-full text-xs"
+            onclick={resetSettings}
+        >
+            Reset settings
+        </Button>
+    {/if}
 </aside>

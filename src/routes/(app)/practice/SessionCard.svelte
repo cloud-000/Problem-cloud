@@ -28,6 +28,11 @@
         onDelete: () => void;
     } = $props();
 
+    // Session format from the settings snapshot (older sessions predate it).
+    const isTest = $derived(
+        (session.settings as { format?: string } | null)?.format === "test",
+    );
+
     // Self-contained per-card UI state.
     let expanded = $state(false);
     let submissions = $state<RecentSubmissionRow[] | null | undefined>(
@@ -141,11 +146,18 @@
                 status={session.status === "active" ? "active" : "ended"}
                 disabled={busy}
                 action={{
-                    label: session.status === "active" ? "Continue" : "Resume",
+                    label:
+                        session.status === "active"
+                            ? "Continue"
+                            : isTest
+                              ? "Results"
+                              : "Resume",
                     icon:
                         session.status === "active"
                             ? "play_arrow"
-                            : "restart_alt",
+                            : isTest
+                              ? "visibility"
+                              : "restart_alt",
                     onclick: onContinue,
                 }}
             />
@@ -157,9 +169,19 @@
             >
                 <div class="flex flex-col min-w-0">
                     <span
-                        class="text-sm font-semibold text-foreground truncate"
+                        class="flex items-center gap-1.5 text-sm font-semibold text-foreground"
                     >
-                        {session.name ?? "Untitled session"}
+                        <span class="truncate">
+                            {session.name ?? "Untitled session"}
+                        </span>
+                        {#if isTest}
+                            <span
+                                class="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                            >
+                                <Icon name="quiz" class="size-[1em]" />
+                                Test
+                            </span>
+                        {/if}
                     </span>
                     <span class="text-xs text-muted-foreground mt-0.5">
                         {formatDate(session.started_at)}

@@ -214,6 +214,23 @@ export async function fetchByIds(
     >).map(withProgress);
 }
 
+/**
+ * Lightweight test list (id, name, year, default time limit) for pickers such as
+ * the Test-session creator. Newest first; unpaginated (bounded by the API's
+ * `max_rows`).
+ */
+export async function fetchAllTests(
+    supabase: Supabase,
+): Promise<Pick<TestRow, "id" | "name" | "year" | "time_limit_seconds">[]> {
+    const { data, error } = await supabase
+        .from("tests")
+        .select("id, name, year, time_limit_seconds")
+        .order("year", { ascending: false })
+        .order("name");
+    if (error) throw error;
+    return data ?? [];
+}
+
 /** Lightweight `{id, name}` list to populate the series filter combobox. */
 export async function fetchAllSeries(
     supabase: Supabase,

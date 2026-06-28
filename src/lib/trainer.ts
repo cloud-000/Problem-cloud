@@ -6,10 +6,25 @@ type Supabase = SupabaseClient<Database>;
 
 export type PracticeMode = "new" | "review" | "mixed";
 
+/**
+ * The session *format* — how the whole practice run behaves — as opposed to
+ * `PracticeMode`, which only chooses where problems are drawn from. "practice" is
+ * the free-form default; "test" pins the session to one test and defers grading.
+ * (Room reserved for a future "relay" format.)
+ */
+export type SessionFormat = "practice" | "test";
+
 export type Range = [number, number];
 
 export type PracticeSettings = {
     mode: PracticeMode;
+    // Session format. Defaults to "practice"; reads must tolerate older snapshots
+    // that predate this field (treat a missing value as "practice").
+    format: SessionFormat;
+    // Test-format only: the test whose problems are worked through, in order, and
+    // the total time allotment in seconds (null = unlimited / untimed).
+    testId: number | null;
+    timeLimitSeconds: number | null;
     // Problem-attribute filters — apply to every mode.
     topic: string[];
     difficulty: Range;
@@ -24,6 +39,43 @@ export type PracticeSettings = {
     lastOutcome: "any" | "correct" | "incorrect";
     // Also surface seen problems with no scheduled review (`next_review_at IS NULL`).
     includeUnscheduled: boolean;
+};
+
+/**
+ * Per-format behavior flags consumed by the practice view, so format differences
+ * are declared in one place rather than scattered as `if (format === …)` checks.
+ * "practice" is the historical behavior; "test" defers grading and keeps every
+ * problem editable (no per-problem freeze) until a single final submission.
+ */
+export const FORMAT_BEHAVIOR: Record<
+    SessionFormat,
+    {
+        /** Freeze a problem once navigated away from (practice) vs. keep editable (test). */
+        freezeOnNavigate: boolean;
+        /** Grade + record each answer immediately (practice) vs. all at the end (test). */
+        gradeImmediately: boolean;
+        /** Reveal correct/incorrect state on the answer UI as you go. */
+        revealAnswerState: boolean;
+        /** Show the running solved/incorrect/skipped chips, bar and status tags. */
+        showLiveFeedback: boolean;
+        /** Allow pausing the timer. */
+        allowPause: boolean;
+    }
+> = {
+    practice: {
+        freezeOnNavigate: true,
+        gradeImmediately: true,
+        revealAnswerState: true,
+        showLiveFeedback: true,
+        allowPause: true,
+    },
+    test: {
+        freezeOnNavigate: false,
+        gradeImmediately: false,
+        revealAnswerState: false,
+        showLiveFeedback: false,
+        allowPause: false,
+    },
 };
 
 export type PracticeSource = "practice" | "review";
@@ -83,6 +135,9 @@ export function createSession(): PracticeSession {
 export function defaultPracticeSettings(): PracticeSettings {
     return {
         mode: "new",
+        format: "practice",
+        testId: null,
+        timeLimitSeconds: null,
         topic: [],
         difficulty: [...DIFFICULTY_RANGE],
         verifiedOnly: false,
@@ -94,6 +149,23 @@ export function defaultPracticeSettings(): PracticeSettings {
         lastSubmissionDays: null,
         lastOutcome: "any",
         includeUnscheduled: false,
+    };
+}
+
+/**
+ * Default settings for a Test-format session pinned to `testId`. The draw filters
+ * are irrelevant (problems come straight from the test, in order), so this just
+ * overrides format/test/time onto the practice defaults.
+ */
+export function defaultTestSettings(
+    testId: number,
+    timeLimitSeconds: number | null,
+): PracticeSettings {
+    return {
+        ...defaultPracticeSettings(),
+        format: "test",
+        testId,
+        timeLimitSeconds,
     };
 }
 
@@ -386,4 +458,25 @@ export async function nextPracticeProblem(
 
     draw = await drawFromSource(supabase, settings, session, fallback);
     return { problem: draw.problem, source: fallback, progress: draw.progress };
+}
+
+/**
+ * Every eligible problem belonging to a test, in problem-number order. Unlike
+ * the random/review draws, Test format works through a fixed, fully-known set, so
+ * this is fetched once (unpaginated) and the whole sequence becomes the session's
+ * navigable history. Ineligible problems (missing statement/choices/answer) are
+ * dropped so a test can't strand the user on an unanswerable item.
+ */
+export async function fetchTestProblems(
+    supabase: Supabase,
+    testId: number,
+): Promise<ProblemRow[]> {
+    const { data, error } = await supabase
+        .from("problems")
+        .select(PROBLEM_SELECT)
+        .eq("test_id", testId)
+        .order("n")
+        .order("id");
+    if (error) throw error;
+    return ((data ?? []) as unknown as ProblemRow[]).filter(isEligibleProblem);
 }
