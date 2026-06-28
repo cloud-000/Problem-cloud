@@ -106,7 +106,7 @@
 
 <aside
     transition:fly={{ x: 30, duration: 200 }}
-    class="w-full lg:w-72 shrink-0 flex flex-col gap-5 rounded-lg border border-border/50 bg-surface-container-lowest p-5 h-full overflow-y-auto lg:sticky lg:top-6 lg:border-y-0 lg:border-r-0 lg:rounded-none lg:bg-transparent lg:pl-6"
+    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col gap-5 bg-surface-container-lowest p-5 h-full shadow-2xl border-l border-border/50 overflow-y-auto overflow-x-hidden lg:static lg:w-80 lg:h-full lg:bg-transparent lg:shadow-none lg:py-0 lg:px-6 lg:border-y-0 lg:border-r-0 lg:rounded-none"
 >
     <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
         <div>

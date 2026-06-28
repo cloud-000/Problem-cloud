@@ -73,7 +73,7 @@
 
     <!-- Hover toolbar -->
     <div
-        class="absolute right-2 top-2 flex gap-1 rounded-lg border border-border/60 bg-surface-container-lowest/90 p-1 opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+        class="absolute right-2 top-2 flex gap-1 rounded-lg border border-border/60 bg-surface-container-lowest/90 p-1 opacity-0 shadow-xs backdrop-blur-(--backdrop-blur) transition-opacity group-hover:opacity-100 focus-within:opacity-100"
     >
         {#if code}
             <Button
@@ -109,7 +109,7 @@
 {#if expanded}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-(--backdrop-blur)"
         transition:fade={{ duration: 150, easing: cubicOut }}
         onclick={(event) => {
             // Close only when the backdrop itself (not the image) is clicked.

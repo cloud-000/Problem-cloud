@@ -143,6 +143,9 @@
     --spacing-xl: 40px;
     --spacing-gutter: 16px;
     --spacing-margin: 24px;
+
+    /* Blur Amount */
+    --backdrop-blur: 4px;
 }
 
 @theme {

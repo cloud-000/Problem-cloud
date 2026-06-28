@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
+import type { ProblemRow } from "$lib/library";
 import type { PracticeSettings } from "$lib/trainer";
 
 type Supabase = SupabaseClient<Database>;
@@ -144,33 +145,51 @@ export async function setCurrentProblem(
     if (error) throw error;
 }
 
-/** A prior submission in a session: which problem, and how it went. */
-export type SessionAttempt = {
-    problemId: number;
+/**
+ * A prior submission in a session, carrying the full problem so the live view's
+ * back-navigation history can be rebuilt on resume. Ordered oldest-first to
+ * match the order the problems were originally shown.
+ */
+export type SessionHistoryEntry = {
+    problem: ProblemRow;
+    source: string | null;
+    selectedChoice: number | null;
     isCorrect: boolean | null;
     skipped: boolean;
+    flagged: boolean;
+    elapsedMs: number;
 };
 
 /**
- * The problems already attempted (answered or skipped) in a session, with their
- * outcome. Used to seed the draw-state so a resumed session doesn't re-show
- * problems it has already covered, and to restore the live solved/incorrect/
- * skipped tallies. RLS scopes rows to the authenticated user.
+ * The problems already attempted (answered or skipped) in a session, oldest
+ * first, each with its full problem row and outcome. Used to rebuild the live
+ * view's history (so a resumed session can be paged back through), seed the
+ * draw-state so it doesn't re-show covered problems, and restore the
+ * solved/incorrect/skipped tallies. RLS scopes rows to the authenticated user.
  */
-export async function fetchSessionAttempts(
+export async function fetchSessionHistory(
     supabase: Supabase,
     sessionId: number,
-): Promise<SessionAttempt[]> {
+): Promise<SessionHistoryEntry[]> {
     const { data, error } = await supabase
         .from("submissions")
-        .select("problem_id, is_correct, skipped")
-        .eq("session_id", sessionId);
+        .select(
+            "selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, tests(name, series_id, series(name)))",
+        )
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: true });
     if (error) throw error;
-    return (data ?? []).map((row) => ({
-        problemId: row.problem_id,
-        isCorrect: row.is_correct,
-        skipped: row.skipped,
-    }));
+    return (data ?? [])
+        .filter((row) => row.problems != null)
+        .map((row) => ({
+            problem: row.problems as unknown as ProblemRow,
+            source: row.source,
+            selectedChoice: row.selected_choice,
+            isCorrect: row.is_correct,
+            skipped: row.skipped,
+            flagged: row.flagged,
+            elapsedMs: row.elapsed_ms ?? 0,
+        }));
 }
 
 /**

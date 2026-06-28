@@ -26,7 +26,7 @@
     import {
         endSession,
         fetchSession,
-        fetchSessionAttempts,
+        fetchSessionHistory,
         setCurrentProblem,
         updateSessionSettings,
         type PracticeSessionRow,
@@ -35,6 +35,7 @@
     import { StatusTag } from "$lib/components/status-tag";
     import { SegmentBar } from "$lib/components/segment-bar";
     import { onMount } from "svelte";
+    import { fade } from "svelte/transition";
     import SettingsPanel, {
         COUNTER_RANGE,
         type CounterEnabled,
@@ -97,9 +98,6 @@
     let priorCorrect = $state(0);
     let priorIncorrect = $state(0);
     let priorSkipped = $state(0);
-    // Time accrued before this view: the session's trigger-maintained total at
-    // resume (0 for root / a fresh session). Live time is added on top below.
-    let priorTotalMs = $derived(activeSession?.total_time_ms ?? 0);
 
     // Last settings snapshot persisted to the session, to skip redundant writes.
     let lastPersistedSettings = "";
@@ -254,13 +252,14 @@
 
     let elapsedMs = $derived(elapsedAt(timerNow));
 
-    // Total time across the whole session: the prior total plus every problem in
-    // this view's history, substituting the live count for the on-screen one.
+    // Total time across the whole session: every problem in this view's history
+    // (prior work is rebuilt into it on resume), substituting the live count for
+    // the on-screen one.
     let totalElapsedMs = $derived(
         history.reduce(
             (sum, entry, i) =>
                 sum + (i === historyIndex ? elapsedMs : entry.elapsedMs),
-            priorTotalMs,
+            0,
         ),
     );
     // The timer chip swaps between the current problem and the session total.
@@ -581,10 +580,25 @@
                     // Baseline so the first load doesn't re-persist the snapshot.
                     lastPersistedSettings = JSON.stringify(currentSettings());
 
-                    // Seed draw-state + the live counts from prior work so the
-                    // queue doesn't repeat and the indicators stay continuous.
-                    const prior = await fetchSessionAttempts(supabase, s.id);
-                    for (const a of prior) session.shownIds.add(a.problemId);
+                    // Rebuild this view's back-navigation history from prior
+                    // submissions (oldest first) as frozen entries, so a resumed
+                    // session can be paged back through. The same data seeds the
+                    // draw-state (so the queue doesn't repeat) and the carried-
+                    // over outcome tallies, keeping the indicators continuous.
+                    const prior = await fetchSessionHistory(supabase, s.id);
+                    history = prior.map((a) => ({
+                        problem: a.problem,
+                        source: (a.source as PracticeSource) ?? "practice",
+                        progress: null,
+                        selectedChoice: a.selectedChoice,
+                        answer: "",
+                        submitted: !a.skipped,
+                        correct: a.isCorrect,
+                        flagged: a.flagged,
+                        elapsedMs: a.elapsedMs,
+                        attemptIndex: null,
+                    }));
+                    for (const a of prior) session.shownIds.add(a.problem.id);
                     session.drawIndex = prior.length;
                     sessionAttemptCount = prior.length;
                     priorSkipped = prior.filter((a) => a.skipped).length;
@@ -656,10 +670,10 @@
     </span>
 {/snippet}
 
-<div class="flex h-full w-full flex-col gap-1">
+<div class="flex h-full w-full flex-col gap-0 overflow-hidden">
     <!-- Top utility bar: back to hub, session context, Settings, stats, timer -->
     <div
-        class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none"
+        class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none z-10 backdrop-blur-(--backdrop-blur)"
     >
         <div class="flex items-center">
             <a
@@ -721,8 +735,7 @@
                 {@const isTotal = timerMode === "total"}
                 <button
                     type="button"
-                    onclick={() =>
-                        (timerMode = isTotal ? "problem" : "total")}
+                    onclick={() => (timerMode = isTotal ? "problem" : "total")}
                     class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
                     title={isTotal
                         ? "Total session time — click for this problem"
@@ -731,7 +744,10 @@
                         ? "Total session time"
                         : "Time on this problem"}
                 >
-                    <Icon name={isTotal ? "timelapse" : "schedule"} class={iconCls} />
+                    <Icon
+                        name={isTotal ? "timelapse" : "schedule"}
+                        class={iconCls}
+                    />
                     <span class="leading-none">
                         {formatElapsed(isTotal ? totalElapsedMs : elapsedMs)}
                     </span>
@@ -742,10 +758,10 @@
 
     <!-- Main Content Area: Problem + Collapsible Settings Panel -->
     <div
-        class="flex flex-1 flex-col lg:flex-row gap-1 items-stretch justify-center w-full min-h-0 h-full"
+        class="flex flex-1 flex-col lg:flex-row gap-0 items-stretch justify-center w-full min-h-0"
     >
         <main
-            class="flex-1 w-full min-w-0 flex flex-col justify-between pt-2 h-full"
+            class="flex-1 w-full min-w-0 flex flex-col justify-between pt-2 min-h-0"
         >
             {#if loading}
                 <div
@@ -825,65 +841,68 @@
                 </div>
             {:else}
                 <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
-                    <!-- Metadata row: source/series/topic on the left, review status on the right -->
+                    <!-- Problem statement and choices: Scrollable area -->
                     <div
-                        class="mb-2 flex items-center justify-between gap-3 px-4 select-none bg-transparent"
+                        class="flex-1 flex flex-col justify-start items-center gap-4 w-full min-h-0 overflow-y-auto pt-0 pb-4 px-6"
                     >
+                        <!-- Metadata row: source/series/topic on the left, review status on the right -->
                         <div
-                            class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground"
+                            class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full"
                         >
-                            {#if problem.tests?.name}
-                                <span>{problem.tests.name}</span>
-                                <span class="text-border">•</span>
-                            {/if}
-                            <span>#{problem.n + 1}</span>
-                            {#if topicName}
-                                <span class="text-border">•</span>
-                                <span>{topicName}</span>
-                            {/if}
-                        </div>
-
-                        <div
-                            class="flex items-center gap-2 text-[11px] text-muted-foreground"
-                        >
-                            {#if currentSource === "review"}
-                                <StatusTag status="review" size="sm" />
-                                {#if currentProgress}
-                                    <span
-                                        class="inline-flex items-center gap-1"
+                            <div
+                                class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
+                            >
+                                {#if problem.tests?.name}
+                                    <span class="truncate"
+                                        >{problem.tests.name}</span
                                     >
-                                        <Icon
-                                            name="visibility"
-                                            class={iconCls}
-                                        />
-                                        Seen {currentProgress.timesSeen}×
-                                    </span>
-                                    {#if lastReviewedLabel}
-                                        <span class="text-border">•</span>
+                                    <span class="text-border shrink-0">•</span>
+                                {/if}
+                                <span class="shrink-0">#{problem.n + 1}</span>
+                                {#if topicName}
+                                    <span class="text-border shrink-0">•</span>
+                                    <span class="truncate" title={topicName}
+                                        >{topicName}</span
+                                    >
+                                {/if}
+                            </div>
+
+                            <div
+                                class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
+                            >
+                                {#if currentSource === "review"}
+                                    <StatusTag status="review" size="sm" />
+                                    {#if currentProgress}
                                         <span
                                             class="inline-flex items-center gap-1"
-                                            title="Last reviewed"
                                         >
                                             <Icon
-                                                name="schedule"
+                                                name="visibility"
                                                 class={iconCls}
                                             />
-                                            {lastReviewedLabel}
+                                            Seen {currentProgress.timesSeen}×
                                         </span>
+                                        {#if lastReviewedLabel}
+                                            <span class="text-border">•</span>
+                                            <span
+                                                class="inline-flex items-center gap-1"
+                                                title="Last reviewed"
+                                            >
+                                                <Icon
+                                                    name="schedule"
+                                                    class={iconCls}
+                                                />
+                                                {lastReviewedLabel}
+                                            </span>
+                                        {/if}
                                     {/if}
+                                {:else}
+                                    <StatusTag status="new" size="sm" />
                                 {/if}
-                            {:else}
-                                <StatusTag status="new" size="sm" />
-                            {/if}
+                            </div>
                         </div>
-                    </div>
-
-                    <!-- Problem statement and choices: Centered vertically using flex-grow -->
-                    <div
-                        class="flex-1 flex flex-col justify-center items-center gap-4 w-full min-h-0 overflow-y-auto py-4 px-6"
-                    >
                         <div
-                            class="flex h-full min-h-fit w-full items-center justify-center"
+                            class="flex flex-1 min-h-fit w-full items-center justify-center"
                         >
                             <MathStatement
                                 text={problem.statement ?? ""}
@@ -904,7 +923,7 @@
 
                     <!-- Footer with ghosted Flag/Skip and primary Next/Submit buttons -->
                     <footer
-                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50"
+                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50 backdrop-blur-(--backdrop-blur)"
                     >
                         <div class="flex items-center gap-1">
                             <Button
@@ -984,6 +1003,12 @@
 
         <!-- Sidebar settings panel -->
         {#if showSettings}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <div
+                class="fixed inset-0 z-40 bg-black/40 backdrop-blur-(--backdrop-blur) lg:hidden"
+                onclick={() => (showSettings = false)}
+                transition:fade={{ duration: 150 }}
+            ></div>
             <SettingsPanel
                 bind:mode
                 bind:topic
