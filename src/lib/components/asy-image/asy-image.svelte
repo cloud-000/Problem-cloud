@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { fade, scale } from "svelte/transition";
+    import { scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Modal } from "$lib/components/modal";
     import { Theme } from "$lib/utils/Theme.svelte";
 
     let {
@@ -27,26 +28,6 @@
     // Luminance-only inversion: flips black<->white backgrounds while keeping
     // colored strokes roughly true. Applied to the <img> only.
     const INVERT_STYLE = "filter: invert(1) hue-rotate(180deg)";
-
-    // While the lightbox is open, trap Escape and lock page scroll. The cleanup
-    // runs both when it closes and if the component is unmounted while open, so
-    // no listener or scroll-lock is ever left dangling.
-    $effect(() => {
-        if (!expanded) return;
-
-        function onKeydown(event: KeyboardEvent) {
-            if (event.key === "Escape") expanded = false;
-        }
-
-        document.addEventListener("keydown", onKeydown);
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-
-        return () => {
-            document.removeEventListener("keydown", onKeydown);
-            document.body.style.overflow = previousOverflow;
-        };
-    });
 </script>
 
 <div class={cn("group relative my-3", className)}>
@@ -61,7 +42,7 @@
                 src={imageSrc}
                 alt="Asymptote diagram"
                 style={inverted ? INVERT_STYLE : ""}
-                class="block max-h-[300px] max-w-full object-contain mx-auto rounded-lg"
+                class="block max-h-[300px] max-w-full object-contain mx-auto rounded-lg select-none"
             />
         </button>
     {:else}
@@ -106,31 +87,23 @@
     </div>
 </div>
 
-{#if expanded}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-(--backdrop-blur)"
-        transition:fade={{ duration: 150, easing: cubicOut }}
-        onclick={(event) => {
-            // Close only when the backdrop itself (not the image) is clicked.
-            if (event.target === event.currentTarget) expanded = false;
-        }}
+<!-- Fullscreen lightbox: a chromeless (bare) Modal that owns the backdrop,
+     Escape handling, scroll-lock, and backdrop-click close. -->
+<Modal bind:open={expanded} variant="bare" aria-label="Expanded diagram">
+    <img
+        src={imageSrc}
+        alt="Asymptote diagram"
+        style={inverted ? INVERT_STYLE : ""}
+        class="max-h-full max-w-full object-contain rounded-lg select-none"
+        transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
+    />
+    <Button
+        variant="ghost"
+        size="icon"
+        class="absolute right-4 top-4 bg-surface-container-lowest/90 text-foreground"
+        title="Close"
+        onclick={() => (expanded = false)}
     >
-        <img
-            src={imageSrc}
-            alt="Asymptote diagram"
-            style={inverted ? INVERT_STYLE : ""}
-            class="max-h-full max-w-full object-contain rounded-lg"
-            transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
-        />
-        <Button
-            variant="ghost"
-            size="icon"
-            class="absolute right-4 top-4 bg-surface-container-lowest/90 text-foreground"
-            title="Close"
-            onclick={() => (expanded = false)}
-        >
-            <Icon name="close" />
-        </Button>
-    </div>
-{/if}
+        <Icon name="close" />
+    </Button>
+</Modal>
