@@ -115,7 +115,7 @@
         <!-- Modal panel -->
         <div
             class={cn(
-                "flex flex-col bg-surface-container-high border border-border/80 shadow-xl overflow-hidden transition-all",
+                "flex flex-col bg-surface-container-lowest border border-border/80 shadow-xl overflow-hidden transition-all",
                 size === "full" ? "h-full" : "rounded-xl max-h-[90vh]",
                 sizeClasses[size],
                 className
