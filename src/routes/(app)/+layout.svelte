@@ -1,6 +1,7 @@
 <script lang="ts">
     import * as Sidebar from "$lib/components/sidebar";
     import { ToastContainer } from "$lib/components/toast";
+    import { ModalContainer } from "$lib/components/modal";
     import { page } from "$app/state";
     import { enhance } from "$app/forms";
     import { Icon } from "$lib/components/icon/.";
@@ -164,4 +165,5 @@
     </div>
 
     <ToastContainer onDismiss={onToastClose} />
+    <ModalContainer />
 </div>

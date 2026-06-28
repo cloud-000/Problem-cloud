@@ -50,6 +50,12 @@
             description: "Recursive, boundary-aware dropdown menus with submenus.",
             href: "/testing-features/dropdown-menu",
         },
+        {
+            icon: "picture_in_picture",
+            name: "Modal",
+            description: "Premium dialog modals with custom sizes and keyboard control.",
+            href: "/testing-features/modal",
+        },
     ];
 </script>
 
