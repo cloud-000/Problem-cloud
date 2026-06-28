@@ -25,6 +25,17 @@ create index submissions_user_problem_idx on public.submissions(user_id, problem
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
 create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
 
+-- A Test-format session records exactly one graded submission per problem, all
+-- inserted in a single batch at submit time. This partial unique index makes that
+-- submit idempotent: a retried submit (a reload after the session-end failed, or
+-- a second tab) collides with the constraint and the whole batch rolls back,
+-- instead of duplicating every row and double-counting progress. Practice/review
+-- submissions (other `source` values) are intentionally unconstrained — they are
+-- an append-only log of repeated attempts.
+create unique index submissions_test_session_problem_uidx
+  on public.submissions(session_id, problem_id)
+  where source = 'test';
+
 -- Per-(user, problem) aggregate + SM-2 scheduling state.
 create table public.problem_progress (
   user_id            uuid   references public.profiles(id) on delete cascade not null,

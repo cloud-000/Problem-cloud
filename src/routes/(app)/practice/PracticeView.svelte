@@ -243,9 +243,12 @@
                 return;
             }
 
-            // Already submitted → render results from the graded submissions.
-            if (s.status === "ended") {
-                const graded = await fetchSessionHistory(supabase, s.id);
+            // A test is "submitted" once its graded rows exist. The session's
+            // `ended` status can lag — a prior submit may have recorded the rows
+            // but failed to end the session — so detect completion from the
+            // submissions themselves, not just status, and render the results.
+            const graded = await fetchSessionHistory(supabase, s.id);
+            if (s.status === "ended" || graded.length > 0) {
                 // fetchSessionHistory orders by created_at, but a test's rows are
                 // batch-inserted with identical timestamps, so that order is
                 // arbitrary. Re-sort into problem order for the review list.
@@ -267,6 +270,16 @@
                 }));
                 historyIndex = history.length - 1;
                 testFinished = true;
+                // Reconcile a session left active by a submit whose end-of-session
+                // call failed; grading already happened, so this just flips status.
+                if (s.status !== "ended") {
+                    endSession(supabase, s.id).catch((e) =>
+                        console.error(
+                            "Failed to reconcile test session:",
+                            e,
+                        ),
+                    );
+                }
                 return;
             }
 
@@ -350,24 +363,35 @@
                         session_id: currentSessionId,
                     };
                 });
-                // Idempotent submit: a prior attempt may have inserted the rows
-                // but failed before ending the session (then the user reloads and
-                // retries). The submissions are append-only with no unique guard,
-                // so re-inserting would duplicate every row and double-count
-                // progress — skip the insert if this session already has any.
-                const { count, error: countError } = await supabase
-                    .from("submissions")
-                    .select("*", { count: "exact", head: true })
-                    .eq("session_id", currentSessionId);
-                if (countError) throw countError;
-                if ((count ?? 0) === 0 && rows.length > 0) {
+                // Record the graded submissions. Idempotency is enforced in the
+                // DB by a partial unique index on (session_id, problem_id) where
+                // source = 'test': a retried or concurrent submit (a reload after
+                // a failed session-end, or a second tab) collides with the
+                // constraint and the whole batch rolls back atomically. This
+                // replaces a count-then-insert check that could race two submits
+                // past the guard and double-count every row.
+                if (rows.length > 0) {
                     const { error: insertError } = await supabase
                         .from("submissions")
                         .insert(rows);
-                    if (insertError) throw insertError;
+                    // 23505 = unique_violation: the grades are already recorded
+                    // (a prior attempt or another tab won), so treat it as an
+                    // already-submitted success rather than an error.
+                    if (insertError && insertError.code !== "23505") {
+                        throw insertError;
+                    }
                 }
-                await endSession(supabase, currentSessionId);
+                // Grades are in, so the local draft is obsolete — drop it now, not
+                // after endSession, so a failed end can't strand stale answers
+                // that a resubmit would silently discard.
                 clearTestDraft(currentSessionId);
+                // Ending the session is a status flip, not part of grading: if it
+                // fails the grades still stand, so don't surface it as a submit
+                // failure (which would send the user back to an editable test).
+                // initTest re-ends the session from the recorded grades next open.
+                endSession(supabase, currentSessionId).catch((e) =>
+                    console.error("Failed to end test session:", e),
+                );
             }
         } catch (e) {
             error = (e as Error).message;
