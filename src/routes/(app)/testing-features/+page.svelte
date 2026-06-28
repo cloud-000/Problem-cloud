@@ -44,6 +44,12 @@
             description: "Proportional segmented bar from a list of value/color sections.",
             href: "/testing-features/segment-bar",
         },
+        {
+            icon: "menu",
+            name: "Dropdown Menu",
+            description: "Recursive, boundary-aware dropdown menus with submenus.",
+            href: "/testing-features/dropdown-menu",
+        },
     ];
 </script>
 

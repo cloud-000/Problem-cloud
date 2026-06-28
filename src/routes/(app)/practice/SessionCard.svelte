@@ -6,6 +6,7 @@
     import { Problem } from "$lib/components/problem";
     import { StatusTag } from "$lib/components/status-tag";
     import type { PracticeSessionRow } from "$lib/sessions";
+    import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu/index.js";
     import {
         fetchSessionSubmissions,
         type RecentSubmissionRow,
@@ -34,7 +35,20 @@
     );
     let editing = $state(false);
     let editName = $state("");
-    let menuOpen = $state(false);
+
+    const menuOptions = $derived<DropdownOption[]>([
+        {
+            label: "Rename",
+            icon: "edit",
+            onclick: () => beginRename(),
+        },
+        {
+            label: "Delete",
+            icon: "delete",
+            color: "var(--destructive)",
+            onclick: () => onDelete(),
+        },
+    ]);
 
     function beginRename() {
         editName = session.name ?? "";
@@ -171,63 +185,19 @@
                 </span>
 
                 <!-- More actions (rename / delete) -->
-                <div class="relative">
+                <DropdownMenu options={menuOptions}>
                     <Button
                         size="icon-xs"
                         variant="ghost"
                         aria-label="More actions"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                        onclick={() => (menuOpen = !menuOpen)}
+                        class="cursor-pointer"
                     >
                         <Icon
                             name="more_vert"
                             class="size-[1.1em] leading-none"
                         />
                     </Button>
-                    {#if menuOpen}
-                        <!-- Outside-click backdrop -->
-                        <button
-                            type="button"
-                            tabindex="-1"
-                            aria-label="Close menu"
-                            class="fixed inset-0 z-20 cursor-default"
-                            onclick={() => (menuOpen = false)}
-                        ></button>
-                        <div
-                            role="menu"
-                            class="absolute right-0 top-8 z-30 flex w-40 flex-col gap-0.5 rounded-lg border border-border bg-surface-container-highest p-1 shadow-lg"
-                        >
-                            <button
-                                type="button"
-                                role="menuitem"
-                                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
-                                onclick={() => {
-                                    menuOpen = false;
-                                    beginRename();
-                                }}
-                            >
-                                <Icon
-                                    name="edit"
-                                    class="size-[1.1em] text-muted-foreground"
-                                />
-                                Rename
-                            </button>
-                            <button
-                                type="button"
-                                role="menuitem"
-                                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10"
-                                onclick={() => {
-                                    menuOpen = false;
-                                    onDelete();
-                                }}
-                            >
-                                <Icon name="delete" class="size-[1.1em]" />
-                                Delete
-                            </button>
-                        </div>
-                    {/if}
-                </div>
+                </DropdownMenu>
 
                 <button
                     type="button"
