@@ -199,6 +199,7 @@
                     {#if option.icon}
                         <Icon
                             name={option.icon}
+                            fill={option.iconFill}
                             fontsize={18}
                             class={cn(
                                 "text-muted-foreground shrink-0 transition-colors",

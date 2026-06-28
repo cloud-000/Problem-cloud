@@ -35,3 +35,7 @@ supabase/snippets/sample-seed.sql
 CLAUDE.md
 AGENTS.md
 tmp
+PROJECT.md
+ORIGINAL_REQUEST.md
+src/lib/components/*/DOCS.md
+src/lib/components/DOCS.md

@@ -146,6 +146,7 @@
 
     /* Blur Amount */
     --backdrop-blur: 4px;
+    --backdrop-hide: 10px;
 }
 
 @theme {

@@ -3,6 +3,10 @@
     import { goto } from "$app/navigation";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import {
+        DropdownMenu,
+        type DropdownOption,
+    } from "$lib/components/dropdown-menu";
     import { MathStatement } from "$lib/components/math-statement";
     import { ProblemAnswer } from "$lib/components/problem";
     import { type TriState } from "$lib/components/toggle";
@@ -71,6 +75,7 @@
     let lastOutcome = $state<"any" | "correct" | "incorrect">("any");
     let includeUnscheduled = $state(false);
     let showSettings = $state(false);
+    let paused = $state(false);
 
     // Review/Mixed need per-user progress. Without a session, pin to New.
     $effect(() => {
@@ -200,6 +205,7 @@
         ];
         restore(history.length - 1);
         loading = false;
+        paused = false;
     }
 
     // Browser-history-style navigation: every generated problem is appended to
@@ -239,13 +245,33 @@
     let isLatest = $derived(historyIndex === history.length - 1);
     let canGoBack = $derived(historyIndex > 0);
 
+    let moreOptions = $derived<DropdownOption[]>([
+        {
+            label: flagged ? "Unflag" : "Flag",
+            icon: "flag",
+            iconFill: flagged,
+            color: flagged ? "text-unsure" : undefined,
+            onclick: () => toggleFlag(),
+        },
+        {
+            label: "Report",
+            icon: "report",
+            onclick: () => {},
+        },
+        {
+            label: "Share",
+            icon: "share",
+            onclick: () => {},
+        },
+    ]);
+
     // Elapsed time for the on-screen problem at a given clock reading: the live
     // count for the latest unanswered one, otherwise its frozen value. `elapsedMs`
     // passes the reactive (throttled) `timerNow` to drive the ticking display;
     // `liveElapsed()` passes a fresh `Date.now()` for an exact, non-reactive
     // snapshot at event/persist time (so those paths don't subscribe to the timer).
     function elapsedAt(now: number) {
-        return problem && !submitted && isLatest
+        return problem && !submitted && isLatest && !paused
             ? Math.max(0, now - startedAt)
             : frozenElapsedMs;
     }
@@ -400,6 +426,7 @@
         frozenElapsedMs = 0;
         startedAt = now;
         timerNow = now;
+        paused = false;
 
         try {
             const result = await nextPracticeProblem(
@@ -566,6 +593,17 @@
         );
     }
 
+    function togglePause() {
+        if (!problem || submitted || loading || !isLatest) return;
+        if (paused) {
+            startedAt = Date.now() - frozenElapsedMs;
+            paused = false;
+        } else {
+            frozenElapsedMs = liveElapsed();
+            paused = true;
+        }
+    }
+
     // Resolve the session from the URL, hydrate its settings, then load the
     // first problem. Settings are intentionally *not* a reactive dependency of
     // loadProblem: the panel applies them to the next generated problem (via
@@ -634,7 +672,7 @@
     });
 
     $effect(() => {
-        if (!problem || submitted || loading || !isLatest) return;
+        if (!problem || submitted || loading || !isLatest || paused) return;
 
         const timer = setInterval(() => {
             timerNow = Date.now();
@@ -648,7 +686,7 @@
     $effect(() => {
         const sid = currentSessionId;
         if (sid == null) return;
-        if (!problem || submitted || loading || !isLatest) return;
+        if (!problem || submitted || loading || !isLatest || paused) return;
         const pid = problem.id;
 
         const timer = setInterval(() => {
@@ -694,6 +732,7 @@
                 onclick={() => (showSettings = !showSettings)}
                 aria-expanded={showSettings}
                 aria-label="Toggle settings"
+                disabled={paused}
             >
                 <Icon name="tune" class={iconCls} />
             </Button>
@@ -733,25 +772,48 @@
             />
             {#if problem}
                 {@const isTotal = timerMode === "total"}
-                <button
-                    type="button"
-                    onclick={() => (timerMode = isTotal ? "problem" : "total")}
-                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
-                    title={isTotal
-                        ? "Total session time — click for this problem"
-                        : "Time on this problem — click for session total"}
-                    aria-label={isTotal
-                        ? "Total session time"
-                        : "Time on this problem"}
-                >
-                    <Icon
-                        name={isTotal ? "timelapse" : "schedule"}
-                        class={iconCls}
-                    />
-                    <span class="leading-none">
-                        {formatElapsed(isTotal ? totalElapsedMs : elapsedMs)}
-                    </span>
-                </button>
+                <div class="flex items-center gap-1.5">
+                    {#if !submitted && isLatest}
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground hover:text-foreground"
+                            onclick={togglePause}
+                            aria-label={paused
+                                ? "Resume practice"
+                                : "Pause practice"}
+                            title={paused ? "Resume" : "Pause"}
+                        >
+                            <Icon
+                                name={paused ? "play_arrow" : "pause"}
+                                class={iconCls}
+                            />
+                        </Button>
+                    {/if}
+                    <button
+                        type="button"
+                        onclick={() =>
+                            (timerMode = isTotal ? "problem" : "total")}
+                        class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
+                        title={isTotal
+                            ? "Total session time — click for this problem"
+                            : "Time on this problem — click for session total"}
+                        aria-label={isTotal
+                            ? "Total session time"
+                            : "Time on this problem"}
+                        disabled={paused}
+                    >
+                        <Icon
+                            name={isTotal ? "timelapse" : "schedule"}
+                            class={iconCls}
+                        />
+                        <span class="leading-none">
+                            {formatElapsed(
+                                isTotal ? totalElapsedMs : elapsedMs,
+                            )}
+                        </span>
+                    </button>
+                </div>
             {/if}
         </div>
     </div>
@@ -841,104 +903,163 @@
                 </div>
             {:else}
                 <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
-                    <!-- Problem statement and choices: Scrollable area -->
-                    <div
-                        class="flex-1 flex flex-col justify-start items-center gap-4 w-full min-h-0 overflow-y-auto pt-0 pb-4 px-6"
-                    >
-                        <!-- Metadata row: source/series/topic on the left, review status on the right -->
+                    <div class="relative flex-1 flex flex-col min-h-0 w-full">
+                        <!-- Problem statement and choices: Scrollable area -->
                         <div
-                            class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full"
+                            class="flex-1 flex flex-col justify-start items-center gap-4 w-full min-h-0 overflow-y-auto pt-0 pb-4 px-6"
                         >
+                            <!-- Metadata row: source/series/topic on the left, review status on the right -->
                             <div
-                                class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
+                                class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full"
                             >
-                                {#if problem.tests?.name}
-                                    <span class="truncate"
-                                        >{problem.tests.name}</span
-                                    >
-                                    <span class="text-border shrink-0">•</span>
-                                {/if}
-                                <span class="shrink-0">#{problem.n + 1}</span>
-                                {#if topicName}
-                                    <span class="text-border shrink-0">•</span>
-                                    <span class="truncate" title={topicName}
-                                        >{topicName}</span
-                                    >
-                                {/if}
-                            </div>
-
-                            <div
-                                class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
-                            >
-                                {#if currentSource === "review"}
-                                    <StatusTag status="review" size="sm" />
-                                    {#if currentProgress}
-                                        <span
-                                            class="inline-flex items-center gap-1"
+                                <div
+                                    class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
+                                >
+                                    {#if problem.tests?.name}
+                                        <span class="truncate"
+                                            >{problem.tests.name}</span
                                         >
-                                            <Icon
-                                                name="visibility"
-                                                class={iconCls}
-                                            />
-                                            Seen {currentProgress.timesSeen}×
-                                        </span>
-                                        {#if lastReviewedLabel}
-                                            <span class="text-border">•</span>
+                                        <span class="text-border shrink-0"
+                                            >•</span
+                                        >
+                                    {/if}
+                                    <span class="shrink-0"
+                                        >#{problem.n + 1}</span
+                                    >
+                                    {#if topicName}
+                                        <span class="text-border shrink-0"
+                                            >•</span
+                                        >
+                                        <span class="truncate" title={topicName}
+                                            >{topicName}</span
+                                        >
+                                    {/if}
+                                </div>
+
+                                <div
+                                    class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
+                                >
+                                    {#if currentSource === "review"}
+                                        <StatusTag status="review" size="sm" />
+                                        {#if currentProgress}
                                             <span
                                                 class="inline-flex items-center gap-1"
-                                                title="Last reviewed"
                                             >
                                                 <Icon
-                                                    name="schedule"
+                                                    name="visibility"
                                                     class={iconCls}
                                                 />
-                                                {lastReviewedLabel}
+                                                Seen {currentProgress.timesSeen}×
                                             </span>
+                                            {#if lastReviewedLabel}
+                                                <span class="text-border"
+                                                    >•</span
+                                                >
+                                                <span
+                                                    class="inline-flex items-center gap-1"
+                                                    title="Last reviewed"
+                                                >
+                                                    <Icon
+                                                        name="schedule"
+                                                        class={iconCls}
+                                                    />
+                                                    {lastReviewedLabel}
+                                                </span>
+                                            {/if}
                                         {/if}
+                                    {:else}
+                                        <StatusTag status="new" size="sm" />
                                     {/if}
-                                {:else}
-                                    <StatusTag status="new" size="sm" />
-                                {/if}
+                                </div>
+                            </div>
+                            <div
+                                class="flex flex-1 min-h-fit w-full items-center justify-center"
+                            >
+                                <MathStatement
+                                    text={problem.statement ?? ""}
+                                    class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
+                                />
+                            </div>
+                            <div class="w-full">
+                                <ProblemAnswer
+                                    choices={problem.choices}
+                                    answerIndex={problem.answer_index}
+                                    bind:answer
+                                    bind:selectedChoice
+                                    showAnswerState={submitted}
+                                    disabled={submitted || !isLatest || paused}
+                                />
                             </div>
                         </div>
-                        <div
-                            class="flex flex-1 min-h-fit w-full items-center justify-center"
-                        >
-                            <MathStatement
-                                text={problem.statement ?? ""}
-                                class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
-                            />
-                        </div>
-                        <div class="w-full">
-                            <ProblemAnswer
-                                choices={problem.choices}
-                                answerIndex={problem.answer_index}
-                                bind:answer
-                                bind:selectedChoice
-                                showAnswerState={submitted}
-                                disabled={submitted || !isLatest}
-                            />
-                        </div>
+
+                        {#if paused}
+                            <div
+                                class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 text-center bg-background/60 backdrop-blur-(--backdrop-hide) px-4 select-none"
+                                transition:fade={{ duration: 150 }}
+                            >
+                                <div
+                                    class="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary shadow-inner border border-primary/20 animate-pulse"
+                                >
+                                    <Icon name="pause" fontsize={32} />
+                                </div>
+                                <div class="flex max-w flex-col gap-2">
+                                    <h2
+                                        class="text-lg font-semibold text-foreground tracking-tight"
+                                    >
+                                        Paused
+                                    </h2>
+                                    <p
+                                        class="text-xs text-muted-foreground leading-relaxed"
+                                    >
+                                        The timer has halted.
+                                    </p>
+                                </div>
+                                <Button
+                                    size="default"
+                                    onclick={togglePause}
+                                    class="gap-2 px-6 h-10 shadow-md font-semibold bg-primary hover:bg-primary/95 text-primary-foreground transition-all duration-200 hover:scale-105 active:scale-95"
+                                >
+                                    <Icon name="play_arrow" />
+                                </Button>
+                            </div>
+                        {/if}
                     </div>
 
                     <!-- Footer with ghosted Flag/Skip and primary Next/Submit buttons -->
                     <footer
-                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50 backdrop-blur-(--backdrop-blur)"
+                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50 bg-background/80"
                     >
+                        <div
+                            class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
+                        ></div>
                         <div class="flex items-center gap-1">
                             <Button
                                 variant="ghost"
-                                disabled={!canGoBack}
+                                disabled={!canGoBack || paused}
                                 onclick={goBack}
                                 aria-label="Previous problem"
                                 class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
                             >
                                 <Icon name="arrow_back" />
                             </Button>
-
+                            <DropdownMenu options={moreOptions}>
+                                <Button
+                                    variant="ghost"
+                                    aria-label="More options"
+                                    class={cn(
+                                        "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
+                                        flagged
+                                            ? "text-unsure hover:text-unsure/80"
+                                            : "text-muted-foreground hover:text-foreground",
+                                    )}
+                                    disabled={paused}
+                                >
+                                    <Icon name="more_horiz" />
+                                </Button>
+                            </DropdownMenu>
                             <Button
                                 variant="ghost"
-                                disabled={isLatest && submitted}
+                                disabled={(isLatest && submitted) || paused}
                                 onclick={goForward}
                                 aria-label={isLatest
                                     ? "Skip problem"
@@ -952,20 +1073,6 @@
                                     <Icon name="arrow_forward" />
                                 {/if}
                             </Button>
-
-                            <Button
-                                variant="ghost"
-                                onclick={toggleFlag}
-                                class={cn(
-                                    "font-normal text-xs px-3 py-1.5 h-auto gap-1 [&_svg]:size-3.5",
-                                    flagged
-                                        ? "text-unsure hover:text-unsure/80"
-                                        : "text-muted-foreground hover:text-foreground",
-                                )}
-                            >
-                                <Icon name="flag" fill={flagged} />
-                                {flagged ? "Flagged" : "Flag"}
-                            </Button>
                         </div>
 
                         <div>
@@ -973,6 +1080,7 @@
                                 <Button
                                     variant="outline"
                                     onclick={jumpToLatest}
+                                    disabled={paused}
                                     class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
                                 >
                                     Latest
@@ -988,7 +1096,7 @@
                                 </Button>
                             {:else}
                                 <Button
-                                    disabled={selectedChoice == null}
+                                    disabled={selectedChoice == null || paused}
                                     onclick={submitAnswer}
                                     class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
                                 >

@@ -8,6 +8,9 @@ export type DropdownOption = {
     /** Optional Google Material Symbols rounded icon name */
     icon?: string | null;
     
+    /** Optional boolean to fill the Google Material Symbols rounded icon */
+    iconFill?: boolean;
+    
     /** 
      * Optional styling color: can be a CSS color value (e.g. '#ff0000', 'rgb(...)')
      * or a Tailwind CSS text color class (e.g. 'text-error', 'text-destructive')
