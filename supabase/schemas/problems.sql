@@ -22,7 +22,9 @@ create table public.tests (
   quality          integer default 0,
   -- Default time allotment for taking this test, in seconds. null = untimed /
   -- unlimited. Seeds the time-limit control when a Test-mode session is created.
-  time_limit_seconds integer
+  time_limit_seconds    integer,
+  has_all_answers       boolean not null default false,
+  missing_answers_count integer not null default 0
 );
 
 create index tests_series_id_idx on public.tests(series_id);
@@ -84,3 +86,61 @@ grant select on public.problems to anon, authenticated;
 grant all on public.series to service_role;
 grant all on public.tests to service_role;
 grant all on public.problems to service_role;
+
+-- Helper function to recalculate cached answer columns on a test.
+create or replace function public.recalculate_test_answers(t_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  total_problems bigint;
+  missing_answers bigint;
+begin
+  select pg_catalog.count(*) into total_problems
+  from public.problems
+  where test_id = t_id;
+
+  select pg_catalog.count(*) into missing_answers
+  from public.problems
+  where test_id = t_id and (answer_index = -1 or answer_index is null);
+
+  update public.tests
+  set 
+    has_all_answers = (total_problems > 0 and missing_answers = 0),
+    missing_answers_count = missing_answers::integer
+  where id = t_id;
+end;
+$$;
+
+-- Trigger function to handle problem changes.
+create or replace function public.handle_problem_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if TG_OP = 'INSERT' or TG_OP = 'UPDATE' then
+    if NEW.test_id is not null then
+      perform public.recalculate_test_answers(NEW.test_id);
+    end if;
+  end if;
+
+  if TG_OP = 'DELETE' or TG_OP = 'UPDATE' then
+    if OLD.test_id is not null and (TG_OP = 'DELETE' or OLD.test_id != coalesce(NEW.test_id, -1)) then
+      perform public.recalculate_test_answers(OLD.test_id);
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+-- Trigger on the problems table to automatically update test caches on changes.
+create or replace trigger on_problem_changed
+  after insert or update or delete on public.problems
+  for each row
+  execute function public.handle_problem_change();
+

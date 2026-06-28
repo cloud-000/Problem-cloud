@@ -221,10 +221,10 @@ export async function fetchByIds(
  */
 export async function fetchAllTests(
     supabase: Supabase,
-): Promise<Pick<TestRow, "id" | "name" | "year" | "time_limit_seconds">[]> {
+): Promise<Pick<TestRow, "id" | "name" | "year" | "time_limit_seconds" | "missing_answers_count">[]> {
     const { data, error } = await supabase
         .from("tests")
-        .select("id, name, year, time_limit_seconds")
+        .select("id, name, year, time_limit_seconds, missing_answers_count")
         .order("year", { ascending: false })
         .order("name");
     if (error) throw error;

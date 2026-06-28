@@ -13,6 +13,7 @@
         size={active.options?.size}
         closeOnOutsideClick={active.options?.closeOnOutsideClick}
         closeOnEscape={active.options?.closeOnEscape}
+        overflowVisible={active.options?.overflowVisible}
         class={active.options?.class}
         onClose={() => modal.close()}
     >

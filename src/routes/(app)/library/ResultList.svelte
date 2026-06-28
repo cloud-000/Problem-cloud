@@ -99,6 +99,18 @@
                         {#if t.is_computational}{@render badge(
                                 "computational",
                             )}{/if}
+                        {#if t.missing_answers_count > 0}
+                            <span
+                                class="inline-flex items-center gap-1 rounded-full bg-unsure-container px-2 py-0.5 text-xs font-medium text-on-unsure-container"
+                            >
+                                <Icon
+                                    name="warning"
+                                    fontsize={14}
+                                    fill={true}
+                                />
+                                lost {t.missing_answers_count} answers
+                            </span>
+                        {/if}
                     </span>
                 </button>
                 <LinkMenu

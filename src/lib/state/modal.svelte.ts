@@ -8,6 +8,7 @@ export interface ModalOptions {
     size?: ModalSize;
     closeOnOutsideClick?: boolean;
     closeOnEscape?: boolean;
+    overflowVisible?: boolean;
     class?: string;
     onClose?: () => void;
 }

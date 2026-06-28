@@ -17,12 +17,10 @@
         resumeSession,
         type PracticeSessionRow,
     } from "$lib/sessions";
-    import {
-        defaultPracticeSettings,
-        defaultTestSettings,
-    } from "$lib/trainer";
+    import { defaultPracticeSettings, defaultTestSettings } from "$lib/trainer";
     import { cn } from "$lib/utils";
     import SessionCard from "./SessionCard.svelte";
+    import SettingsPanel from "./SettingsPanel.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -49,10 +47,17 @@
     let unlimited = $state(false);
 
     let testOptions = $derived<SelectOption[]>(
-        tests.map((t) => ({
-            value: String(t.id),
-            label: t.year ? `${t.name} (${t.year})` : t.name,
-        })),
+        tests.map((t) => {
+            const yearStr = t.year ? ` (${t.year})` : "";
+            const missingStr =
+                t.missing_answers_count && t.missing_answers_count > 0
+                    ? ` — ${t.missing_answers_count} missing`
+                    : "";
+            return {
+                value: String(t.id),
+                label: `${t.name}${yearStr}${missingStr}`,
+            };
+        }),
     );
     let canCreate = $derived(
         dialogFormat === "practice" || selectedTestId !== "",
@@ -254,11 +259,7 @@
                 </p>
             </div>
             <div class="flex items-center gap-2 mt-2">
-                <Button
-                    variant="outline"
-                    onclick={practiceFreely}
-                    class="px-6"
-                >
+                <Button variant="outline" onclick={practiceFreely} class="px-6">
                     Practice freely
                 </Button>
                 <Button
@@ -328,101 +329,106 @@
 <Modal
     bind:open={dialogOpen}
     title="Start a new session"
-    size="sm"
-    class="flex flex-col gap-5"
+    size="md"
+    class="flex flex-col min-h-120"
+    overflowVisible={true}
 >
-    <!-- Name -->
-    <div class="flex flex-col gap-1.5">
-        <span class="text-xs font-medium text-muted-foreground"
-            >Name (optional)</span
-        >
-        <Input bind:value={dialogName} placeholder="e.g. Friday drill" />
-    </div>
-
-    <!-- Format -->
-    <div class="flex flex-col gap-1.5">
-        <span class="text-xs font-medium text-muted-foreground">Format</span>
-        <div
-            class="flex items-center gap-1 rounded-lg border border-border/60 bg-surface-container-low p-1"
-            role="radiogroup"
-            aria-label="Session format"
-        >
-            {#each [{ value: "practice", label: "Practice" }, { value: "test", label: "Test" }] as f (f.value)}
-                <button
-                    type="button"
-                    role="radio"
-                    aria-checked={dialogFormat === f.value}
-                    onclick={() =>
-                        (dialogFormat = f.value as "practice" | "test")}
-                    class={cn(
-                        "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                        dialogFormat === f.value
-                            ? "bg-surface-container-lowest text-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground",
-                    )}
-                >
-                    {f.label}
-                </button>
-            {/each}
-        </div>
-        <p class="text-[10px] text-muted-foreground">
-            {dialogFormat === "test"
-                ? "Work a whole test; grading is held until you submit."
-                : "Free practice with immediate feedback."}
-        </p>
-    </div>
-
-    <!-- Test options -->
-    {#if dialogFormat === "test"}
+    <div class="flex flex-col w-full h-full gap-2">
+        <!-- Name -->
         <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-medium text-muted-foreground">Test</span>
-            {#if testsLoading}
-                <div
-                    class="flex items-center gap-2 text-xs text-muted-foreground py-2"
-                >
-                    <Icon name="progress_activity" class="animate-spin" />
-                    Loading tests...
-                </div>
-            {:else}
-                <Select
-                    options={testOptions}
-                    value={selectedTestId}
-                    placeholder="Choose a test"
-                    onchange={onTestChange}
-                />
-            {/if}
+            <span class="text-xs font-medium text-muted-foreground"
+                >Name (optional)</span
+            >
+            <Input bind:value={dialogName} placeholder="e.g. Friday drill" />
         </div>
 
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex flex-col gap-0.5">
+        <!-- Format -->
+        <div class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium text-muted-foreground">Format</span
+            >
+            <div
+                class="flex items-center gap-1 rounded-lg border border-border/60 bg-surface-container-low p-1"
+                role="radiogroup"
+                aria-label="Session format"
+            >
+                {#each [{ value: "practice", label: "Practice" }, { value: "test", label: "Test" }] as f (f.value)}
+                    <button
+                        type="button"
+                        role="radio"
+                        aria-checked={dialogFormat === f.value}
+                        onclick={() =>
+                            (dialogFormat = f.value as "practice" | "test")}
+                        class={cn(
+                            "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                            dialogFormat === f.value
+                                ? "bg-surface-container-lowest text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                        )}
+                    >
+                        {f.label}
+                    </button>
+                {/each}
+            </div>
+            <p class="text-[10px] text-muted-foreground">
+                {dialogFormat === "test"
+                    ? "Work a whole test; grading is held until you submit."
+                    : "Free practice with immediate feedback."}
+            </p>
+        </div>
+
+        <!-- Test options -->
+        {#if dialogFormat === "test"}
+            <div class="flex flex-col gap-1.5">
                 <span class="text-xs font-medium text-muted-foreground"
-                    >Unlimited time</span
+                    >Test</span
                 >
-                <span class="text-[10px] text-muted-foreground">
-                    {unlimited ? "No time limit" : "Timed"}
-                </span>
+                {#if testsLoading}
+                    <div
+                        class="flex items-center gap-2 text-xs text-muted-foreground py-2"
+                    >
+                        <Icon name="progress_activity" class="animate-spin" />
+                        Loading tests...
+                    </div>
+                {:else}
+                    <Select
+                        options={testOptions}
+                        value={selectedTestId}
+                        placeholder="Choose a test"
+                        onchange={onTestChange}
+                    />
+                {/if}
             </div>
-            <Switch bind:checked={unlimited} size="sm" />
-        </div>
 
-        {#if !unlimited}
-            <div class="flex flex-col gap-2">
-                <span class="text-xs font-medium text-muted-foreground">
-                    Time limit ({timeMinutes} min)
-                </span>
-                <RangeSlider
-                    single
-                    bind:singleValue={timeMinutes}
-                    min={TIME_MIN}
-                    max={TIME_MAX}
-                    step={5}
-                    label="Time limit"
-                    formatValue={(v) => `${v}m`}
-                />
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-0">
+                    <span class="text-xs font-medium text-muted-foreground"
+                        >Unlimited time</span
+                    >
+                    <span class="text-[10px] text-muted-foreground">
+                        {unlimited ? "No time limit" : "Timed"}
+                    </span>
+                </div>
+                <Switch bind:checked={unlimited} size="sm" />
             </div>
+
+            {#if !unlimited}
+                <div class="flex flex-col gap-2">
+                    <span class="text-xs font-medium text-muted-foreground">
+                        Time limit ({timeMinutes} min)
+                    </span>
+                    <RangeSlider
+                        single
+                        bind:singleValue={timeMinutes}
+                        min={TIME_MIN}
+                        max={TIME_MAX}
+                        step={5}
+                        label="Time limit"
+                        formatValue={(v) => `${v}m`}
+                    />
+                </div>
+            {/if}
         {/if}
-    {/if}
-
+    </div>
     {#snippet footer()}
         <Button variant="ghost" size="sm" onclick={() => (dialogOpen = false)}>
             Cancel

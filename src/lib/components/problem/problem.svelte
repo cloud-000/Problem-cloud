@@ -72,7 +72,10 @@
     </span>
 {/snippet}
 
-{#snippet detail(label: string, value: string | number | boolean | null | undefined)}
+{#snippet detail(
+    label: string,
+    value: string | number | boolean | null | undefined,
+)}
     {#if value !== null && value !== undefined && value !== ""}
         <div class="grid grid-cols-[6rem_1fr] gap-2">
             <span class="text-muted-foreground">{label}</span>
@@ -104,7 +107,7 @@
             {/if}
         </div>
 
-        <div class="flex shrink-0 items-center gap-1">
+        <div class="flex shrink-0 items-center justify-center gap-1">
             {#if debug}
                 <Toggle
                     variant="ghost"
@@ -118,8 +121,13 @@
                 </Toggle>
             {/if}
 
-            <LinkMenu links={aopsLinks} label="Open in Art of Problem Solving" />
-
+            <LinkMenu
+                links={aopsLinks}
+                label="Open in Art of Problem Solving"
+            />
+            {#if problem.answer_index === null || problem.answer_index < 0}
+                <Icon name="question_mark" class="text-unsure" fontsize="1em" />
+            {/if}
             <div class="group/details relative">
                 <Button
                     variant="ghost"
@@ -127,33 +135,36 @@
                     aria-label="Problem details"
                     class="peer text-muted-foreground opacity-50 transition-opacity group-hover/details:opacity-100 hover:opacity-100 focus-visible:opacity-100"
                 >
-                <Icon name="info" />
-            </Button>
+                    <Icon name="info" />
+                </Button>
 
-            <div
-                role="tooltip"
-                class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
-            >
-                <div class="mb-2 flex items-center gap-1.5 font-medium">
-                    <Icon name="bug_report" />
-                    <span>Problem details</span>
+                <div
+                    role="tooltip"
+                    class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
+                >
+                    <div class="mb-2 flex items-center gap-1.5 font-medium">
+                        <Icon name="bug_report" />
+                        <span>Problem details</span>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        {@render detail("id", problem.id)}
+                        {@render detail("test id", problem.test_id)}
+                        {@render detail("number", problem.n)}
+                        {@render detail("answer", problem.answer_index)}
+                        {@render detail("verified", problem.verified)}
+                        {@render detail("difficulty", problem.difficulty)}
+                        {@render detail("quality", problem.quality)}
+                        {@render detail(
+                            "computational",
+                            problem.is_computational,
+                        )}
+                        {@render detail("topic", problem.topic)}
+                        {@render detail("tags", problem.tags?.join(", "))}
+                        {@render detail("solutions", officialSolutionCount)}
+                        {@render detail("built", problem.built_at)}
+                        {@render detail("notes", problem.notes)}
+                    </div>
                 </div>
-                <div class="flex flex-col gap-1.5">
-                    {@render detail("id", problem.id)}
-                    {@render detail("test id", problem.test_id)}
-                    {@render detail("number", problem.n)}
-                    {@render detail("answer", problem.answer_index)}
-                    {@render detail("verified", problem.verified)}
-                    {@render detail("difficulty", problem.difficulty)}
-                    {@render detail("quality", problem.quality)}
-                    {@render detail("computational", problem.is_computational)}
-                    {@render detail("topic", problem.topic)}
-                    {@render detail("tags", problem.tags?.join(", "))}
-                    {@render detail("solutions", officialSolutionCount)}
-                    {@render detail("built", problem.built_at)}
-                    {@render detail("notes", problem.notes)}
-                </div>
-            </div>
             </div>
         </div>
     </header>

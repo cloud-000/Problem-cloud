@@ -58,6 +58,8 @@
         difficulty = $bindable<[number, number]>([...DIFFICULTY_RANGE]),
         verifiedOnly = $bindable(false),
         computational = $bindable<TriState>("neutral"),
+        seriesIds = $bindable<string[]>([]),
+        seriesOptions = [],
         counterRanges,
         counterEnabled,
         lastSubmissionDays = $bindable<number | null>(null),
@@ -74,6 +76,8 @@
         difficulty: [number, number];
         verifiedOnly: boolean;
         computational: TriState;
+        seriesIds: string[];
+        seriesOptions: { value: string; label: string }[];
         counterRanges: CounterRanges;
         counterEnabled: CounterEnabled;
         lastSubmissionDays: number | null;
@@ -101,6 +105,7 @@
         difficulty = [...DIFFICULTY_RANGE];
         verifiedOnly = false;
         computational = "neutral";
+        seriesIds = [];
         for (const { key } of COUNTERS) {
             counterEnabled[key] = false;
             counterRanges[key] = [...COUNTER_RANGE];
@@ -204,6 +209,17 @@
             strict
             placeholder="Any topic"
             inputPlaceholder="Add topic"
+        />
+    </div>
+
+    <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+        <span class="text-xs font-medium text-muted-foreground">Series</span>
+        <Combobox
+            bind:value={seriesIds}
+            options={seriesOptions}
+            strict
+            placeholder="All series"
+            inputPlaceholder="Add series"
         />
     </div>
 

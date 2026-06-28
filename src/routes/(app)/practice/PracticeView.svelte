@@ -16,6 +16,7 @@
         topicLabel,
         triToBool,
         type ProblemRow,
+        fetchAllSeries,
     } from "$lib/library";
     import {
         createSession,
@@ -62,6 +63,8 @@
     let difficulty = $state<[number, number]>([...DIFFICULTY_RANGE]);
     let verifiedOnly = $state(false);
     let computational = $state<TriState>("neutral");
+    let seriesIds = $state<string[]>([]);
+    let seriesOptions = $state<{ value: string; label: string }[]>([]);
     let counterRanges = $state<CounterRanges>({
         seen: [...COUNTER_RANGE],
         reviewed: [...COUNTER_RANGE],
@@ -130,6 +133,7 @@
         format = s.format ?? "practice";
         testId = s.testId ?? null;
         timeLimitSeconds = s.timeLimitSeconds ?? null;
+        seriesIds = s.seriesIds ? [...s.seriesIds] : [];
         mode = s.mode;
         topic = [...s.topic];
         difficulty = [s.difficulty[0], s.difficulty[1]];
@@ -625,6 +629,7 @@
             format,
             testId,
             timeLimitSeconds,
+            seriesIds: [...seriesIds],
             topic: [...topic],
             difficulty: [difficulty[0], difficulty[1]],
             verifiedOnly,
@@ -921,6 +926,13 @@
     // loadProblem: the panel applies them to the next generated problem (via
     // currentSettings()), so tweaking a control must not fire a reload per change.
     onMount(async () => {
+        try {
+            const list = await fetchAllSeries(supabase);
+            seriesOptions = list.map((s) => ({ value: String(s.id), label: s.name }));
+        } catch (e) {
+            console.error("Failed to fetch series options:", e);
+        }
+
         if (!isRoot && user) {
             try {
                 const s = await fetchSession(supabase, Number(sessionParam));
@@ -1004,11 +1016,10 @@
     // While a problem is in progress within a (practice) session, periodically
     // persist its elapsed time so a reload/resume continues from where it was.
     $effect(() => {
-        if (isTest) return;
+        if (isTest || !timerRunning) return;
         const sid = currentSessionId;
         if (sid == null) return;
-        if (!problem || submitted || loading || !isLatest || paused) return;
-        const pid = problem.id;
+        const pid = problem!.id;
 
         const timer = setInterval(() => {
             setCurrentProblem(supabase, sid, pid, liveElapsed()).catch((e) =>
@@ -1704,6 +1715,8 @@
                 bind:difficulty
                 bind:verifiedOnly
                 bind:computational
+                bind:seriesIds
+                {seriesOptions}
                 {counterRanges}
                 {counterEnabled}
                 bind:lastSubmissionDays

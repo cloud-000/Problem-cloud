@@ -40,12 +40,24 @@
 
     function choose(index: number) {
         if (disabled) return;
-        selectedChoice = index;
+        if (selectedChoice === index) {
+            selectedChoice = null;
+        } else {
+            selectedChoice = index;
+        }
     }
 
     function chooseWithFeedback(index: number) {
+        const isDeselect = selectedChoice === index;
         choose(index);
-        if (isInstantFeedback) trigger(true);
+        if (isInstantFeedback) {
+            if (isDeselect) {
+                clearFeedbackTimer();
+                feedback = null;
+            } else {
+                trigger(true);
+            }
+        }
     }
 
     function triggerAfterInput() {
@@ -131,8 +143,9 @@
                 {disabled}
                 aria-pressed={selected}
                 class={cn(
-                    "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                    selected && "border-primary bg-primary/30",
+                    "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
+                    selected &&
+                        "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
                     correct && "border-correct bg-correct/10",
                     incorrect && "border-destructive bg-destructive/10",
                     feedbackActive &&
@@ -147,8 +160,10 @@
                 )}
                 onclick={() => chooseWithFeedback(i)}
             >
-                <span class="shrink-0 font-medium text-muted-foreground">
-                    {CHOICE_LABELS[i] ?? String(i + 1)}.
+                <span
+                    class="shrink-0 font-medium text-muted-foreground opacity-60 select-none"
+                >
+                    {CHOICE_LABELS[i] ?? String(i + 1)}
                 </span>
                 <LaTeX class="min-w-0 flex-1">${choice}$</LaTeX>
             </button>

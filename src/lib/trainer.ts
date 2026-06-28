@@ -25,6 +25,7 @@ export type PracticeSettings = {
     // the total time allotment in seconds (null = unlimited / untimed).
     testId: number | null;
     timeLimitSeconds: number | null;
+    seriesIds?: string[]; // Optional for backward compatibility with older snapshots
     // Problem-attribute filters — apply to every mode.
     topic: string[];
     difficulty: Range;
@@ -138,6 +139,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         format: "practice",
         testId: null,
         timeLimitSeconds: null,
+        seriesIds: [],
         topic: [],
         difficulty: [...DIFFICULTY_RANGE],
         verifiedOnly: false,
@@ -202,6 +204,13 @@ function applyAttributeFilters(
     if (settings.computational != null) {
         next = next.eq(`${prefix}is_computational`, settings.computational);
     }
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        if (prefix === "") {
+            next = next.in("tests.series_id", settings.seriesIds.map(Number));
+        } else {
+            next = next.in("problems.tests.series_id", settings.seriesIds.map(Number));
+        }
+    }
 
     return next;
 }
@@ -220,8 +229,12 @@ async function fetchRandomCandidate(
     count: number,
 ): Promise<ProblemRow | null> {
     const offset = Math.floor(Math.random() * count);
+    let selectStr = PROBLEM_SELECT;
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        selectStr = `*, tests!inner(name, series_id, series(name))`;
+    }
     let query = applyAttributeFilters(
-        supabase.from("problems").select(PROBLEM_SELECT),
+        supabase.from("problems").select(selectStr),
         settings,
     );
     if (exclude) query = query.not("id", "in", exclude);
@@ -252,8 +265,12 @@ async function fetchNewProblem(
 
     const exclude = exclusionList(excludeIds);
 
+    let countQuerySelect = "id";
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        countQuerySelect = "id, tests!inner(series_id)";
+    }
     let countQuery = applyAttributeFilters(
-        supabase.from("problems").select("id", { count: "exact", head: true }),
+        supabase.from("problems").select(countQuerySelect, { count: "exact", head: true }),
         settings,
     );
     if (exclude) countQuery = countQuery.not("id", "in", exclude);
@@ -267,8 +284,12 @@ async function fetchNewProblem(
         if (isEligibleProblem(candidate)) return candidate;
     }
 
+    let fallbackSelect = PROBLEM_SELECT;
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        fallbackSelect = `*, tests!inner(name, series_id, series(name))`;
+    }
     let fallback = applyAttributeFilters(
-        supabase.from("problems").select(PROBLEM_SELECT),
+        supabase.from("problems").select(fallbackSelect),
         settings,
     );
     if (exclude) fallback = fallback.not("id", "in", exclude);
@@ -326,8 +347,12 @@ function buildReviewBaseQuery(
     settings: PracticeSettings,
     session: PracticeSession,
 ) {
+    let selectStr = REVIEW_SELECT;
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        selectStr = "problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, tests!inner(name, series_id, series(name)))";
+    }
     let query = applyAttributeFilters(
-        supabase.from("problem_progress").select(REVIEW_SELECT),
+        supabase.from("problem_progress").select(selectStr),
         settings,
         "problems.",
     );

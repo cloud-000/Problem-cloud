@@ -21,6 +21,7 @@
         variant?: ModalVariant;
         closeOnOutsideClick?: boolean;
         closeOnEscape?: boolean;
+        overflowVisible?: boolean;
         onClose?: () => void;
         children?: Snippet;
         footer?: Snippet;
@@ -44,6 +45,7 @@
         variant = "panel",
         closeOnOutsideClick = true,
         closeOnEscape = true,
+        overflowVisible = false,
         onClose,
         children,
         footer,
@@ -115,7 +117,8 @@
         <!-- Modal panel -->
         <div
             class={cn(
-                "flex flex-col bg-surface-container-lowest border border-border/80 shadow-xl overflow-hidden transition-all",
+                "flex flex-col bg-surface-container-lowest border border-border/80 shadow-xl transition-all",
+                overflowVisible ? "overflow-visible" : "overflow-hidden",
                 size === "full" ? "h-full" : "rounded-xl max-h-[90vh]",
                 sizeClasses[size],
                 className
@@ -123,7 +126,10 @@
             transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
         >
             <!-- Header -->
-            <div class="flex items-center justify-between border-b border-border/60 px-md py-sm">
+            <div class={cn(
+                "flex items-center justify-between border-b border-border/60 px-md py-sm",
+                size !== "full" && "rounded-t-xl"
+            )}>
                 <div class="flex flex-col gap-0.5">
                     {#if title}
                         <h2 id="modal-title" class="text-lg font-semibold text-foreground leading-tight">
@@ -148,13 +154,19 @@
             </div>
 
             <!-- Body -->
-            <div class="flex-1 overflow-y-auto px-md py-md text-sm text-foreground">
+            <div class={cn(
+                "flex-1 px-md py-md text-sm text-foreground",
+                overflowVisible ? "overflow-visible" : "overflow-y-auto"
+            )}>
                 {@render children?.()}
             </div>
 
             <!-- Footer -->
             {#if footer}
-                <div class="flex items-center justify-end gap-sm border-t border-border/60 px-md py-sm bg-surface-container-low/40">
+                <div class={cn(
+                    "flex items-center justify-end gap-sm border-t border-border/60 px-md py-sm bg-surface-container-low/40",
+                    size !== "full" && "rounded-b-xl"
+                )}>
                     {@render footer()}
                 </div>
             {/if}

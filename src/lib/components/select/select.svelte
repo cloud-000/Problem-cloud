@@ -26,7 +26,9 @@
         /** Custom snippet for trigger display label */
         triggerContent?: Snippet<[NormalizedSelectOption]>;
         /** Custom snippet for rendering list options */
-        optionItem?: Snippet<[NormalizedSelectOption, { active: boolean; selected: boolean }]>;
+        optionItem?: Snippet<
+            [NormalizedSelectOption, { active: boolean; selected: boolean }]
+        >;
     };
 
     export {
@@ -76,12 +78,15 @@
     // --- derived option model ---
     const allOptions = $derived(coerceOptions(options));
     const selectedOption = $derived(allOptions.find((o) => o.value === value));
-    const selectedIndex = $derived(allOptions.findIndex((o) => o.value === value));
+    const selectedIndex = $derived(
+        allOptions.findIndex((o) => o.value === value),
+    );
 
     // Keep activeIndex synced when dropdown opens
     $effect(() => {
         if (open) {
-            activeIndex = selectedIndex !== -1 ? selectedIndex : firstSelectable();
+            activeIndex =
+                selectedIndex !== -1 ? selectedIndex : firstSelectable();
         } else {
             activeIndex = -1;
         }
@@ -101,16 +106,16 @@
     function nextSelectable(current: number, dir: 1 | -1): number {
         const n = allOptions.length;
         if (n === 0) return -1;
-        
+
         let start = current === -1 ? (dir === 1 ? -1 : n) : current;
         let i = (start + dir + n) % n;
-        
+
         // Loop at most once around the list to find a selectable option
         for (let step = 0; step < n; step++) {
             if (!allOptions[i].disabled) return i;
             i = (i + dir + n) % n;
         }
-        
+
         return current;
     }
 
@@ -197,7 +202,9 @@
         aria-expanded={open}
         aria-controls={listboxId}
         aria-haspopup="listbox"
-        aria-activedescendant={open && activeIndex >= 0 ? itemId(activeIndex) : undefined}
+        aria-activedescendant={open && activeIndex >= 0
+            ? itemId(activeIndex)
+            : undefined}
         aria-invalid={ariaInvalid}
         {disabled}
         data-slot={dataSlot}
@@ -213,14 +220,16 @@
                 <span class="truncate pr-4">{selectedOption.label}</span>
             {/if}
         {:else}
-            <span class="text-muted-foreground truncate pr-4">{placeholder}</span>
+            <span class="text-muted-foreground truncate pr-4"
+                >{placeholder}</span
+            >
         {/if}
 
         <Icon
             fontsize={20}
             class={cn(
                 "transition-transform duration-200 text-muted-foreground origin-center shrink-0",
-                open && "rotate-180"
+                open && "rotate-180",
             )}
         >
             keyboard_arrow_down
@@ -248,17 +257,27 @@
                         "flex items-center justify-between px-2.5 py-1.5 text-sm transition-colors",
                         option.disabled
                             ? "text-muted-foreground opacity-50 cursor-not-allowed"
-                            : "cursor-pointer hover:bg-muted/50 data-active:bg-primary data-active:text-primary-foreground data-selected:bg-primary/20 dark:data-selected:bg-primary/30"
+                            : "cursor-pointer hover:bg-muted/50 data-active:bg-primary data-active:text-primary-foreground data-selected:bg-primary/20 dark:data-selected:bg-primary/30",
                     )}
                     onmousedown={(e) => e.preventDefault()}
                     onclick={() => !option.disabled && commitOption(option)}
                 >
                     {#if optionItem}
-                        {@render optionItem(option, { active: activeIndex === i, selected: value === option.value })}
+                        {@render optionItem(option, {
+                            active: activeIndex === i,
+                            selected: value === option.value,
+                        })}
                     {:else}
-                        <span class="truncate" class:font-semibold={value === option.value}>{option.label}</span>
+                        <span
+                            class="truncate"
+                            class:font-semibold={value === option.value}
+                            >{option.label}</span
+                        >
                         {#if value === option.value}
-                            <Icon class="h-4 w-4 text-primary-foreground" name="check" />
+                            <Icon
+                                class="h-4 w-4 text-primary-foreground"
+                                name="check"
+                            />
                         {/if}
                     {/if}
                 </li>
