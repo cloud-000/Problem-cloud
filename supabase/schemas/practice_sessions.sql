@@ -20,6 +20,12 @@ create table public.practice_sessions (
   -- resume continue that exact problem (with its elapsed time) instead of
   -- generating a new one. Cleared once the problem is answered/skipped (it then
   -- lives in `submissions`). `on delete set null` keeps it robust to problem deletes.
+  --
+  -- Test-format sessions (settings.format = 'test') reuse these two columns with a
+  -- broader meaning: `current_problem_id` is the on-screen problem and
+  -- `current_elapsed_ms` is the test-wide accumulated time (not per-problem). The
+  -- per-problem draft answers themselves are kept client-side (localStorage) until
+  -- the test is submitted, since grading is deferred and submissions are append-only.
   current_problem_id bigint references public.problems(id) on delete set null,
   current_elapsed_ms integer not null default 0,            -- time already spent on it
   status             text   not null default 'active'

@@ -19,7 +19,10 @@ create table public.tests (
   type             text,
   is_computational boolean not null default false,
   difficulty       integer default 0,
-  quality          integer default 0
+  quality          integer default 0,
+  -- Default time allotment for taking this test, in seconds. null = untimed /
+  -- unlimited. Seeds the time-limit control when a Test-mode session is created.
+  time_limit_seconds integer
 );
 
 create index tests_series_id_idx on public.tests(series_id);
