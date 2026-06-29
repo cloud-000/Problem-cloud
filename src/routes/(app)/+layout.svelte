@@ -19,6 +19,8 @@
     } from "$lib/components/dropdown-menu";
     import { deviceDetails } from "$lib/mobile.svelte";
     import { goto } from "$app/navigation";
+    import { topbar } from "$lib/state/topbar.svelte";
+    import { settings } from "$lib/state/settings.svelte";
 
     let { data, children } = $props();
     let { supabase, session, user, profile } = $derived(data);
@@ -65,6 +67,14 @@
             icon: "category_search",
             label: "Find",
             important: false,
+            betaOnly: true,
+        },
+        {
+            href: "/testing-features",
+            icon: "labs",
+            label: "Test",
+            important: false,
+            betaOnly: true,
         },
         { href: "/roadmap", icon: "map", label: "Roadmap", important: false },
         {
@@ -75,9 +85,13 @@
             important: true,
         },
     ];
-    // Admin-only tabs render only for admins (admin_rank > 0).
+    // Admin-only and beta-only tabs render based on permissions and settings.
     let visibleTabs = $derived(
-        tabs.filter((t) => !t.adminOnly || (profile?.admin_rank ?? 0) > 0),
+        tabs.filter((t) => {
+            if (t.adminOnly && (profile?.admin_rank ?? 0) <= 0) return false;
+            if (t.betaOnly && !settings.showBetaFeatures) return false;
+            return true;
+        }),
     );
     // Sidebar state
     let expanded = $state(true);
@@ -130,13 +144,6 @@
             onclick: () => goto("/settings"),
         });
 
-        // Add Test (labs)
-        list.push({
-            label: "Test",
-            icon: "labs",
-            onclick: () => goto("/testing-features"),
-        });
-
         // Add Logout (if session exists)
         if (session) {
             list.push({ type: "divider" });
@@ -166,12 +173,62 @@
         }
         // Check Test
         if (
-            page.url.pathname === "/testing-features" ||
-            page.url.pathname.startsWith("/testing-features/")
+            settings.showBetaFeatures &&
+            (page.url.pathname === "/testing-features" ||
+                page.url.pathname.startsWith("/testing-features/"))
         ) {
             return true;
         }
         return false;
+    });
+
+    let profileOptions = $derived.by<DropdownOption[]>(() => {
+        const list: DropdownOption[] = [];
+
+        if (profile) {
+            list.push({
+                label: profile.username || "User",
+                type: "header",
+            });
+        }
+        if (session?.user?.email) {
+            list.push({
+                label: session.user.email,
+                type: "header",
+            });
+        }
+
+        if (list.length > 0) {
+            list.push({ type: "divider" });
+        }
+
+        list.push({
+            label: "Settings",
+            icon: "settings",
+            onclick: () => goto("/settings"),
+        });
+
+        if (settings.showBetaFeatures) {
+            list.push({
+                label: "Test",
+                icon: "labs",
+                onclick: () => goto("/testing-features"),
+            });
+        }
+
+        if (session) {
+            list.push({ type: "divider" });
+            list.push({
+                label: "Logout",
+                icon: "logout",
+                color: "text-destructive",
+                onclick: () => {
+                    logoutForm?.requestSubmit();
+                },
+            });
+        }
+
+        return list;
     });
 </script>
 
@@ -285,67 +342,27 @@
         </Sidebar.Group>
 
         <Sidebar.Footer>
-            {#if !isMobilePortrait}
-                {@render sidebarLink(
-                    "/settings",
-                    "settings",
-                    "Settings",
-                    page.url.pathname === "/settings",
-                )}
-                {@render sidebarLink(
-                    "/testing-features",
-                    "labs",
-                    "Test",
-                    page.url.pathname === "/testing-features" ||
-                        page.url.pathname.startsWith("/testing-features/"),
-                )}
-
-                <div class="footer-separator h-px bg-border/50 my-1"></div>
-            {/if}
-
             {#if session}
-                {#if expanded && !isMobilePortrait}
-                    <div
-                        class="profile-card flex items-center gap-3 px-2 py-1.5 w-full bg-muted/30 rounded-md border border-border/50"
-                    >
-                        <div
-                            class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm shrink-0"
-                        >
-                            {profile?.username?.charAt(0).toUpperCase() || "U"}
-                        </div>
-                        <div class="profile-text flex flex-col min-w-0">
-                            <span
-                                class="text-sm font-medium truncate text-foreground"
-                                >{profile?.username || "User"}</span
+                {#if isMobilePortrait}
+                    <div class="flex items-center justify-center w-11 h-11 shrink-0">
+                        <DropdownMenu options={profileOptions}>
+                            <button
+                                type="button"
+                                class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:ring-2 hover:ring-primary/20 transition-all outline-none cursor-pointer"
+                                title={profile?.username || session.user?.email}
+                                aria-label="Profile menu"
                             >
-                            <span class="text-xs text-muted-foreground truncate"
-                                >{session.user?.email || ""}</span
-                            >
-                        </div>
+                                {profile?.username?.charAt(0).toUpperCase() || "U"}
+                            </button>
+                        </DropdownMenu>
                     </div>
                 {:else}
-                    <div
-                        class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm my-1 shrink-0"
-                        title={profile?.username || session.user?.email}
-                    >
-                        {profile?.username?.charAt(0).toUpperCase() || "U"}
-                    </div>
-                {/if}
-
-                {#if !isMobilePortrait}
-                    <form
-                        action="/auth/logout"
-                        method="POST"
-                        use:enhance
-                        class="logout-form w-full flex justify-start data-[expanded=false]:justify-center"
-                        data-expanded={expanded}
-                    >
-                        <Sidebar.Item
-                            type="submit"
-                            icon="logout"
-                            label="Logout"
-                        />
-                    </form>
+                    {@render sidebarLink(
+                        "/settings",
+                        "settings",
+                        "Settings",
+                        page.url.pathname === "/settings",
+                    )}
                 {/if}
             {:else}
                 <Sidebar.Item
@@ -368,8 +385,55 @@
         ></form>
     {/if}
 
-    <div class="flex flex-col flex-1 h-full overflow-y-auto p-0">
-        {@render children()}
+    <div class="flex flex-col flex-1 h-full overflow-hidden">
+        {#if topbar.visible || !isMobilePortrait}
+            <div
+                class="relative flex items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none z-10 shrink-0"
+            >
+                <div
+                    class="absolute inset-0 bg-background backdrop-blur-(--backdrop-blur) -z-10"
+                ></div>
+                {#if topbar.leftSnippet}
+                    {@render topbar.leftSnippet()}
+                {:else}
+                    <div class="flex items-center gap-2">
+                        {#if topbar.backHref}
+                            <a
+                                href={topbar.backHref}
+                                class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                aria-label={topbar.backLabel || "Back"}
+                            >
+                                <Icon name="arrow_back" class="size-5" />
+                            </a>
+                        {/if}
+                        {#if topbar.title}
+                            <h1 class="text-sm font-semibold">{topbar.title}</h1>
+                        {/if}
+                    </div>
+                {/if}
+                
+                <div class="flex items-center gap-3">
+                    {#if topbar.rightSnippet}
+                        {@render topbar.rightSnippet()}
+                    {/if}
+
+                    {#if !isMobilePortrait && session}
+                        <DropdownMenu options={profileOptions}>
+                            <button
+                                type="button"
+                                class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:ring-2 hover:ring-primary/20 transition-all outline-none cursor-pointer"
+                                aria-label="Profile menu"
+                            >
+                                {profile?.username?.charAt(0).toUpperCase() || "U"}
+                            </button>
+                        </DropdownMenu>
+                    {/if}
+                </div>
+            </div>
+        {/if}
+        <div class="flex-1 overflow-y-auto p-0">
+            {@render children()}
+        </div>
     </div>
 
     <ToastContainer onDismiss={onToastClose} />
@@ -450,29 +514,6 @@
                 justify-content: center !important;
                 align-items: center !important;
                 flex-shrink: 0 !important;
-            }
-
-            .profile-card {
-                background-color: transparent !important;
-                border-width: 0px !important;
-                padding: 0 !important;
-                width: auto !important;
-                margin: 0 !important;
-                flex-shrink: 0 !important;
-            }
-
-            .profile-text {
-                display: none !important;
-            }
-
-            .logout-form {
-                width: auto !important;
-                margin: 0 !important;
-                flex-shrink: 0 !important;
-            }
-
-            .footer-separator {
-                display: none !important;
             }
         }
     }

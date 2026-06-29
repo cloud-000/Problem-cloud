@@ -53,6 +53,7 @@
         type CounterKey,
         type CounterRanges,
     } from "./SettingsPanel.svelte";
+    import { TopbarRegister } from "$lib/components/topbar";
 
     // `sessionParam` is the `?session=` value: "root" (ungrouped work) or a
     // numeric session id. The parent route keys this component on it, so a
@@ -1212,153 +1213,153 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
-    <!-- Top utility bar: back to hub, session context, Settings, stats, timer -->
-    <div
-        class="flex items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none z-10 backdrop-blur-(--backdrop-blur)"
-    >
-        <div class="flex items-center">
-            <a
-                href="/practice"
-                class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                aria-label="Back to sessions"
-            >
-                <Icon name="arrow_back" class={iconCls} />
-            </a>
-
-            <Button
-                variant="ghost"
-                size="sm"
-                class={cn(
-                    "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
-                    showSettings && "bg-muted text-foreground",
-                )}
-                onclick={() => (showSettings = !showSettings)}
-                aria-expanded={showSettings}
-                aria-label="Toggle settings"
-                disabled={paused}
-            >
-                <Icon name="tune" class={iconCls} />
-            </Button>
-
-            {#if activeSession}
-                <div class="flex flex-row items-center gap-1.5">
-                    {#if isTest}
-                        <span
-                            class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
-                        >
-                            <Icon name="quiz" class="size-[1em]" />
-                            Test
-                        </span>
-                    {/if}
-                    <span class="opacity-50">{activeSession.name}</span>
-                </div>
-            {/if}
-        </div>
-
-        <div
-            class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
+    <TopbarRegister left={topbarLeft} right={topbarRight} />
+{#snippet topbarLeft()}
+    <div class="flex items-center">
+        <a
+            href="/practice"
+            class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Back to sessions"
         >
-            {#if behavior.showLiveFeedback}
-                {@render statChip(correctAttempts, "var(--color-correct)")}
-                {@render statChip(
-                    incorrectAttempts,
-                    "var(--color-destructive)",
-                )}
-                {@render statChip(skippedAttempts, "var(--color-unsure)")}
-                <SegmentBar
-                    class="min-w-10 w-full shrink h-2"
-                    segments={[
-                        {
-                            value: correctAttempts,
-                            color: "var(--color-correct)",
-                            label: "Solved",
-                        },
-                        {
-                            value: incorrectAttempts,
-                            color: "var(--color-destructive)",
-                            label: "Incorrect",
-                        },
-                        {
-                            value: skippedAttempts,
-                            color: "var(--color-unsure)",
-                            label: "Skipped",
-                        },
-                    ]}
-                />
-            {/if}
-            {#if isTest}
-                {#if !testFinished && history.length > 0}
-                    {@const timed = timeLimitSeconds != null}
-                    {@const low =
-                        timed && remainingMs != null && remainingMs <= 60_000}
-                    <div
-                        class={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
-                            low
-                                ? "bg-destructive/15 text-destructive"
-                                : "bg-surface-container-low",
-                        )}
-                        title={timed ? "Time remaining" : "Elapsed time"}
-                        aria-label={timed ? "Time remaining" : "Elapsed time"}
+            <Icon name="arrow_back" class={iconCls} />
+        </a>
+
+        <Button
+            variant="ghost"
+            size="sm"
+            class={cn(
+                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
+                showSettings && "bg-muted text-foreground",
+            )}
+            onclick={() => (showSettings = !showSettings)}
+            aria-expanded={showSettings}
+            aria-label="Toggle settings"
+            disabled={paused}
+        >
+            <Icon name="tune" class={iconCls} />
+        </Button>
+
+        {#if activeSession}
+            <div class="flex flex-row items-center gap-1.5">
+                {#if isTest}
+                    <span
+                        class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
                     >
-                        <Icon
-                            name={timed ? "timer" : "schedule"}
-                            class={iconCls}
-                        />
-                        <span class="leading-none tabular-nums">
-                            {formatElapsed(
-                                timed ? (remainingMs ?? 0) : totalElapsedMs,
-                            )}
-                        </span>
-                    </div>
+                        <Icon name="quiz" class="size-[1em]" />
+                        Test
+                    </span>
                 {/if}
-            {:else if problem}
-                {@const isTotal = timerMode === "total"}
-                <div class="flex items-center gap-1.5">
-                    {#if behavior.allowPause && !submitted && isLatest}
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            class="text-muted-foreground hover:text-foreground"
-                            onclick={togglePause}
-                            aria-label={paused
-                                ? "Resume practice"
-                                : "Pause practice"}
-                            title={paused ? "Resume" : "Pause"}
-                        >
-                            <Icon
-                                name={paused ? "play_arrow" : "pause"}
-                                class={iconCls}
-                            />
-                        </Button>
-                    {/if}
-                    <button
-                        type="button"
-                        onclick={() =>
-                            (timerMode = isTotal ? "problem" : "total")}
-                        class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
-                        title={isTotal
-                            ? "Total session time — click for this problem"
-                            : "Time on this problem — click for session total"}
-                        aria-label={isTotal
-                            ? "Total session time"
-                            : "Time on this problem"}
-                        disabled={paused}
-                    >
-                        <Icon
-                            name={isTotal ? "timelapse" : "schedule"}
-                            class={iconCls}
-                        />
-                        <span class="leading-none">
-                            {formatElapsed(
-                                isTotal ? totalElapsedMs : elapsedMs,
-                            )}
-                        </span>
-                    </button>
+                <span class="opacity-50 text-xs">{activeSession.name}</span>
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
+{#snippet topbarRight()}
+    <div
+        class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
+    >
+        {#if behavior.showLiveFeedback}
+            {@render statChip(correctAttempts, "var(--color-correct)")}
+            {@render statChip(
+                incorrectAttempts,
+                "var(--color-destructive)",
+            )}
+            {@render statChip(skippedAttempts, "var(--color-unsure)")}
+            <SegmentBar
+                class="min-w-10 w-full shrink h-2"
+                segments={[
+                    {
+                        value: correctAttempts,
+                        color: "var(--color-correct)",
+                        label: "Solved",
+                    },
+                    {
+                        value: incorrectAttempts,
+                        color: "var(--color-destructive)",
+                        label: "Incorrect",
+                    },
+                    {
+                        value: skippedAttempts,
+                        color: "var(--color-unsure)",
+                        label: "Skipped",
+                    },
+                ]}
+            />
+        {/if}
+        {#if isTest}
+            {#if !testFinished && history.length > 0}
+                {@const timed = timeLimitSeconds != null}
+                {@const low =
+                    timed && remainingMs != null && remainingMs <= 60_000}
+                <div
+                    class={cn(
+                        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
+                        low
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-surface-container-low",
+                    )}
+                    title={timed ? "Time remaining" : "Elapsed time"}
+                    aria-label={timed ? "Time remaining" : "Elapsed time"}
+                >
+                    <Icon
+                        name={timed ? "timer" : "schedule"}
+                        class={iconCls}
+                    />
+                    <span class="leading-none tabular-nums">
+                        {formatElapsed(
+                            timed ? (remainingMs ?? 0) : totalElapsedMs,
+                        )}
+                    </span>
                 </div>
             {/if}
-        </div>
+        {:else if problem}
+            {@const isTotal = timerMode === "total"}
+            <div class="flex items-center gap-1.5">
+                {#if behavior.allowPause && !submitted && isLatest}
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="text-muted-foreground hover:text-foreground"
+                        onclick={togglePause}
+                        aria-label={paused
+                            ? "Resume practice"
+                            : "Pause practice"}
+                        title={paused ? "Resume" : "Pause"}
+                    >
+                        <Icon
+                            name={paused ? "play_arrow" : "pause"}
+                            class={iconCls}
+                        />
+                    </Button>
+                {/if}
+                <button
+                    type="button"
+                    onclick={() =>
+                        (timerMode = isTotal ? "problem" : "total")}
+                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
+                    title={isTotal
+                        ? "Total session time — click for this problem"
+                        : "Time on this problem — click for session total"}
+                    aria-label={isTotal
+                        ? "Total session time"
+                        : "Time on this problem"}
+                    disabled={paused}
+                >
+                    <Icon
+                        name={isTotal ? "timelapse" : "schedule"}
+                        class={iconCls}
+                    />
+                    <span class="leading-none">
+                        {formatElapsed(
+                            isTotal ? totalElapsedMs : elapsedMs,
+                        )}
+                    </span>
+                </button>
+            </div>
+        {/if}
     </div>
+{/snippet}
 
     <!-- Main Content Area: Problem + Collapsible Settings Panel -->
     <div

@@ -6,6 +6,8 @@
     import { modal } from "$lib/state/modal.svelte";
     import FeedbackModal from "./FeedbackModal.svelte";
     import type { PageData } from "./$types";
+    import { Switch } from "$lib/components/toggle";
+    import { settings } from "$lib/state/settings.svelte";
 
     let { data }: { data: PageData } = $props();
     let { profile, session, user, supabase } = $derived(data);
@@ -72,6 +74,37 @@
                         Theme.theme = val;
                     }}
                 />
+            </div>
+        </div>
+    </div>
+
+    <!-- Beta Features -->
+    <div
+        class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+    >
+        <div>
+            <h2
+                class="text-lg font-semibold text-foreground flex items-center gap-2"
+            >
+                <Icon name="labs" class="text-primary-foreground" />
+                Beta Features
+            </h2>
+            <p class="text-xs text-muted-foreground mt-0.5">
+                Enable experimental options and tools under development.
+            </p>
+        </div>
+
+        <div
+            class="flex items-center justify-between gap-4 pb-2"
+        >
+            <div class="flex flex-col gap-0.5">
+                <span class="text-sm font-medium text-foreground">Show Beta Tabs</span>
+                <span class="text-xs text-muted-foreground"
+                    >Toggle visibility of beta tabs like Find (debug search) and Test (feature labs).</span
+                >
+            </div>
+            <div class="shrink-0">
+                <Switch bind:checked={settings.showBetaFeatures} id="beta-features-switch" />
             </div>
         </div>
     </div>
