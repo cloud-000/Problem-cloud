@@ -40,6 +40,7 @@
         | "ended"
         | "review"
         | "new"
+        | "unanswered"
         | "ungrouped";
 
     type Meta = {
@@ -104,6 +105,12 @@
             fill: false,
             label: "New",
             tone: "neutral",
+        },
+        unanswered: {
+            icon: "help",
+            fill: false,
+            label: "No answer",
+            tone: "unsure",
         },
         ungrouped: {
             icon: "filter_none",

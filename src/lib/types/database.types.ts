@@ -485,6 +485,51 @@ export type Database = {
           },
         ]
       }
+      user_submitted_feedback: {
+        Row: {
+          answer_index: number | null
+          created_at: string
+          id: number
+          problem_id: number
+          steps: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          answer_index?: number | null
+          created_at?: string
+          id?: never
+          problem_id: number
+          steps?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          answer_index?: number | null
+          created_at?: string
+          id?: never
+          problem_id?: number
+          steps?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_submitted_feedback_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_submitted_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

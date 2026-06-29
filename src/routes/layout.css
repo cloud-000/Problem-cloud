@@ -386,17 +386,53 @@
     15%,
     45%,
     75% {
-        transform: translateX(-4px);
+        transform: translateX(calc(-1 * var(--spacing-sm)));
     }
     30%,
     60%,
     90% {
-        transform: translateX(4px);
+        transform: translateX(var(--spacing-sm));
     }
 }
 
 @utility animate-answer-shake {
     animation: answer-shake 360ms ease-in-out;
+}
+
+/* Resting "this is clickable" cue: a ring that expands and fades from the
+   element's rounded edge, looping. Used on interactive chips (e.g. the practice
+   "No answer" tag) so they read as actionable before the hover-morph. The ring
+   color is `--attention-color` (default the brand primary); set it per-element
+   to match the chip's tone. */
+@keyframes attention-pulse {
+    0% {
+        box-shadow: 0 0 0 0
+            color-mix(
+                in oklab,
+                var(--attention-color, var(--color-primary)) 50%,
+                transparent
+            );
+    }
+    70% {
+        box-shadow: 0 0 0 var(--spacing-sm)
+            color-mix(
+                in oklab,
+                var(--attention-color, var(--color-primary)) 0%,
+                transparent
+            );
+    }
+    100% {
+        box-shadow: 0 0 0 0
+            color-mix(
+                in oklab,
+                var(--attention-color, var(--color-primary)) 0%,
+                transparent
+            );
+    }
+}
+
+@utility animate-attention-pulse {
+    animation: attention-pulse 1.8s ease-out infinite;
 }
 
 /* Hide the scrollbar on horizontally-scrolling tracks (e.g. combobox pills). */

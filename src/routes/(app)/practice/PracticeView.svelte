@@ -40,7 +40,10 @@
         type PracticeSessionRow,
     } from "$lib/sessions";
     import { cn, formatElapsed } from "$lib/utils";
+    import { modal } from "$lib/state/modal.svelte";
+    import { toasts } from "$lib/state/toast.svelte";
     import { StatusTag } from "$lib/components/status-tag";
+    import AnswerSubmissionModal from "./AnswerSubmissionModal.svelte";
     import { SegmentBar } from "$lib/components/segment-bar";
     import { onMount } from "svelte";
     import { fade } from "svelte/transition";
@@ -63,6 +66,8 @@
     let difficulty = $state<[number, number]>([...DIFFICULTY_RANGE]);
     let verifiedOnly = $state(false);
     let computational = $state<TriState>("neutral");
+    // off = With answer (default), neutral = Any, on = Without answer.
+    let answerAvailability = $state<TriState>("off");
     let seriesIds = $state<string[]>([]);
     let seriesOptions = $state<{ value: string; label: string }[]>([]);
     let counterRanges = $state<CounterRanges>({
@@ -139,6 +144,12 @@
         difficulty = [s.difficulty[0], s.difficulty[1]];
         verifiedOnly = s.verifiedOnly;
         computational = boolToTri(s.computational);
+        answerAvailability =
+            s.answerAvailability === "without"
+                ? "on"
+                : s.answerAvailability === "any"
+                  ? "neutral"
+                  : "off";
         const applyCounter = (
             key: CounterKey,
             range: [number, number] | null,
@@ -258,7 +269,8 @@
                 // arbitrary. Re-sort into problem order for the review list.
                 const ordered = [...graded].sort(
                     (x, y) =>
-                        x.problem.n - y.problem.n || x.problem.id - y.problem.id,
+                        x.problem.n - y.problem.n ||
+                        x.problem.id - y.problem.id,
                 );
                 history = ordered.map((a) => ({
                     problem: a.problem,
@@ -278,10 +290,7 @@
                 // call failed; grading already happened, so this just flips status.
                 if (s.status !== "ended") {
                     endSession(supabase, s.id).catch((e) =>
-                        console.error(
-                            "Failed to reconcile test session:",
-                            e,
-                        ),
+                        console.error("Failed to reconcile test session:", e),
                     );
                 }
                 return;
@@ -613,6 +622,29 @@
     // Hoisted out of the template so they aren't recomputed in both the
     // {#if} guard and the rendered value.
     let topicName = $derived(problem ? topicLabel(problem.topic) : null);
+    // A problem with no recorded answer (answer_index -1 or null) — runs in
+    // ungraded mode and surfaces the "No answer" submission chip.
+    let hasAnswer = $derived(
+        !!problem && problem.answer_index != null && problem.answer_index >= 0,
+    );
+
+    function openAnswerSubmission() {
+        if (!problem) return;
+        if (!user) {
+            toasts.error("Sign in to suggest an answer.");
+            return;
+        }
+        modal.show(
+            AnswerSubmissionModal,
+            {
+                supabase,
+                user,
+                problemId: problem.id,
+                choices: problem.choices ?? [],
+            },
+            { title: "Suggest an answer", size: "md" },
+        );
+    }
     let lastReviewedLabel = $derived(
         currentProgress
             ? formatReviewDate(currentProgress.lastSubmissionAt)
@@ -634,6 +666,12 @@
             difficulty: [difficulty[0], difficulty[1]],
             verifiedOnly,
             computational: triToBool(computational),
+            answerAvailability:
+                answerAvailability === "on"
+                    ? "without"
+                    : answerAvailability === "neutral"
+                      ? "any"
+                      : "with",
             timesSeen: counterFilter("seen"),
             timesReviewed: counterFilter("reviewed"),
             timesCorrect: counterFilter("correct"),
@@ -794,7 +832,11 @@
         if (!problem || selectedChoice == null || submitted) return;
 
         const elapsed = Math.max(0, Date.now() - startedAt);
-        const isCorrect = selectedChoice === problem.answer_index;
+        // Answerless problems run ungraded: there's nothing to compare against,
+        // so record the attempt as seen-but-not-graded (isCorrect = null).
+        const isCorrect = hasAnswer
+            ? selectedChoice === problem.answer_index
+            : null;
 
         submitted = true;
         correct = isCorrect;
@@ -928,7 +970,10 @@
     onMount(async () => {
         try {
             const list = await fetchAllSeries(supabase);
-            seriesOptions = list.map((s) => ({ value: String(s.id), label: s.name }));
+            seriesOptions = list.map((s) => ({
+                value: String(s.id),
+                label: s.name,
+            }));
         } catch (e) {
             console.error("Failed to fetch series options:", e);
         }
@@ -1320,7 +1365,7 @@
         class="flex flex-1 flex-col lg:flex-row gap-0 items-stretch justify-center w-full min-h-0"
     >
         <main
-            class="flex-1 w-full min-w-0 flex flex-col justify-between pt-2 min-h-0"
+            class="flex-1 w-full min-w-0 flex flex-col justify-between pt-0 min-h-0 overflow-visible"
         >
             {#if loading}
                 <div
@@ -1355,7 +1400,8 @@
                     {#if isTest}
                         <Button
                             size="sm"
-                            onclick={() => window.location.reload()}>Retry</Button
+                            onclick={() => window.location.reload()}
+                            >Retry</Button
                         >
                     {:else}
                         <Button size="sm" onclick={() => loadProblem()}
@@ -1379,7 +1425,8 @@
                             This test has no answerable problems
                         </h2>
                         <p class="text-xs text-muted-foreground">
-                            None of its problems have a statement and choices yet.
+                            None of its problems have a statement and choices
+                            yet.
                         </p>
                     </div>
                     <Button size="sm" variant="outline" href="/practice">
@@ -1439,7 +1486,7 @@
                         >
                             <!-- Metadata row: source/series/topic on the left, review status on the right -->
                             <div
-                                class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full"
+                                class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pt-2.5 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full overflow-visible"
                             >
                                 <div
                                     class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
@@ -1468,6 +1515,18 @@
                                 <div
                                     class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
                                 >
+                                    {#if !hasAnswer}
+                                        <StatusTag
+                                            status="unanswered"
+                                            size="sm"
+                                            class="border-unsure/60 bg-unsure/20 text-on-unsure-container [--attention-color:var(--color-unsure)] animate-attention-pulse hover:animate-none focus-visible:animate-none motion-reduce:animate-none"
+                                            action={{
+                                                label: "Suggest",
+                                                icon: "add",
+                                                onclick: openAnswerSubmission,
+                                            }}
+                                        />
+                                    {/if}
                                     {#if behavior.showLiveFeedback}
                                         {#if currentSource === "review"}
                                             <StatusTag
@@ -1525,7 +1584,8 @@
                                     bind:answer
                                     bind:selectedChoice
                                     showAnswerState={behavior.revealAnswerState &&
-                                        submitted}
+                                        submitted &&
+                                        hasAnswer}
                                     disabled={behavior.freezeOnNavigate
                                         ? submitted || !isLatest || paused
                                         : false}
@@ -1715,6 +1775,7 @@
                 bind:difficulty
                 bind:verifiedOnly
                 bind:computational
+                bind:answerAvailability
                 bind:seriesIds
                 {seriesOptions}
                 {counterRanges}

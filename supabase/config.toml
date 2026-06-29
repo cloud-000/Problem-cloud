@@ -66,7 +66,8 @@ schema_paths = [
     "./schemas/notifications.sql",
     "./schemas/problems.sql",
     "./schemas/practice_sessions.sql",
-    "./schemas/submissions.sql"
+    "./schemas/submissions.sql",
+    "./schemas/user_submitted_feedback.sql"
 ]
 
 [db.seed]

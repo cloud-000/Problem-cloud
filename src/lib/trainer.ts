@@ -31,6 +31,11 @@ export type PracticeSettings = {
     difficulty: Range;
     verifiedOnly: boolean;
     computational: boolean | null;
+    // Answer availability. "with" = only problems with a recorded answer (the
+    // historical default); "without" = only answerless problems (answer_index -1
+    // or null) for users helping fill in answers; "any" = both. Optional so older
+    // session snapshots without it are tolerated (treated as "with").
+    answerAvailability?: "with" | "without" | "any";
     // Advanced progress filters — apply to the review queue only. `null` = "Any".
     timesSeen: Range | null;
     timesReviewed: Range | null;
@@ -144,6 +149,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         difficulty: [...DIFFICULTY_RANGE],
         verifiedOnly: false,
         computational: null,
+        answerAvailability: "with",
         timesSeen: null,
         timesReviewed: null,
         timesCorrect: null,
@@ -189,8 +195,22 @@ function applyAttributeFilters(
 ) {
     let next = query
         .not(`${prefix}statement`, "is", null)
-        .not(`${prefix}choices`, "is", null)
-        .gte(`${prefix}answer_index`, 0);
+        .not(`${prefix}choices`, "is", null);
+
+    // Answer availability. "no answer" is `answer_index = -1` (the column default)
+    // or null; "with" requires a real index (>= 0); "any" drops the constraint.
+    const answerAvailability = settings.answerAvailability ?? "with";
+    if (answerAvailability === "with") {
+        next = next.gte(`${prefix}answer_index`, 0);
+    } else if (answerAvailability === "without") {
+        // `.or()` against an embedded resource needs the referenced table named.
+        next =
+            prefix === "problems."
+                ? next.or("answer_index.is.null,answer_index.lt.0", {
+                      referencedTable: "problems",
+                  })
+                : next.or("answer_index.is.null,answer_index.lt.0");
+    }
 
     if (settings.topic.length > 0) {
         next = next.in(`${prefix}topic`, settings.topic);
@@ -215,9 +235,20 @@ function applyAttributeFilters(
     return next;
 }
 
-function isEligibleProblem(problem: ProblemRow | null): problem is ProblemRow {
+/** Whether the settings permit answerless problems (any availability but "with"). */
+function allowsAnswerless(settings: PracticeSettings): boolean {
+    return (settings.answerAvailability ?? "with") !== "with";
+}
+
+function isEligibleProblem(
+    problem: ProblemRow | null,
+    allowAnswerless = false,
+): problem is ProblemRow {
     if (!problem?.statement?.trim()) return false;
     if (!problem.choices?.length) return false;
+    // When answerless problems are permitted, the recorded answer is optional;
+    // the draw query has already narrowed to the requested availability.
+    if (allowAnswerless) return true;
     if (problem.answer_index == null) return false;
     return problem.answer_index >= 0 && problem.answer_index < problem.choices.length;
 }
@@ -279,9 +310,10 @@ async function fetchNewProblem(
     if (error) throw error;
     if (!count) return null;
 
+    const allowAnswerless = allowsAnswerless(settings);
     for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
         const candidate = await fetchRandomCandidate(supabase, settings, exclude, count);
-        if (isEligibleProblem(candidate)) return candidate;
+        if (isEligibleProblem(candidate, allowAnswerless)) return candidate;
     }
 
     let fallbackSelect = PROBLEM_SELECT;
@@ -299,7 +331,9 @@ async function fetchNewProblem(
 
     if (fallbackError) throw fallbackError;
 
-    const eligible = ((data ?? []) as unknown as ProblemRow[]).filter(isEligibleProblem);
+    const eligible = ((data ?? []) as unknown as ProblemRow[]).filter((p) =>
+        isEligibleProblem(p, allowAnswerless),
+    );
     if (eligible.length === 0) return null;
 
     return eligible[Math.floor(Math.random() * eligible.length)];
@@ -385,12 +419,12 @@ function buildReviewBaseQuery(
 }
 
 /** Execute a single-row review query and map it to a Draw. */
-async function runReviewDraw(query: any): Promise<Draw> {
+async function runReviewDraw(query: any, allowAnswerless = false): Promise<Draw> {
     const { data, error } = await query.limit(1);
     if (error) throw error;
 
     const rows = (data ?? []) as unknown as ReviewRow[];
-    const row = rows.find((r) => isEligibleProblem(r.problems));
+    const row = rows.find((r) => isEligibleProblem(r.problems, allowAnswerless));
 
     return row?.problems
         ? { problem: row.problems, progress: toProgress(row) }
@@ -410,6 +444,7 @@ async function fetchDueReviewProblem(
     session: PracticeSession,
 ): Promise<Draw> {
     const now = new Date().toISOString();
+    const allowAnswerless = allowsAnswerless(settings);
 
     // 1. Closest review date that has already passed (nearest to now first).
     let draw = await runReviewDraw(
@@ -417,6 +452,7 @@ async function fetchDueReviewProblem(
             .not("next_review_at", "is", null)
             .lte("next_review_at", now)
             .order("next_review_at", { ascending: false }),
+        allowAnswerless,
     );
     if (draw.problem) return draw;
 
@@ -424,6 +460,7 @@ async function fetchDueReviewProblem(
     if (settings.includeUnscheduled) {
         draw = await runReviewDraw(
             buildReviewBaseQuery(supabase, settings, session).is("next_review_at", null),
+            allowAnswerless,
         );
         if (draw.problem) return draw;
     }
@@ -433,6 +470,7 @@ async function fetchDueReviewProblem(
         buildReviewBaseQuery(supabase, settings, session)
             .gt("next_review_at", now)
             .order("next_review_at", { ascending: true }),
+        allowAnswerless,
     );
 }
 
@@ -503,5 +541,7 @@ export async function fetchTestProblems(
         .order("n")
         .order("id");
     if (error) throw error;
-    return ((data ?? []) as unknown as ProblemRow[]).filter(isEligibleProblem);
+    return ((data ?? []) as unknown as ProblemRow[]).filter((p) =>
+        isEligibleProblem(p),
+    );
 }

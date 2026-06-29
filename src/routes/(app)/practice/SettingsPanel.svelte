@@ -58,6 +58,7 @@
         difficulty = $bindable<[number, number]>([...DIFFICULTY_RANGE]),
         verifiedOnly = $bindable(false),
         computational = $bindable<TriState>("neutral"),
+        answerAvailability = $bindable<TriState>("off"),
         seriesIds = $bindable<string[]>([]),
         seriesOptions = [],
         counterRanges,
@@ -76,6 +77,8 @@
         difficulty: [number, number];
         verifiedOnly: boolean;
         computational: TriState;
+        /** off = With answer (default), neutral = Any, on = Without answer. */
+        answerAvailability: TriState;
         seriesIds: string[];
         seriesOptions: { value: string; label: string }[];
         counterRanges: CounterRanges;
@@ -99,12 +102,19 @@
         return "Any";
     }
 
+    function answerAvailabilityLabel(value: TriState) {
+        if (value === "on") return "Without answer (help answer it)";
+        if (value === "off") return "With answer";
+        return "Any";
+    }
+
     function resetSettings() {
         mode = "new";
         topic = [];
         difficulty = [...DIFFICULTY_RANGE];
         verifiedOnly = false;
         computational = "neutral";
+        answerAvailability = "off";
         seriesIds = [];
         for (const { key } of COUNTERS) {
             counterEnabled[key] = false;
@@ -258,6 +268,18 @@
             </span>
         </div>
         <TriStateSwitch bind:value={computational} size="sm" />
+    </div>
+
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-0.5">
+            <span class="text-xs font-medium text-muted-foreground">
+                Answer availability
+            </span>
+            <span class="text-[10px] text-muted-foreground">
+                {answerAvailabilityLabel(answerAvailability)}
+            </span>
+        </div>
+        <TriStateSwitch bind:value={answerAvailability} size="sm" />
     </div>
 
     <!-- Advanced filters (collapsible) -->
