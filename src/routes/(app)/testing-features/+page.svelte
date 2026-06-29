@@ -56,6 +56,12 @@
             description: "Premium dialog modals with custom sizes and keyboard control.",
             href: "/testing-features/modal",
         },
+        {
+            icon: "tab",
+            name: "Subtabs",
+            description: "Compound tabbed navigation with line, pill, and card variants.",
+            href: "/testing-features/subtabs",
+        },
     ];
 </script>
 
