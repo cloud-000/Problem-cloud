@@ -46,34 +46,25 @@
     let devMode = $state(false);
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto pb-12">
+<div class="space-y-8 pb-12">
     <!-- Header -->
     <div
-        class="border-b border-border/80 pb-4 flex items-center justify-between"
+        class="border-b border-border/80 pb-4"
     >
-        <div>
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-            >
-                <Icon
-                    name="toggle_on"
-                    fontsize="2.25rem"
-                    class="text-primary-foreground"
-                />
-                Toggle & Switch Test Bench
-            </h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                Interactive playground to verify state bindings, sizes, and
-                styling variants.
-            </p>
-        </div>
-        <a
-            href="/testing-features"
-            class="text-sm font-medium text-primary-foreground hover:underline flex items-center gap-1 border border-border rounded-md px-3 py-1.5 bg-surface-container-lowest shadow-xs hover:bg-surface-container transition-colors"
+        <h1
+            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
         >
-            <Icon name="arrow_back" fontsize="1.1rem" />
-            Back to Hub
-        </a>
+            <Icon
+                name="toggle_on"
+                fontsize="2.25rem"
+                class="text-primary-foreground"
+            />
+            Toggle & Switch Test Bench
+        </h1>
+        <p class="text-sm text-muted-foreground mt-1">
+            Interactive playground to verify state bindings, sizes, and
+            styling variants.
+        </p>
     </div>
 
     <!-- Live Status Console -->

@@ -28,34 +28,25 @@
     ];
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto pb-12">
+<div class="space-y-8 pb-12">
     <!-- Header -->
     <div
-        class="border-b border-border/80 pb-4 flex items-center justify-between"
+        class="border-b border-border/80 pb-4"
     >
-        <div>
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-            >
-                <Icon
-                    name="data_usage"
-                    fontsize="2.25rem"
-                    class="text-primary-foreground"
-                />
-                Segment Bar Test Bench
-            </h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                A proportional bar built from a <code>{"{ value, color }"}</code>
-                list. Widths scale to each section's share of the total.
-            </p>
-        </div>
-        <a
-            href="/testing-features"
-            class="text-sm font-medium text-primary-foreground hover:underline flex items-center gap-1 border border-border rounded-md px-3 py-1.5 bg-surface-container-lowest shadow-xs hover:bg-surface-container transition-colors"
+        <h1
+            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
         >
-            <Icon name="arrow_back" fontsize="1.1rem" />
-            Back to Hub
-        </a>
+            <Icon
+                name="data_usage"
+                fontsize="2.25rem"
+                class="text-primary-foreground"
+            />
+            Segment Bar Test Bench
+        </h1>
+        <p class="text-sm text-muted-foreground mt-1">
+            A proportional bar built from a <code>{"{ value, color }"}</code>
+            list. Widths scale to each section's share of the total.
+        </p>
     </div>
 
     <!-- Interactive practice-outcome example -->

@@ -48,18 +48,13 @@
     ];
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto pb-48">
+<div class="space-y-8 pb-48">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4">
-        <div class="flex items-center gap-2">
-            <a href="/testing-features" class="text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="arrow_back" fontsize="1.5rem" />
-            </a>
-            <h1 class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">
-                <Icon name="menu" fontsize="2rem" class="text-primary-foreground" />
-                Dropdown Menu Feature Tests
-            </h1>
-        </div>
+        <h1 class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">
+            <Icon name="menu" fontsize="2rem" class="text-primary-foreground" />
+            Dropdown Menu Feature Tests
+        </h1>
         <p class="text-sm text-muted-foreground mt-1">
             Test the recursive submenus, custom styling, accessibility, and window collision detection of the new Dropdown Menu component.
         </p>

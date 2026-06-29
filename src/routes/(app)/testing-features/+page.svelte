@@ -65,7 +65,7 @@
     ];
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto">
+<div class="space-y-8">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4">
         <h1

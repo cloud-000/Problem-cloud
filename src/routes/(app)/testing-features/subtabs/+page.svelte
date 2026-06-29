@@ -15,25 +15,16 @@
     let inputValB = $state("");
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto pb-12">
+<div class="space-y-8 pb-12">
     <!-- Header -->
-    <div class="border-b border-border/80 pb-4 flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">
-                <Icon name="tab" fontsize="2.25rem" class="text-primary-foreground" />
-                Subtabs Test Bench
-            </h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                Verify compound tab layouts, keyboard navigation, keepMounted behavior, and styling variants.
-            </p>
-        </div>
-        <a
-            href="/testing-features"
-            class="text-sm font-medium text-primary-foreground hover:underline flex items-center gap-1 border border-border rounded-md px-3 py-1.5 bg-surface-container-lowest shadow-xs hover:bg-surface-container transition-colors"
-        >
-            <Icon name="arrow_back" fontsize="1.1rem" />
-            Back to Hub
-        </a>
+    <div class="border-b border-border/80 pb-4">
+        <h1 class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">
+            <Icon name="tab" fontsize="2.25rem" class="text-primary-foreground" />
+            Subtabs Test Bench
+        </h1>
+        <p class="text-sm text-muted-foreground mt-1">
+            Verify compound tab layouts, keyboard navigation, keepMounted behavior, and styling variants.
+        </p>
     </div>
 
     <!-- Live Status Console -->

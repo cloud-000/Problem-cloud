@@ -15,15 +15,9 @@
     let freestyleValue = $state<string[]>(["alice@example.com"]);
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto">
+<div class="space-y-8">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4 space-y-2">
-        <a
-            href="/testing-features"
-            class="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-            ← Back to tests
-        </a>
         <h1
             class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
         >
