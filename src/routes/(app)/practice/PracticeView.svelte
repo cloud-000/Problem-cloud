@@ -1144,7 +1144,7 @@
                     </span>
                 </div>
                 <SegmentBar
-                    class="h-2"
+                    class="h-2 min-w-0"
                     segments={[
                         {
                             value: testCorrect,
@@ -1214,7 +1214,7 @@
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
     <!-- Top utility bar: back to hub, session context, Settings, stats, timer -->
     <div
-        class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none z-10 backdrop-blur-(--backdrop-blur)"
+        class="flex items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 py-3 px-2 select-none z-10 backdrop-blur-(--backdrop-blur)"
     >
         <div class="flex items-center">
             <a
@@ -1256,7 +1256,7 @@
         </div>
 
         <div
-            class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground"
+            class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
         >
             {#if behavior.showLiveFeedback}
                 {@render statChip(correctAttempts, "var(--color-correct)")}
@@ -1266,7 +1266,7 @@
                 )}
                 {@render statChip(skippedAttempts, "var(--color-unsure)")}
                 <SegmentBar
-                    class="w-36 h-2"
+                    class="min-w-10 w-full shrink h-2"
                     segments={[
                         {
                             value: correctAttempts,

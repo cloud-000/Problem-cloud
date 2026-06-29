@@ -2,7 +2,7 @@
     import { cn, type WithElementRef } from "$lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import { useSidebar } from "./sidebar.svelte";
-
+    import { deviceDetails } from "$lib/mobile.svelte";
     type Props = WithElementRef<HTMLAttributes<HTMLDivElement>> & {
         heading?: string;
     };
@@ -25,12 +25,14 @@
     class={cn(
         "flex flex-col gap-1 p-3 w-full transition-all duration-300",
         !sidebar.expanded && "items-center px-1.5",
-        className
+        className,
     )}
     {...restProps}
 >
-    {#if heading && sidebar.expanded}
-        <div class="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider select-none truncate w-full">
+    {#if heading && sidebar.expanded && !deviceDetails.isMobile}
+        <div
+            class="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider select-none truncate w-full"
+        >
             {heading}
         </div>
     {/if}
