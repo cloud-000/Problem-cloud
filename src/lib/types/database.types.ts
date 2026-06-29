@@ -325,6 +325,7 @@ export type Database = {
           admin_rank: number
           created_at: string
           id: string
+          last_active_at: string
           status: string | null
           updated_at: string
           username: string | null
@@ -333,6 +334,7 @@ export type Database = {
           admin_rank?: number
           created_at?: string
           id: string
+          last_active_at?: string
           status?: string | null
           updated_at?: string
           username?: string | null
@@ -341,11 +343,75 @@ export type Database = {
           admin_rank?: number
           created_at?: string
           id?: string
+          last_active_at?: string
           status?: string | null
           updated_at?: string
           username?: string | null
         }
         Relationships: []
+      }
+      roadmap_goals: {
+        Row: {
+          created_at: string
+          description: string
+          id: number
+          planned_date: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: never
+          planned_date?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: never
+          planned_date?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      roadmap_votes: {
+        Row: {
+          goal_id: number
+          profile_id: string
+          vote_value: number
+        }
+        Insert: {
+          goal_id: number
+          profile_id: string
+          vote_value: number
+        }
+        Update: {
+          goal_id?: number
+          profile_id?: string
+          vote_value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roadmap_votes_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "roadmap_goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roadmap_votes_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       series: {
         Row: {
@@ -490,7 +556,11 @@ export type Database = {
           answer_index: number | null
           created_at: string
           id: number
-          problem_id: number
+          message: string | null
+          problem_id: number | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
           steps: string | null
           type: string
           user_id: string
@@ -499,7 +569,11 @@ export type Database = {
           answer_index?: number | null
           created_at?: string
           id?: never
-          problem_id: number
+          message?: string | null
+          problem_id?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           steps?: string | null
           type: string
           user_id: string
@@ -508,7 +582,11 @@ export type Database = {
           answer_index?: number | null
           created_at?: string
           id?: never
-          problem_id?: number
+          message?: string | null
+          problem_id?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           steps?: string | null
           type?: string
           user_id?: string
@@ -519,6 +597,13 @@ export type Database = {
             columns: ["problem_id"]
             isOneToOne: false
             referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_submitted_feedback_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -536,6 +621,18 @@ export type Database = {
     }
     Functions: {
       recalculate_test_answers: { Args: { t_id: number }; Returns: undefined }
+      review_answer_suggestion: {
+        Args: {
+          p_accept: boolean
+          p_answer_index?: number
+          p_feedback_id: number
+        }
+        Returns: undefined
+      }
+      set_feedback_status: {
+        Args: { p_feedback_id: number; p_status: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

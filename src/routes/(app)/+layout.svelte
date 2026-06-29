@@ -50,9 +50,20 @@
         { href: "/library", icon: "book_5", label: "Explore" },
         { href: "/history", icon: "history", label: "History" },
         { href: "/find", icon: "category_search", label: "Find" },
+        { href: "/roadmap", icon: "map", label: "Roadmap" },
         { href: "/settings", icon: "settings", label: "Settings" },
+        {
+            href: "/admin",
+            icon: "admin_panel_settings",
+            label: "Admin",
+            adminOnly: true,
+        },
         { href: "/testing-features", icon: "labs", label: "Test" }, // Testing page
     ];
+    // Admin-only tabs render only for admins (admin_rank > 0).
+    let visibleTabs = $derived(
+        tabs.filter((t) => !t.adminOnly || (profile?.admin_rank ?? 0) > 0),
+    );
     // Sidebar state
     let expanded = $state(true);
 </script>
@@ -76,7 +87,7 @@
         </Sidebar.Header>
 
         <Sidebar.Group heading="Navigation">
-            {#each tabs as tab}
+            {#each visibleTabs as tab}
                 {@const isActive = page.url.pathname === tab.href}
                 <Sidebar.Item active={isActive} activeClass="">
                     {#snippet child({ props })}

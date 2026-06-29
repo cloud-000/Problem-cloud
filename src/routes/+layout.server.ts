@@ -14,6 +14,22 @@ export const load: LayoutServerLoad = async ({
             .eq("id", user.id)
             .single();
         profile = profileData;
+
+        if (profile) {
+            const lastActive = new Date(profile.last_active_at).getTime();
+            const now = Date.now();
+            const fifteenMinutes = 15 * 60 * 1000;
+            if (now - lastActive > fifteenMinutes) {
+                const nowStr = new Date().toISOString();
+                const { error } = await supabase
+                    .from("profiles")
+                    .update({ last_active_at: nowStr })
+                    .eq("id", user.id);
+                if (!error) {
+                    profile.last_active_at = nowStr;
+                }
+            }
+        }
     }
 
     return {

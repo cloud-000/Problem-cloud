@@ -1,11 +1,23 @@
 <script lang="ts">
     import { Select } from "$lib/components/select";
     import { Icon } from "$lib/components/icon";
+    import { Button } from "$lib/components/button";
     import { Theme } from "$lib/utils/Theme.svelte";
+    import { modal } from "$lib/state/modal.svelte";
+    import FeedbackModal from "./FeedbackModal.svelte";
     import type { PageData } from "./$types";
 
     let { data }: { data: PageData } = $props();
-    let { profile, session } = $derived(data);
+    let { profile, session, user, supabase } = $derived(data);
+
+    function openFeedback() {
+        if (!user) return;
+        modal.show(
+            FeedbackModal,
+            { supabase, user },
+            { title: "Send feedback", size: "md" },
+        );
+    }
 </script>
 
 <div class="space-y-8 p-6 max-w-4xl mx-auto">
@@ -158,4 +170,44 @@
             </div>
         {/if}
     </div>
+
+    <!-- Feedback & Support -->
+    {#if session && user}
+        <div
+            class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+        >
+            <div>
+                <h2
+                    class="text-lg font-semibold text-foreground flex items-center gap-2"
+                >
+                    <Icon name="feedback" class="text-primary-foreground" />
+                    Feedback & Support
+                </h2>
+                <p class="text-xs text-muted-foreground mt-0.5">
+                    Report a bug, suggest a feature, or share general feedback
+                    with the team.
+                </p>
+            </div>
+
+            <div
+                class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+            >
+                <div class="flex flex-col gap-0.5">
+                    <span class="text-sm font-medium text-foreground"
+                        >Send feedback</span
+                    >
+                    <span class="text-xs text-muted-foreground"
+                        >Help us improve ProblemCloud.</span
+                    >
+                </div>
+                <Button
+                    onclick={openFeedback}
+                    class="shrink-0 flex items-center gap-2"
+                >
+                    <Icon name="send" fontsize="1.1rem" />
+                    Send feedback
+                </Button>
+            </div>
+        </div>
+    {/if}
 </div>

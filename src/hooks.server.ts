@@ -82,6 +82,21 @@ const authGuard: Handle = async ({ event, resolve }) => {
         redirect(303, "/private");
     }
 
+    // Admin-only section: gate /admin on profiles.admin_rank > 0.
+    if (event.url.pathname.startsWith("/admin")) {
+        if (!event.locals.user) {
+            redirect(303, "/auth/login");
+        }
+        const { data: profile } = await event.locals.supabase
+            .from("profiles")
+            .select("admin_rank")
+            .eq("id", event.locals.user.id)
+            .single();
+        if ((profile?.admin_rank ?? 0) <= 0) {
+            redirect(303, "/");
+        }
+    }
+
     return resolve(event);
 };
 

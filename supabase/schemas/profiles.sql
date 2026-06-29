@@ -7,6 +7,7 @@ create table public.profiles (
   admin_rank integer not null default 0,
   created_at timestamp with time zone default now() not null,
   updated_at timestamp with time zone default now() not null,
+  last_active_at timestamp with time zone default now() not null,
 
   -- Username length constraint
   constraint username_length check (char_length(username) >= 3)

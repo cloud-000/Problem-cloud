@@ -67,7 +67,8 @@ schema_paths = [
     "./schemas/problems.sql",
     "./schemas/practice_sessions.sql",
     "./schemas/submissions.sql",
-    "./schemas/user_submitted_feedback.sql"
+    "./schemas/user_submitted_feedback.sql",
+    "./schemas/roadmap.sql"
 ]
 
 [db.seed]

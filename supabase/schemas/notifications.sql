@@ -22,10 +22,14 @@ alter table public.notifications enable row level security;
 alter table public.notification_reads enable row level security;
 
 -- Policies for public.notifications
-create policy "Notifications are viewable by their target users."
+create policy "Notifications are viewable by their target users or admins."
   on public.notifications for select
   to anon, authenticated
-  using ( (targets is null) or (auth.uid() = any(targets)) );
+  using (
+    (targets is null) or
+    (auth.uid() = any(targets)) or
+    ((select admin_rank from public.profiles where id = auth.uid()) > 0)
+  );
 
 create policy "Admins can insert notifications."
   on public.notifications for insert

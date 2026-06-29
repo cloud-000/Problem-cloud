@@ -190,6 +190,11 @@ begin
     where id = new.session_id;
   end if;
 
+  -- Update last active status for the user
+  update public.profiles set
+    last_active_at = now()
+  where id = new.user_id;
+
   return new;
 end;
 $$;
