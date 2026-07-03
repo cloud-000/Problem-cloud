@@ -15,7 +15,8 @@ create table public.tests (
   series_id        bigint references public.series(id) on delete cascade,
   name             text not null,
   year             integer,
-  aops_category_id text unique,
+  aops_category_id text,
+  section          integer not null default -1,
   type             text,
   is_computational boolean not null default false,
   difficulty       integer default 0,
@@ -24,7 +25,9 @@ create table public.tests (
   -- unlimited. Seeds the time-limit control when a Test-mode session is created.
   time_limit_seconds    integer,
   has_all_answers       boolean not null default false,
-  missing_answers_count integer not null default 0
+  missing_answers_count integer not null default 0,
+
+  unique(aops_category_id, section)
 );
 
 create index tests_series_id_idx on public.tests(series_id);
@@ -107,7 +110,7 @@ begin
   where test_id = t_id and (answer_index = -1 or answer_index is null);
 
   update public.tests
-  set 
+  set
     has_all_answers = (total_problems > 0 and missing_answers = 0),
     missing_answers_count = missing_answers::integer
   where id = t_id;
@@ -143,4 +146,3 @@ create or replace trigger on_problem_changed
   after insert or update or delete on public.problems
   for each row
   execute function public.handle_problem_change();
-
