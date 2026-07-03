@@ -40,3 +40,6 @@ PROJECT.md
 ORIGINAL_REQUEST.md
 src/lib/components/*/DOCS.md
 src/lib/components/DOCS.md
+.agents
+.claude
+.vscode
