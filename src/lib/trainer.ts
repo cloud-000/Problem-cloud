@@ -25,6 +25,10 @@ export type PracticeSettings = {
     // the total time allotment in seconds (null = unlimited / untimed).
     testId: number | null;
     timeLimitSeconds: number | null;
+    // Practice-format only: how many attempts the user gets per problem before it
+    // is finalized as incorrect. Re-submitting an already-tried answer doesn't
+    // consume a try. Optional so older snapshots are tolerated (treated as 2).
+    triesPerProblem?: number;
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
     // Problem-attribute filters — apply to every mode.
     topic: string[];
@@ -144,6 +148,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         format: "practice",
         testId: null,
         timeLimitSeconds: null,
+        triesPerProblem: 2,
         seriesIds: [],
         topic: [],
         difficulty: [...DIFFICULTY_RANGE],

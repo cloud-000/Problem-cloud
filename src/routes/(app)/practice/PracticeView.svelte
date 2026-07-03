@@ -139,6 +139,7 @@
         format = s.format ?? "practice";
         testId = s.testId ?? null;
         timeLimitSeconds = s.timeLimitSeconds ?? null;
+        triesPerProblem = s.triesPerProblem ?? 2;
         seriesIds = s.seriesIds ? [...s.seriesIds] : [];
         mode = s.mode;
         topic = [...s.topic];
@@ -284,6 +285,8 @@
                     flagged: a.flagged,
                     elapsedMs: a.elapsedMs,
                     attemptIndex: null,
+                    triesUsed: 0,
+                    triedAnswers: [],
                 }));
                 historyIndex = history.length - 1;
                 testFinished = true;
@@ -310,6 +313,8 @@
                 flagged: false,
                 elapsedMs: 0,
                 attemptIndex: null,
+                triesUsed: 0,
+                triedAnswers: [],
             }));
 
             // Restore any in-progress draft (answers + per-problem time + place).
@@ -358,10 +363,15 @@
         try {
             if (user && currentSessionId != null) {
                 const rows = history.map((e) => {
-                    const skipped = e.selectedChoice == null;
+                    const isMcq = (e.problem.choices?.length ?? 0) > 1;
+                    const skipped = isMcq
+                        ? e.selectedChoice == null
+                        : (!e.answer || !e.answer.trim());
                     const isCorrect = skipped
                         ? null
-                        : e.selectedChoice === e.problem.answer_index;
+                        : (isMcq
+                            ? e.selectedChoice === e.problem.answer_index
+                            : e.answer.trim() === e.problem.choices?.[e.problem.answer_index ?? 0]?.trim());
                     // Reflect the grade on the entry for the results screen.
                     e.submitted = !skipped;
                     e.correct = isCorrect;
@@ -470,6 +480,8 @@
                 flagged: false,
                 elapsedMs,
                 attemptIndex: null,
+                triesUsed: 0,
+                triedAnswers: [],
             },
         ];
         restore(history.length - 1);
@@ -491,6 +503,8 @@
         flagged: boolean;
         elapsedMs: number;
         attemptIndex: number | null;
+        triesUsed: number;
+        triedAnswers: string[];
     };
     let history = $state<HistoryEntry[]>([]);
     let historyIndex = $state(-1);
@@ -509,10 +523,29 @@
     let attempts = $state<PracticeAttempt[]>([]);
     let currentAttemptIndex = $state<number | null>(null);
 
+    // Multi-try practice: how many attempts are allowed per problem, how many
+    // have been spent on the on-screen problem, and the (in-memory) set of
+    // answers already tried for it. Re-submitting a tried answer is rejected and
+    // does not consume a try. Reset per problem; carried on the history entry so
+    // back/forward navigation preserves the count.
+    let triesPerProblem = $state(2);
+    let triesUsed = $state(0);
+    let triedAnswers = $state<string[]>([]);
+    // Component ref for the answer UI, so a wrong-but-not-final attempt can flash
+    // the shake/feedback animation without revealing the correct answer.
+    let answerFeedback = $state<ProblemAnswer | null>(null);
+    let triesRemaining = $derived(Math.max(0, triesPerProblem - triesUsed));
+
     let loadToken = 0;
 
     let isLatest = $derived(historyIndex === history.length - 1);
     let canGoBack = $derived(historyIndex > 0);
+    let isProblemMcq = $derived(!!problem && (problem.choices?.length ?? 0) > 1);
+    let cannotSubmit = $derived(
+        !problem ||
+            paused ||
+            (isProblemMcq ? selectedChoice == null : !answer.trim()),
+    );
 
     let moreOptions = $derived<DropdownOption[]>([
         {
@@ -600,7 +633,10 @@
         history.filter((e) => e.submitted && e.correct === false).length,
     );
     let testSkipped = $derived(
-        history.filter((e) => e.selectedChoice == null).length,
+        history.filter((e) => {
+            const isMcq = (e.problem.choices?.length ?? 0) > 1;
+            return isMcq ? e.selectedChoice == null : (!e.answer || !e.answer.trim());
+        }).length,
     );
 
     let completedAttempts = $derived(
@@ -662,6 +698,7 @@
             format,
             testId,
             timeLimitSeconds,
+            triesPerProblem,
             seriesIds: [...seriesIds],
             topic: [...topic],
             difficulty: [difficulty[0], difficulty[1]],
@@ -713,6 +750,8 @@
         entry.flagged = flagged;
         entry.elapsedMs = liveElapsed();
         entry.attemptIndex = currentAttemptIndex;
+        entry.triesUsed = triesUsed;
+        entry.triedAnswers = triedAnswers;
     }
 
     // Load a history entry into the live view. The timer only resumes for the
@@ -730,6 +769,8 @@
         correct = entry.correct;
         flagged = entry.flagged;
         currentAttemptIndex = entry.attemptIndex;
+        triesUsed = entry.triesUsed;
+        triedAnswers = entry.triedAnswers;
 
         const now = Date.now();
         timerNow = now;
@@ -768,6 +809,8 @@
         correct = null;
         flagged = false;
         currentAttemptIndex = null;
+        triesUsed = 0;
+        triedAnswers = [];
         frozenElapsedMs = 0;
         startedAt = now;
         timerNow = now;
@@ -798,6 +841,8 @@
                         flagged: false,
                         elapsedMs: 0,
                         attemptIndex: null,
+                        triesUsed: 0,
+                        triedAnswers: [],
                     },
                 ];
                 restore(history.length - 1);
@@ -826,18 +871,52 @@
         loadProblem();
     }
 
+    // A normalized key identifying the currently-entered answer, used to detect a
+    // repeat of an already-tried answer. null when nothing is entered.
+    function currentAnswerKey(): string | null {
+        if (isProblemMcq) {
+            return selectedChoice == null ? null : `c:${selectedChoice}`;
+        }
+        const trimmed = answer.trim();
+        return trimmed ? `a:${trimmed}` : null;
+    }
+
     function submitAnswer() {
         // Per-answer grading is only for formats that grade immediately; test
         // defers all grading to submitTest().
         if (!behavior.gradeImmediately) return;
-        if (!problem || selectedChoice == null || submitted) return;
+        if (!problem || submitted || paused) return;
+        if (isProblemMcq && selectedChoice == null) return;
+        if (!isProblemMcq && !answer.trim()) return;
+
+        // Reject a repeat of a previously-tried answer: flash feedback but don't
+        // consume a try — the user simply hasn't offered anything new.
+        const key = currentAnswerKey();
+        if (key != null && triedAnswers.includes(key)) {
+            answerFeedback?.trigger(true);
+            toasts.warning("You already tried that answer.");
+            return;
+        }
 
         const elapsed = Math.max(0, Date.now() - startedAt);
         // Answerless problems run ungraded: there's nothing to compare against,
         // so record the attempt as seen-but-not-graded (isCorrect = null).
         const isCorrect = hasAnswer
-            ? selectedChoice === problem.answer_index
+            ? (isProblemMcq
+                ? selectedChoice === problem.answer_index
+                : answer.trim() === problem.choices?.[problem.answer_index ?? 0]?.trim())
             : null;
+
+        // Multi-try: a graded wrong answer with tries still remaining doesn't
+        // finalize the problem. Remember the tried answer, flash the shake
+        // feedback (without revealing the correct answer), and let the user retry.
+        // Correct answers and ungraded problems always finalize on submit.
+        if (isCorrect === false && triesUsed + 1 < triesPerProblem) {
+            if (key != null) triedAnswers = [...triedAnswers, key];
+            triesUsed += 1;
+            answerFeedback?.trigger(true);
+            return;
+        }
 
         submitted = true;
         correct = isCorrect;
@@ -1013,6 +1092,8 @@
                         flagged: a.flagged,
                         elapsedMs: a.elapsedMs,
                         attemptIndex: null,
+                        triesUsed: 0,
+                        triedAnswers: [],
                     }));
                     for (const a of prior) session.shownIds.add(a.problem.id);
                     session.drawIndex = prior.length;
@@ -1169,6 +1250,7 @@
             <!-- Per-problem review -->
             <div class="flex flex-col gap-3">
                 {#each history as entry (entry.problem.id)}
+                    {@const entryMcq = (entry.problem.choices?.length ?? 0) > 1}
                     <div
                         class="rounded-lg border border-border/50 bg-surface-container-lowest p-4"
                     >
@@ -1178,7 +1260,7 @@
                             </span>
                             <StatusTag
                                 size="sm"
-                                status={entry.selectedChoice == null
+                                status={(entryMcq ? entry.selectedChoice == null : (!entry.answer || !entry.answer.trim()))
                                     ? "skipped"
                                     : entry.correct
                                       ? "correct"
@@ -1195,6 +1277,7 @@
                         <Problem
                             problem={entry.problem}
                             selectedChoice={entry.selectedChoice}
+                            answer={entry.answer}
                             showAnswerState={true}
                             disabled={true}
                             mode="preview"
@@ -1580,6 +1663,7 @@
                             </div>
                             <div class="w-full">
                                 <ProblemAnswer
+                                    bind:this={answerFeedback}
                                     choices={problem.choices}
                                     answerIndex={problem.answer_index}
                                     bind:answer
@@ -1590,6 +1674,9 @@
                                     disabled={behavior.freezeOnNavigate
                                         ? submitted || !isLatest || paused
                                         : false}
+                                    onEnter={behavior.gradeImmediately
+                                        ? submitAnswer
+                                        : undefined}
                                 />
                             </div>
                         </div>
@@ -1726,7 +1813,16 @@
                                 </Button>
                             </div>
 
-                            <div>
+                            <div class="flex items-center gap-2">
+                                {#if isLatest && !submitted && hasAnswer && triesUsed > 0 && triesPerProblem > 1}
+                                    <span
+                                        class="text-[11px] text-muted-foreground tabular-nums"
+                                        title="Attempts remaining on this problem"
+                                    >
+                                        {triesRemaining}
+                                        {triesRemaining === 1 ? "try" : "tries"} left
+                                    </span>
+                                {/if}
                                 {#if !isLatest}
                                     <Button
                                         variant="outline"
@@ -1747,8 +1843,7 @@
                                     </Button>
                                 {:else}
                                     <Button
-                                        disabled={selectedChoice == null ||
-                                            paused}
+                                        disabled={cannotSubmit}
                                         onclick={submitAnswer}
                                         class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
                                     >
@@ -1777,6 +1872,7 @@
                 bind:verifiedOnly
                 bind:computational
                 bind:answerAvailability
+                bind:triesPerProblem
                 bind:seriesIds
                 {seriesOptions}
                 {counterRanges}

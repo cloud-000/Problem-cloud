@@ -12,6 +12,8 @@
         showAnswerState?: boolean;
         disabled?: boolean;
         isInstantFeedback?: boolean;
+        /** Fired when the user presses Enter in the free-response input. */
+        onEnter?: () => void;
     };
 
     let {
@@ -22,16 +24,18 @@
         showAnswerState = false,
         disabled = false,
         isInstantFeedback = false,
+        onEnter,
     }: Props = $props();
 
     const CHOICE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const FEEDBACK_DURATION = 900;
 
     let normalizedChoices = $derived(choices ?? []);
-    let isMcq = $derived(normalizedChoices.length > 0);
+    let isMcq = $derived(normalizedChoices.length > 1);
     let canShowAnswerState = $derived(
         showAnswerState && answerIndex != null && answerIndex >= 0,
     );
+    let isCorrect = $derived(canShowAnswerState && checkAnswer() === true);
     let feedback = $state<{
         result: boolean | null;
         target: number | "input" | null;
@@ -60,9 +64,17 @@
         }
     }
 
-    function triggerAfterInput() {
+    // Instant feedback fires on *change* (blur / Enter), not on every keystroke,
+    // so a half-typed answer isn't graded as you go.
+    function triggerOnChange() {
         if (!isInstantFeedback) return;
         queueMicrotask(() => trigger(true));
+    }
+
+    function handleKeydown(event: KeyboardEvent) {
+        if (event.key !== "Enter" || disabled) return;
+        event.preventDefault();
+        onEnter?.();
     }
 
     function clearFeedbackTimer() {
@@ -172,7 +184,7 @@
 {:else}
     <div
         class={cn(
-            "max-w-sm rounded-md",
+            "w-full rounded-md",
             feedback?.target === "input" &&
                 feedback.result === true &&
                 "ring-3 ring-correct/40",
@@ -182,6 +194,8 @@
             feedback?.target === "input" &&
                 feedback.result === null &&
                 "ring-3 ring-unsure/40",
+            canShowAnswerState && isCorrect && "ring-3 ring-correct/40",
+            canShowAnswerState && !isCorrect && "ring-3 ring-destructive/40",
         )}
     >
         <Input
@@ -191,7 +205,30 @@
             autocomplete="off"
             spellcheck={false}
             aria-label="Answer"
-            oninput={triggerAfterInput}
+            onchange={triggerOnChange}
+            onkeydown={handleKeydown}
+            class={cn(
+                canShowAnswerState &&
+                    isCorrect &&
+                    "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
+                canShowAnswerState &&
+                    !isCorrect &&
+                    "border-destructive bg-destructive/10 focus-visible:border-destructive focus-visible:ring-destructive/50",
+            )}
         />
     </div>
+    {#if canShowAnswerState && !isCorrect}
+        <div
+            class="mt-2 text-sm text-muted-foreground flex items-center gap-1.5"
+        >
+            <span>Correct answer:</span>
+            <span
+                class="font-mono text-foreground font-semibold bg-surface-container px-1.5 py-0.5 rounded border border-border"
+            >
+                <LaTeX class="inline-block"
+                    >${normalizedChoices[answerIndex as number]}$</LaTeX
+                >
+            </span>
+        </div>
+    {/if}
 {/if}

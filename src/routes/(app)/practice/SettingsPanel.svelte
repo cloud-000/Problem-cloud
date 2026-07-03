@@ -4,6 +4,9 @@
     /** Slider bounds for the advanced progress-counter filters. */
     export const COUNTER_RANGE: Range = [0, 25];
 
+    /** Slider bounds for the tries-per-problem control. */
+    export const TRIES_RANGE: Range = [1, 5];
+
     export type CounterKey = "seen" | "reviewed" | "correct" | "skipped";
     export type CounterRanges = Record<CounterKey, Range>;
     export type CounterEnabled = Record<CounterKey, boolean>;
@@ -59,6 +62,7 @@
         verifiedOnly = $bindable(false),
         computational = $bindable<TriState>("neutral"),
         answerAvailability = $bindable<TriState>("off"),
+        triesPerProblem = $bindable(2),
         seriesIds = $bindable<string[]>([]),
         seriesOptions = [],
         counterRanges,
@@ -79,6 +83,8 @@
         computational: TriState;
         /** off = With answer (default), neutral = Any, on = Without answer. */
         answerAvailability: TriState;
+        /** Attempts allowed per problem before it's finalized as incorrect. */
+        triesPerProblem: number;
         seriesIds: string[];
         seriesOptions: { value: string; label: string }[];
         counterRanges: CounterRanges;
@@ -115,6 +121,7 @@
         verifiedOnly = false;
         computational = "neutral";
         answerAvailability = "off";
+        triesPerProblem = 2;
         seriesIds = [];
         for (const { key } of COUNTERS) {
             counterEnabled[key] = false;
@@ -243,6 +250,27 @@
             max={DIFFICULTY_RANGE[1]}
             step={1}
             label="Difficulty"
+        />
+    </div>
+
+    <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+        <div class="flex items-center justify-between gap-3">
+            <span class="text-xs font-medium text-muted-foreground">
+                Tries per problem
+            </span>
+            <span class="text-[10px] text-muted-foreground">
+                {triesPerProblem === 1
+                    ? "1 try"
+                    : `${triesPerProblem} tries`}
+            </span>
+        </div>
+        <RangeSlider
+            single
+            bind:singleValue={triesPerProblem}
+            min={TRIES_RANGE[0]}
+            max={TRIES_RANGE[1]}
+            step={1}
+            label="Tries per problem"
         />
     </div>
 
