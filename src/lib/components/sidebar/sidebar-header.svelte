@@ -20,7 +20,7 @@
     data-slot="sidebar-header"
     data-expanded={sidebar.expanded}
     class={cn(
-        "flex items-center gap-2 px-4 py-3 border-b border-border min-h-[56px] transition-all duration-300",
+        "flex items-center gap-2 px-4 py-2 border-b border-border min-h-[48px] transition-all duration-300",
         !sidebar.expanded && "justify-center px-2",
         className
     )}
