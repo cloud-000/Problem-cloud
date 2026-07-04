@@ -274,7 +274,7 @@
 @layer base {
     html,
     body {
-        background-color: var(--background);
+        background-color: var(--surface-container-low);
         color: var(--foreground);
         font-family: var(--font-sans);
         margin: 0;
@@ -283,6 +283,9 @@
         -moz-osx-font-smoothing: grayscale;
         font-feature-settings: "ss03" 1;
         height: 100%;
+        /* Stop the whole document from rubber-banding / chain-scrolling on iOS
+           when a touch-drag inside a scroll region reaches its edge. */
+        overscroll-behavior: none;
     }
 
     /* Standard academic heading styles matching DESIGN.md */

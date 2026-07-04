@@ -366,12 +366,15 @@
                     const isMcq = (e.problem.choices?.length ?? 0) > 1;
                     const skipped = isMcq
                         ? e.selectedChoice == null
-                        : (!e.answer || !e.answer.trim());
+                        : !e.answer || !e.answer.trim();
                     const isCorrect = skipped
                         ? null
-                        : (isMcq
-                            ? e.selectedChoice === e.problem.answer_index
-                            : e.answer.trim() === e.problem.choices?.[e.problem.answer_index ?? 0]?.trim());
+                        : isMcq
+                          ? e.selectedChoice === e.problem.answer_index
+                          : e.answer.trim() ===
+                            e.problem.choices?.[
+                                e.problem.answer_index ?? 0
+                            ]?.trim();
                     // Reflect the grade on the entry for the results screen.
                     e.submitted = !skipped;
                     e.correct = isCorrect;
@@ -540,7 +543,9 @@
 
     let isLatest = $derived(historyIndex === history.length - 1);
     let canGoBack = $derived(historyIndex > 0);
-    let isProblemMcq = $derived(!!problem && (problem.choices?.length ?? 0) > 1);
+    let isProblemMcq = $derived(
+        !!problem && (problem.choices?.length ?? 0) > 1,
+    );
     let cannotSubmit = $derived(
         !problem ||
             paused ||
@@ -635,7 +640,9 @@
     let testSkipped = $derived(
         history.filter((e) => {
             const isMcq = (e.problem.choices?.length ?? 0) > 1;
-            return isMcq ? e.selectedChoice == null : (!e.answer || !e.answer.trim());
+            return isMcq
+                ? e.selectedChoice == null
+                : !e.answer || !e.answer.trim();
         }).length,
     );
 
@@ -902,9 +909,10 @@
         // Answerless problems run ungraded: there's nothing to compare against,
         // so record the attempt as seen-but-not-graded (isCorrect = null).
         const isCorrect = hasAnswer
-            ? (isProblemMcq
+            ? isProblemMcq
                 ? selectedChoice === problem.answer_index
-                : answer.trim() === problem.choices?.[problem.answer_index ?? 0]?.trim())
+                : answer.trim() ===
+                  problem.choices?.[problem.answer_index ?? 0]?.trim()
             : null;
 
         // Multi-try: a graded wrong answer with tries still remaining doesn't
@@ -1260,7 +1268,11 @@
                             </span>
                             <StatusTag
                                 size="sm"
-                                status={(entryMcq ? entry.selectedChoice == null : (!entry.answer || !entry.answer.trim()))
+                                status={(
+                                    entryMcq
+                                        ? entry.selectedChoice == null
+                                        : !entry.answer || !entry.answer.trim()
+                                )
                                     ? "skipped"
                                     : entry.correct
                                       ? "correct"
@@ -1297,152 +1309,152 @@
 
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
     <TopbarRegister left={topbarLeft} right={topbarRight} />
-{#snippet topbarLeft()}
-    <div class="flex items-center">
-        <a
-            href="/practice"
-            class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label="Back to sessions"
-        >
-            <Icon name="arrow_back" class={iconCls} />
-        </a>
+    {#snippet topbarLeft()}
+        <div class="flex items-center">
+            <a
+                href="/practice"
+                class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label="Back to sessions"
+            >
+                <Icon name="arrow_back" class={iconCls} />
+            </a>
 
-        <Button
-            variant="ghost"
-            size="sm"
-            class={cn(
-                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
-                showSettings && "bg-muted text-foreground",
-            )}
-            onclick={() => (showSettings = !showSettings)}
-            aria-expanded={showSettings}
-            aria-label="Toggle settings"
-            disabled={paused}
-        >
-            <Icon name="tune" class={iconCls} />
-        </Button>
+            <Button
+                variant="ghost"
+                size="sm"
+                class={cn(
+                    "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
+                    showSettings && "bg-muted text-foreground",
+                )}
+                onclick={() => (showSettings = !showSettings)}
+                aria-expanded={showSettings}
+                aria-label="Toggle settings"
+                disabled={paused}
+            >
+                <Icon name="tune" class={iconCls} />
+            </Button>
 
-        {#if activeSession}
-            <div class="flex flex-row items-center gap-1.5">
-                {#if isTest}
-                    <span
-                        class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
-                    >
-                        <Icon name="quiz" class="size-[1em]" />
-                        Test
-                    </span>
-                {/if}
-                <span class="opacity-50 text-xs">{activeSession.name}</span>
-            </div>
-        {/if}
-    </div>
-{/snippet}
-
-{#snippet topbarRight()}
-    <div
-        class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
-    >
-        {#if behavior.showLiveFeedback}
-            {@render statChip(correctAttempts, "var(--color-correct)")}
-            {@render statChip(
-                incorrectAttempts,
-                "var(--color-destructive)",
-            )}
-            {@render statChip(skippedAttempts, "var(--color-unsure)")}
-            <SegmentBar
-                class="min-w-10 w-full shrink h-2"
-                segments={[
-                    {
-                        value: correctAttempts,
-                        color: "var(--color-correct)",
-                        label: "Solved",
-                    },
-                    {
-                        value: incorrectAttempts,
-                        color: "var(--color-destructive)",
-                        label: "Incorrect",
-                    },
-                    {
-                        value: skippedAttempts,
-                        color: "var(--color-unsure)",
-                        label: "Skipped",
-                    },
-                ]}
-            />
-        {/if}
-        {#if isTest}
-            {#if !testFinished && history.length > 0}
-                {@const timed = timeLimitSeconds != null}
-                {@const low =
-                    timed && remainingMs != null && remainingMs <= 60_000}
-                <div
-                    class={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
-                        low
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-surface-container-low",
-                    )}
-                    title={timed ? "Time remaining" : "Elapsed time"}
-                    aria-label={timed ? "Time remaining" : "Elapsed time"}
-                >
-                    <Icon
-                        name={timed ? "timer" : "schedule"}
-                        class={iconCls}
-                    />
-                    <span class="leading-none tabular-nums">
-                        {formatElapsed(
-                            timed ? (remainingMs ?? 0) : totalElapsedMs,
-                        )}
-                    </span>
+            {#if activeSession}
+                <div class="flex flex-row items-center gap-1.5">
+                    {#if isTest}
+                        <span
+                            class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                        >
+                            <Icon name="quiz" class="size-[1em]" />
+                            Test
+                        </span>
+                    {/if}
+                    <span class="opacity-50 text-xs">{activeSession.name}</span>
                 </div>
             {/if}
-        {:else if problem}
-            {@const isTotal = timerMode === "total"}
-            <div class="flex items-center gap-1.5">
-                {#if behavior.allowPause && !submitted && isLatest}
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        class="text-muted-foreground hover:text-foreground"
-                        onclick={togglePause}
-                        aria-label={paused
-                            ? "Resume practice"
-                            : "Pause practice"}
-                        title={paused ? "Resume" : "Pause"}
+        </div>
+    {/snippet}
+
+    {#snippet topbarRight()}
+        <div
+            class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
+        >
+            {#if behavior.showLiveFeedback}
+                {@render statChip(correctAttempts, "var(--color-correct)")}
+                {@render statChip(
+                    incorrectAttempts,
+                    "var(--color-destructive)",
+                )}
+                {@render statChip(skippedAttempts, "var(--color-unsure)")}
+                <SegmentBar
+                    class="min-w-10 w-full shrink h-2"
+                    segments={[
+                        {
+                            value: correctAttempts,
+                            color: "var(--color-correct)",
+                            label: "Solved",
+                        },
+                        {
+                            value: incorrectAttempts,
+                            color: "var(--color-destructive)",
+                            label: "Incorrect",
+                        },
+                        {
+                            value: skippedAttempts,
+                            color: "var(--color-unsure)",
+                            label: "Skipped",
+                        },
+                    ]}
+                />
+            {/if}
+            {#if isTest}
+                {#if !testFinished && history.length > 0}
+                    {@const timed = timeLimitSeconds != null}
+                    {@const low =
+                        timed && remainingMs != null && remainingMs <= 60_000}
+                    <div
+                        class={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
+                            low
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-surface-container-low",
+                        )}
+                        title={timed ? "Time remaining" : "Elapsed time"}
+                        aria-label={timed ? "Time remaining" : "Elapsed time"}
                     >
                         <Icon
-                            name={paused ? "play_arrow" : "pause"}
+                            name={timed ? "timer" : "schedule"}
                             class={iconCls}
                         />
-                    </Button>
+                        <span class="leading-none tabular-nums">
+                            {formatElapsed(
+                                timed ? (remainingMs ?? 0) : totalElapsedMs,
+                            )}
+                        </span>
+                    </div>
                 {/if}
-                <button
-                    type="button"
-                    onclick={() =>
-                        (timerMode = isTotal ? "problem" : "total")}
-                    class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
-                    title={isTotal
-                        ? "Total session time — click for this problem"
-                        : "Time on this problem — click for session total"}
-                    aria-label={isTotal
-                        ? "Total session time"
-                        : "Time on this problem"}
-                    disabled={paused}
-                >
-                    <Icon
-                        name={isTotal ? "timelapse" : "schedule"}
-                        class={iconCls}
-                    />
-                    <span class="leading-none">
-                        {formatElapsed(
-                            isTotal ? totalElapsedMs : elapsedMs,
-                        )}
-                    </span>
-                </button>
-            </div>
-        {/if}
-    </div>
-{/snippet}
+            {:else if problem}
+                {@const isTotal = timerMode === "total"}
+                <div class="flex items-center gap-1.5">
+                    {#if behavior.allowPause && !submitted && isLatest}
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-muted-foreground hover:text-foreground"
+                            onclick={togglePause}
+                            aria-label={paused
+                                ? "Resume practice"
+                                : "Pause practice"}
+                            title={paused ? "Resume" : "Pause"}
+                        >
+                            <Icon
+                                name={paused ? "play_arrow" : "pause"}
+                                class={iconCls}
+                            />
+                        </Button>
+                    {/if}
+                    <button
+                        type="button"
+                        onclick={() =>
+                            (timerMode = isTotal ? "problem" : "total")}
+                        class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
+                        title={isTotal
+                            ? "Total session time — click for this problem"
+                            : "Time on this problem — click for session total"}
+                        aria-label={isTotal
+                            ? "Total session time"
+                            : "Time on this problem"}
+                        disabled={paused}
+                    >
+                        <Icon
+                            name={isTotal ? "timelapse" : "schedule"}
+                            class={iconCls}
+                        />
+                        <span class="leading-none">
+                            {formatElapsed(
+                                isTotal ? totalElapsedMs : elapsedMs,
+                            )}
+                        </span>
+                    </button>
+                </div>
+            {/if}
+        </div>
+    {/snippet}
 
     <!-- Main Content Area: Problem + Collapsible Settings Panel -->
     <div
@@ -1473,7 +1485,7 @@
                     >
                         <Icon name="error" fontsize={20} />
                     </div>
-                    <div class="flex max-w-sm flex-col gap-1">
+                    <div class="flex max-w-4xl flex-col gap-1">
                         <h2 class="text-sm font-semibold">
                             {isTest
                                 ? "Could not load the test"

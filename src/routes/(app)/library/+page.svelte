@@ -175,12 +175,13 @@
         </span>
     </div>
 
-    <div class="flex gap-6">
-        <!-- Filter panel: sticks alongside the results as the page scrolls. No
-             nested scroll container, so it never shows its own scrollbar (which
-             squished the controls) and combobox dropdowns aren't clipped. -->
-        <aside class="w-72 shrink-0">
-            <div class="sticky top-20">
+    <div class="flex flex-col gap-6 lg:flex-row">
+        <!-- Filter panel: full-width above the results on narrow screens; a sticky
+             sidebar alongside them at lg+. No nested scroll container, so it never
+             shows its own scrollbar (which squished the controls) and combobox
+             dropdowns aren't clipped. -->
+        <aside class="w-full shrink-0 lg:w-72">
+            <div class="lg:sticky lg:top-20">
                 {#key store.cursor}
                     <Filters {store} {seriesOptions} />
                 {/key}

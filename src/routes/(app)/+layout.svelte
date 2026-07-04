@@ -267,7 +267,7 @@
 {/snippet}
 
 <div
-    class="app-container flex flex-row w-full h-screen bg-background text-foreground overflow-hidden"
+    class="app-container flex flex-row w-full h-dvh bg-background text-foreground overflow-hidden"
 >
     <Sidebar.Root bind:expanded>
         <Sidebar.Header class={expanded ? "justify-between" : "justify-center"}>
@@ -431,7 +431,7 @@
                 </div>
             </div>
         {/if}
-        <div class="flex-1 overflow-y-auto p-0">
+        <div class="flex-1 overflow-y-auto overscroll-contain p-0">
             {@render children()}
         </div>
     </div>
@@ -451,12 +451,14 @@
                 flex-direction: row !important;
                 align-items: center !important;
                 width: 100% !important;
-                height: 56px !important;
+                /* Grow the bar by the bottom safe-area inset (home indicator /
+                   Safari toolbar) so the 56px of interactive content sits above it. */
+                height: calc(56px + env(safe-area-inset-bottom)) !important;
                 border-right-width: 0px !important;
                 border-top: 1px solid var(--color-border) !important;
                 overflow-x: auto !important;
                 scrollbar-width: none !important;
-                padding: 0 8px !important;
+                padding: 0 8px env(safe-area-inset-bottom) 8px !important;
                 background-color: var(--color-surface-container-low) !important;
             }
 

@@ -93,9 +93,11 @@
         return { list: currentList, pathPrefix };
     }
 
-    function toggleOpen() {
+    // `highlightFirst` is only set for keyboard-driven opens so that
+    // pointer/tap opens don't leave the first item looking pre-hovered.
+    function toggleOpen(highlightFirst = false) {
         open = !open;
-        if (open) {
+        if (open && highlightFirst) {
             // Find first selectable item
             const firstSel = firstSelectable(options);
             if (firstSel !== -1) {
@@ -128,7 +130,7 @@
             case "ArrowDown":
                 e.preventDefault();
                 if (!open) {
-                    toggleOpen();
+                    toggleOpen(true);
                 } else {
                     const { list, pathPrefix } = getOptionsAtActivePath();
                     const currentActive = activePath[activePath.length - 1];
@@ -181,7 +183,7 @@
             case " ": // Space bar
                 if (!open) {
                     e.preventDefault();
-                    toggleOpen();
+                    toggleOpen(true);
                 } else if (activePath.length > 0) {
                     const { list } = getOptionsAtActivePath();
                     const currentActive = activePath[activePath.length - 1];
@@ -238,7 +240,7 @@
     <div
         bind:this={triggerEl}
         class={cn("inline-flex cursor-pointer select-none", triggerClass)}
-        onclick={toggleOpen}
+        onclick={() => toggleOpen()}
     >
         {@render children?.()}
     </div>

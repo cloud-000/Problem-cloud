@@ -195,7 +195,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
+<div class="flex flex-col gap-6 p-6 mx-auto w-full">
     <!-- Header -->
     <div
         class="border-b border-border/80 pb-4 flex flex-wrap items-end justify-between gap-4"
@@ -249,7 +249,7 @@
             >
                 <Icon name="stacks" fontsize="2.5rem" />
             </div>
-            <div class="flex max-w-sm flex-col gap-1">
+            <div class="flex max-w-5xl flex-col gap-1">
                 <h2 class="text-lg font-semibold">
                     Sign in to practice and track sessions
                 </h2>
