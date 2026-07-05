@@ -9,6 +9,7 @@
     } from "$lib/components/dropdown-menu";
     import { MathStatement } from "$lib/components/math-statement";
     import { Problem, ProblemAnswer } from "$lib/components/problem";
+    import DebugInfo from "./DebugInfo.svelte";
     import { type TriState } from "$lib/components/toggle";
     import {
         DIFFICULTY_RANGE,
@@ -537,6 +538,8 @@
     let olderLoading = $state(false);
 
     let problem = $state<ProblemRow | null>(null);
+    let debugMode = $state(false);
+    let showRawLatex = $state(false);
     let loading = $state(true);
     let error = $state<string | null>(null);
     let selectedChoice = $state<number | null>(null);
@@ -595,6 +598,16 @@
             label: "Share",
             icon: "share",
             onclick: () => {},
+        },
+        {
+            type: "divider",
+        },
+        {
+            label: debugMode ? "Disable Debug" : "Debug",
+            icon: "bug_report",
+            onclick: () => {
+                debugMode = !debugMode;
+            },
         },
     ]);
 
@@ -1769,13 +1782,28 @@
                                     {/if}
                                 </div>
                             </div>
+
+                            {#if debugMode}
+                                <DebugInfo
+                                    {problem}
+                                    bind:showRawLatex
+                                    onClose={() => (debugMode = false)}
+                                />
+                            {/if}
+
                             <div
                                 class="flex flex-1 min-h-fit w-full items-center justify-center"
                             >
-                                <MathStatement
-                                    text={problem.statement ?? ""}
-                                    class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
-                                />
+                                {#if debugMode && showRawLatex}
+                                    <pre
+                                        class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-4xl py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80"
+                                    >{problem.statement ?? ""}</pre>
+                                {:else}
+                                    <MathStatement
+                                        text={problem.statement ?? ""}
+                                        class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
+                                    />
+                                {/if}
                             </div>
                             <div class="w-full">
                                 <ProblemAnswer
