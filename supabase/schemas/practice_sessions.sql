@@ -1,10 +1,13 @@
 -- Practice sessions: a named, bounded grouping of a user's practice work.
 --
--- A submission with session_id = null belongs to the implicit "root" (ungrouped
--- work) — there is no physical root row. A user explicitly starts a session
--- (snapshotting the current practice settings into `settings`), practices, and
--- ends it; multiple sessions may be active at once and the client decides which
--- one new submissions attach to.
+-- Every user has exactly one always-present "root" session (`is_root = true`) —
+-- the "practice freely" grouping that ungrouped work attaches to. It is created
+-- with the profile (see handle_new_user) and behaves like any other session; it
+-- is never listed in the hub, ended, or deleted. A user also explicitly starts
+-- named sessions (snapshotting the current practice settings into `settings`),
+-- practices, and ends them; multiple sessions may be active at once and the
+-- client decides which one new submissions attach to. (`session_id = null` on a
+-- submission now only means library work, which belongs to no session.)
 --
 -- The aggregate counters are maintained by the submissions trigger
 -- (`handle_new_submission` in submissions.sql), so app code only ever inserts a
@@ -14,6 +17,10 @@
 create table public.practice_sessions (
   id                 bigint generated always as identity primary key,
   user_id            uuid   references public.profiles(id) on delete cascade not null,
+  -- The user's single "practice freely" session. Exactly one per user (enforced
+  -- by a partial unique index below). Never renamed to root by clients: `is_root`
+  -- is intentionally excluded from the client column-level update grant.
+  is_root            boolean not null default false,
   name               text,                                  -- optional user label
   settings           jsonb  not null default '{}'::jsonb,   -- PracticeSettings snapshot
   -- In-progress problem: the one shown but not yet answered or skipped. Lets a
@@ -44,6 +51,10 @@ create table public.practice_sessions (
 );
 
 create index practice_sessions_user_idx on public.practice_sessions(user_id, status);
+
+-- At most one root session per user.
+create unique index practice_sessions_one_root_per_user
+  on public.practice_sessions(user_id) where is_root;
 
 -- Enable Row Level Security (RLS)
 alter table public.practice_sessions enable row level security;

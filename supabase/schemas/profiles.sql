@@ -79,6 +79,11 @@ begin
     ),
     new.raw_user_meta_data->>'status' -- defaults to NULL if not provided
   );
+  -- Every user has exactly one always-present "root" practice session (the
+  -- "practice freely" grouping). Empty settings are fine — the app merges them
+  -- over its client-side defaults. See practice_sessions.sql (is_root).
+  insert into public.practice_sessions (user_id, is_root, settings)
+  values (new.id, true, '{}'::jsonb);
   return new;
 end;
 $$;

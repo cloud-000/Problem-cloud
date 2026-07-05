@@ -112,6 +112,7 @@ export type Database = {
           current_problem_id: number | null
           ended_at: string | null
           id: number
+          is_root: boolean
           last_submission_at: string | null
           name: string | null
           settings: Json
@@ -131,6 +132,7 @@ export type Database = {
           current_problem_id?: number | null
           ended_at?: string | null
           id?: never
+          is_root?: boolean
           last_submission_at?: string | null
           name?: string | null
           settings?: Json
@@ -150,6 +152,7 @@ export type Database = {
           current_problem_id?: number | null
           ended_at?: string | null
           id?: never
+          is_root?: boolean
           last_submission_at?: string | null
           name?: string | null
           settings?: Json
@@ -508,6 +511,7 @@ export type Database = {
           missing_answers_count: number
           name: string
           quality: number | null
+          section: number
           series_id: number | null
           time_limit_seconds: number | null
           type: string | null
@@ -522,6 +526,7 @@ export type Database = {
           missing_answers_count?: number
           name: string
           quality?: number | null
+          section?: number
           series_id?: number | null
           time_limit_seconds?: number | null
           type?: string | null
@@ -536,6 +541,7 @@ export type Database = {
           missing_answers_count?: number
           name?: string
           quality?: number | null
+          section?: number
           series_id?: number | null
           time_limit_seconds?: number | null
           type?: string | null

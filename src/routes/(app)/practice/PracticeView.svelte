@@ -20,6 +20,7 @@
     } from "$lib/library";
     import {
         createSession,
+        defaultPracticeSettings,
         fetchTestProblems,
         FORMAT_BEHAVIOR,
         nextPracticeProblem,
@@ -35,9 +36,13 @@
         endSession,
         fetchSession,
         fetchSessionHistory,
+        fetchOlderSubmission,
+        fetchSessionProblemIds,
+        getOrCreateRootSession,
         setCurrentProblem,
         updateSessionSettings,
         type PracticeSessionRow,
+        type SessionHistoryEntry,
     } from "$lib/sessions";
     import { cn, formatElapsed } from "$lib/utils";
     import { modal } from "$lib/state/modal.svelte";
@@ -129,13 +134,20 @@
     let priorCorrect = $state(0);
     let priorIncorrect = $state(0);
     let priorSkipped = $state(0);
+    // Time already accrued in this session before this run (the session's stored
+    // total), added to the live per-problem times for the session-total display.
+    let priorElapsedMs = $state(0);
 
     // Last settings snapshot persisted to the session, to skip redundant writes.
     let lastPersistedSettings = "";
 
     // Write a stored PracticeSettings snapshot back into the panel's bound state
-    // (the inverse of currentSettings()), so resuming a session restores its filters.
-    function applySettings(s: PracticeSettings) {
+    // (the inverse of currentSettings()), so resuming a session restores its
+    // filters. Merged over the canonical defaults so an empty `{}` snapshot (a
+    // freshly created root session) or any older partial snapshot can't leave a
+    // required field undefined (the spreads below would otherwise throw).
+    function applySettings(raw: PracticeSettings) {
+        const s = { ...defaultPracticeSettings(), ...raw };
         format = s.format ?? "practice";
         testId = s.testId ?? null;
         timeLimitSeconds = s.timeLimitSeconds ?? null;
@@ -495,6 +507,8 @@
     // Browser-history-style navigation: every generated problem is appended to
     // `history`; `historyIndex` points at the one on screen. Past entries are
     // frozen snapshots; only the latest entry is live (timer runs, answerable).
+    // Entries paged in from the server carry a `submissionId` (the back-paging
+    // cursor); problems drawn this run do not.
     type HistoryEntry = {
         problem: ProblemRow;
         source: PracticeSource;
@@ -508,9 +522,19 @@
         attemptIndex: number | null;
         triesUsed: number;
         triedAnswers: string[];
+        submissionId?: number;
     };
     let history = $state<HistoryEntry[]>([]);
     let historyIndex = $state(-1);
+
+    // Root ("practice freely") lazy back-paging. `olderPrefetch` holds the single
+    // problem immediately older than history[0], fetched ahead so Back's
+    // enabled-state is known and stepping back is instant; its `submissionId` is
+    // the cursor for paging further back. `olderExhausted` marks the start of
+    // history reached.
+    let olderPrefetch = $state<HistoryEntry | null>(null);
+    let olderExhausted = $state(false);
+    let olderLoading = $state(false);
 
     let problem = $state<ProblemRow | null>(null);
     let loading = $state(true);
@@ -542,7 +566,9 @@
     let loadToken = 0;
 
     let isLatest = $derived(historyIndex === history.length - 1);
-    let canGoBack = $derived(historyIndex > 0);
+    // Back is available either within the materialized history, or when a previous
+    // problem has been prefetched from the server (any session).
+    let canGoBack = $derived(historyIndex > 0 || olderPrefetch != null);
     let isProblemMcq = $derived(
         !!problem && (problem.choices?.length ?? 0) > 1,
     );
@@ -599,14 +625,18 @@
 
     let elapsedMs = $derived(elapsedAt(timerNow));
 
-    // Total time across the whole session: every problem in this view's history
-    // (prior work is rebuilt into it on resume), substituting the live count for
-    // the on-screen one.
+    // Total time across the whole session: the session's stored prior total plus
+    // every problem drawn in this run (substituting the live count for the
+    // on-screen one). Older problems paged in for back-navigation (those carrying
+    // a `submissionId`) are already counted in the stored total, so they're
+    // excluded here to avoid double-counting.
     let totalElapsedMs = $derived(
         history.reduce(
             (sum, entry, i) =>
-                sum + (i === historyIndex ? elapsedMs : entry.elapsedMs),
-            0,
+                entry.submissionId != null
+                    ? sum
+                    : sum + (i === historyIndex ? elapsedMs : entry.elapsedMs),
+            priorElapsedMs,
         ),
     );
     // The timer chip swaps between the current problem and the session total.
@@ -783,6 +813,29 @@
         timerNow = now;
         frozenElapsedMs = entry.elapsedMs;
         startedAt = now - entry.elapsedMs;
+    }
+
+    // Build a live history entry from a stored/fetched submission. Paged-in older
+    // entries carry their `submissionId` (the back-paging cursor); freshly drawn
+    // problems have none.
+    function historyEntryFrom(
+        a: SessionHistoryEntry & { submissionId?: number },
+    ): HistoryEntry {
+        return {
+            problem: a.problem,
+            source: (a.source as PracticeSource) ?? "practice",
+            progress: null,
+            selectedChoice: a.selectedChoice,
+            answer: "",
+            submitted: !a.skipped,
+            correct: a.isCorrect,
+            flagged: a.flagged,
+            elapsedMs: a.elapsedMs,
+            attemptIndex: null,
+            triesUsed: 0,
+            triedAnswers: [],
+            submissionId: a.submissionId,
+        };
     }
 
     async function loadProblem(settings = currentSettings()) {
@@ -1000,7 +1053,57 @@
     function goBack() {
         if (!canGoBack || loading) return;
         commitCurrent();
-        restore(historyIndex - 1);
+        // Within the materialized history, just step back. At the oldest
+        // materialized entry, `canGoBack` guarantees (root) a prefetched
+        // server-older entry to step into instead.
+        if (historyIndex > 0) {
+            restore(historyIndex - 1);
+        } else {
+            consumeOlder();
+        }
+    }
+
+    // Fetch the single problem immediately older than history[0] (any session), so
+    // the Back button's state is known and stepping back is instant. Guarded so
+    // exactly one is held ahead; the cursor walks strictly backwards by id, so
+    // problems drawn this run (ids above the newest submission at mount) are never
+    // re-paged. Fired once on start and again after each step further back. Skipped
+    // for tests (fixed set) and signed-out/ephemeral practice (no session).
+    async function prefetchOlder() {
+        if (currentSessionId == null || !user || isTest) return;
+        if (olderLoading || olderPrefetch || olderExhausted) return;
+        // Cursor = the id of the last-paged older entry (now history[0]), or null
+        // to start from the newest. Nothing between here and a fetch advances it.
+        const cursorId = history[0]?.submissionId ?? null;
+        olderLoading = true;
+        try {
+            const row = await fetchOlderSubmission(
+                supabase,
+                currentSessionId,
+                cursorId,
+            );
+            if (!row) {
+                olderExhausted = true;
+                return;
+            }
+            olderPrefetch = historyEntryFrom(row);
+        } catch (e) {
+            console.error("Failed to load previous problem:", e);
+        } finally {
+            olderLoading = false;
+        }
+    }
+
+    // Step into the prefetched older problem: prepend it (it becomes the new
+    // history[0], shifting this run's problems forward), show it, and warm the
+    // next one further back.
+    function consumeOlder() {
+        const entry = olderPrefetch;
+        if (!entry) return;
+        olderPrefetch = null;
+        history = [entry, ...history];
+        restore(0);
+        prefetchOlder();
     }
 
     // Forward steps through history; in practice, on the newest problem it acts as
@@ -1051,10 +1154,12 @@
         }
     }
 
-    // Resolve the session from the URL, hydrate its settings, then load the
-    // first problem. Settings are intentionally *not* a reactive dependency of
-    // loadProblem: the panel applies them to the next generated problem (via
-    // currentSettings()), so tweaking a control must not fire a reload per change.
+    // Resolve the session from the URL (the "root" alias maps to the always-
+    // present root session), hydrate its settings + carried-over totals, warm the
+    // Back button, then resume the in-progress problem or draw a fresh one.
+    // Settings are intentionally *not* a reactive dependency of loadProblem: the
+    // panel applies them to the next generated problem (via currentSettings()), so
+    // tweaking a control must not fire a reload per change.
     onMount(async () => {
         try {
             const list = await fetchAllSeries(supabase);
@@ -1066,74 +1171,73 @@
             console.error("Failed to fetch series options:", e);
         }
 
-        if (!isRoot && user) {
-            try {
-                const s = await fetchSession(supabase, Number(sessionParam));
-                if (s) {
-                    activeSession = s;
-                    applySettings(s.settings as unknown as PracticeSettings);
-                    // Baseline so the first load doesn't re-persist the snapshot.
-                    lastPersistedSettings = JSON.stringify(currentSettings());
+        // Signed-out: no session row and no persistence anywhere (root or a
+        // deep-linked session RLS won't reveal). Draw a fresh problem ephemerally.
+        if (!user) {
+            loadProblem();
+            return;
+        }
 
-                    // Test format has its own setup (whole problem set up front,
-                    // deferred grading, results on completion) — don't fall through
-                    // to the random/review practice loop.
-                    if (format === "test") {
-                        await initTest(s);
+        try {
+            const s = isRoot
+                ? await getOrCreateRootSession(supabase, user.id)
+                : await fetchSession(supabase, Number(sessionParam));
+            if (s) {
+                activeSession = s;
+                applySettings(s.settings as unknown as PracticeSettings);
+                // Baseline so the first load doesn't re-persist the snapshot.
+                lastPersistedSettings = JSON.stringify(currentSettings());
+
+                // Test format has its own setup (whole problem set up front,
+                // deferred grading, results on completion) — don't fall through
+                // to the random/review practice loop.
+                if (format === "test") {
+                    await initTest(s);
+                    return;
+                }
+
+                // Seed the session totals from the trigger-maintained counters.
+                // Under lazy back-paging the full history isn't loaded, so the
+                // indicators carry over from these stored aggregates instead of a
+                // client-side count. (times_reviewed counts graded attempts, so
+                // incorrect = reviewed − correct.)
+                priorCorrect = s.times_correct;
+                priorIncorrect = s.times_reviewed - s.times_correct;
+                priorSkipped = s.times_skipped;
+                priorElapsedMs = s.total_time_ms;
+                sessionAttemptCount = s.times_seen;
+
+                // Seed the draw-state (problem ids only) so the queue doesn't
+                // re-show a problem already covered this session, without
+                // materializing the full history.
+                try {
+                    const ids = await fetchSessionProblemIds(supabase, s.id);
+                    for (const id of ids) session.shownIds.add(id);
+                    session.drawIndex = ids.length;
+                } catch (e) {
+                    console.error("Failed to seed session draw-state:", e);
+                }
+
+                // Warm the Back button (prefetch the previous problem).
+                prefetchOlder();
+
+                // Resume the in-progress problem instead of generating a new one,
+                // continuing its elapsed timer where it left off.
+                if (s.current_problem_id != null) {
+                    const pending = await fetchProblemById(s.current_problem_id);
+                    if (pending) {
+                        showProblem(
+                            pending,
+                            "practice",
+                            null,
+                            s.current_elapsed_ms ?? 0,
+                        );
                         return;
                     }
-
-                    // Rebuild this view's back-navigation history from prior
-                    // submissions (oldest first) as frozen entries, so a resumed
-                    // session can be paged back through. The same data seeds the
-                    // draw-state (so the queue doesn't repeat) and the carried-
-                    // over outcome tallies, keeping the indicators continuous.
-                    const prior = await fetchSessionHistory(supabase, s.id);
-                    history = prior.map((a) => ({
-                        problem: a.problem,
-                        source: (a.source as PracticeSource) ?? "practice",
-                        progress: null,
-                        selectedChoice: a.selectedChoice,
-                        answer: "",
-                        submitted: !a.skipped,
-                        correct: a.isCorrect,
-                        flagged: a.flagged,
-                        elapsedMs: a.elapsedMs,
-                        attemptIndex: null,
-                        triesUsed: 0,
-                        triedAnswers: [],
-                    }));
-                    for (const a of prior) session.shownIds.add(a.problem.id);
-                    session.drawIndex = prior.length;
-                    sessionAttemptCount = prior.length;
-                    priorSkipped = prior.filter((a) => a.skipped).length;
-                    priorCorrect = prior.filter(
-                        (a) => a.isCorrect === true,
-                    ).length;
-                    priorIncorrect = prior.filter(
-                        (a) => a.isCorrect === false,
-                    ).length;
-
-                    // Resume the in-progress problem instead of generating a new
-                    // one, continuing its elapsed timer where it left off.
-                    if (s.current_problem_id != null) {
-                        const pending = await fetchProblemById(
-                            s.current_problem_id,
-                        );
-                        if (pending) {
-                            showProblem(
-                                pending,
-                                "practice",
-                                null,
-                                s.current_elapsed_ms ?? 0,
-                            );
-                            return;
-                        }
-                    }
                 }
-            } catch (e) {
-                error = (e as Error).message;
             }
+        } catch (e) {
+            error = (e as Error).message;
         }
         loadProblem();
     });
@@ -1334,7 +1438,7 @@
                 <Icon name="tune" class={iconCls} />
             </Button>
 
-            {#if activeSession}
+            {#if activeSession && (activeSession.name || isTest)}
                 <div class="flex flex-row items-center gap-1.5">
                     {#if isTest}
                         <span
