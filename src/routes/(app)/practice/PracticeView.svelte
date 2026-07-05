@@ -45,7 +45,7 @@
         type PracticeSessionRow,
         type SessionHistoryEntry,
     } from "$lib/sessions";
-    import { cn, formatElapsed } from "$lib/utils";
+    import { cn, formatElapsed, formatProblemText } from "$lib/utils";
     import { modal } from "$lib/state/modal.svelte";
     import { toasts } from "$lib/state/toast.svelte";
     import { StatusTag } from "$lib/components/status-tag";
@@ -1237,7 +1237,9 @@
                 // Resume the in-progress problem instead of generating a new one,
                 // continuing its elapsed timer where it left off.
                 if (s.current_problem_id != null) {
-                    const pending = await fetchProblemById(s.current_problem_id);
+                    const pending = await fetchProblemById(
+                        s.current_problem_id,
+                    );
                     if (pending) {
                         showProblem(
                             pending,
@@ -1796,11 +1798,15 @@
                             >
                                 {#if debugMode && showRawLatex}
                                     <pre
-                                        class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-4xl py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80"
-                                    >{problem.statement ?? ""}</pre>
+                                        class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-4xl py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
+                                            {problem.statement ?? ""}
+                                        </pre>
                                 {:else}
                                     <MathStatement
-                                        text={problem.statement ?? ""}
+                                        text={formatProblemText(
+                                            problem.statement ?? "",
+                                            isProblemMcq,
+                                        )}
                                         class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
                                     />
                                 {/if}

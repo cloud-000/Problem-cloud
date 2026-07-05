@@ -15,3 +15,18 @@ export function formatElapsed(ms: number): string {
         ? `${minutes}:${String(seconds).padStart(2, "0")}`
         : `${seconds}s`;
 }
+
+export function formatProblemText(
+    statement: string,
+    isChoices: boolean = true,
+): string {
+    if (isChoices) {
+        return statement
+            .replace(
+                /\s*\$?\s*\\textbf\{\(A\)\}[\s\S]*?(?:\\textbf\{\([B-E]\)\}[\s\S]*?)+\$?\s*$/u,
+                "",
+            )
+            .trimEnd();
+    }
+    return statement;
+}
