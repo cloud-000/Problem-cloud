@@ -205,7 +205,7 @@
                     {disabled}
                     aria-pressed={selected}
                     class={cn(
-                        "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background py-2 pr-10 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
+                        "flex min-h-10 w-full items-start gap-2.5 rounded-md border border-border bg-background py-2.5 pr-10 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
                         selected &&
                             "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
                         correct && "border-correct bg-correct/10",
@@ -220,17 +220,39 @@
                             feedback?.result === null &&
                             "border-unsure bg-unsure/10",
                         struck &&
-                            "line-through opacity-40 hover:translate-y-0 hover:shadow-xs",
+                            "border-dashed opacity-35 bg-diagonal-stripes grayscale-50 scale-[0.99] hover:translate-y-0 hover:shadow-xs hover:opacity-60 hover:border-primary-foreground/25",
                     )}
                     onclick={() => chooseWithFeedback(i)}
                     oncontextmenu={(e) => handleChoiceContextMenu(e, i)}
                 >
                     <span
-                        class="shrink-0 font-medium text-muted-foreground opacity-60 select-none"
+                        class={cn(
+                            "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold select-none transition-all duration-200",
+                            selected
+                                ? "bg-primary-foreground text-background"
+                                : "bg-surface-container text-muted-foreground/80",
+                            correct && "bg-correct text-on-correct",
+                            incorrect && "bg-destructive text-destructive-foreground",
+                            feedbackActive &&
+                                feedback?.result === true &&
+                                "bg-correct text-on-correct",
+                            feedbackActive &&
+                                feedback?.result === false &&
+                                "bg-destructive text-destructive-foreground",
+                            struck && "opacity-30 bg-muted/80 text-muted-foreground/60 scale-95"
+                        )}
                     >
                         {CHOICE_LABELS[i] ?? String(i + 1)}
                     </span>
                     <LaTeX class="min-w-0 flex-1">${choice}$</LaTeX>
+                    
+                    <!-- Interactive strike-through line that animates from left to right -->
+                    <div
+                        class={cn(
+                            "absolute left-[46px] right-[44px] top-[calc(50%-1px)] z-5 h-[1.5px] bg-muted-foreground/35 -translate-y-1/2 pointer-events-none transition-transform duration-300 ease-out origin-left scale-x-0",
+                            struck && "scale-x-100 bg-muted-foreground/30"
+                        )}
+                    ></div>
                 </button>
                 <button
                     type="button"
@@ -239,8 +261,10 @@
                     aria-label={struck ? "Restore choice" : "Eliminate choice"}
                     title={struck ? "Restore choice" : "Eliminate choice"}
                     class={cn(
-                        "absolute top-1/2 right-1.5 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground focus-visible:opacity-100 disabled:pointer-events-none group-hover/choice:opacity-100 [@media(hover:none)]:opacity-100",
-                        struck && "text-destructive opacity-100",
+                        "absolute top-1/2 right-1.5 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md transition-all focus-visible:opacity-100 disabled:pointer-events-none [@media(hover:none)]:opacity-100",
+                        struck
+                            ? "text-muted-foreground/60 opacity-80 group-hover/choice:opacity-100 group-hover/choice:text-primary-foreground hover:scale-110 hover:bg-primary/20!"
+                            : "text-muted-foreground opacity-0 group-hover/choice:opacity-100 hover:bg-muted hover:text-foreground"
                     )}
                     onclick={() => toggleEliminated(i)}
                 >
