@@ -46,6 +46,7 @@
         type SessionHistoryEntry,
     } from "$lib/sessions";
     import { cn, formatElapsed, formatProblemText } from "$lib/utils";
+    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
     import { modal } from "$lib/state/modal.svelte";
     import { toasts } from "$lib/state/toast.svelte";
     import { StatusTag } from "$lib/components/status-tag";
@@ -60,6 +61,7 @@
         type CounterRanges,
     } from "./SettingsPanel.svelte";
     import { TopbarRegister } from "$lib/components/topbar";
+    import PauseOverlay from "./PauseOverlay.svelte";
 
     // `sessionParam` is the `?session=` value: "root" (ungrouped work) or a
     // numeric session id. The parent route keys this component on it, so a
@@ -94,6 +96,7 @@
     let includeUnscheduled = $state(false);
     let showSettings = $state(false);
     let paused = $state(false);
+    let focusMode = $state(false);
 
     // Session format. Resolved from the session's settings snapshot on mount and
     // then fixed for the life of the view ("practice" = the historical free-form
@@ -107,9 +110,10 @@
     // Test lifecycle: true once the test has been submitted (or re-opened as an
     // already-ended test), which switches the view over to the results screen.
     let testFinished = $state(false);
+    let focusModeActive = $derived(focusMode && !testFinished);
     let submittingTest = $state(false);
 
-    // Review/Mixed need per-user progress. Without a session, pin to New.
+    // Progress-backed modes need per-user progress. Without a session, pin to New.
     $effect(() => {
         if (!user && mode !== "new") mode = "new";
     });
@@ -152,6 +156,7 @@
         format = s.format ?? "practice";
         testId = s.testId ?? null;
         timeLimitSeconds = s.timeLimitSeconds ?? null;
+        focusMode = s.focusMode ?? false;
         triesPerProblem = s.triesPerProblem ?? 2;
         seriesIds = s.seriesIds ? [...s.seriesIds] : [];
         mode = s.mode;
@@ -184,7 +189,7 @@
     }
 
     async function finishSession() {
-        if (!activeSession || sessionBusy) return;
+        if (!activeSession || isRoot || sessionBusy) return;
         sessionBusy = true;
         try {
             await endSession(supabase, activeSession.id);
@@ -300,6 +305,7 @@
                     attemptIndex: null,
                     triesUsed: 0,
                     triedAnswers: [],
+                    eliminatedChoices: [],
                 }));
                 historyIndex = history.length - 1;
                 testFinished = true;
@@ -328,6 +334,7 @@
                 attemptIndex: null,
                 triesUsed: 0,
                 triedAnswers: [],
+                eliminatedChoices: [],
             }));
 
             // Restore any in-progress draft (answers + per-problem time + place).
@@ -498,6 +505,7 @@
                 attemptIndex: null,
                 triesUsed: 0,
                 triedAnswers: [],
+                eliminatedChoices: [],
             },
         ];
         restore(history.length - 1);
@@ -523,6 +531,7 @@
         attemptIndex: number | null;
         triesUsed: number;
         triedAnswers: string[];
+        eliminatedChoices: number[];
         submissionId?: number;
     };
     let history = $state<HistoryEntry[]>([]);
@@ -543,6 +552,10 @@
     let loading = $state(true);
     let error = $state<string | null>(null);
     let selectedChoice = $state<number | null>(null);
+    // MCQ choices the user has crossed out on the on-screen problem. Carried on
+    // the history entry so back/forward navigation preserves it; resets per
+    // problem. Never persisted to the DB.
+    let eliminatedChoices = $state<number[]>([]);
     let answer = $state("");
     let submitted = $state(false);
     let correct = $state<boolean | null>(null);
@@ -583,10 +596,20 @@
 
     let moreOptions = $derived<DropdownOption[]>([
         {
+            label: focusMode ? "Disable Focus Mode" : "Focus Mode",
+            icon: focusMode ? "center_focus_strong" : "center_focus_weak",
+            iconFill: focusMode,
+            onclick: () => setFocusMode(!focusMode),
+        },
+        {
+            type: "divider",
+        },
+        {
             label: flagged ? "Unflag" : "Flag",
             icon: "flag",
             iconFill: flagged,
             color: flagged ? "text-unsure" : undefined,
+            disabled: paused,
             onclick: () => toggleFlag(),
         },
         {
@@ -748,6 +771,7 @@
             format,
             testId,
             timeLimitSeconds,
+            focusMode,
             triesPerProblem,
             seriesIds: [...seriesIds],
             topic: [...topic],
@@ -768,6 +792,21 @@
             lastOutcome,
             includeUnscheduled,
         };
+    }
+
+    function persistSettingsSnapshot(settings = currentSettings()) {
+        if (currentSessionId == null) return;
+        const serialized = JSON.stringify(settings);
+        if (serialized === lastPersistedSettings) return;
+        lastPersistedSettings = serialized;
+        updateSessionSettings(supabase, currentSessionId, settings).catch((e) =>
+            console.error("Failed to persist session settings:", e),
+        );
+    }
+
+    function setFocusMode(value: boolean) {
+        focusMode = value;
+        persistSettingsSnapshot({ ...currentSettings(), focusMode: value });
     }
 
     // Compact "last reviewed" label: relative for recent, short date otherwise.
@@ -802,6 +841,7 @@
         entry.attemptIndex = currentAttemptIndex;
         entry.triesUsed = triesUsed;
         entry.triedAnswers = triedAnswers;
+        entry.eliminatedChoices = eliminatedChoices;
     }
 
     // Load a history entry into the live view. The timer only resumes for the
@@ -821,6 +861,7 @@
         currentAttemptIndex = entry.attemptIndex;
         triesUsed = entry.triesUsed;
         triedAnswers = entry.triedAnswers;
+        eliminatedChoices = entry.eliminatedChoices;
 
         const now = Date.now();
         timerNow = now;
@@ -847,6 +888,7 @@
             attemptIndex: null,
             triesUsed: 0,
             triedAnswers: [],
+            eliminatedChoices: [],
             submissionId: a.submissionId,
         };
     }
@@ -857,19 +899,7 @@
 
         // Persist settings changes back to the active session so a later resume
         // restores them. Fire-and-forget; deduped against the last write.
-        if (currentSessionId != null) {
-            const serialized = JSON.stringify(settings);
-            if (serialized !== lastPersistedSettings) {
-                lastPersistedSettings = serialized;
-                updateSessionSettings(
-                    supabase,
-                    currentSessionId,
-                    settings,
-                ).catch((e) =>
-                    console.error("Failed to persist session settings:", e),
-                );
-            }
-        }
+        persistSettingsSnapshot(settings);
 
         commitCurrent();
 
@@ -884,6 +914,7 @@
         currentAttemptIndex = null;
         triesUsed = 0;
         triedAnswers = [];
+        eliminatedChoices = [];
         frozenElapsedMs = 0;
         startedAt = now;
         timerNow = now;
@@ -916,6 +947,7 @@
                         attemptIndex: null,
                         triesUsed: 0,
                         triedAnswers: [],
+                        eliminatedChoices: [],
                     },
                 ];
                 restore(history.length - 1);
@@ -950,8 +982,8 @@
         if (isProblemMcq) {
             return selectedChoice == null ? null : `c:${selectedChoice}`;
         }
-        const trimmed = answer.trim();
-        return trimmed ? `a:${trimmed}` : null;
+        const normalized = normalizeAnswer(answer);
+        return normalized ? `a:${normalized}` : null;
     }
 
     function submitAnswer() {
@@ -977,8 +1009,10 @@
         const isCorrect = hasAnswer
             ? isProblemMcq
                 ? selectedChoice === problem.answer_index
-                : answer.trim() ===
-                  problem.choices?.[problem.answer_index ?? 0]?.trim()
+                : answersMatch(
+                      answer,
+                      problem.choices?.[problem.answer_index ?? 0] ?? "",
+                  )
             : null;
 
         // Multi-try: a graded wrong answer with tries still remaining doesn't
@@ -1448,7 +1482,6 @@
                 onclick={() => (showSettings = !showSettings)}
                 aria-expanded={showSettings}
                 aria-label="Toggle settings"
-                disabled={paused}
             >
                 <Icon name="tune" class={iconCls} />
             </Button>
@@ -1473,7 +1506,7 @@
         <div
             class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
         >
-            {#if behavior.showLiveFeedback}
+            {#if behavior.showLiveFeedback && !focusModeActive}
                 {@render statChip(correctAttempts, "var(--color-correct)")}
                 {@render statChip(
                     incorrectAttempts,
@@ -1506,29 +1539,33 @@
                     {@const timed = timeLimitSeconds != null}
                     {@const low =
                         timed && remainingMs != null && remainingMs <= 60_000}
+                    {@const displayMs =
+                        timed ? (remainingMs ?? 0) : totalElapsedMs}
                     <div
                         class={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5",
+                            "inline-flex h-8 items-center justify-center rounded-md",
+                            focusModeActive ? "w-8 px-0" : "gap-1.5 px-2.5",
                             low
                                 ? "bg-destructive/15 text-destructive"
                                 : "bg-surface-container-low",
                         )}
-                        title={timed ? "Time remaining" : "Elapsed time"}
+                        title={`${timed ? "Time remaining" : "Elapsed time"}: ${formatElapsed(displayMs)}`}
                         aria-label={timed ? "Time remaining" : "Elapsed time"}
                     >
                         <Icon
                             name={timed ? "timer" : "schedule"}
                             class={iconCls}
                         />
-                        <span class="leading-none tabular-nums">
-                            {formatElapsed(
-                                timed ? (remainingMs ?? 0) : totalElapsedMs,
-                            )}
-                        </span>
+                        {#if !focusModeActive}
+                            <span class="leading-none tabular-nums">
+                                {formatElapsed(displayMs)}
+                            </span>
+                        {/if}
                     </div>
                 {/if}
             {:else if problem}
                 {@const isTotal = timerMode === "total"}
+                {@const displayMs = isTotal ? totalElapsedMs : elapsedMs}
                 <div class="flex items-center gap-1.5">
                     {#if behavior.allowPause && !submitted && isLatest}
                         <Button
@@ -1551,24 +1588,26 @@
                         type="button"
                         onclick={() =>
                             (timerMode = isTotal ? "problem" : "total")}
-                        class="inline-flex h-8 items-center gap-1 rounded-md bg-surface-container-low px-2.5 transition-colors hover:bg-surface-container"
+                        class={cn(
+                            "inline-flex h-8 items-center justify-center rounded-md bg-surface-container-low transition-colors hover:bg-surface-container",
+                            focusModeActive ? "w-8 px-0" : "gap-1 px-2.5",
+                        )}
                         title={isTotal
-                            ? "Total session time — click for this problem"
-                            : "Time on this problem — click for session total"}
+                            ? `Total session time: ${formatElapsed(displayMs)} — click for this problem`
+                            : `Time on this problem: ${formatElapsed(displayMs)} — click for session total`}
                         aria-label={isTotal
                             ? "Total session time"
                             : "Time on this problem"}
-                        disabled={paused}
                     >
                         <Icon
                             name={isTotal ? "timelapse" : "schedule"}
                             class={iconCls}
                         />
-                        <span class="leading-none">
-                            {formatElapsed(
-                                isTotal ? totalElapsedMs : elapsedMs,
-                            )}
-                        </span>
+                        {#if !focusModeActive}
+                            <span class="leading-none">
+                                {formatElapsed(displayMs)}
+                            </span>
+                        {/if}
                     </button>
                 </div>
             {/if}
@@ -1662,7 +1701,12 @@
                             No matching problems
                         </h2>
                         <p class="text-xs text-muted-foreground">
-                            {#if mode === "review" || mode === "mixed"}
+                            {#if mode === "skipped"}
+                                You've gone through every unsolved skipped
+                                problem that matches these settings. Reset to
+                                cycle through them again, or broaden the
+                                settings.
+                            {:else if mode === "review" || mode === "mixed"}
                                 You've gone through everything queued this
                                 session. Reset to cycle through them again, or
                                 broaden the settings.
@@ -1673,14 +1717,16 @@
                         </p>
                     </div>
                     <div class="flex items-center gap-2">
-                        {#if mode === "review" || mode === "mixed"}
+                        {#if mode === "review" || mode === "skipped" || mode === "mixed"}
                             <Button
                                 size="sm"
                                 onclick={resetSession}
                                 class="gap-1.5"
                             >
                                 <Icon name="restart_alt" />
-                                Reset review queue
+                                {mode === "skipped"
+                                    ? "Reset skipped queue"
+                                    : "Reset review queue"}
                             </Button>
                         {/if}
                         <Button
@@ -1742,7 +1788,7 @@
                                             }}
                                         />
                                     {/if}
-                                    {#if behavior.showLiveFeedback}
+                                    {#if behavior.showLiveFeedback && !focusModeActive}
                                         {#if currentSource === "review"}
                                             <StatusTag
                                                 status="review"
@@ -1785,7 +1831,7 @@
                                 </div>
                             </div>
 
-                            {#if debugMode}
+                            {#if debugMode && !focusModeActive}
                                 <DebugInfo
                                     {problem}
                                     bind:showRawLatex
@@ -1796,7 +1842,7 @@
                             <div
                                 class="flex flex-1 min-h-fit w-full items-center justify-center"
                             >
-                                {#if debugMode && showRawLatex}
+                                {#if debugMode && showRawLatex && !focusModeActive}
                                     <pre
                                         class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-4xl py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
                                             {problem.statement ?? ""}
@@ -1818,6 +1864,7 @@
                                     answerIndex={problem.answer_index}
                                     bind:answer
                                     bind:selectedChoice
+                                    bind:eliminated={eliminatedChoices}
                                     showAnswerState={behavior.revealAnswerState &&
                                         submitted &&
                                         hasAnswer}
@@ -1832,46 +1879,123 @@
                         </div>
 
                         {#if paused}
-                            <div
-                                class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 text-center bg-background/60 backdrop-blur-(--backdrop-hide) px-4 select-none"
-                                transition:fade={{ duration: 150 }}
-                            >
-                                <div
-                                    class="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary shadow-inner border border-primary/20 animate-pulse"
-                                >
-                                    <Icon name="pause" fontsize={32} />
-                                </div>
-                                <div class="flex max-w flex-col gap-2">
-                                    <h2
-                                        class="text-lg font-semibold text-foreground tracking-tight"
-                                    >
-                                        Paused
-                                    </h2>
-                                    <p
-                                        class="text-xs text-muted-foreground leading-relaxed"
-                                    >
-                                        The timer has halted.
-                                    </p>
-                                </div>
-                                <Button
-                                    size="default"
-                                    onclick={togglePause}
-                                    class="gap-2 px-6 h-10 shadow-md font-semibold bg-primary hover:bg-primary/95 text-primary-foreground transition-all duration-200 hover:scale-105 active:scale-95"
-                                >
-                                    <Icon name="play_arrow" />
-                                </Button>
-                            </div>
+                            <PauseOverlay
+                                {elapsedMs}
+                                {totalElapsedMs}
+                                {timerMode}
+                                {correctAttempts}
+                                {incorrectAttempts}
+                                {skippedAttempts}
+                                canEndSession={!!activeSession && !isRoot}
+                                endingSession={sessionBusy}
+                                onResume={togglePause}
+                                onOpenSettings={() => (showSettings = true)}
+                                onEndSession={finishSession}
+                                onToggleTimerMode={() =>
+                                    (timerMode =
+                                        timerMode === "total"
+                                            ? "problem"
+                                            : "total")}
+                            />
                         {/if}
                     </div>
 
                     <!-- Footer with ghosted Flag/Skip and primary Next/Submit buttons -->
                     <footer
-                        class="sticky bottom-0 z-10 px-2 py-1 flex items-center justify-between w-full border-t border-border/50 bg-background/80"
+                        class="sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1"
                     >
                         <div
                             class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
                         ></div>
-                        {#if !behavior.gradeImmediately}
+                        {#if focusModeActive}
+                            <div class="flex items-center gap-1">
+                                {#if canGoBack}
+                                    <Button
+                                        variant="ghost"
+                                        disabled={behavior.gradeImmediately &&
+                                            paused}
+                                        onclick={goBack}
+                                        aria-label="Previous problem"
+                                        class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
+                                    >
+                                        <Icon name="arrow_back" />
+                                    </Button>
+                                {/if}
+                                <DropdownMenu options={moreOptions}>
+                                    <Button
+                                        variant="ghost"
+                                        aria-label="More options"
+                                        class={cn(
+                                            "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
+                                            flagged
+                                                ? "text-unsure hover:text-unsure/80"
+                                                : "text-muted-foreground hover:text-foreground",
+                                        )}
+                                    >
+                                        <Icon name="more_horiz" />
+                                    </Button>
+                                </DropdownMenu>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                {#if !behavior.gradeImmediately}
+                                    {#if !isLatest}
+                                        <Button
+                                            variant="ghost"
+                                            onclick={goForward}
+                                            aria-label="Next problem"
+                                            class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                                        >
+                                            <Icon name="arrow_forward" />
+                                        </Button>
+                                    {:else}
+                                        <Button
+                                            onclick={submitTest}
+                                            disabled={submittingTest}
+                                            class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                                        >
+                                            <Icon name="done_all" />
+                                            Submit test
+                                        </Button>
+                                    {/if}
+                                {:else if !isLatest}
+                                    <Button
+                                        variant="outline"
+                                        onclick={jumpToLatest}
+                                        disabled={paused}
+                                        class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
+                                    >
+                                        Latest
+                                        <Icon name="last_page" />
+                                    </Button>
+                                {:else if submitted}
+                                    <Button
+                                        onclick={() => loadProblem()}
+                                        class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                                    >
+                                        Next
+                                        <Icon name="arrow_forward" />
+                                    </Button>
+                                {:else}
+                                    <Button
+                                        variant="ghost"
+                                        disabled={paused}
+                                        onclick={goForward}
+                                        class="text-muted-foreground hover:text-foreground text-xs font-semibold px-3 py-2 h-9 gap-1.5 rounded-lg disabled:opacity-30"
+                                    >
+                                        <Icon name="skip_next" />
+                                        Skip
+                                    </Button>
+                                    <Button
+                                        disabled={cannotSubmit}
+                                        onclick={submitAnswer}
+                                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
+                                    >
+                                        Submit
+                                    </Button>
+                                {/if}
+                            </div>
+                        {:else if !behavior.gradeImmediately}
                             <div class="flex items-center gap-1">
                                 <Button
                                     variant="ghost"
@@ -1940,7 +2064,6 @@
                                                 ? "text-unsure hover:text-unsure/80"
                                                 : "text-muted-foreground hover:text-foreground",
                                         )}
-                                        disabled={paused}
                                     >
                                         <Icon name="more_horiz" />
                                     </Button>
@@ -2030,10 +2153,12 @@
                 bind:lastSubmissionDays
                 bind:lastOutcome
                 bind:includeUnscheduled
+                bind:focusMode
                 canReview={!!user}
                 {isTest}
                 {testName}
                 {timeLimitSeconds}
+                onFocusModeChange={setFocusMode}
                 onClose={() => (showSettings = false)}
             />
         {/if}

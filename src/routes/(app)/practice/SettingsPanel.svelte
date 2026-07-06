@@ -21,6 +21,7 @@
     const MODES: { value: PracticeMode; label: string; needsAuth: boolean }[] = [
         { value: "new", label: "New", needsAuth: false },
         { value: "review", label: "Due Review", needsAuth: true },
+        { value: "skipped", label: "Skipped", needsAuth: true },
         { value: "mixed", label: "Mixed", needsAuth: true },
     ];
 
@@ -70,10 +71,12 @@
         lastSubmissionDays = $bindable<number | null>(null),
         lastOutcome = $bindable<"any" | "correct" | "incorrect">("any"),
         includeUnscheduled = $bindable(false),
+        focusMode = $bindable(false),
         canReview = true,
         isTest = false,
         testName = null,
         timeLimitSeconds = null,
+        onFocusModeChange,
         onClose,
     }: {
         mode: PracticeMode;
@@ -92,11 +95,13 @@
         lastSubmissionDays: number | null;
         lastOutcome: "any" | "correct" | "incorrect";
         includeUnscheduled: boolean;
+        focusMode: boolean;
         canReview?: boolean;
         /** Test format: show a read-only summary instead of the editable filters. */
         isTest?: boolean;
         testName?: string | null;
         timeLimitSeconds?: number | null;
+        onFocusModeChange?: (value: boolean) => void;
         onClose?: () => void;
     } = $props();
 
@@ -112,6 +117,11 @@
         if (value === "on") return "Without answer (help answer it)";
         if (value === "off") return "With answer";
         return "Any";
+    }
+
+    function toggleFocusMode() {
+        focusMode = !focusMode;
+        onFocusModeChange?.(focusMode);
     }
 
     function resetSettings() {
@@ -130,6 +140,8 @@
         lastSubmissionDays = null;
         lastOutcome = "any";
         includeUnscheduled = false;
+        focusMode = false;
+        onFocusModeChange?.(focusMode);
     }
 </script>
 
@@ -157,6 +169,23 @@
         >
             <Icon name="close" />
         </Button>
+    </div>
+
+    <div class="flex items-center justify-between gap-3 border-b border-border/30 pb-4">
+        <div class="flex flex-col gap-0.5">
+            <span class="text-xs font-medium text-muted-foreground">
+                Focus mode
+            </span>
+            <span class="text-[10px] text-muted-foreground">
+                {focusMode ? "Minimal trainer" : "Full trainer"}
+            </span>
+        </div>
+        <Switch
+            checked={focusMode}
+            onclick={toggleFocusMode}
+            size="sm"
+            aria-label="Toggle focus mode"
+        />
     </div>
 
     {#if isTest}
@@ -187,11 +216,11 @@
             </p>
         </div>
     {:else}
-        <!-- Primary control: New / Due Review / Mixed -->
+        <!-- Primary control: New / Due Review / Skipped / Mixed -->
         <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">Problems</span>
         <div
-            class="flex items-center gap-1 rounded-lg border border-border/60 bg-surface-container-low p-1"
+            class="grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-surface-container-low p-1"
             role="radiogroup"
             aria-label="Problem mode"
         >
@@ -328,8 +357,8 @@
         {#if advancedOpen}
             <div class="flex flex-col gap-4" transition:fly={{ y: -6, duration: 150 }}>
                 <p class="text-[10px] text-muted-foreground">
-                    Refine the review queue. Only applies to Due Review and the
-                    review half of Mixed.
+                    Refine progress-based queues. Applies to Due Review,
+                    Skipped, and the review half of Mixed.
                 </p>
 
                 <div class="flex items-center justify-between gap-3">

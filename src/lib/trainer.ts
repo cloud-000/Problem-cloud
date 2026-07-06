@@ -4,7 +4,7 @@ import { DIFFICULTY_RANGE, type ProblemRow } from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
 
-export type PracticeMode = "new" | "review" | "mixed";
+export type PracticeMode = "new" | "review" | "skipped" | "mixed";
 
 /**
  * The session *format* — how the whole practice run behaves — as opposed to
@@ -25,6 +25,9 @@ export type PracticeSettings = {
     // the total time allotment in seconds (null = unlimited / untimed).
     testId: number | null;
     timeLimitSeconds: number | null;
+    // UI-only preference for a minimal trainer surface. Stored in session
+    // settings jsonb alongside the draw filters.
+    focusMode: boolean;
     // Practice-format only: how many attempts the user gets per problem before it
     // is finalized as incorrect. Re-submitting an already-tried answer doesn't
     // consume a try. Optional so older snapshots are tolerated (treated as 2).
@@ -148,6 +151,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         format: "practice",
         testId: null,
         timeLimitSeconds: null,
+        focusMode: false,
         triesPerProblem: 2,
         seriesIds: [],
         topic: [],
@@ -385,13 +389,14 @@ function buildReviewBaseQuery(
     supabase: Supabase,
     settings: PracticeSettings,
     session: PracticeSession,
+    options: { count?: "exact"; head?: boolean } = {},
 ) {
     let selectStr = REVIEW_SELECT;
     if (settings.seriesIds && settings.seriesIds.length > 0) {
         selectStr = "problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, tests!inner(name, series_id, series(name)))";
     }
     let query = applyAttributeFilters(
-        supabase.from("problem_progress").select(selectStr),
+        supabase.from("problem_progress").select(selectStr, options),
         settings,
         "problems.",
     );
@@ -423,9 +428,24 @@ function buildReviewBaseQuery(
     return query;
 }
 
-/** Execute a single-row review query and map it to a Draw. */
-async function runReviewDraw(query: any, allowAnswerless = false): Promise<Draw> {
-    const { data, error } = await query.limit(1);
+function buildSkippedBaseQuery(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+    options: { count?: "exact"; head?: boolean } = {},
+) {
+    return buildReviewBaseQuery(supabase, settings, session, options)
+        .gt("times_skipped", 0)
+        .eq("solved", false);
+}
+
+/** Execute a review/progress query and map the first eligible row to a Draw. */
+async function runReviewDraw(
+    query: any,
+    allowAnswerless = false,
+    limitToOne = true,
+): Promise<Draw> {
+    const { data, error } = await (limitToOne ? query.limit(1) : query);
     if (error) throw error;
 
     const rows = (data ?? []) as unknown as ReviewRow[];
@@ -479,6 +499,43 @@ async function fetchDueReviewProblem(
     );
 }
 
+async function fetchSkippedProblem(
+    supabase: Supabase,
+    settings: PracticeSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const allowAnswerless = allowsAnswerless(settings);
+    const countQuery = buildSkippedBaseQuery(supabase, settings, session, {
+        count: "exact",
+        head: true,
+    });
+    const { count, error } = await countQuery;
+    if (error) throw error;
+    if (!count) return { problem: null, progress: null };
+
+    for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
+        const offset = Math.floor(Math.random() * count);
+        const draw = await runReviewDraw(
+            buildSkippedBaseQuery(supabase, settings, session)
+                .order("problem_id")
+                .range(offset, offset),
+            allowAnswerless,
+            false,
+        );
+        if (draw.problem) return draw;
+    }
+
+    const draw = await runReviewDraw(
+        buildSkippedBaseQuery(supabase, settings, session)
+            .order("last_submission_at", { ascending: false })
+            .order("problem_id")
+            .limit(FALLBACK_PAGE_SIZE),
+        allowAnswerless,
+        false,
+    );
+    return draw;
+}
+
 async function drawFromSource(
     supabase: Supabase,
     settings: PracticeSettings,
@@ -512,6 +569,10 @@ export async function nextPracticeProblem(
     }
     if (settings.mode === "review") {
         const draw = await fetchDueReviewProblem(supabase, settings, session);
+        return { problem: draw.problem, source: "review", progress: draw.progress };
+    }
+    if (settings.mode === "skipped") {
+        const draw = await fetchSkippedProblem(supabase, settings, session);
         return { problem: draw.problem, source: "review", progress: draw.progress };
     }
 

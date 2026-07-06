@@ -7,7 +7,20 @@ export type ASTNode =
     | { type: "url"; href: string; children: ASTNode[] }
     | { type: "code"; content: string }
     | { type: "asy"; imageSrc: string; code: string }
-    | { type: "img"; src: string; label: string };
+    | { type: "img"; src: string; label: string }
+    | { type: "table"; head: TableRow[]; body: TableRow[] };
+
+// A single cell of an allowlisted HTML table. `header` distinguishes <th> from
+// <td>. `children` is the cell's inner content re-parsed through the inline
+// parser, so BBCode and `$…$` math inside cells still work.
+export interface TableCell {
+    header: boolean;
+    children: ASTNode[];
+}
+
+export interface TableRow {
+    cells: TableCell[];
+}
 
 interface TagToken {
     type: "tag";
@@ -95,10 +108,10 @@ function tokenize(text: string): Token[] {
 }
 
 /**
- * Parses BBCode text into an AST.
+ * Parses BBCode text (no HTML tables) into an AST.
  * Verbatim tags (like [code] and [asy]) capture all tokens inside them as plain text.
  */
-export function parseMathStatement(text: string): ASTNode[] {
+function parseBBCode(text: string): ASTNode[] {
     const tokens = tokenize(text);
     let index = 0;
 
@@ -180,6 +193,137 @@ export function parseMathStatement(text: string): ASTNode[] {
     return parse();
 }
 
+// --- HTML tables ----------------------------------------------------------
+//
+// Statements may embed a *small* allowlist of HTML table tags:
+//   <table> <thead> <tbody> <tr> <td> <th>
+// Everything else stays escaped exactly as before — this is NOT a general HTML
+// hole. We never re-emit any tag or attribute from the input; the structure is
+// rebuilt from scratch in `astToHtml` using a fixed template, and cell contents
+// are re-parsed through the BBCode parser (so they are escaped/sanitized like
+// any other inline text). Rows/cells found outside a <tr>/<td>/<th> are dropped.
+
+// Given the offset just past a `<table…>` open tag, find the matching
+// `</table>`, accounting for (unlikely) nested tables. Returns the inner markup
+// and the index just past the close tag, or `end: -1` if unterminated.
+function matchTable(
+    text: string,
+    from: number,
+): { end: number; inner: string } {
+    const re = /<(\/?)table\b[^>]*>/gi;
+    re.lastIndex = from;
+    let depth = 1;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+        if (match[1] === "/") {
+            depth--;
+            if (depth === 0) {
+                return { end: re.lastIndex, inner: text.slice(from, match.index) };
+            }
+        } else {
+            depth++;
+        }
+    }
+    return { end: -1, inner: "" };
+}
+
+// Extract all `<tr>…</tr>` rows from a chunk of table markup, re-parsing each
+// cell's inner content through the BBCode/inline parser. Any stray markup
+// outside a <tr> or outside a <td>/<th> is ignored.
+function parseRows(section: string): TableRow[] {
+    const rows: TableRow[] = [];
+    const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi;
+    let tr: RegExpExecArray | null;
+    while ((tr = trRe.exec(section)) !== null) {
+        const cells: TableCell[] = [];
+        const cellRe = /<(td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)\s*>/gi;
+        let cell: RegExpExecArray | null;
+        while ((cell = cellRe.exec(tr[1])) !== null) {
+            cells.push({
+                header: cell[1].toLowerCase() === "th",
+                children: parseBBCode(cell[2].trim()),
+            });
+        }
+        rows.push({ cells });
+    }
+    return rows;
+}
+
+// Parse the inner markup of a <table> into head/body rows. <thead> rows go to
+// `head`; every other <tr> (inside <tbody> or loose) goes to `body`. Returns
+// null when there are no rows at all.
+function parseTable(inner: string): ASTNode | null {
+    const head: TableRow[] = [];
+    const theadRe = /<thead\b[^>]*>([\s\S]*?)<\/thead\s*>/gi;
+    let thead: RegExpExecArray | null;
+    while ((thead = theadRe.exec(inner)) !== null) {
+        head.push(...parseRows(thead[1]));
+    }
+    // Body = all rows outside <thead>. `parseRows` scans for <tr> regardless of
+    // any <tbody> wrapper, so stripping the <thead> blocks is enough.
+    const body = parseRows(inner.replace(theadRe, ""));
+
+    if (head.length === 0 && body.length === 0) return null;
+    return { type: "table", head, body };
+}
+
+// Split raw statement text into an AST, extracting allowlisted HTML tables at
+// the top level and handing every non-table span to the BBCode parser.
+function parseWithTables(text: string): ASTNode[] {
+    const nodes: ASTNode[] = [];
+    const openRe = /<table\b[^>]*>/i;
+    let rest = text;
+
+    while (true) {
+        const open = openRe.exec(rest);
+        if (!open) break;
+
+        const { end, inner } = matchTable(rest, open.index + open[0].length);
+        if (end === -1) break; // Unterminated <table>; fall through as text.
+
+        if (open.index > 0) {
+            nodes.push(...parseBBCode(rest.slice(0, open.index)));
+        }
+        const table = parseTable(inner);
+        if (table) {
+            nodes.push(table);
+        } else {
+            // Malformed/empty table: keep the raw span as (escaped) text.
+            nodes.push(...parseBBCode(rest.slice(open.index, end)));
+        }
+        rest = rest.slice(end);
+    }
+
+    if (rest.length > 0) nodes.push(...parseBBCode(rest));
+    return nodes;
+}
+
+// --- LaTeX tabular → array ------------------------------------------------
+//
+// KaTeX has no `tabular` environment, but its `array` environment accepts the
+// same column spec (`l c r`, `|`, `\hline`), so we can render `tabular` by
+// swapping the environment name. We only touch text *inside* math delimiters so
+// a literal `\begin{tabular}` appearing as prose is left untouched.
+const MATH_REGION_REGEX =
+    /\$\$[\s\S]*?\$\$|\$[\s\S]*?\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g;
+
+export function preprocessTabular(text: string): string {
+    if (!text.includes("tabular")) return text;
+    return text.replace(MATH_REGION_REGEX, (region) =>
+        region
+            .replace(/\\begin\{tabular\}/g, "\\begin{array}")
+            .replace(/\\end\{tabular\}/g, "\\end{array}"),
+    );
+}
+
+/**
+ * Parses a statement into an AST: swaps LaTeX `tabular`→`array` inside math,
+ * extracts allowlisted HTML tables, and parses everything else as BBCode.
+ */
+export function parseMathStatement(text: string): ASTNode[] {
+    return parseWithTables(preprocessTabular(text));
+}
+
 // --- HTML rendering -------------------------------------------------------
 //
 // The AST is rendered to a single HTML string that is injected via Svelte's
@@ -221,6 +365,10 @@ function astText(nodes: ASTNode[]): string {
     for (const node of nodes) {
         if (node.type === "text" || node.type === "code") {
             text += node.content;
+        } else if (node.type === "table") {
+            for (const row of [...node.head, ...node.body]) {
+                for (const cell of row.cells) text += astText(cell.children);
+            }
         } else if (node.type !== "asy" && node.type !== "img") {
             // Remaining childless nodes (asy, img) carry no inline text.
             text += astText(node.children);
@@ -288,10 +436,39 @@ export function astToHtml(nodes: ASTNode[]): string {
                 }
                 break;
             }
+            case "table":
+                html += tableToHtml(node);
+                break;
         }
     }
 
     return html;
+}
+
+// Rebuild an allowlisted table as sanitized markup. Only the fixed tag set and
+// a fixed class are emitted — no attribute from the source is ever reproduced —
+// and cell contents run back through `astToHtml`, so they are escaped like any
+// other inline text. The table is wrapped so wide tables scroll horizontally.
+function tableToHtml(node: Extract<ASTNode, { type: "table" }>): string {
+    const renderRow = (row: TableRow): string => {
+        const cells = row.cells
+            .map((cell) => {
+                const tag = cell.header ? "th" : "td";
+                return `<${tag}>${astToHtml(cell.children)}</${tag}>`;
+            })
+            .join("");
+        return `<tr>${cells}</tr>`;
+    };
+
+    let out = '<div class="overflow-x-auto"><table class="pc-table">';
+    if (node.head.length > 0) {
+        out += `<thead>${node.head.map(renderRow).join("")}</thead>`;
+    }
+    if (node.body.length > 0) {
+        out += `<tbody>${node.body.map(renderRow).join("")}</tbody>`;
+    }
+    out += "</table></div>";
+    return out;
 }
 
 // --- Segmentation ---------------------------------------------------------

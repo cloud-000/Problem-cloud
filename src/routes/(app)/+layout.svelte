@@ -344,7 +344,9 @@
         <Sidebar.Footer>
             {#if session}
                 {#if isMobilePortrait}
-                    <div class="flex items-center justify-center w-11 h-11 shrink-0">
+                    <div
+                        class="flex items-center justify-center w-11 h-11 shrink-0"
+                    >
                         <DropdownMenu options={profileOptions}>
                             <button
                                 type="button"
@@ -352,7 +354,8 @@
                                 title={profile?.username || session.user?.email}
                                 aria-label="Profile menu"
                             >
-                                {profile?.username?.charAt(0).toUpperCase() || "U"}
+                                {profile?.username?.charAt(0).toUpperCase() ||
+                                    "U"}
                             </button>
                         </DropdownMenu>
                     </div>
@@ -388,7 +391,7 @@
     <div class="flex flex-col flex-1 h-full overflow-hidden">
         {#if topbar.visible || !isMobilePortrait}
             <div
-                class="relative flex items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 h-12 px-2 select-none z-10 shrink-0"
+                class="relative z-30 flex h-12 shrink-0 items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 px-2 select-none"
             >
                 <div
                     class="absolute inset-0 bg-background backdrop-blur-(--backdrop-blur) -z-10"
@@ -407,11 +410,13 @@
                             </a>
                         {/if}
                         {#if topbar.title}
-                            <h1 class="text-sm font-semibold">{topbar.title}</h1>
+                            <h1 class="text-sm font-semibold">
+                                {topbar.title}
+                            </h1>
                         {/if}
                     </div>
                 {/if}
-                
+
                 <div class="flex items-center gap-3">
                     {#if topbar.rightSnippet}
                         {@render topbar.rightSnippet()}
@@ -424,7 +429,8 @@
                                 class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:ring-2 hover:ring-primary/20 transition-all outline-none cursor-pointer"
                                 aria-label="Profile menu"
                             >
-                                {profile?.username?.charAt(0).toUpperCase() || "U"}
+                                {profile?.username?.charAt(0).toUpperCase() ||
+                                    "U"}
                             </button>
                         </DropdownMenu>
                     {/if}
