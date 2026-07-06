@@ -34,6 +34,117 @@ export type Database = {
   }
   public: {
     Tables: {
+      _import_problems: {
+        Row: {
+          answer_index: number | null
+          aops_id: number | null
+          choices: string[] | null
+          difficulty: number | null
+          is_computational: boolean
+          n: number
+          notes: string | null
+          official_solutions: string[] | null
+          quality: number | null
+          statement: string | null
+          sync_key: string
+          tags: string[] | null
+          test_sync_key: string
+          topic: string | null
+          verified: boolean
+        }
+        Insert: {
+          answer_index?: number | null
+          aops_id?: number | null
+          choices?: string[] | null
+          difficulty?: number | null
+          is_computational?: boolean
+          n: number
+          notes?: string | null
+          official_solutions?: string[] | null
+          quality?: number | null
+          statement?: string | null
+          sync_key: string
+          tags?: string[] | null
+          test_sync_key: string
+          topic?: string | null
+          verified?: boolean
+        }
+        Update: {
+          answer_index?: number | null
+          aops_id?: number | null
+          choices?: string[] | null
+          difficulty?: number | null
+          is_computational?: boolean
+          n?: number
+          notes?: string | null
+          official_solutions?: string[] | null
+          quality?: number | null
+          statement?: string | null
+          sync_key?: string
+          tags?: string[] | null
+          test_sync_key?: string
+          topic?: string | null
+          verified?: boolean
+        }
+        Relationships: []
+      }
+      _import_series: {
+        Row: {
+          aops_id: number | null
+          is_official: boolean
+          name: string
+        }
+        Insert: {
+          aops_id?: number | null
+          is_official?: boolean
+          name: string
+        }
+        Update: {
+          aops_id?: number | null
+          is_official?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      _import_tests: {
+        Row: {
+          aops_category_id: string | null
+          difficulty: number | null
+          is_computational: boolean
+          name: string
+          quality: number | null
+          section: number
+          series_name: string
+          sync_key: string
+          type: string | null
+          year: number | null
+        }
+        Insert: {
+          aops_category_id?: string | null
+          difficulty?: number | null
+          is_computational?: boolean
+          name: string
+          quality?: number | null
+          section?: number
+          series_name: string
+          sync_key: string
+          type?: string | null
+          year?: number | null
+        }
+        Update: {
+          aops_category_id?: string | null
+          difficulty?: number | null
+          is_computational?: boolean
+          name?: string
+          quality?: number | null
+          section?: number
+          series_name?: string
+          sync_key?: string
+          type?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       notification_reads: {
         Row: {
           notification_id: number
@@ -272,6 +383,7 @@ export type Database = {
           official_solutions: string[] | null
           quality: number | null
           statement: string | null
+          sync_key: string | null
           tags: string[] | null
           test_id: number | null
           topic: string | null
@@ -290,6 +402,7 @@ export type Database = {
           official_solutions?: string[] | null
           quality?: number | null
           statement?: string | null
+          sync_key?: string | null
           tags?: string[] | null
           test_id?: number | null
           topic?: string | null
@@ -308,6 +421,7 @@ export type Database = {
           official_solutions?: string[] | null
           quality?: number | null
           statement?: string | null
+          sync_key?: string | null
           tags?: string[] | null
           test_id?: number | null
           topic?: string | null
@@ -520,6 +634,7 @@ export type Database = {
           quality: number | null
           section: number
           series_id: number | null
+          sync_key: string | null
           time_limit_seconds: number | null
           type: string | null
           year: number | null
@@ -535,6 +650,7 @@ export type Database = {
           quality?: number | null
           section?: number
           series_id?: number | null
+          sync_key?: string | null
           time_limit_seconds?: number | null
           type?: string | null
           year?: number | null
@@ -550,6 +666,7 @@ export type Database = {
           quality?: number | null
           section?: number
           series_id?: number | null
+          sync_key?: string | null
           time_limit_seconds?: number | null
           type?: string | null
           year?: number | null
@@ -686,6 +803,7 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_content_sync_keys: { Args: never; Returns: undefined }
       progress_breakdown: {
         Args: {
           p_computational?: boolean
@@ -726,6 +844,29 @@ export type Database = {
       set_feedback_status: {
         Args: { p_feedback_id: number; p_status: string }
         Returns: undefined
+      }
+      sync_scraped_content: {
+        Args: { dry_run?: boolean }
+        Returns: {
+          applied: boolean
+          problems_inserted: number
+          problems_unmatched: number
+          problems_updated: number
+          series_inserted: number
+          series_updated: number
+          tests_inserted: number
+          tests_updated: number
+        }[]
+      }
+      sync_unmatched_problems: {
+        Args: never
+        Returns: {
+          n: number
+          problem_id: number
+          sync_key: string
+          test_id: number
+          test_name: string
+        }[]
       }
     }
     Enums: {

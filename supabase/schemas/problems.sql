@@ -27,10 +27,17 @@ create table public.tests (
   has_all_answers       boolean not null default false,
   missing_answers_count integer not null default 0,
 
+  -- Stable, source-agnostic identity used by the content-sync merge (see
+  -- content_sync.sql). Computed by the scraper and never derived from the
+  -- volatile row id, so a test's cloud id stays put across every sync. Nullable
+  -- only during the one-time backfill of legacy rows.
+  sync_key         text,
+
   unique(aops_category_id, section)
 );
 
 create index tests_series_id_idx on public.tests(series_id);
+create unique index tests_sync_key_idx on public.tests(sync_key);
 
 -- Denormalized, "built" problem rows for browsing/practice.
 create table public.problems (
@@ -58,10 +65,17 @@ create table public.problems (
 
   built_at           timestamp with time zone not null default now(),
 
+  -- Stable, source-agnostic identity used by the content-sync merge (see
+  -- content_sync.sql): the parent test's sync_key plus this problem's n. Keeps
+  -- the cloud id (and every submissions/feedback FK pointing at it) fixed across
+  -- syncs. Nullable only during the one-time backfill of legacy rows.
+  sync_key           text,
+
   unique (test_id, n)
 );
 
 create index problems_test_id_idx on public.problems(test_id);
+create unique index problems_sync_key_idx on public.problems(sync_key);
 
 -- Enable Row Level Security (RLS)
 alter table public.series enable row level security;
