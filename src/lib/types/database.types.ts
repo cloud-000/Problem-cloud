@@ -318,6 +318,13 @@ export type Database = {
             foreignKeyName: "problems_test_id_fkey"
             columns: ["test_id"]
             isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["test_id"]
+          },
+          {
+            foreignKeyName: "problems_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
             referencedRelation: "tests"
             referencedColumns: ["id"]
           },
@@ -555,6 +562,13 @@ export type Database = {
             referencedRelation: "series"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tests_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["series_id"]
+          },
         ]
       }
       user_submitted_feedback: {
@@ -623,9 +637,83 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      submission_facts: {
+        Row: {
+          attempt_seq: number | null
+          created_at: string | null
+          difficulty: number | null
+          elapsed_ms: number | null
+          flagged: boolean | null
+          graded_seq: number | null
+          is_computational: boolean | null
+          is_correct: boolean | null
+          problem_id: number | null
+          series_id: number | null
+          series_name: string | null
+          session_id: number | null
+          skipped: boolean | null
+          source: string | null
+          submission_id: number | null
+          test_id: number | null
+          test_name: string | null
+          topic: string | null
+          user_id: string | null
+          verified: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "practice_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      progress_breakdown: {
+        Args: {
+          p_computational?: boolean
+          p_difficulty_max?: number
+          p_difficulty_min?: number
+          p_dimension: string
+          p_from?: string
+          p_series?: number[]
+          p_source?: string
+          p_to?: string
+          p_topics?: string[]
+          p_tz?: string
+        }
+        Returns: {
+          bucket_key: string
+          bucket_label: string
+          correct: number
+          distinct_problems: number
+          first_correct: number
+          first_graded: number
+          graded: number
+          graded_time_ms: number
+          graded_timed: number
+          last_activity: string
+          seen: number
+          skipped: number
+        }[]
+      }
       recalculate_test_answers: { Args: { t_id: number }; Returns: undefined }
       review_answer_suggestion: {
         Args: {

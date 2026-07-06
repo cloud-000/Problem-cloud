@@ -63,6 +63,12 @@
             important: false,
         },
         {
+            href: "/progress",
+            icon: "insights",
+            label: "Progress",
+            important: false,
+        },
+        {
             href: "/find",
             icon: "category_search",
             label: "Find",
