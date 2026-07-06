@@ -1,14 +1,18 @@
 <script lang="ts">
     import LaTeX from "$lib/components/LaTeX.svelte";
+    import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
     import { toasts } from "$lib/state/toast.svelte";
     import { cn } from "$lib/utils";
+    import { answersMatch } from "$lib/utils/answer-matcher";
 
     type Props = {
         choices?: string[] | null;
         answerIndex?: number | null;
         answer?: string;
         selectedChoice?: number | null;
+        /** Indices of MCQ choices the user has crossed out (elimination aid). */
+        eliminated?: number[];
         showAnswerState?: boolean;
         disabled?: boolean;
         isInstantFeedback?: boolean;
@@ -21,6 +25,7 @@
         answerIndex = null,
         answer = $bindable(""),
         selectedChoice = $bindable<number | null>(null),
+        eliminated = $bindable<number[]>([]),
         showAnswerState = false,
         disabled = false,
         isInstantFeedback = false,
@@ -42,6 +47,18 @@
     } | null>(null);
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
+    let isFocused = $state(false);
+    let inputEl = $state<HTMLInputElement | null>(null);
+    let showViewMode = $derived(!isFocused && answer.trim() !== "");
+
+    function startEditing() {
+        if (disabled) return;
+        isFocused = true;
+        setTimeout(() => {
+            inputEl?.focus();
+        }, 0);
+    }
+
     function choose(index: number) {
         if (disabled) return;
         if (selectedChoice === index) {
@@ -52,6 +69,13 @@
     }
 
     function chooseWithFeedback(index: number) {
+        if (disabled) return;
+        // Clicking a crossed-out choice restores it rather than selecting it, so a
+        // user can undo an accidental elimination without committing to the answer.
+        if (eliminated.includes(index)) {
+            toggleEliminated(index);
+            return;
+        }
         const isDeselect = selectedChoice === index;
         choose(index);
         if (isInstantFeedback) {
@@ -64,6 +88,23 @@
         }
     }
 
+    // Toggle a choice's crossed-out state. Eliminating the currently selected
+    // choice also clears the selection (a struck answer can't be the submission).
+    function toggleEliminated(index: number) {
+        if (disabled) return;
+        if (eliminated.includes(index)) {
+            eliminated = eliminated.filter((i) => i !== index);
+        } else {
+            eliminated = [...eliminated, index];
+            if (selectedChoice === index) selectedChoice = null;
+        }
+    }
+
+    function handleChoiceContextMenu(event: MouseEvent, index: number) {
+        event.preventDefault();
+        toggleEliminated(index);
+    }
+
     // Instant feedback fires on *change* (blur / Enter), not on every keystroke,
     // so a half-typed answer isn't graded as you go.
     function triggerOnChange() {
@@ -72,6 +113,10 @@
     }
 
     function handleKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            inputEl?.blur();
+            return;
+        }
         if (event.key !== "Enter" || disabled) return;
         event.preventDefault();
         onEnter?.();
@@ -102,7 +147,10 @@
         const response = answer.trim();
         if (!response) return null;
 
-        return response === normalizedChoices[answerIndex as number]?.trim();
+        const expected = normalizedChoices[answerIndex as number];
+        if (expected == null) return null;
+
+        return answersMatch(response, expected);
     }
 
     function feedbackMessage(result: boolean | null) {
@@ -150,41 +198,64 @@
             {@const incorrect =
                 canShowAnswerState && selected && answerIndex !== i}
             {@const feedbackActive = feedback?.target === i}
-            <button
-                type="button"
-                {disabled}
-                aria-pressed={selected}
-                class={cn(
-                    "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
-                    selected &&
-                        "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
-                    correct && "border-correct bg-correct/10",
-                    incorrect && "border-destructive bg-destructive/10",
-                    feedbackActive &&
-                        feedback?.result === true &&
-                        "border-correct bg-correct/10",
-                    feedbackActive &&
-                        feedback?.result === false &&
-                        "border-destructive bg-destructive/10 animate-answer-shake",
-                    feedbackActive &&
-                        feedback?.result === null &&
-                        "border-unsure bg-unsure/10",
-                )}
-                onclick={() => chooseWithFeedback(i)}
-            >
-                <span
-                    class="shrink-0 font-medium text-muted-foreground opacity-60 select-none"
+            {@const struck = eliminated.includes(i)}
+            <div class="group/choice relative">
+                <button
+                    type="button"
+                    {disabled}
+                    aria-pressed={selected}
+                    class={cn(
+                        "flex min-h-10 w-full items-start gap-2 rounded-md border border-border bg-background py-2 pr-10 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
+                        selected &&
+                            "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
+                        correct && "border-correct bg-correct/10",
+                        incorrect && "border-destructive bg-destructive/10",
+                        feedbackActive &&
+                            feedback?.result === true &&
+                            "border-correct bg-correct/10",
+                        feedbackActive &&
+                            feedback?.result === false &&
+                            "border-destructive bg-destructive/10 animate-answer-shake",
+                        feedbackActive &&
+                            feedback?.result === null &&
+                            "border-unsure bg-unsure/10",
+                        struck &&
+                            "line-through opacity-40 hover:translate-y-0 hover:shadow-xs",
+                    )}
+                    onclick={() => chooseWithFeedback(i)}
+                    oncontextmenu={(e) => handleChoiceContextMenu(e, i)}
                 >
-                    {CHOICE_LABELS[i] ?? String(i + 1)}
-                </span>
-                <LaTeX class="min-w-0 flex-1">${choice}$</LaTeX>
-            </button>
+                    <span
+                        class="shrink-0 font-medium text-muted-foreground opacity-60 select-none"
+                    >
+                        {CHOICE_LABELS[i] ?? String(i + 1)}
+                    </span>
+                    <LaTeX class="min-w-0 flex-1">${choice}$</LaTeX>
+                </button>
+                <button
+                    type="button"
+                    {disabled}
+                    aria-pressed={struck}
+                    aria-label={struck ? "Restore choice" : "Eliminate choice"}
+                    title={struck ? "Restore choice" : "Eliminate choice"}
+                    class={cn(
+                        "absolute top-1/2 right-1.5 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground focus-visible:opacity-100 disabled:pointer-events-none group-hover/choice:opacity-100 [@media(hover:none)]:opacity-100",
+                        struck && "text-destructive opacity-100",
+                    )}
+                    onclick={() => toggleEliminated(i)}
+                >
+                    <Icon
+                        name={struck ? "undo" : "close"}
+                        class="size-[1.1em]"
+                    />
+                </button>
+            </div>
         {/each}
     </div>
 {:else}
     <div
         class={cn(
-            "w-full rounded-md",
+            "w-full rounded-md relative",
             feedback?.target === "input" &&
                 feedback.result === true &&
                 "ring-3 ring-correct/40",
@@ -198,24 +269,56 @@
             canShowAnswerState && !isCorrect && "ring-3 ring-destructive/40",
         )}
     >
-        <Input
-            bind:value={answer}
-            {disabled}
-            placeholder="Answer"
-            autocomplete="off"
-            spellcheck={false}
-            aria-label="Answer"
-            onchange={triggerOnChange}
-            onkeydown={handleKeydown}
-            class={cn(
-                canShowAnswerState &&
-                    isCorrect &&
-                    "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
-                canShowAnswerState &&
-                    !isCorrect &&
-                    "border-destructive bg-destructive/10 focus-visible:border-destructive focus-visible:ring-destructive/50",
-            )}
-        />
+        {#if showViewMode}
+            <button
+                type="button"
+                {disabled}
+                onclick={startEditing}
+                onfocus={startEditing}
+                class={cn(
+                    "dark:bg-input/30 border-input h-9 rounded-md border bg-transparent px-2.5 py-1 text-base shadow-xs w-full min-w-0 text-center flex items-center justify-center cursor-pointer transition-all hover:bg-muted/10 md:text-sm text-foreground",
+                    canShowAnswerState && isCorrect && "border-correct bg-correct/10",
+                    canShowAnswerState && !isCorrect && "border-destructive bg-destructive/10",
+                )}
+                title="Click or focus to edit answer math"
+            >
+                <LaTeX class="inline-block">${answer}$</LaTeX>
+            </button>
+        {:else}
+            {#if isFocused && answer.trim()}
+                <!-- Floating live rendered preview popover -->
+                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 pointer-events-none select-none">
+                    <div class="relative bg-surface-container-lowest border border-border rounded-lg shadow-lg p-2.5 min-h-8 min-w-[70px] flex items-center justify-center">
+                        <LaTeX class="text-center">${answer}$</LaTeX>
+                        <!-- Small pointer arrow -->
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1.5 w-3 h-3 bg-surface-container-lowest border-r border-b border-border rotate-45"></div>
+                    </div>
+                </div>
+            {/if}
+
+            <Input
+                bind:ref={inputEl}
+                bind:value={answer}
+                {disabled}
+                placeholder="Answer"
+                autocomplete="off"
+                spellcheck={false}
+                aria-label="Answer"
+                onfocus={() => isFocused = true}
+                onblur={() => isFocused = false}
+                onchange={triggerOnChange}
+                onkeydown={handleKeydown}
+                class={cn(
+                    "text-center",
+                    canShowAnswerState &&
+                        isCorrect &&
+                        "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
+                    canShowAnswerState &&
+                        !isCorrect &&
+                        "border-destructive bg-destructive/10 focus-visible:border-destructive focus-visible:ring-destructive/50",
+                )}
+            />
+        {/if}
     </div>
     {#if canShowAnswerState && !isCorrect}
         <div
