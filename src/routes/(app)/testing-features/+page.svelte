@@ -35,32 +35,43 @@
         {
             icon: "calendar_month",
             name: "Date Picker",
-            description: "Timezone-safe calendar and range constraints selector.",
+            description:
+                "Timezone-safe calendar and range constraints selector.",
             href: "/testing-features/date-picker",
         },
         {
             icon: "data_usage",
             name: "Segment Bar",
-            description: "Proportional segmented bar from a list of value/color sections.",
+            description:
+                "Proportional segmented bar from a list of value/color sections.",
             href: "/testing-features/segment-bar",
         },
         {
             icon: "menu",
             name: "Dropdown Menu",
-            description: "Recursive, boundary-aware dropdown menus with submenus.",
+            description:
+                "Recursive, boundary-aware dropdown menus with submenus.",
             href: "/testing-features/dropdown-menu",
         },
         {
             icon: "picture_in_picture",
             name: "Modal",
-            description: "Premium dialog modals with custom sizes and keyboard control.",
+            description:
+                "Premium dialog modals with custom sizes and keyboard control.",
             href: "/testing-features/modal",
         },
         {
             icon: "tab",
             name: "Subtabs",
-            description: "Compound tabbed navigation with line, pill, and card variants.",
+            description:
+                "Compound tabbed navigation with line, pill, and card variants.",
             href: "/testing-features/subtabs",
+        },
+        {
+            icon: "",
+            name: "math edit",
+            description: "Math editing & interactive block",
+            href: "/testing-features/math-editor",
         },
     ];
 </script>
@@ -86,7 +97,11 @@
                 href={card.href}
                 class="border border-border/80 rounded-xl p-5 bg-surface-container-lowest shadow-xs hover:bg-surface-container transition-colors flex flex-col gap-2 outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-                <Icon name={card.icon} fontsize="1.75rem" class="text-primary-foreground" />
+                <Icon
+                    name={card.icon}
+                    fontsize="1.75rem"
+                    class="text-primary-foreground"
+                />
                 <span class="text-lg font-semibold text-foreground"
                     >{card.name}</span
                 >
