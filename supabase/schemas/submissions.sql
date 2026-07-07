@@ -18,6 +18,14 @@ create table public.submissions (
   elapsed_ms      integer,                  -- time spent on this attempt
   source          text,                     -- 'practice' | 'library' | 'review'
   session_id      bigint references public.practice_sessions(id) on delete set null,
+  -- Derived rating annotations, filled by the set_submission_encounter trigger
+  -- (see ratings.sql); clients never send them. Null on skips. `encounter` is
+  -- the 1-based encounter index k for this (user, problem) pair, `attempt` the
+  -- 1-based attempt index within that encounter, `encounter_ms` the cumulative
+  -- graded time (ms) within the encounter up to and including this attempt.
+  encounter       integer,
+  attempt         integer,
+  encounter_ms    bigint,
   created_at      timestamp with time zone default now() not null
 );
 

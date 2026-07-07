@@ -9,6 +9,13 @@ type Supabase = SupabaseClient<Database>;
 // Row shapes. Tests/problems carry their joined parent names for display.
 export type SeriesRow = Tables<"series">;
 export type TestRow = Tables<"tests"> & { series?: { name: string } | null };
+/** A problem's Glicko rating for one scope (its skill/difficulty signal). */
+export interface ProblemRating {
+    rating: number;
+    rd: number; // rating deviation (uncertainty)
+    attempts: number;
+}
+
 export type ProblemRow = Tables<"problems"> & {
     tests?: {
         name: string;
@@ -17,6 +24,8 @@ export type ProblemRow = Tables<"problems"> & {
     } | null;
     /** The current user's interaction state, normalized to a single row (or null). */
     progress?: ProblemProgress | null;
+    /** The problem's overall skill rating, normalized from the embed (or null). */
+    rating?: ProblemRating | null;
 };
 
 // The current user's progress fields, embedded via the problem_progress FK. RLS
@@ -25,12 +34,88 @@ export type ProblemRow = Tables<"problems"> & {
 const PROGRESS_SELECT =
     "problem_progress(times_correct, times_reviewed, last_correct, next_review_at, solved)";
 
-/** Collapse the embedded `problem_progress` array (0/1 rows) into `progress`. */
-function withProgress<T extends { problem_progress?: ProblemProgress[] | null }>(
+// The problem's ratings, embedded via the problem_ratings FK — one row per scope
+// (only 'overall' today; topic scopes later). World-readable, so this is populated
+// for anonymous users too. Collapsed to the 'overall' row below. Exported so other
+// modules that embed problems (e.g. submissions in `progress.ts`) can nest it.
+export const RATING_SELECT = "problem_ratings(scope, rating, rd, attempts)";
+
+/** Pick the single `overall`-scope rating out of an embedded `problem_ratings` array. */
+export function overallProblemRating(
+    ratings: (ProblemRating & { scope: string })[] | null | undefined,
+): ProblemRating | null {
+    const overall = ratings?.find((r) => r.scope === "overall") ?? null;
+    return overall
+        ? { rating: overall.rating, rd: overall.rd, attempts: overall.attempts }
+        : null;
+}
+
+/** RD at or above which a rating hasn't converged — shown as provisional. */
+export const RATING_PROVISIONAL_RD = 100;
+
+/** True while a rating is still low-confidence (unplayed or high uncertainty). */
+export function ratingIsProvisional(
+    r: ProblemRating | null | undefined,
+): boolean {
+    return !r || r.attempts < 1 || r.rd >= RATING_PROVISIONAL_RD;
+}
+
+/** The signed-in user's Glicko skill rating for one scope. */
+export interface PlayerRating {
+    rating: number;
+    rd: number; // rating deviation (uncertainty)
+    matches: number; // rated matches counted into this rating
+    last_match_at: string | null;
+}
+
+/** True while a player rating is still low-confidence (unplayed / high RD). */
+export function playerRatingIsProvisional(
+    r: PlayerRating | null | undefined,
+): boolean {
+    return !r || r.matches < 1 || r.rd >= RATING_PROVISIONAL_RD;
+}
+
+/**
+ * Fetch the signed-in user's overall skill rating from `player_ratings`. Returns
+ * `null` when the user has no rating row yet (it appears with their first graded
+ * submission — ratings update live). `player_ratings` is world-readable, but this
+ * is scoped to the given user.
+ */
+export async function fetchPlayerRating(
+    supabase: Supabase,
+    userId: string,
+): Promise<PlayerRating | null> {
+    const { data, error } = await supabase
+        .from("player_ratings")
+        .select("rating, rd, matches, last_match_at")
+        .eq("user_id", userId)
+        .eq("scope", "overall")
+        .maybeSingle();
+    if (error) throw error;
+    return data;
+}
+
+type ProblemEmbeds = {
+    problem_progress?: ProblemProgress[] | null;
+    problem_ratings?: (ProblemRating & { scope: string })[] | null;
+};
+
+/**
+ * Collapse the embedded `problem_progress` (0/1 rows) into `progress` and the
+ * `problem_ratings` array into the single `overall`-scope `rating`.
+ */
+function normalizeEmbeds<T extends ProblemEmbeds>(
     row: T,
-): Omit<T, "problem_progress"> & { progress: ProblemProgress | null } {
-    const { problem_progress, ...rest } = row;
-    return { ...rest, progress: problem_progress?.[0] ?? null };
+): Omit<T, "problem_progress" | "problem_ratings"> & {
+    progress: ProblemProgress | null;
+    rating: ProblemRating | null;
+} {
+    const { problem_progress, problem_ratings, ...rest } = row;
+    return {
+        ...rest,
+        progress: problem_progress?.[0] ?? null,
+        rating: overallProblemRating(problem_ratings),
+    };
 }
 
 export type Level = "series" | "tests" | "problems";
@@ -155,7 +240,9 @@ export async function fetchProblems(
     // `tests!inner` so filtering through the relationship (series scope) works.
     let q = supabase
         .from("problems")
-        .select(`*, tests!inner(name, series_id, series(name)), ${PROGRESS_SELECT}`);
+        .select(
+            `*, tests!inner(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
+        );
     if (f.testId != null) q = q.eq("test_id", f.testId);
     else if (f.seriesId != null) q = q.eq("tests.series_id", f.seriesId);
     if (f.topic?.length) q = q.in("topic", f.topic);
@@ -172,9 +259,9 @@ export async function fetchProblems(
         .order("id")
         .range(...pageRange(page));
     if (error) throw error;
-    return ((data ?? []) as unknown as Array<
-        ProblemRow & { problem_progress?: ProblemProgress[] | null }
-    >).map(withProgress);
+    return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>).map(
+        normalizeEmbeds,
+    );
 }
 
 /**
@@ -206,12 +293,14 @@ export async function fetchByIds(
     }
     const { data, error } = await supabase
         .from("problems")
-        .select(`*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}`)
+        .select(
+            `*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
+        )
         .in("id", ids);
     if (error) throw error;
-    return ((data ?? []) as unknown as Array<
-        ProblemRow & { problem_progress?: ProblemProgress[] | null }
-    >).map(withProgress);
+    return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>).map(
+        normalizeEmbeds,
+    );
 }
 
 /**

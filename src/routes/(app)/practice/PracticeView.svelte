@@ -18,6 +18,8 @@
         triToBool,
         type ProblemRow,
         fetchAllSeries,
+        fetchPlayerRating,
+        type PlayerRating,
     } from "$lib/library";
     import {
         createSession,
@@ -986,6 +988,27 @@
         return normalized ? `a:${normalized}` : null;
     }
 
+    // Live skill-rating feedback: baseline fetched on mount, refreshed after a
+    // graded submission lands (the DB trigger rates it in the same insert).
+    // `ratingDelta` is the change from the last known rating, shown in the
+    // footer next to the fresh result.
+    let playerRating = $state<PlayerRating | null>(null);
+    let ratingDelta = $state<number | null>(null);
+
+    function refreshPlayerRating(after: Promise<void>, userId: string) {
+        const before = playerRating?.rating ?? null;
+        after
+            .then(() => fetchPlayerRating(supabase, userId))
+            .then((r) => {
+                if (!r) return;
+                ratingDelta = before != null ? r.rating - before : null;
+                playerRating = r;
+            })
+            .catch((e) =>
+                console.error("Failed to refresh player rating:", e),
+            );
+    }
+
     function submitAnswer() {
         // Per-answer grading is only for formats that grade immediately; test
         // defers all grading to submitTest().
@@ -1043,7 +1066,7 @@
         ];
 
         if (user) {
-            recordSubmission(supabase, user.id, {
+            const recorded = recordSubmission(supabase, user.id, {
                 problemId: problem.id,
                 selectedChoice,
                 isCorrect,
@@ -1053,6 +1076,11 @@
                 source: currentSource,
                 sessionId: currentSessionId,
             });
+            // Graded attempts are rated live; surface the rating movement.
+            if (isCorrect !== null) {
+                ratingDelta = null;
+                refreshPlayerRating(recorded, user.id);
+            }
             if (currentSessionId != null) {
                 sessionAttemptCount += 1;
                 clearCurrentProblem(); // answered → now lives in submissions
@@ -1224,6 +1252,12 @@
             loadProblem();
             return;
         }
+
+        // Baseline for the live rating-delta chip; no await — it renders
+        // whenever it lands.
+        fetchPlayerRating(supabase, user.id)
+            .then((r) => (playerRating = r))
+            .catch((e) => console.error("Failed to fetch player rating:", e));
 
         try {
             const s = isRoot
@@ -2107,6 +2141,29 @@
                                         <Icon name="last_page" />
                                     </Button>
                                 {:else if submitted}
+                                    {#if playerRating && ratingDelta !== null}
+                                        <span
+                                            transition:fade={{ duration: 150 }}
+                                            class={cn(
+                                                "text-[11px] font-semibold tabular-nums",
+                                                ratingDelta > 0.5
+                                                    ? "text-correct"
+                                                    : ratingDelta < -0.5
+                                                      ? "text-destructive"
+                                                      : "text-muted-foreground",
+                                            )}
+                                            title="Your skill rating (change from this problem)"
+                                        >
+                                            {Math.round(playerRating.rating)}
+                                            <span class="font-normal">
+                                                ({ratingDelta >= 0
+                                                    ? "+"
+                                                    : ""}{Math.round(
+                                                    ratingDelta,
+                                                )})
+                                            </span>
+                                        </span>
+                                    {/if}
                                     <Button
                                         onclick={() => loadProblem()}
                                         class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"

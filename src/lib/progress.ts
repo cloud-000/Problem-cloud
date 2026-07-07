@@ -1,8 +1,30 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import {
+    RATING_SELECT,
+    overallProblemRating,
+    type ProblemRow,
+    type ProblemRating,
+} from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
+
+// Embed used wherever a `problems` row is nested (submissions, due reviews) so the
+// Problem component's rating badge is populated. Mirrors `library.ts`, including
+// the nested overall-rating embed. Collapse the raw rows with `collapseRating`.
+const PROBLEM_EMBED = `problems(*, tests(name, series_id, series(name)), ${RATING_SELECT})`;
+
+/** Raw embedded problem before its `problem_ratings` array is collapsed. */
+type RawEmbeddedProblem = ProblemRow & {
+    problem_ratings?: (ProblemRating & { scope: string })[] | null;
+};
+
+/** Collapse an embedded problem's `problem_ratings` array into `rating`. */
+function collapseRating(problem: RawEmbeddedProblem | null): ProblemRow | null {
+    if (!problem) return null;
+    const { problem_ratings, ...rest } = problem;
+    return { ...rest, rating: overallProblemRating(problem_ratings) };
+}
 
 /** The few progress fields surfaced alongside a problem (see `library.ts`). */
 export type ProblemProgress = Pick<
@@ -71,14 +93,19 @@ export async function fetchDueReviews(
 ): Promise<ProblemRow[]> {
     const { data, error } = await supabase
         .from("problem_progress")
-        .select("next_review_at, problems(*, tests(name, series_id, series(name)))")
+        .select(`next_review_at, ${PROBLEM_EMBED}`)
         .not("next_review_at", "is", null)
         .lte("next_review_at", new Date().toISOString())
         .order("next_review_at")
         .limit(limit);
     if (error) throw error;
     return (data ?? [])
-        .map((row) => (row as unknown as { problems: ProblemRow | null }).problems)
+        .map((row) =>
+            collapseRating(
+                (row as unknown as { problems: RawEmbeddedProblem | null })
+                    .problems,
+            ),
+        )
         .filter((p): p is ProblemRow => p != null);
 }
 
@@ -96,11 +123,14 @@ export async function fetchRecentSubmissions(
 ): Promise<RecentSubmissionRow[]> {
     const { data, error } = await supabase
         .from("submissions")
-        .select("*, problems(*, tests(name, series_id, series(name)))")
+        .select(`*, ${PROBLEM_EMBED}`)
         .order("created_at", { ascending: false })
         .limit(limit);
     if (error) throw error;
-    return (data ?? []) as unknown as RecentSubmissionRow[];
+    return ((data ?? []) as unknown as RecentSubmissionRow[]).map((row) => ({
+        ...row,
+        problems: collapseRating(row.problems as RawEmbeddedProblem | null),
+    }));
 }
 
 /**
@@ -115,10 +145,13 @@ export async function fetchSessionSubmissions(
 ): Promise<RecentSubmissionRow[]> {
     const { data, error } = await supabase
         .from("submissions")
-        .select("*, problems(*, tests(name, series_id, series(name)))")
+        .select(`*, ${PROBLEM_EMBED}`)
         .eq("session_id", sessionId)
         .order("created_at", { ascending: false })
         .limit(limit);
     if (error) throw error;
-    return (data ?? []) as unknown as RecentSubmissionRow[];
+    return ((data ?? []) as unknown as RecentSubmissionRow[]).map((row) => ({
+        ...row,
+        problems: collapseRating(row.problems as RawEmbeddedProblem | null),
+    }));
 }

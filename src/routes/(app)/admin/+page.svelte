@@ -6,6 +6,7 @@
     import UserFeedback from "./user-feedback.svelte";
     import UserList from "./user-list.svelte";
     import Announcements from "./announcements.svelte";
+    import RatingsAdmin from "./ratings-admin.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -70,24 +71,7 @@
         </Subtabs.Content>
 
         <Subtabs.Content value="settings">
-            <div
-                class="flex flex-col items-center justify-center py-16 gap-3 text-center border border-border/60 rounded-xl bg-surface-container-low"
-            >
-                <div
-                    class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-                >
-                    <Icon name="construction" fontsize="1.8rem" />
-                </div>
-                <div>
-                    <h3 class="text-sm font-semibold">
-                        Settings Under Construction
-                    </h3>
-                    <p class="text-xs text-muted-foreground mt-0.5">
-                        Admin settings and controls will be available here in a
-                        future update.
-                    </p>
-                </div>
-            </div>
+            <RatingsAdmin {supabase} />
         </Subtabs.Content>
     </Subtabs>
 </div>

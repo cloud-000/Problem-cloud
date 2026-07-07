@@ -4,7 +4,10 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Select } from "$lib/components/select";
-    import { BreakdownRow, type BreakdownMetric } from "$lib/components/breakdown-row";
+    import {
+        BreakdownRow,
+        type BreakdownMetric,
+    } from "$lib/components/breakdown-row";
     import type { Segment } from "$lib/components/segment-bar";
     import {
         fetchProgressBreakdown,
@@ -36,14 +39,16 @@
     ];
     function rangeFrom(r: string): string | undefined {
         if (r === "week") return new Date(Date.now() - 7 * 864e5).toISOString();
-        if (r === "month") return new Date(Date.now() - 30 * 864e5).toISOString();
+        if (r === "month")
+            return new Date(Date.now() - 30 * 864e5).toISOString();
         return undefined;
     }
 
     // Stored topic code → display name (falls back to the raw code).
     const topicLabel = (key: string) => topicName(key) ?? key;
 
-    const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+    const pct = (v: number | null) =>
+        v == null ? "—" : `${Math.round(v * 100)}%`;
     function fmtTime(ms: number | null): string {
         if (ms == null) return "—";
         const s = Math.round(ms / 1000);
@@ -85,17 +90,29 @@
                 timeMs: a.timeMs + r.graded_time_ms,
                 timed: a.timed + r.graded_timed,
             }),
-            { graded: 0, correct: 0, firstGraded: 0, firstCorrect: 0, distinct: 0, timeMs: 0, timed: 0 },
+            {
+                graded: 0,
+                correct: 0,
+                firstGraded: 0,
+                firstCorrect: 0,
+                distinct: 0,
+                timeMs: 0,
+                timed: 0,
+            },
         ),
     );
 
     let overallFirst = $derived(
-        totals.firstGraded > 0 ? totals.firstCorrect / totals.firstGraded : null,
+        totals.firstGraded > 0
+            ? totals.firstCorrect / totals.firstGraded
+            : null,
     );
     let overallAcc = $derived(
         totals.graded > 0 ? totals.correct / totals.graded : null,
     );
-    let overallAvg = $derived(totals.timed > 0 ? totals.timeMs / totals.timed : null);
+    let overallAvg = $derived(
+        totals.timed > 0 ? totals.timeMs / totals.timed : null,
+    );
 
     // Weakest topics (min-volume floored, weakest first) for the Focus panel.
     let weaknesses = $derived(rankWeaknesses(rows).slice(0, 4));
@@ -105,16 +122,36 @@
     function segmentsFor(r: TopicStat): Segment[] {
         const incorrect = Math.max(r.graded - r.correct, 0);
         return [
-            { value: r.correct, color: "var(--color-correct)", label: "Correct" },
-            { value: incorrect, color: "var(--color-destructive)", label: "Incorrect" },
-            { value: r.skipped, color: "var(--color-muted-foreground)", label: "Skipped" },
+            {
+                value: r.correct,
+                color: "var(--color-correct)",
+                label: "Correct",
+            },
+            {
+                value: incorrect,
+                color: "var(--color-destructive)",
+                label: "Incorrect",
+            },
+            {
+                value: r.skipped,
+                color: "var(--color-muted-foreground)",
+                label: "Skipped",
+            },
         ];
     }
 
     function metricsFor(r: TopicStat): BreakdownMetric[] {
         return [
-            { label: "eventual", value: pct(accuracy(r)), title: "Eventual accuracy" },
-            { label: "avg time", value: fmtTime(avgTimeMs(r)), title: "Avg time / graded attempt" },
+            {
+                label: "eventual",
+                value: pct(accuracy(r)),
+                title: "Eventual accuracy",
+            },
+            {
+                label: "avg time",
+                value: fmtTime(avgTimeMs(r)),
+                title: "Avg time / graded attempt",
+            },
         ];
     }
 
@@ -130,7 +167,10 @@
         if (!user || drilling) return;
         drilling = topicKey;
         try {
-            const settings = { ...defaultPracticeSettings(), topic: [topicKey] };
+            const settings = {
+                ...defaultPracticeSettings(),
+                topic: [topicKey],
+            };
             const session = await startSession(supabase, user.id, {
                 name: `Drill: ${topicLabel(topicKey)}`,
                 settings,
@@ -149,26 +189,36 @@
         <h1
             class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
         >
-            <Icon name="insights" fontsize="2rem" class="text-primary-foreground" />
+            <Icon
+                name="insights"
+                fontsize="2rem"
+                class="text-primary-foreground"
+            />
             Progress
         </h1>
         <p class="text-sm text-muted-foreground">
-            See how you're doing by topic, and drill straight into your weak spots.
+            See how you're doing by topic, and drill straight into your weak
+            spots.
         </p>
     </div>
 
     {#if !user}
         <!-- Unauthenticated prompt -->
-        <div class="flex flex-col items-center justify-center gap-4 text-center py-16">
+        <div
+            class="flex flex-col items-center justify-center gap-4 text-center py-16"
+        >
             <div
                 class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
             >
                 <Icon name="insights" fontsize="2.5rem" />
             </div>
-            <div class="flex max-w-sm flex-col gap-1">
-                <h2 class="text-lg font-semibold">Sign in to view your progress</h2>
+            <div class="flex max-w-5xl flex-col gap-1">
+                <h2 class="text-lg font-semibold">
+                    Sign in to view your progress
+                </h2>
                 <p class="text-sm text-muted-foreground">
-                    We track your accuracy and pace by topic automatically once you're logged in.
+                    We track your accuracy and pace by topic automatically once
+                    you're logged in.
                 </p>
             </div>
             <Button
@@ -186,21 +236,33 @@
                     class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                     >Time Range</span
                 >
-                <Select options={rangeOptions} bind:value={range} placeholder="Select range..." />
+                <Select
+                    options={rangeOptions}
+                    bind:value={range}
+                    placeholder="Select range..."
+                />
             </div>
         </div>
 
         {#if loading && rows.length === 0}
             <div class="flex flex-col items-center justify-center py-16 gap-3">
-                <Icon name="progress_activity" class="animate-spin text-muted-foreground" fontsize="1.8rem" />
+                <Icon
+                    name="progress_activity"
+                    class="animate-spin text-muted-foreground"
+                    fontsize="1.8rem"
+                />
                 <p class="text-xs text-muted-foreground">Loading progress...</p>
             </div>
         {:else if errorMsg}
-            <div class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center">
+            <div
+                class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
+            >
                 {errorMsg}
             </div>
         {:else if rows.length === 0}
-            <div class="flex flex-col items-center justify-center py-16 gap-3 text-center">
+            <div
+                class="flex flex-col items-center justify-center py-16 gap-3 text-center"
+            >
                 <div
                     class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
                 >
@@ -209,29 +271,72 @@
                 <div>
                     <h3 class="text-sm font-semibold">No progress yet</h3>
                     <p class="text-xs text-muted-foreground mt-0.5">
-                        Attempt some problems and your topic breakdown will appear here.
+                        Attempt some problems and your topic breakdown will
+                        appear here.
                     </p>
                 </div>
-                <Button size="sm" href="/practice" class="mt-1">Go Practice</Button>
+                <Button size="sm" href="/practice" class="mt-1"
+                    >Go Practice</Button
+                >
             </div>
         {:else}
             <!-- Overall stat tiles -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Problems</div>
-                    <div class="mt-2 text-2xl font-bold text-foreground font-mono">{totals.distinct}</div>
+                <div
+                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
+                >
+                    <div
+                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                        Problems
+                    </div>
+                    <div
+                        class="mt-2 text-2xl font-bold text-foreground font-mono"
+                    >
+                        {totals.distinct}
+                    </div>
                 </div>
-                <div class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">First-Try</div>
-                    <div class="mt-2 text-2xl font-bold text-foreground font-mono">{pct(overallFirst)}</div>
+                <div
+                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
+                >
+                    <div
+                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                        First-Try
+                    </div>
+                    <div
+                        class="mt-2 text-2xl font-bold text-foreground font-mono"
+                    >
+                        {pct(overallFirst)}
+                    </div>
                 </div>
-                <div class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Eventual</div>
-                    <div class="mt-2 text-2xl font-bold text-foreground font-mono">{pct(overallAcc)}</div>
+                <div
+                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
+                >
+                    <div
+                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                        Eventual
+                    </div>
+                    <div
+                        class="mt-2 text-2xl font-bold text-foreground font-mono"
+                    >
+                        {pct(overallAcc)}
+                    </div>
                 </div>
-                <div class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Avg Time</div>
-                    <div class="mt-2 text-2xl font-bold text-foreground font-mono">{fmtTime(overallAvg)}</div>
+                <div
+                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
+                >
+                    <div
+                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                        Avg Time
+                    </div>
+                    <div
+                        class="mt-2 text-2xl font-bold text-foreground font-mono"
+                    >
+                        {fmtTime(overallAvg)}
+                    </div>
                 </div>
             </div>
 
@@ -239,8 +344,14 @@
             {#if weaknesses.length > 0}
                 <div class="space-y-3">
                     <div class="flex items-center gap-2">
-                        <Icon name="target" class="text-destructive" fontsize="1.2rem" />
-                        <h2 class="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                        <Icon
+                            name="target"
+                            class="text-destructive"
+                            fontsize="1.2rem"
+                        />
+                        <h2
+                            class="text-sm font-bold uppercase tracking-wider text-muted-foreground"
+                        >
                             Focus Areas
                         </h2>
                     </div>
@@ -262,8 +373,12 @@
                                         class="gap-1"
                                     >
                                         <Icon
-                                            name={drilling === r.bucket_key ? "progress_activity" : "sprint"}
-                                            class={drilling === r.bucket_key ? "animate-spin size-[1.1em]" : "size-[1.1em]"}
+                                            name={drilling === r.bucket_key
+                                                ? "progress_activity"
+                                                : "sprint"}
+                                            class={drilling === r.bucket_key
+                                                ? "animate-spin size-[1.1em]"
+                                                : "size-[1.1em]"}
                                         />
                                         Drill
                                     </Button>
@@ -276,7 +391,9 @@
 
             <!-- Full topic breakdown -->
             <div class="space-y-3">
-                <h2 class="text-sm font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 pb-1">
+                <h2
+                    class="text-sm font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 pb-1"
+                >
                     By Topic
                 </h2>
                 <div class="space-y-2">

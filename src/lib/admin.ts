@@ -111,6 +111,29 @@ export async function resolveFeedback(
     if (error) throw error;
 }
 
+/** Summary returned by the ratings rebuild RPC. */
+export interface RecomputeRatingsResult {
+    players: number;
+    problems: number;
+    matches: number;
+}
+
+/**
+ * Trigger a full Glicko ratings rebuild via the security-definer admin RPC.
+ * Ratings update live per submission; this replays the whole log with identical
+ * math (a repair/retune path, e.g. after changing `rating_params`). The in-DB
+ * `admin_rank` check authorizes the caller; the underlying `recompute_ratings`
+ * is service_role-only. Returns the rebuild summary for feedback. O(submissions),
+ * so callers should keep the button disabled while it runs.
+ */
+export async function recomputeRatings(
+    supabase: Supabase,
+): Promise<RecomputeRatingsResult> {
+    const { data, error } = await supabase.rpc("admin_recompute_ratings");
+    if (error) throw error;
+    return data as unknown as RecomputeRatingsResult;
+}
+
 export type ProfilesSortOption =
     | "newest"
     | "oldest"

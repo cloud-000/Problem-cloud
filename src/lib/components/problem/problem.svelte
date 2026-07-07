@@ -5,7 +5,12 @@
     import { LinkMenu } from "$lib/components/link-menu";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
-    import { topicLabel, type ProblemRow } from "$lib/library";
+    import {
+        topicLabel,
+        ratingIsProvisional,
+        type ProblemRow,
+        type ProblemRating,
+    } from "$lib/library";
     import { statusFor } from "$lib/progress";
     import { cn } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
@@ -72,6 +77,24 @@
     </span>
 {/snippet}
 
+{#snippet ratingBadge(r: ProblemRating)}
+    {@const provisional = ratingIsProvisional(r)}
+    <span
+        title={provisional
+            ? "Provisional rating — few attempts / high uncertainty"
+            : `Skill rating from ${r.attempts} rated attempt${r.attempts === 1 ? "" : "s"}`}
+        class={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+            provisional
+                ? "bg-surface-container text-muted-foreground"
+                : "bg-primary/10 text-primary-foreground",
+        )}
+    >
+        <Icon name="speed" fontsize="0.9rem" />
+        {provisional ? "~" : ""}{Math.round(r.rating)}
+    </span>
+{/snippet}
+
 {#snippet detail(
     label: string,
     value: string | number | boolean | null | undefined,
@@ -99,6 +122,7 @@
             </span>
             {#if problem.tests?.name}{@render badge(problem.tests.name)}{/if}
             {#if topicName}{@render badge(topicName)}{/if}
+            {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
             {#if problem.verified}{@render badge("verified")}{/if}
             {#if status === "solved"}
                 <StatusTag status="solved" size="sm" />
@@ -152,6 +176,12 @@
                         {@render detail("number", problem.n)}
                         {@render detail("answer", problem.answer_index)}
                         {@render detail("verified", problem.verified)}
+                        {@render detail(
+                            "rating",
+                            problem.rating
+                                ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
+                                : null,
+                        )}
                         {@render detail("difficulty", problem.difficulty)}
                         {@render detail("quality", problem.quality)}
                         {@render detail(
@@ -193,8 +223,7 @@
 
     {#if mode !== "preview"}
         <footer class="flex flex-wrap items-center gap-1.5">
-            {#each problem.tags ?? [] as tag}{@render badge(`#${tag}`)}{/each}
-            {@render badge(`difficulty ${problem.difficulty ?? 0}`)}
+            {#each problem.tags ?? [] as tag (tag)}{@render badge(`#${tag}`)}{/each}
             {@render badge(`quality ${problem.quality ?? 0}`)}
             {#if problem.is_computational}{@render badge("computational")}{/if}
         </footer>

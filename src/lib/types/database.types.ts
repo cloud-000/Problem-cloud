@@ -216,6 +216,88 @@ export type Database = {
           },
         ]
       }
+      player_rating_history: {
+        Row: {
+          at: string
+          created_at: string
+          id: number
+          rating: number
+          rd: number
+          scope: string
+          submission_id: number | null
+          user_id: string
+        }
+        Insert: {
+          at: string
+          created_at?: string
+          id?: never
+          rating: number
+          rd: number
+          scope?: string
+          submission_id?: number | null
+          user_id: string
+        }
+        Update: {
+          at?: string
+          created_at?: string
+          id?: never
+          rating?: number
+          rd?: number
+          scope?: string
+          submission_id?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_rating_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_ratings: {
+        Row: {
+          created_at: string
+          last_match_at: string | null
+          matches: number
+          rating: number
+          rd: number
+          scope: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_match_at?: string | null
+          matches?: number
+          rating?: number
+          rd?: number
+          scope?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_match_at?: string | null
+          matches?: number
+          rating?: number
+          rd?: number
+          scope?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_ratings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practice_sessions: {
         Row: {
           created_at: string
@@ -369,6 +451,117 @@ export type Database = {
           },
         ]
       }
+      problem_rating_history: {
+        Row: {
+          at: string
+          created_at: string
+          id: number
+          problem_id: number
+          rating: number
+          rd: number
+          scope: string
+          submission_id: number | null
+        }
+        Insert: {
+          at: string
+          created_at?: string
+          id?: never
+          problem_id: number
+          rating: number
+          rd: number
+          scope?: string
+          submission_id?: number | null
+        }
+        Update: {
+          at?: string
+          created_at?: string
+          id?: never
+          problem_id?: number
+          rating?: number
+          rd?: number
+          scope?: string
+          submission_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problem_rating_history_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      problem_rating_stats: {
+        Row: {
+          ln_time_ewma: number | null
+          problem_id: number
+          solve_count: number
+          updated_at: string
+        }
+        Insert: {
+          ln_time_ewma?: number | null
+          problem_id: number
+          solve_count?: number
+          updated_at?: string
+        }
+        Update: {
+          ln_time_ewma?: number | null
+          problem_id?: number
+          solve_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problem_rating_stats_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: true
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      problem_ratings: {
+        Row: {
+          attempts: number
+          created_at: string
+          last_match_at: string | null
+          problem_id: number
+          rating: number
+          rd: number
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          last_match_at?: string | null
+          problem_id: number
+          rating?: number
+          rd?: number
+          scope?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          last_match_at?: string | null
+          problem_id?: number
+          rating?: number
+          rd?: number
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problem_ratings_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       problems: {
         Row: {
           answer_index: number | null
@@ -474,6 +667,63 @@ export type Database = {
         }
         Relationships: []
       }
+      rating_params: {
+        Row: {
+          attempt_decay: number
+          c: number
+          effort_cap: number
+          encounter_gap: number
+          guess_floor_ms: number
+          id: boolean
+          min_solves: number
+          period_seconds: number
+          rd_floor: number
+          repeat_decay: number
+          retry_weight: number
+          score_swing: number
+          seed_rating: number
+          seed_rd: number
+          time_alpha: number
+          updated_at: string
+        }
+        Insert: {
+          attempt_decay?: number
+          c?: number
+          effort_cap?: number
+          encounter_gap?: number
+          guess_floor_ms?: number
+          id?: boolean
+          min_solves?: number
+          period_seconds?: number
+          rd_floor?: number
+          repeat_decay?: number
+          retry_weight?: number
+          score_swing?: number
+          seed_rating?: number
+          seed_rd?: number
+          time_alpha?: number
+          updated_at?: string
+        }
+        Update: {
+          attempt_decay?: number
+          c?: number
+          effort_cap?: number
+          encounter_gap?: number
+          guess_floor_ms?: number
+          id?: boolean
+          min_solves?: number
+          period_seconds?: number
+          rd_floor?: number
+          repeat_decay?: number
+          retry_weight?: number
+          score_swing?: number
+          seed_rating?: number
+          seed_rd?: number
+          time_alpha?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       roadmap_goals: {
         Row: {
           created_at: string
@@ -560,8 +810,11 @@ export type Database = {
       }
       submissions: {
         Row: {
+          attempt: number | null
           created_at: string
           elapsed_ms: number | null
+          encounter: number | null
+          encounter_ms: number | null
           flagged: boolean
           id: number
           is_correct: boolean | null
@@ -573,8 +826,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          attempt?: number | null
           created_at?: string
           elapsed_ms?: number | null
+          encounter?: number | null
+          encounter_ms?: number | null
           flagged?: boolean
           id?: never
           is_correct?: boolean | null
@@ -586,8 +842,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          attempt?: number | null
           created_at?: string
           elapsed_ms?: number | null
+          encounter?: number | null
+          encounter_ms?: number | null
           flagged?: boolean
           id?: never
           is_correct?: boolean | null
@@ -803,7 +1062,33 @@ export type Database = {
       }
     }
     Functions: {
+      admin_recompute_ratings: { Args: never; Returns: Json }
       backfill_content_sync_keys: { Args: never; Returns: undefined }
+      glicko_e: {
+        Args: { r: number; r_j: number; rd_j: number }
+        Returns: number
+      }
+      glicko_g: { Args: { rd: number }; Returns: number }
+      glicko_inflate: {
+        Args: {
+          idle_seconds: number
+          par: Database["public"]["Tables"]["rating_params"]["Row"]
+          rd: number
+        }
+        Returns: number
+      }
+      glicko_rate: {
+        Args: {
+          opp_r: number
+          opp_rd: number
+          par: Database["public"]["Tables"]["rating_params"]["Row"]
+          r: number
+          rd: number
+          s: number
+          w: number
+        }
+        Returns: Record<string, unknown>
+      }
       progress_breakdown: {
         Args: {
           p_computational?: boolean
@@ -832,7 +1117,49 @@ export type Database = {
           skipped: number
         }[]
       }
+      rating_grade: {
+        Args: {
+          a: number
+          correct: boolean
+          elapsed_ms: number
+          enc_ms: number
+          is_mcq: boolean
+          k: number
+          ln_ewma: number
+          par: Database["public"]["Tables"]["rating_params"]["Row"]
+          solve_count: number
+        }
+        Returns: Record<string, unknown>
+      }
+      rating_params: {
+        Args: never
+        Returns: {
+          attempt_decay: number
+          c: number
+          effort_cap: number
+          encounter_gap: number
+          guess_floor_ms: number
+          id: boolean
+          min_solves: number
+          period_seconds: number
+          rd_floor: number
+          repeat_decay: number
+          retry_weight: number
+          score_swing: number
+          seed_rating: number
+          seed_rd: number
+          time_alpha: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rating_params"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       recalculate_test_answers: { Args: { t_id: number }; Returns: undefined }
+      recompute_ratings: { Args: never; Returns: Json }
       review_answer_suggestion: {
         Args: {
           p_accept: boolean
