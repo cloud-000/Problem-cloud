@@ -35,10 +35,14 @@ so its grade wasn't final at insert time. v3 dissolves this:
 - **Each submission is its own match**, final at insert. The encounter structure
   survives as *annotations* (`k`, `a`, cumulative time — all known at insert time) and
   as match **weights**, not as a mutable grade.
-- **Attempt effort moved from the score into the weight.** Wrong attempts are cheap
-  provisional losses (`retry_weight · attempt_decay^(a−1)`); the resolving solve carries
-  full weight. Net effect (verified): struggle-then-solve still gains, but less than a
-  clean solve.
+- **Attempt effort moved from the score into the weight.** A wrong answer weighs
+  `retry_weight · attempt_decay^(a−1)`. The trainer logs only a problem's *final* outcome
+  (intermediate retries never reach the submission log), so a recorded miss is a decisive
+  loss at `a=1`; `retry_weight` is **1.1** so a miss counts at least as much as a win (§5).
+  `attempt_decay` only bites the rare multiple-recorded-miss case (e.g. the synthetic seed).
+  (The within-sitting UI tries that *don't* become rows are captured separately by the
+  analytics-only `submissions.tries_used` — **not** a rating input. See
+  [`docs/attempt-concepts.md`](./attempt-concepts.md) for `tries_used` vs `attempt`/`encounter`.)
 - **The time normalizer is causal.** v2 used the all-time median solve time (future data
   grading past attempts); v3 keeps a per-problem running EWMA of `ln(solve time)` —
   `exp(ln_time_ewma)` tracks the geometric-mean solve time, O(1) state, updated on each
@@ -50,8 +54,9 @@ so its grade wasn't final at insert time. v3 dissolves this:
 
 Intentional semantic shifts vs v2 (all deliberate, see plan/verification):
 
-- A lone quick give-up is a **soft** loss (weight `retry_weight`), not a full decisive
-  loss — low-information events get low weight.
+- A recorded miss is a **decisive** loss (weight `retry_weight` = 1.1) — since the trainer
+  logs only final outcomes, a logged wrong answer means the problem beat you, so it is not
+  discounted. (Originally a soft 0.3 loss; changed 2026-07-08 — see §9.)
 - Multi-attempt encounters carry slightly more total weight (more attempts = more
   evidence).
 - Results are order-dependent (sequential per-match updates). Fine for a practice app.
@@ -180,7 +185,7 @@ defaults if the row is missing (keep them in sync with the column defaults).
 | `seed_rating` / `seed_rd` | `1500` / `350` | Starting state; `seed_rd` is also the RD ceiling. |
 | `encounter_gap` | `1800` (30 min) | Idle gap that splits a sitting into two encounters. |
 | `attempt_decay` | `0.5` | Extra weight decay per wrong retry within an encounter. |
-| `retry_weight` | `0.3` | Base weight of a wrong attempt. Lower → misses cost less; raises the struggle-then-solve net gain. |
+| `retry_weight` | `1.1` | Base weight of a recorded (final) wrong answer. `>1` → a decisive miss outweighs a win; `1.0` → symmetric; lower → misses cost less. |
 | `score_swing` | `0.5` | Max score deviation from a decisive 0/1. Higher → time effort matters more. |
 | `effort_cap` | `0.8` | Cap on `ε_t`; keeps wins/losses ordered (win ≥ 0.6, loss ≤ 0.4). |
 | `min_solves` | `5` | Solves before the time signal (EWMA) is trusted. Below: binary Glicko. |
@@ -225,8 +230,10 @@ Fixture: `supabase/snippets/seed_synthetic_ratings.sql` (manual tool, not part o
 - **No topic scopes yet.** Everything is `scope='overall'`; per-topic is additive rows.
 - **Glicko-1, not Glicko-2.** No volatility term. The shared `glicko_rate()` is the only
   thing a σ upgrade would touch.
-- **`retry_weight`/`attempt_decay` are first-pass constants** (0.3/0.5). They produce the
-  agreed clean > struggle > 0 ordering on the fixture; re-tune against real play.
+- **`retry_weight` = 1.1 is a deliberate punitive choice** (2026-07-08): the trainer logs
+  only final outcomes, so a recorded miss is decisive and should sting at least as much as
+  a win. Trade-off: amplifying losses biases ratings to drift down over time — revisit
+  toward `1.0` if deflation shows up. `attempt_decay` stays `0.5`.
 
 ---
 
@@ -263,3 +270,10 @@ Fixture: `supabase/snippets/seed_synthetic_ratings.sql` (manual tool, not part o
   `periods`.
 - The reset wiped local play data. Re-run the synthetic seed to restore the
   verification fixture (it rates live; no recompute needed).
+- **2026-07-08 — `retry_weight` 0.3 → 1.1.** Because the trainer records only a problem's
+  final outcome (intermediate retries in `PracticeView.submitAnswer` return before
+  `recordSubmission`), the old 0.3 "cheap provisional loss" weight made every real miss
+  count a third of a win — a decisive wrong answer moved a rating ~−32 where a full loss
+  was ~−100. Raised to 1.1 (punitive; §5/§7) and re-graded via `recompute_ratings()`
+  (40 matches). The §6 struggle-then-solve and guess-guard-loss figures were measured at
+  0.3 and predate this; the live≡replay determinism (§6 row 1) is unaffected.

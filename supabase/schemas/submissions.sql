@@ -18,6 +18,13 @@ create table public.submissions (
   elapsed_ms      integer,                  -- time spent on this attempt
   source          text,                     -- 'practice' | 'library' | 'review'
   session_id      bigint references public.practice_sessions(id) on delete set null,
+  -- Multi-try practice: how many wrong attempts the user burned before this
+  -- recorded (final) outcome. 0 = solved/answered on the first try. Client-sent
+  -- (the trainer only logs a problem's final outcome, so intermediate wrong
+  -- tries never become their own rows — this preserves the first-try signal that
+  -- would otherwise be lost). Analytics-only: the rating pipeline ignores it and
+  -- keys off `attempt`/`encounter` instead (see ratings.sql, docs/ratings.md §5).
+  tries_used      integer not null default 0,
   -- Derived rating annotations, filled by the set_submission_encounter trigger
   -- (see ratings.sql); clients never send them. Null on skips. `encounter` is
   -- the 1-based encounter index k for this (user, problem) pair, `attempt` the

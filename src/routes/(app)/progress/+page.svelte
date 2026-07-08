@@ -19,12 +19,20 @@
     } from "$lib/progress-analytics";
     import { startSession } from "$lib/sessions";
     import { defaultPracticeSettings } from "$lib/trainer";
-    import { topicLabel as topicName } from "$lib/library";
+    import {
+        topicLabel as topicName,
+        fetchPlayerRatingHistory,
+        RATING_PROVISIONAL_RD,
+        type PlayerRatingPoint,
+    } from "$lib/library";
+    import { RatingChart } from "$lib/components/rating-chart";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
 
     let rows = $state<TopicStat[]>([]);
+    // Full rating climb (all-time); sliced to the selected range for display.
+    let ratingHistory = $state<PlayerRatingPoint[]>([]);
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
     // Topic currently spinning up a drill session (disables its button).
@@ -63,7 +71,10 @@
         }
         loading = true;
         try {
-            rows = await fetchProgressBreakdown(supabase, "topic", { from });
+            [rows, ratingHistory] = await Promise.all([
+                fetchProgressBreakdown(supabase, "topic", { from }),
+                fetchPlayerRatingHistory(supabase, user.id),
+            ]);
             errorMsg = null;
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to load progress";
@@ -112,6 +123,27 @@
     );
     let overallAvg = $derived(
         totals.timed > 0 ? totals.timeMs / totals.timed : null,
+    );
+
+    // Rating climb sliced to the selected range (the RPC handles the topic side;
+    // the history is filtered client-side against the same `from` bound).
+    let visibleHistory = $derived.by(() => {
+        const from = rangeFrom(range);
+        if (!from) return ratingHistory;
+        return ratingHistory.filter((p) => p.at >= from);
+    });
+    // Net rating change across the visible slice.
+    let ratingDelta = $derived(
+        visibleHistory.length >= 2
+            ? visibleHistory[visibleHistory.length - 1].rating -
+                  visibleHistory[0].rating
+            : null,
+    );
+    // The latest rating is still low-confidence while RD stays high.
+    let ratingProvisional = $derived(
+        visibleHistory.length > 0 &&
+            visibleHistory[visibleHistory.length - 1].rd >=
+                RATING_PROVISIONAL_RD,
     );
 
     // Weakest topics (min-volume floored, weakest first) for the Focus panel.
@@ -280,6 +312,59 @@
                 >
             </div>
         {:else}
+            <!-- Rating climb -->
+            {#if ratingHistory.length > 0}
+                <div
+                    class="rounded-xl border border-border/60 bg-surface-container-low p-4"
+                >
+                    <div class="flex items-center gap-2">
+                        <Icon
+                            name="trending_up"
+                            class="text-primary-foreground"
+                            fontsize="1.2rem"
+                        />
+                        <h2
+                            class="text-sm font-bold uppercase tracking-wider text-muted-foreground"
+                        >
+                            Rating
+                        </h2>
+                        {#if ratingDelta != null && ratingDelta !== 0}
+                            <span
+                                class="font-mono text-xs font-semibold {ratingDelta >
+                                0
+                                    ? 'text-correct'
+                                    : 'text-destructive'}"
+                            >
+                                {ratingDelta > 0 ? "+" : ""}{Math.round(
+                                    ratingDelta,
+                                )}
+                            </span>
+                        {/if}
+                        {#if ratingProvisional}
+                            <span
+                                class="text-xs text-muted-foreground"
+                                title="Rating deviation is still high — it will settle as you play more rated matches."
+                            >
+                                · provisional
+                            </span>
+                        {/if}
+                    </div>
+                    {#if visibleHistory.length > 0}
+                        <RatingChart
+                            points={visibleHistory}
+                            class="mt-3"
+                            color="var(--color-primary-foreground)"
+                            bandColor="var(--color-primary)"
+                            bandOpacity={0.5}
+                        />
+                    {:else}
+                        <p class="mt-4 text-xs text-muted-foreground">
+                            No rated matches in this range.
+                        </p>
+                    {/if}
+                </div>
+            {/if}
+
             <!-- Overall stat tiles -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div

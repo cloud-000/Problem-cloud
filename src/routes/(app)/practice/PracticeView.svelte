@@ -10,6 +10,8 @@
     import { MathStatement } from "$lib/components/math-statement";
     import { Problem, ProblemAnswer } from "$lib/components/problem";
     import DebugInfo from "./DebugInfo.svelte";
+    import { RatingCounter } from "$lib/components/rating-counter";
+    import { RatingLifeBar } from "$lib/components/rating-life-bar";
     import { type TriState } from "$lib/components/toggle";
     import {
         DIFFICULTY_RANGE,
@@ -19,7 +21,13 @@
         type ProblemRow,
         fetchAllSeries,
         fetchPlayerRating,
+        fetchProblemRating,
+        glickoExpectedScore,
+        glickoMatchPreview,
+        playerRatingIsProvisional,
+        ratingIsProvisional,
         type PlayerRating,
+        type ProblemRating,
     } from "$lib/library";
     import {
         createSession,
@@ -64,6 +72,7 @@
     } from "./SettingsPanel.svelte";
     import { TopbarRegister } from "$lib/components/topbar";
     import PauseOverlay from "./PauseOverlay.svelte";
+    import MetadataBar from "./MetadataBar.svelte";
 
     // `sessionParam` is the `?session=` value: "root" (ungrouped work) or a
     // numeric session id. The parent route keys this component on it, so a
@@ -731,9 +740,6 @@
 
     // Shared class for inline (text-sized) icons throughout the view.
     const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
-    // Hoisted out of the template so they aren't recomputed in both the
-    // {#if} guard and the rendered value.
-    let topicName = $derived(problem ? topicLabel(problem.topic) : null);
     // A problem with no recorded answer (answer_index -1 or null) — runs in
     // ungraded mode and surfaces the "No answer" submission chip.
     let hasAnswer = $derived(
@@ -757,11 +763,6 @@
             { title: "Suggest an answer", size: "md" },
         );
     }
-    let lastReviewedLabel = $derived(
-        currentProgress
-            ? formatReviewDate(currentProgress.lastSubmissionAt)
-            : null,
-    );
 
     function counterFilter(key: keyof CounterRanges): [number, number] | null {
         return counterEnabled[key] ? [...counterRanges[key]] : null;
@@ -809,20 +810,6 @@
     function setFocusMode(value: boolean) {
         focusMode = value;
         persistSettingsSnapshot({ ...currentSettings(), focusMode: value });
-    }
-
-    // Compact "last reviewed" label: relative for recent, short date otherwise.
-    function formatReviewDate(iso: string | null) {
-        if (!iso) return null;
-        const then = new Date(iso);
-        const days = Math.floor((Date.now() - then.getTime()) / 86400000);
-        if (days <= 0) return "today";
-        if (days === 1) return "yesterday";
-        if (days < 30) return `${days}d ago`;
-        return then.toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-        });
     }
 
     // Exact, non-reactive elapsed snapshot for event handlers / persistence.
@@ -995,6 +982,38 @@
     let playerRating = $state<PlayerRating | null>(null);
     let ratingDelta = $state<number | null>(null);
 
+    // The current problem's Glicko rating, for the metadata-row elo and the debug
+    // panel's match preview. Trainer draws don't embed ratings, so fetch by id
+    // whenever the shown problem changes; guard against out-of-order resolves.
+    let problemRating = $state<ProblemRating | null>(null);
+    $effect(() => {
+        const id = problem?.id;
+        problemRating = null;
+        if (id == null) return;
+        let current = true;
+        fetchProblemRating(supabase, id)
+            .then((r) => {
+                if (current) problemRating = r;
+            })
+            .catch((e) => console.error("Failed to fetch problem rating:", e));
+        return () => {
+            current = false;
+        };
+    });
+
+    // Live matchup for the metadata-row rating bar: the player's Glicko-expected
+    // solve chance for the on-screen problem. Needs both ratings, each of which
+    // appears with its first graded submission (null until then).
+    let expectedScore = $derived(
+        playerRating && problemRating
+            ? glickoExpectedScore(
+                  playerRating.rating,
+                  problemRating.rating,
+                  problemRating.rd,
+              )
+            : null,
+    );
+
     function refreshPlayerRating(after: Promise<void>, userId: string) {
         const before = playerRating?.rating ?? null;
         after
@@ -1004,9 +1023,7 @@
                 ratingDelta = before != null ? r.rating - before : null;
                 playerRating = r;
             })
-            .catch((e) =>
-                console.error("Failed to refresh player rating:", e),
-            );
+            .catch((e) => console.error("Failed to refresh player rating:", e));
     }
 
     function submitAnswer() {
@@ -1075,6 +1092,8 @@
                 elapsedMs: elapsed,
                 source: currentSource,
                 sessionId: currentSessionId,
+                // Wrong tries burned before this final outcome (0 = first-try).
+                triesUsed,
             });
             // Graded attempts are rated live; surface the rating movement.
             if (isCorrect !== null) {
@@ -1497,10 +1516,10 @@
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
     <TopbarRegister left={topbarLeft} right={topbarRight} />
     {#snippet topbarLeft()}
-        <div class="flex items-center">
+        <div class="flex items-center gap-2 flex-1 min-w-0">
             <a
                 href="/practice"
-                class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
                 aria-label="Back to sessions"
             >
                 <Icon name="arrow_back" class={iconCls} />
@@ -1510,7 +1529,7 @@
                 variant="ghost"
                 size="sm"
                 class={cn(
-                    "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5",
+                    "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
                     showSettings && "bg-muted text-foreground",
                 )}
                 onclick={() => (showSettings = !showSettings)}
@@ -1521,7 +1540,7 @@
             </Button>
 
             {#if activeSession && (activeSession.name || isTest)}
-                <div class="flex flex-row items-center gap-1.5">
+                <div class="flex flex-row items-center gap-1.5 shrink-0">
                     {#if isTest}
                         <span
                             class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
@@ -1530,25 +1549,40 @@
                             Test
                         </span>
                     {/if}
-                    <span class="opacity-50 text-xs">{activeSession.name}</span>
+                    <span
+                        class="opacity-50 text-xs truncate max-w-24 sm:max-w-40"
+                        >{activeSession.name}</span
+                    >
+                </div>
+            {/if}
+
+            {#if playerRating}
+                {@const tierSize = 200}
+                {@const lower =
+                    Math.floor(playerRating.rating / tierSize) * tierSize}
+                {@const upper = lower + tierSize}
+                <div
+                    class="flex items-center text-xs text-muted-foreground/50 gap-1.5 min-w-0 flex-1"
+                >
+                    <RatingCounter
+                        value={playerRating.rating}
+                        class="text-foreground font-medium"
+                    />
+                    <RatingLifeBar
+                        {playerRating}
+                        {tierSize}
+                        class="h-2 w-full min-w-0"
+                    />
                 </div>
             {/if}
         </div>
     {/snippet}
 
     {#snippet topbarRight()}
-        <div
-            class="flex items-center gap-2 text-xs font-mono text-muted-foreground w-full min-w-0"
-        >
+        <div class="flex items-center gap-2 min-w-0 flex-1">
             {#if behavior.showLiveFeedback && !focusModeActive}
-                {@render statChip(correctAttempts, "var(--color-correct)")}
-                {@render statChip(
-                    incorrectAttempts,
-                    "var(--color-destructive)",
-                )}
-                {@render statChip(skippedAttempts, "var(--color-unsure)")}
                 <SegmentBar
-                    class="min-w-10 w-full shrink h-2"
+                    class="min-w-15 w-full h-2"
                     segments={[
                         {
                             value: correctAttempts,
@@ -1573,8 +1607,9 @@
                     {@const timed = timeLimitSeconds != null}
                     {@const low =
                         timed && remainingMs != null && remainingMs <= 60_000}
-                    {@const displayMs =
-                        timed ? (remainingMs ?? 0) : totalElapsedMs}
+                    {@const displayMs = timed
+                        ? (remainingMs ?? 0)
+                        : totalElapsedMs}
                     <div
                         class={cn(
                             "inline-flex h-8 items-center justify-center rounded-md",
@@ -1586,15 +1621,15 @@
                         title={`${timed ? "Time remaining" : "Elapsed time"}: ${formatElapsed(displayMs)}`}
                         aria-label={timed ? "Time remaining" : "Elapsed time"}
                     >
-                        <Icon
-                            name={timed ? "timer" : "schedule"}
-                            class={iconCls}
-                        />
                         {#if !focusModeActive}
-                            <span class="leading-none tabular-nums">
-                                {formatElapsed(displayMs)}
-                            </span>
+                            <Icon
+                                name={timed ? "timer" : "schedule"}
+                                class={iconCls}
+                            />
                         {/if}
+                        <span class="leading-none tabular-nums font-mono">
+                            {formatElapsed(displayMs)}
+                        </span>
                     </div>
                 {/if}
             {:else if problem}
@@ -1633,15 +1668,16 @@
                             ? "Total session time"
                             : "Time on this problem"}
                     >
-                        <Icon
-                            name={isTotal ? "timelapse" : "schedule"}
-                            class={iconCls}
-                        />
                         {#if !focusModeActive}
-                            <span class="leading-none">
-                                {formatElapsed(displayMs)}
-                            </span>
+                            <Icon
+                                name={isTotal ? "timelapse" : "schedule"}
+                                class={iconCls}
+                            />
                         {/if}
+
+                        <span class="leading-none tabular-nums font-mono">
+                            {formatElapsed(displayMs)}
+                        </span>
                     </button>
                 </div>
             {/if}
@@ -1780,94 +1816,25 @@
                             class="flex-1 flex flex-col justify-start items-center gap-4 w-full min-h-0 overflow-y-auto pt-0 pb-4 px-6"
                         >
                             <!-- Metadata row: source/series/topic on the left, review status on the right -->
-                            <div
-                                class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pt-2.5 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full overflow-visible"
-                            >
-                                <div
-                                    class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
-                                >
-                                    {#if problem.tests?.name}
-                                        <span class="truncate"
-                                            >{problem.tests.name}</span
-                                        >
-                                        <span class="text-border shrink-0"
-                                            >•</span
-                                        >
-                                    {/if}
-                                    <span class="shrink-0"
-                                        >#{problem.n + 1}</span
-                                    >
-                                    {#if topicName}
-                                        <span class="text-border shrink-0"
-                                            >•</span
-                                        >
-                                        <span class="truncate" title={topicName}
-                                            >{topicName}</span
-                                        >
-                                    {/if}
-                                </div>
-
-                                <div
-                                    class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
-                                >
-                                    {#if !hasAnswer}
-                                        <StatusTag
-                                            status="unanswered"
-                                            size="sm"
-                                            class="border-unsure/60 bg-unsure/20 text-on-unsure-container [--attention-color:var(--color-unsure)] animate-attention-pulse hover:animate-none focus-visible:animate-none motion-reduce:animate-none"
-                                            action={{
-                                                label: "Suggest",
-                                                icon: "add",
-                                                onclick: openAnswerSubmission,
-                                            }}
-                                        />
-                                    {/if}
-                                    {#if behavior.showLiveFeedback && !focusModeActive}
-                                        {#if currentSource === "review"}
-                                            <StatusTag
-                                                status="review"
-                                                size="sm"
-                                            />
-                                            {#if currentProgress}
-                                                <span
-                                                    class="inline-flex items-center gap-1"
-                                                >
-                                                    <Icon
-                                                        name="visibility"
-                                                        class={iconCls}
-                                                    />
-                                                    Seen {currentProgress.timesSeen}×
-                                                </span>
-                                                {#if lastReviewedLabel}
-                                                    <span class="text-border"
-                                                        >•</span
-                                                    >
-                                                    <span
-                                                        class="inline-flex items-center gap-1"
-                                                        title="Last reviewed"
-                                                    >
-                                                        <Icon
-                                                            name="schedule"
-                                                            class={iconCls}
-                                                        />
-                                                        {lastReviewedLabel}
-                                                    </span>
-                                                {/if}
-                                            {/if}
-                                        {:else}
-                                            <StatusTag status="new" size="sm" />
-                                        {/if}
-                                    {:else if isTest}
-                                        <span class="font-mono">
-                                            {historyIndex + 1} / {history.length}
-                                        </span>
-                                    {/if}
-                                </div>
-                            </div>
+                            <MetadataBar
+                                {problem}
+                                {problemRating}
+                                {hasAnswer}
+                                showLiveFeedback={behavior.showLiveFeedback}
+                                {focusModeActive}
+                                {currentSource}
+                                {currentProgress}
+                                {isTest}
+                                {historyIndex}
+                                historyLength={history.length}
+                                onOpenAnswerSubmission={openAnswerSubmission}
+                            />
 
                             {#if debugMode && !focusModeActive}
                                 <DebugInfo
                                     {problem}
+                                    {playerRating}
+                                    {problemRating}
                                     bind:showRawLatex
                                     onClose={() => (debugMode = false)}
                                 />

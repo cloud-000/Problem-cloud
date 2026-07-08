@@ -95,6 +95,110 @@ export async function fetchPlayerRating(
     return data;
 }
 
+/** One point in a player's rating climb — a rated match's post-match snapshot. */
+export interface PlayerRatingPoint {
+    at: string; // the match's submission time (ISO)
+    rating: number;
+    rd: number; // rating deviation at that point
+}
+
+/**
+ * Fetch the signed-in user's rating climb from `player_rating_history` — one
+ * point per rated match, oldest first. Appended live by the rating trigger and
+ * rewritten wholesale on a recompute, so it always matches the current rating.
+ * `player_rating_history` is world-readable; this is scoped to the given user
+ * and `overall` scope.
+ */
+export async function fetchPlayerRatingHistory(
+    supabase: Supabase,
+    userId: string,
+): Promise<PlayerRatingPoint[]> {
+    const { data, error } = await supabase
+        .from("player_rating_history")
+        .select("at, rating, rd")
+        .eq("user_id", userId)
+        .eq("scope", "overall")
+        .order("at", { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+}
+
+/**
+ * Fetch the `overall`-scope Glicko rating for a single problem from
+ * `problem_ratings`. Returns `null` when the problem has no rating row yet (it
+ * appears with the first graded submission against it). `problem_ratings` is
+ * world-readable, so this works for anonymous users too.
+ */
+export async function fetchProblemRating(
+    supabase: Supabase,
+    problemId: number,
+): Promise<ProblemRating | null> {
+    const { data, error } = await supabase
+        .from("problem_ratings")
+        .select("rating, rd, attempts")
+        .eq("problem_id", problemId)
+        .eq("scope", "overall")
+        .maybeSingle();
+    if (error) throw error;
+    return data;
+}
+
+// --- Glicko match math (client-side mirror of the DB rating functions) ---------
+// These reproduce `glicko_g` / `glicko_e` from the SQL rating pipeline so the
+// trainer can preview a match (expected score, projected swing) before the DB
+// grades it live. Kept in sync with supabase/schemas/ratings.sql; see
+// docs/ratings.md §4c for the authoritative match math.
+
+/** Glicko scaling constant: ln(10) / 400. */
+const GLICKO_Q = Math.LN10 / 400;
+
+/** Opponent-uncertainty attenuation `g(RD)` — dampens the swing vs. a hazy opponent. */
+export function glickoG(rd: number): number {
+    return 1 / Math.sqrt(1 + (3 * GLICKO_Q * GLICKO_Q * rd * rd) / (Math.PI * Math.PI));
+}
+
+/** Expected score `E` of a player (rating `r`) against an opponent (`oppR`, `oppRd`). */
+export function glickoExpectedScore(r: number, oppR: number, oppRd: number): number {
+    return 1 / (1 + Math.pow(10, (-glickoG(oppRd) * (r - oppR)) / 400));
+}
+
+/** Pre-submission Glicko preview of the player-vs-problem match. */
+export interface GlickoMatchPreview {
+    /** Player's expected score in [0, 1] (probability-like solve chance). */
+    expected: number;
+    /** Rating gap, player − problem (positive = player favored). */
+    gap: number;
+    /** Opponent attenuation g(problem.rd). */
+    g: number;
+    /** Projected player rating change on a correct answer (full-weight, effort-free). */
+    deltaWin: number;
+    /** Projected player rating change on an incorrect answer (full-weight). */
+    deltaLoss: number;
+}
+
+/**
+ * Project this match from the player's side using the same update as
+ * `glicko_rate` with weight `w = 1` (a fresh, full-weight encounter and no
+ * effort adjustment). The denominator is outcome-independent, so win/loss deltas
+ * share it; real live deltas may be smaller once retry/effort weighting applies.
+ */
+export function glickoMatchPreview(
+    player: PlayerRating,
+    problem: ProblemRating,
+): GlickoMatchPreview {
+    const g = glickoG(problem.rd);
+    const e = glickoExpectedScore(player.rating, problem.rating, problem.rd);
+    const denom = 1 / (player.rd * player.rd) + GLICKO_Q * GLICKO_Q * g * g * e * (1 - e);
+    const base = (GLICKO_Q / denom) * g;
+    return {
+        expected: e,
+        gap: player.rating - problem.rating,
+        g,
+        deltaWin: base * (1 - e),
+        deltaLoss: base * (0 - e),
+    };
+}
+
 type ProblemEmbeds = {
     problem_progress?: ProblemProgress[] | null;
     problem_ratings?: (ProblemRating & { scope: string })[] | null;

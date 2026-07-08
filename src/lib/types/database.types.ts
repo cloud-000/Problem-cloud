@@ -823,6 +823,7 @@ export type Database = {
           session_id: number | null
           skipped: boolean
           source: string | null
+          tries_used: number
           user_id: string
         }
         Insert: {
@@ -839,6 +840,7 @@ export type Database = {
           session_id?: number | null
           skipped?: boolean
           source?: string | null
+          tries_used?: number
           user_id: string
         }
         Update: {
@@ -855,6 +857,7 @@ export type Database = {
           session_id?: number | null
           skipped?: boolean
           source?: string | null
+          tries_used?: number
           user_id?: string
         }
         Relationships: [
@@ -1033,6 +1036,7 @@ export type Database = {
           test_id: number | null
           test_name: string | null
           topic: string | null
+          tries_used: number | null
           user_id: string | null
           verified: boolean | null
         }

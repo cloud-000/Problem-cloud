@@ -5,7 +5,11 @@
     import { SegmentBar, type Segment } from "$lib/components/segment-bar";
 
     /** A trailing labelled figure (e.g. an eventual-accuracy or avg-time column). */
-    export type BreakdownMetric = { label: string; value: string; title?: string };
+    export type BreakdownMetric = {
+        label: string;
+        value: string;
+        title?: string;
+    };
 
     let {
         label,
@@ -37,7 +41,8 @@
         action?: Snippet;
     } & HTMLAttributes<HTMLDivElement> = $props();
 
-    const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+    const pct = (v: number | null) =>
+        v == null ? "—" : `${Math.round(v * 100)}%`;
 
     // Tint the headline by performance band; neutral when there is no data.
     let scoreTone = $derived(
@@ -61,12 +66,16 @@
 >
     <!-- Label + distribution -->
     <div class="min-w-0 flex-1">
-        <div class="truncate text-sm font-semibold text-foreground">{label}</div>
+        <div class="truncate text-sm font-semibold text-foreground">
+            {label}
+        </div>
         {#if sublabel}
-            <div class="mt-0.5 truncate text-xs text-muted-foreground">{sublabel}</div>
+            <div class="mt-0.5 truncate text-xs text-muted-foreground">
+                {sublabel}
+            </div>
         {/if}
         {#if segments && segments.length > 0}
-            <SegmentBar {segments} class="mt-2 max-w-xs" />
+            <SegmentBar {segments} class="mt-2 max-w-full" />
         {/if}
     </div>
 

@@ -114,7 +114,7 @@
 
 <div
     class={cn(
-        "rating-life-bar-container relative flex-1 min-w-0 max-w-full rounded-full overflow-hidden h-2 bg-surface-container transition-all duration-300",
+        "rating-life-bar-container relative flex-1 min-w-0 rounded-full overflow-hidden h-2 bg-surface-container transition-all duration-300",
         levelUpActive && "glow-overtake",
         className,
     )}

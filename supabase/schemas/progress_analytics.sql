@@ -41,6 +41,7 @@ select
   s.skipped,
   s.flagged,
   s.elapsed_ms,
+  s.tries_used,
   s.created_at,
   -- 1,2,3… over all submissions for this problem (skips included).
   row_number() over (
@@ -50,6 +51,9 @@ select
   -- 1,2,3… over graded (non-skip) attempts only; null on skips. `graded_seq = 1`
   -- is the user's first real attempt at the problem — the basis for
   -- first-attempt accuracy (a skip must not be miscounted as that first try).
+  -- True first-try accuracy pairs this with `tries_used = 0`: graded_seq picks the
+  -- first *encounter*, tries_used confirms it was nailed on the first *try* within
+  -- it (multi-try practice can burn wrong tries that never became their own rows).
   case when not s.skipped then
     row_number() over (
       partition by s.user_id, s.problem_id, s.skipped
@@ -90,7 +94,7 @@ returns table (
   correct           bigint,   -- graded attempts that were correct
   skipped           bigint,
   first_graded      bigint,   -- problems attempted (graded) for the first time
-  first_correct     bigint,   -- correct on the first graded attempt
+  first_correct     bigint,   -- solved on the very first try (first encounter, tries_used = 0)
   distinct_problems bigint,
   graded_time_ms    bigint,   -- sum(elapsed) over timed graded attempts
   graded_timed      bigint,   -- count for the avg-time denominator
@@ -114,6 +118,7 @@ as $$
       f.skipped,
       f.is_correct,
       f.graded_seq,
+      f.tries_used,
       f.elapsed_ms,
       f.created_at
     from public.submission_facts f
@@ -137,7 +142,7 @@ as $$
     count(*) filter (where is_correct)                             as correct,
     count(*) filter (where skipped)                                as skipped,
     count(*) filter (where graded_seq = 1)                         as first_graded,
-    count(*) filter (where graded_seq = 1 and is_correct)          as first_correct,
+    count(*) filter (where graded_seq = 1 and is_correct and coalesce(tries_used, 0) = 0) as first_correct,
     count(distinct problem_id)                                     as distinct_problems,
     coalesce(sum(elapsed_ms) filter (where not skipped and elapsed_ms is not null), 0) as graded_time_ms,
     count(*) filter (where not skipped and elapsed_ms is not null) as graded_timed,

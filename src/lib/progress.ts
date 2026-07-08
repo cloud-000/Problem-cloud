@@ -56,6 +56,13 @@ export type SubmissionInput = {
     source: SubmissionSource;
     /** Practice session this submission belongs to; null = root (ungrouped). */
     sessionId: number | null;
+    /**
+     * Wrong attempts burned before this recorded (final) outcome in multi-try
+     * practice; 0 = first-try. Preserves the first-try signal that would be lost
+     * by logging only the final outcome. Analytics-only (ratings ignore it).
+     * Defaults to 0 when omitted.
+     */
+    triesUsed?: number;
 };
 
 /**
@@ -78,6 +85,7 @@ export async function recordSubmission(
         elapsed_ms: input.elapsedMs,
         source: input.source,
         session_id: input.sessionId,
+        tries_used: input.triesUsed ?? 0,
     });
     if (error) console.error("Failed to record submission:", error);
 }

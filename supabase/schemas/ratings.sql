@@ -29,12 +29,14 @@
 --                    time (nothing stays "open").
 --   * Effort       — time-to-solve (normalized by the problem's running
 --                    geometric-mean solve time) pulls the match score toward a
---                    draw. Attempts shape the match WEIGHT, not the score:
---                    within-encounter wrong attempts are cheap
---                    (retry_weight · attempt_decay^(a-1)), the resolving solve
---                    carries full weight — so struggle-then-solve still nets a
---                    (smaller) gain. Attempts after an encounter is solved are
---                    not rated.
+--                    draw. Attempts shape the match WEIGHT, not the score: a
+--                    wrong answer weighs retry_weight · attempt_decay^(a-1). The
+--                    trainer records only the FINAL outcome per problem (its
+--                    intermediate retries never hit the log), so a recorded miss
+--                    is a decisive loss at a=1 — hence retry_weight >= 1 so it
+--                    counts at least as much as a win. attempt_decay only softens
+--                    the rare case of multiple recorded misses in one encounter.
+--                    Attempts after an encounter is solved are not rated.
 --   * Repeats      — the k-th encounter's weight decays by repeat_decay^(k-1),
 --                    so re-solving a memorized problem yields diminishing
 --                    movement.
@@ -63,7 +65,7 @@ create table public.rating_params (
   seed_rd        real    not null default 350,    -- starting/max RD
   encounter_gap  integer not null default 1800,   -- idle gap (s) that splits encounters
   attempt_decay  real    not null default 0.5,    -- extra weight decay per wrong retry
-  retry_weight   real    not null default 0.3,    -- base weight of a wrong attempt
+  retry_weight   real    not null default 1.1,    -- base weight of a wrong answer (>1 = a decisive miss outweighs a win)
   score_swing    real    not null default 0.5,    -- max score deviation from a decisive 0/1
   effort_cap     real    not null default 0.8,    -- cap on time effort (keeps wins/losses ordered)
   min_solves     integer not null default 5,      -- solves before the time signal is trusted
@@ -214,7 +216,7 @@ begin
   select * into p from public.rating_params where id;
   if not found then
     p := row(true, 604800, 0.5, 34.6, 30, 1500, 350, 1800,
-             0.5, 0.3, 0.5, 0.8, 5, 0.15, 2000, now())::public.rating_params;
+             0.5, 1.1, 0.5, 0.8, 5, 0.15, 2000, now())::public.rating_params;
   end if;
   return p;
 end;
@@ -286,8 +288,9 @@ begin
 
   wd := power(par.repeat_decay::double precision, k - 1);
   if not correct then
-    -- Wrong attempts are cheap provisional losses; the resolving solve (or the
-    -- give-up, by absence of one) carries the encounter's real signal.
+    -- The trainer logs only a problem's final outcome, so a recorded miss is a
+    -- decisive loss (a=1): retry_weight (>= 1) makes it count at least as much as
+    -- a win. attempt_decay only softens extra recorded misses in one encounter.
     wd := wd * par.retry_weight * power(par.attempt_decay::double precision, a - 1);
   end if;
   if is_mcq and coalesce(elapsed_ms, 0) > 0 and elapsed_ms < par.guess_floor_ms then
