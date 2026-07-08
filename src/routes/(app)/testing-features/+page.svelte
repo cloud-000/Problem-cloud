@@ -68,10 +68,34 @@
             href: "/testing-features/subtabs",
         },
         {
+            icon: "insights",
+            name: "Graph",
+            description: "Responsive base SVG line graph canvas supporting custom overlays.",
+            href: "/testing-features/graph",
+        },
+        {
+            icon: "show_chart",
+            name: "Rating Chart",
+            description: "Glicko rating history line chart with RD confidence band.",
+            href: "/testing-features/rating-chart",
+        },
+        {
             icon: "",
             name: "math edit",
             description: "Math editing & interactive block",
             href: "/testing-features/math-editor",
+        },
+        {
+            icon: "countertops",
+            name: "Rating Counter",
+            description: "Animated Glicko rating counter with RPG change delta popups.",
+            href: "/testing-features/rating-counter",
+        },
+        {
+            icon: "bar_chart",
+            name: "Rating Life Bar",
+            description: "Dark Souls-style health bar mapping player rating outcomes.",
+            href: "/testing-features/rating-life-bar",
         },
     ];
 </script>
