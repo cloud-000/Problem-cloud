@@ -50,37 +50,30 @@
             if (delayTimeout) clearTimeout(delayTimeout);
             if (levelUpTimeout) clearTimeout(levelUpTimeout);
 
-            if (diff < 0) {
-                // Damage (Loss):
-                // 1. Set color to damage (orange/yellow)
-                activeTrailingColor = "var(--damage-color, rgb(252, 186, 3))";
-                // 2. Snap fill instantly
-                visualRating.set(currentVal, { duration: 0 });
-                // 3. Keep trailing at prevRating, then decay it
-                lingeringRating.set(prevRating, { duration: 0 });
-                delayTimeout = setTimeout(() => {
-                    lingeringRating.set(currentVal);
-                }, 500);
-            } else if (diff > 0) {
-                // Healing (Gain):
-                // 1. Set color to healing (green)
-                activeTrailingColor = "var(--heal-color, rgb(50, 168, 82))";
-                // 2. Snap trailing to target
-                lingeringRating.set(currentVal, { duration: 0 });
-                // 3. Tween actual fill from prevRating to currentVal
-                visualRating.set(prevRating, { duration: 0 });
-                visualRating.set(currentVal);
+            const isLoss = diff < 0;
+            activeTrailingColor = isLoss
+                ? "var(--damage-color, rgb(252, 186, 3))"
+                : "var(--heal-color, rgb(50, 168, 82))";
 
-                // Level up check: crossed a multiple of tierSize
-                if (
-                    Math.floor(currentVal / tierSize) >
-                    Math.floor(prevRating / tierSize)
-                ) {
-                    levelUpActive = true;
-                    levelUpTimeout = setTimeout(() => {
-                        levelUpActive = false;
-                    }, 3000);
-                }
+            const snapTween = isLoss ? visualRating : lingeringRating;
+            const holdTween = isLoss ? lingeringRating : visualRating;
+            const delayMs = isLoss ? 500 : 250;
+
+            snapTween.set(currentVal, { duration: 0 });
+            holdTween.set(prevRating, { duration: 0 });
+
+            delayTimeout = setTimeout(() => {
+                holdTween.set(currentVal);
+            }, delayMs);
+
+            // Level up check (only on gain)
+            if (!isLoss && Math.floor(currentVal / tierSize) > Math.floor(prevRating / tierSize)) {
+                levelUpActive = true;
+                levelUpTimeout = setTimeout(() => {
+                    levelUpActive = false;
+                }, 3000);
+            } else {
+                levelUpActive = false;
             }
 
             prevRating = currentVal;
