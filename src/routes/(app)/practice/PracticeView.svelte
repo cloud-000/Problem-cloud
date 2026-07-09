@@ -819,6 +819,9 @@
 
     // Save the live view state back into its history entry before navigating away.
     function commitCurrent() {
+        // Leaving the current problem: finish the life-bar's change animation now
+        // so its tween/decay tail doesn't play out on the next problem.
+        ratingBar?.settle();
         const entry = history[historyIndex];
         if (!entry) return;
         entry.selectedChoice = selectedChoice;
@@ -981,6 +984,9 @@
     // footer next to the fresh result.
     let playerRating = $state<PlayerRating | null>(null);
     let ratingDelta = $state<number | null>(null);
+    // Life-bar instance, so navigation can finish its change animation instantly
+    // instead of letting the tween tail bleed onto the next problem.
+    let ratingBar = $state<{ settle: () => void }>();
     // Guards playerRating writes against out-of-order resolution: a graded
     // wrong try followed quickly by a correct one fires two overlapping
     // fetches, and the onMount baseline fetch can straggle behind both. Only
@@ -1578,6 +1584,7 @@
                         class="text-foreground font-medium"
                     />
                     <RatingLifeBar
+                        bind:this={ratingBar}
                         {playerRating}
                         {tierSize}
                         class="h-2 w-full min-w-0"
@@ -1636,7 +1643,12 @@
                                 class={iconCls}
                             />
                         {/if}
-                        <span class="leading-none tabular-nums font-mono">
+                        <span
+                            class={cn(
+                                "leading-none tabular-nums font-mono",
+                                !focusModeActive && "min-w-[5ch] text-center",
+                            )}
+                        >
                             {formatElapsed(displayMs)}
                         </span>
                     </div>
@@ -1645,22 +1657,30 @@
                 {@const isTotal = timerMode === "total"}
                 {@const displayMs = isTotal ? totalElapsedMs : elapsedMs}
                 <div class="flex items-center gap-1.5">
-                    {#if behavior.allowPause && !submitted && isLatest}
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            class="text-muted-foreground hover:text-foreground"
-                            onclick={togglePause}
-                            aria-label={paused
-                                ? "Resume practice"
-                                : "Pause practice"}
-                            title={paused ? "Resume" : "Pause"}
-                        >
-                            <Icon
-                                name={paused ? "play_arrow" : "pause"}
-                                class={iconCls}
-                            />
-                        </Button>
+                    <!-- Pause is only actionable on the latest unanswered problem,
+                         but its footprint is reserved whenever the session allows
+                         pausing so submitting/navigating never changes the topbar
+                         width (which would otherwise reflow the rating bar). -->
+                    {#if behavior.allowPause}
+                        <div class="size-8 shrink-0">
+                            {#if !submitted && isLatest}
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    class="text-muted-foreground hover:text-foreground"
+                                    onclick={togglePause}
+                                    aria-label={paused
+                                        ? "Resume practice"
+                                        : "Pause practice"}
+                                    title={paused ? "Resume" : "Pause"}
+                                >
+                                    <Icon
+                                        name={paused ? "play_arrow" : "pause"}
+                                        class={iconCls}
+                                    />
+                                </Button>
+                            {/if}
+                        </div>
                     {/if}
                     <button
                         type="button"
@@ -1684,7 +1704,12 @@
                             />
                         {/if}
 
-                        <span class="leading-none tabular-nums font-mono">
+                        <span
+                            class={cn(
+                                "leading-none tabular-nums font-mono",
+                                !focusModeActive && "min-w-[5ch] text-center",
+                            )}
+                        >
                             {formatElapsed(displayMs)}
                         </span>
                     </button>

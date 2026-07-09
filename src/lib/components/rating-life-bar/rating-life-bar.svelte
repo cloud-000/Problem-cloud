@@ -87,6 +87,26 @@
         }
     });
 
+    // Finish any in-flight change animation immediately. The parent calls this
+    // when navigating to another problem, so a slow tween/decay tail doesn't
+    // bleed onto the next problem's screen after the user has moved on.
+    export function settle() {
+        if (!playerRating) return;
+        const r = playerRating.rating;
+        if (delayTimeout) {
+            clearTimeout(delayTimeout);
+            delayTimeout = null;
+        }
+        if (levelUpTimeout) {
+            clearTimeout(levelUpTimeout);
+            levelUpTimeout = null;
+        }
+        levelUpActive = false;
+        visualRating.set(r, { duration: 0 });
+        lingeringRating.set(r, { duration: 0 });
+        prevRating = r;
+    }
+
     // Derive percentages relative to current visual tier boundary
     let values = $derived.by(() => {
         const R_visual = visualRating.current;
