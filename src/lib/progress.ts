@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
 import {
     RATING_SELECT,
+    TESTS_EMBED,
     overallProblemRating,
     type ProblemRow,
     type ProblemRating,
@@ -10,9 +11,10 @@ import {
 type Supabase = SupabaseClient<Database>;
 
 // Embed used wherever a `problems` row is nested (submissions, due reviews) so the
-// Problem component's rating badge is populated. Mirrors `library.ts`, including
-// the nested overall-rating embed. Collapse the raw rows with `collapseRating`.
-const PROBLEM_EMBED = `problems(*, tests(name, series_id, series(name)), ${RATING_SELECT})`;
+// Problem component's rating badge is populated. Reuses the shared `TESTS_EMBED`
+// (carries `aops_category_id` for review AoPS links) and the nested overall-rating
+// embed. Collapse the raw rows with `collapseRating`.
+const PROBLEM_EMBED = `problems(*, ${TESTS_EMBED}, ${RATING_SELECT})`;
 
 /** Raw embedded problem before its `problem_ratings` array is collapsed. */
 type RawEmbeddedProblem = ProblemRow & {

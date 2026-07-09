@@ -42,6 +42,14 @@ export type ProblemReviewEntry = {
     answer: string;
     correct: boolean | null;
     flagged: boolean;
+    /**
+     * Explicit skip flag, when the source records one (e.g. a persisted
+     * `submissions.skipped`). Preferred over inferring a skip from a blank
+     * response — persisted submissions store no free-text answer, so inference
+     * would misread graded free-response as skipped. Omit to fall back to
+     * inference (the trainer's in-memory history has the typed answer).
+     */
+    skipped?: boolean;
 };
 
 /**

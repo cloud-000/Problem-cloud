@@ -7,7 +7,9 @@
     import { Select } from "$lib/components/select";
     import { Input } from "$lib/components/input";
     import { DatePicker } from "$lib/components/date-picker";
-    import { Problem } from "$lib/components/problem";
+    import { ProblemReview } from "$lib/components/problem";
+    import { RangeSlider } from "$lib/components/range-slider";
+    import { TriStateSwitch, type TriState } from "$lib/components/toggle";
     import {
         fetchRecentSubmissions,
         type RecentSubmissionRow,
@@ -17,11 +19,16 @@
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
 
+    const MIN_RATING = 500;
+    const MAX_RATING = 2500;
+
     // Filter state
     let selectedOutcomes = $state<string[]>([]);
     let timeRange = $state("all");
     let startDate = $state("");
     let endDate = $state("");
+    let ratingRange = $state<[number, number]>([MIN_RATING, MAX_RATING]);
+    let hasSolutionsFilter = $state<TriState>("neutral");
     let limit = $state(100);
 
     // Data state
@@ -101,6 +108,28 @@
                     const end = new Date(endDate);
                     end.setHours(23, 59, 59, 999);
                     if (created > end) return false;
+                }
+            }
+
+            // 3. Filter by rating
+            if (ratingRange[0] > MIN_RATING || ratingRange[1] < MAX_RATING) {
+                const subRating = sub.problems?.rating?.rating;
+                if (subRating == null) {
+                    return false;
+                }
+                if (subRating < ratingRange[0] || subRating > ratingRange[1]) {
+                    return false;
+                }
+            }
+
+            // 4. Filter by has solutions
+            if (hasSolutionsFilter !== "neutral") {
+                const hasSolution = (sub.problems?.official_solutions?.length ?? 0) > 0;
+                if (hasSolutionsFilter === "on" && !hasSolution) {
+                    return false;
+                }
+                if (hasSolutionsFilter === "off" && hasSolution) {
+                    return false;
                 }
             }
 
@@ -196,7 +225,10 @@
         selectedOutcomes.length > 0 ||
             timeRange !== "all" ||
             startDate !== "" ||
-            endDate !== "",
+            endDate !== "" ||
+            ratingRange[0] > MIN_RATING ||
+            ratingRange[1] < MAX_RATING ||
+            hasSolutionsFilter !== "neutral",
     );
 
     function resetFilters() {
@@ -204,6 +236,8 @@
         timeRange = "all";
         startDate = "";
         endDate = "";
+        ratingRange = [MIN_RATING, MAX_RATING];
+        hasSolutionsFilter = "neutral";
     }
 
     // Mini elapsed time formatter for each history row
@@ -337,7 +371,7 @@
 
         <!-- Filters Panel -->
         <div
-            class="flex flex-col md:flex-row gap-4 items-end bg-surface-container-low p-4 rounded-xl border border-border/60"
+            class="flex flex-row flex-wrap gap-4 items-end bg-surface-container-low p-4 rounded-xl border border-border/60"
         >
             <div class="flex flex-col gap-1.5 md:w-64 w-full">
                 <span
@@ -389,6 +423,41 @@
                     />
                 </div>
             {/if}
+
+            <div class="flex flex-col gap-1.5 md:w-56 w-full">
+                <span
+                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >Rating ({ratingRange[0]}–{ratingRange[1]})</span
+                >
+                <div class="pt-2 pb-1">
+                    <RangeSlider
+                        bind:value={ratingRange}
+                        min={MIN_RATING}
+                        max={MAX_RATING}
+                        step={50}
+                        label="Rating"
+                    />
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5 md:w-36 w-full">
+                <span
+                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >Has Solutions</span
+                >
+                <div class="flex items-center gap-2 h-9">
+                    <TriStateSwitch bind:value={hasSolutionsFilter} size="sm" />
+                    <span class="text-xs text-muted-foreground">
+                        {#if hasSolutionsFilter === "on"}
+                            Yes
+                        {:else if hasSolutionsFilter === "off"}
+                            No
+                        {:else}
+                            Any
+                        {/if}
+                    </span>
+                </div>
+            </div>
 
             {#if hasActiveFilters}
                 <Button
@@ -447,7 +516,7 @@
             </div>
         {:else}
             <div class="space-y-6">
-                {#each groupedSubmissions as group}
+                {#each groupedSubmissions as group (group.dayLabel)}
                     <div class="space-y-3">
                         <h2
                             class="text-xs font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 pb-1"
@@ -549,12 +618,24 @@
                                             class="border-t border-border/40 p-4 bg-surface-container-low/10"
                                         >
                                             {#if sub.problems}
-                                                <Problem
-                                                    problem={sub.problems}
-                                                    selectedChoice={sub.selected_choice}
-                                                    showAnswerState={true}
-                                                    disabled={true}
-                                                    mode="preview"
+                                                <!-- The row header above already
+                                                     shows status/test/number, so
+                                                     the review card drops its own
+                                                     header and just adds the
+                                                     preview + solution panel. -->
+                                                <ProblemReview
+                                                    entry={{
+                                                        problem: sub.problems,
+                                                        selectedChoice:
+                                                            sub.selected_choice,
+                                                        answer: "",
+                                                        correct: sub.is_correct,
+                                                        flagged: sub.flagged,
+                                                        skipped: sub.skipped,
+                                                    }}
+                                                    showHeader={false}
+                                                    autoRevealSolution={false}
+                                                    class="border-0 bg-transparent p-0"
                                                 />
                                             {:else}
                                                 <p

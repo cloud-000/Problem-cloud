@@ -3,7 +3,7 @@
     import type { Database } from "$lib/types/database.types";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { Problem } from "$lib/components/problem";
+    import { ProblemReview } from "$lib/components/problem";
     import { StatusTag } from "$lib/components/status-tag";
     import type { PracticeSessionRow } from "$lib/sessions";
     import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu/index.js";
@@ -275,40 +275,46 @@
             {:else}
                 <div class="space-y-2">
                     {#each submissions as sub (sub.id)}
-                        <div
-                            class="rounded-lg border border-border/50 bg-surface-container-lowest p-4"
-                        >
-                            <div class="flex items-center gap-2 mb-3 text-xs">
-                                <StatusTag
-                                    size="sm"
-                                    status={sub.skipped
-                                        ? "skipped"
-                                        : sub.is_correct
-                                          ? "correct"
-                                          : "incorrect"}
-                                />
-                                {#if sub.flagged}
-                                    <Icon
-                                        name="flag"
-                                        class="text-unsure size-[1.1em]"
-                                        fill
+                        {#if sub.problems}
+                            <ProblemReview
+                                entry={{
+                                    problem: sub.problems,
+                                    selectedChoice: sub.selected_choice,
+                                    answer: "",
+                                    correct: sub.is_correct,
+                                    flagged: sub.flagged,
+                                    skipped: sub.skipped,
+                                }}
+                                autoRevealSolution={false}
+                            />
+                        {:else}
+                            <div
+                                class="rounded-lg border border-border/50 bg-surface-container-lowest p-4"
+                            >
+                                <div
+                                    class="flex items-center gap-2 mb-3 text-xs"
+                                >
+                                    <StatusTag
+                                        size="sm"
+                                        status={sub.skipped
+                                            ? "skipped"
+                                            : sub.is_correct
+                                              ? "correct"
+                                              : "incorrect"}
                                     />
-                                {/if}
-                            </div>
-                            {#if sub.problems}
-                                <Problem
-                                    problem={sub.problems}
-                                    selectedChoice={sub.selected_choice}
-                                    showAnswerState={true}
-                                    disabled={true}
-                                    mode="preview"
-                                />
-                            {:else}
+                                    {#if sub.flagged}
+                                        <Icon
+                                            name="flag"
+                                            class="text-unsure size-[1.1em]"
+                                            fill
+                                        />
+                                    {/if}
+                                </div>
                                 <p class="text-xs text-muted-foreground italic">
                                     Problem details could not be loaded.
                                 </p>
-                            {/if}
-                        </div>
+                            </div>
+                        {/if}
                     {/each}
                 </div>
             {/if}
