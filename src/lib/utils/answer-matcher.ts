@@ -78,6 +78,103 @@ function lowercaseNonCommands(s: string): string {
 }
 
 /**
+ * Helper to parse the next LaTeX argument following a command like \frac.
+ * Handles braced groups like {123} as well as single tokens like \pi or 5.
+ */
+function parseNextLatexArg(rest: string): [string, string] {
+    rest = rest.trimStart();
+    if (rest.startsWith("{")) {
+        let depth = 0;
+        for (let i = 0; i < rest.length; i++) {
+            if (rest[i] === "{") {
+                depth++;
+            } else if (rest[i] === "}") {
+                depth--;
+                if (depth === 0) {
+                    const arg = rest.slice(1, i);
+                    const remaining = rest.slice(i + 1);
+                    return [arg, remaining];
+                }
+            }
+        }
+        return [rest.slice(1), ""]; // Fallback if unmatched braces
+    } else if (rest.startsWith("\\")) {
+        const match = rest.match(/^\\([a-zA-Z]+|.)/);
+        if (match) {
+            const arg = match[0];
+            const remaining = rest.slice(arg.length);
+            return [arg, remaining];
+        }
+        return ["", rest];
+    } else if (rest.length > 0) {
+        const arg = rest[0];
+        const remaining = rest.slice(1);
+        return [arg, remaining];
+    }
+    return ["", ""];
+}
+
+/**
+ * Checks if a LaTeX argument string contains mathematical operations that would
+ * require parenthesis grouping when translated to slash-based division notation.
+ */
+function needsParentheses(s: string): boolean {
+    const trimmed = s.trim();
+    if (trimmed.includes("+")) return true;
+    if (trimmed.slice(1).includes("-")) return true;
+    if (trimmed.includes("*")) return true;
+    if (trimmed.includes("/")) return true;
+    if (/\\(pm|mp|times|div|cdot)/.test(trimmed)) return true;
+    return false;
+}
+
+/**
+ * Recursively convert LaTeX fractions to standard division slash notation.
+ * e.g., \frac{1}{4} -> 1/4, \frac{x+1}{y} -> (x+1)/y.
+ */
+function convertFracToSlash(s: string): string {
+    let idx;
+    while ((idx = s.lastIndexOf("\\frac")) !== -1) {
+        const before = s.slice(0, idx);
+        const rest = s.slice(idx + 5);
+        const [arg1, rest1] = parseNextLatexArg(rest);
+        const [arg2, rest2] = parseNextLatexArg(rest1);
+        const formatArg1 = needsParentheses(arg1) ? `(${arg1})` : arg1;
+        const formatArg2 = needsParentheses(arg2) ? `(${arg2})` : arg2;
+        s = before + `${formatArg1}/${formatArg2}` + rest2;
+    }
+    return s;
+}
+
+/**
+ * Strip units, currencies, labels, and percentage/degree notation.
+ * e.g., "$5" -> "5", "5 cheeses" -> "5", "5 cm" -> "5", "5 m" -> "5", "5m" -> "5m"
+ */
+function stripUnitsAndLabels(s: string): string {
+    let val = s.trim();
+
+    // 1. Strip leading currency symbols
+    val = val.replace(/^[$£€¥]\s*/g, "");
+
+    // 2. Strip leading approximation words
+    val = val.replace(/^(?:approx\.?|about|around)\s+/gi, "");
+
+    // 3. Strip trailing word labels.
+    // Units of 2+ characters can have optional space (e.g. 5cm, 5 cm).
+    // Single character units (m, s, g, etc.) require at least one space (e.g. 5 m) to distinguish from variables.
+    const unitRegex = /([\d})\]]|\\pi|\\theta|\\infty)(?:\s*[a-zA-Z]{2,}\.?|\s+[msglLhd]\.?)(?:\s+[a-zA-Z]+\.?)*$/;
+    val = val.replace(unitRegex, "$1");
+
+    // 4. Strip trailing percent or degree symbol/words
+    val = val.replace(/\s*(?:%|°|percent|degrees?)\s*$/gi, "");
+
+    // 5. Clean up any trailing period
+    val = val.replace(/\.$/, "");
+
+    return val.trim();
+}
+
+/**
  * Canonicalize a raw answer string into a comparable form. Purely lexical; see
  * the module header. Idempotent for already-normalized input.
  */
@@ -100,27 +197,28 @@ export function normalizeAnswer(raw: string): string {
         s = s.replace(new RegExp(escapeRegExp(from) + "(?![a-zA-Z])", "g"), to);
     }
 
-    // 4. Expand single-token frac args: `\frac12` → `\frac{1}{2}`. Already-braced
-    //    args are skipped (a `{` is not a single-char token).
-    s = s.replace(
-        new RegExp("\\\\frac\\s*" + TOKEN + "\\s*" + TOKEN, "g"),
-        "\\frac{$1}{$2}",
-    );
+    // 4. Convert LaTeX fractions to slash-based division notation.
+    s = convertFracToSlash(s);
 
     // 5. Remove braces around a single token, to a fixed point: `{x}` → `x`.
-    //    (This also re-collapses the fracs from step 4, so `\frac12` and
-    //    `\frac{1}{2}` converge on the same canonical string.)
     let prev: string;
     do {
         prev = s;
         s = s.replace(new RegExp("\\{" + TOKEN + "\\}", "g"), "$1");
     } while (s !== prev);
 
-    // 6. Numeric canonicalization: thousands commas + leading decimals.
+    // 6. Remove parentheses around single numbers, words, or latex commands, to a fixed point.
+    //    e.g. (18) -> 18, (1.5) -> 1.5, (\pi) -> \pi, (x) -> x.
+    do {
+        prev = s;
+        s = s.replace(/\(([a-zA-Z]+|\d+(?:\.\d+)?|\\\\[a-zA-Z]+)\)/g, "$1");
+    } while (s !== prev);
+
+    // 7. Numeric canonicalization: thousands commas + leading decimals.
     s = stripThousandsCommas(s);
     s = padLeadingDecimals(s);
 
-    // 7. Drop all whitespace, then case-fold everything but command names.
+    // 8. Drop all whitespace, then case-fold everything but command names.
     s = s.replace(/\s+/g, "");
     s = lowercaseNonCommands(s);
 
@@ -142,15 +240,22 @@ function parsePlainNumber(s: string): number | null {
  *      (so `1.50` == `1.5`). No symbolic/CAS evaluation is performed.
  */
 export function answersMatch(a: string, b: string): boolean {
-    if (a.trim() === b.trim()) return true;
+    const cleanA = stripUnitsAndLabels(a);
+    const cleanB = stripUnitsAndLabels(b);
 
-    const na = normalizeAnswer(a);
-    const nb = normalizeAnswer(b);
+    if (cleanA.trim() === cleanB.trim()) return true;
+
+    const na = normalizeAnswer(cleanA);
+    const nb = normalizeAnswer(cleanB);
     if (na === nb) return true;
 
     const fa = parsePlainNumber(na);
     const fb = parsePlainNumber(nb);
     if (fa !== null && fb !== null) return fa === fb;
+
+    // Fallback to raw comparison (in case stripping stripped too much)
+    if (a.trim() === b.trim()) return true;
+    if (normalizeAnswer(a) === normalizeAnswer(b)) return true;
 
     return false;
 }
