@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import { TESTS_EMBED, type ProblemRow } from "$lib/library";
 import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
 
 type Supabase = SupabaseClient<Database>;
@@ -248,7 +248,7 @@ export async function fetchSessionHistory(
     const { data, error } = await supabase
         .from("submissions")
         .select(
-            "selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, tests(name, series_id, series(name)))",
+            `selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, ${TESTS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
@@ -285,7 +285,7 @@ export async function fetchOlderSubmission(
     let query = supabase
         .from("submissions")
         .select(
-            "id, selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, tests(name, series_id, series(name)))",
+            `id, selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, ${TESTS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .in("source", ["practice", "review"])

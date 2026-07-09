@@ -63,6 +63,7 @@
         verifiedOnly = $bindable(false),
         computational = $bindable<TriState>("neutral"),
         answerAvailability = $bindable<TriState>("off"),
+        solutionAvailability = $bindable<TriState>("neutral"),
         triesPerProblem = $bindable(2),
         seriesIds = $bindable<string[]>([]),
         seriesOptions = [],
@@ -86,6 +87,8 @@
         computational: TriState;
         /** off = With answer (default), neutral = Any, on = Without answer. */
         answerAvailability: TriState;
+        /** on = With solution, off = Without solution, neutral = Any (default). */
+        solutionAvailability: TriState;
         /** Attempts allowed per problem before it's finalized as incorrect. */
         triesPerProblem: number;
         seriesIds: string[];
@@ -119,6 +122,12 @@
         return "Any";
     }
 
+    function solutionAvailabilityLabel(value: TriState) {
+        if (value === "on") return "With solution";
+        if (value === "off") return "Without solution";
+        return "Any";
+    }
+
     function toggleFocusMode() {
         focusMode = !focusMode;
         onFocusModeChange?.(focusMode);
@@ -131,6 +140,7 @@
         verifiedOnly = false;
         computational = "neutral";
         answerAvailability = "off";
+        solutionAvailability = "neutral";
         triesPerProblem = 2;
         seriesIds = [];
         for (const { key } of COUNTERS) {
@@ -337,6 +347,18 @@
             </span>
         </div>
         <TriStateSwitch bind:value={answerAvailability} size="sm" />
+    </div>
+
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-0.5">
+            <span class="text-xs font-medium text-muted-foreground">
+                Solution availability
+            </span>
+            <span class="text-[10px] text-muted-foreground">
+                {solutionAvailabilityLabel(solutionAvailability)}
+            </span>
+        </div>
+        <TriStateSwitch bind:value={solutionAvailability} size="sm" />
     </div>
 
     <!-- Advanced filters (collapsible) -->

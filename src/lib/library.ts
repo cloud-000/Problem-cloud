@@ -21,12 +21,64 @@ export type ProblemRow = Tables<"problems"> & {
         name: string;
         series_id: number | null;
         series?: { name: string } | null;
+        /** AoPS community category id, for linking to the test's thread (`/c{id}`). */
+        aops_category_id: string | null;
     } | null;
     /** The current user's interaction state, normalized to a single row (or null). */
     progress?: ProblemProgress | null;
     /** The problem's overall skill rating, normalized from the embed (or null). */
     rating?: ProblemRating | null;
 };
+
+/**
+ * The minimal fields needed to review one answered problem (see the
+ * `ProblemReview` component). A structural subset of the trainer's history
+ * entry, so any "set of answered problems" — a finished test, a past session —
+ * can be rendered for review without dragging along the full attempt state.
+ */
+export type ProblemReviewEntry = {
+    problem: ProblemRow;
+    selectedChoice: number | null;
+    answer: string;
+    correct: boolean | null;
+    flagged: boolean;
+};
+
+/**
+ * The test embed carried on a drawn/reviewed problem row. `aops_category_id`
+ * rides down here so a problem's test can be linked to its AoPS thread without a
+ * second query. Kept as one token (plain + `!inner`) and reused across every
+ * select that embeds a test (trainer draws, review queue, session history) so
+ * the projection can't drift out of sync with the `ProblemRow.tests` type above.
+ */
+export const TESTS_EMBED =
+    "tests(name, series_id, series(name), aops_category_id)";
+export const TESTS_EMBED_INNER =
+    "tests!inner(name, series_id, series(name), aops_category_id)";
+
+const AOPS_COMMUNITY = "https://artofproblemsolving.com/community";
+
+/**
+ * Link to a problem's AoPS discussion thread (`/h{aops_id}`), or `null` when the
+ * problem has no mapped AoPS id.
+ */
+export function aopsProblemUrl(
+    aopsId: number | null | undefined,
+): string | null {
+    return aopsId != null ? `${AOPS_COMMUNITY}/h${aopsId}` : null;
+}
+
+/**
+ * Link to an AoPS community category page (`/c{id}`) — used for both tests
+ * (`aops_category_id`) and series (`aops_id`). `null` when the id is missing.
+ */
+export function aopsCommunityUrl(
+    categoryId: string | number | null | undefined,
+): string | null {
+    return categoryId != null && categoryId !== ""
+        ? `${AOPS_COMMUNITY}/c${categoryId}`
+        : null;
+}
 
 // The current user's progress fields, embedded via the problem_progress FK. RLS
 // scopes the embed to the signed-in user, so it returns a 0/1-element array per

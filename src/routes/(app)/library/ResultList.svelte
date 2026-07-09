@@ -3,6 +3,7 @@
     import { LinkMenu } from "$lib/components/link-menu";
     import { Problem } from "$lib/components/problem";
     import {
+        aopsCommunityUrl,
         type ProblemRow,
         type SeriesRow,
         type TestRow,
@@ -44,14 +45,10 @@
     {#if level === "series"}
         {#each results as row (row.id)}
             {@const s = row as SeriesRow}
+            {@const seriesHref = aopsCommunityUrl(s.aops_id)}
             {@const aopsLinks =
-                s.aops_id != null
-                    ? [
-                          {
-                              label: "Art of Problem Solving",
-                              href: `https://artofproblemsolving.com/community/c${s.aops_id}`,
-                          },
-                      ]
+                seriesHref != null
+                    ? [{ label: "Art of Problem Solving", href: seriesHref }]
                     : []}
             <div
                 class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
@@ -74,14 +71,11 @@
     {:else if level === "tests"}
         {#each results as row (row.id)}
             {@const t = row as TestRow}
-            {@const aopsLinks = t.aops_category_id
-                ? [
-                      {
-                          label: "Art of Problem Solving",
-                          href: `https://artofproblemsolving.com/community/c${t.aops_category_id}`,
-                      },
-                  ]
-                : []}
+            {@const testHref = aopsCommunityUrl(t.aops_category_id)}
+            {@const aopsLinks =
+                testHref != null
+                    ? [{ label: "Art of Problem Solving", href: testHref }]
+                    : []}
             <div
                 class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
             >

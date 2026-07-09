@@ -8,6 +8,7 @@
     import {
         topicLabel,
         ratingIsProvisional,
+        aopsProblemUrl,
         type ProblemRow,
         type ProblemRating,
     } from "$lib/library";
@@ -53,14 +54,10 @@
     );
     let problemAnswer = $state<ProblemAnswer | null>(null);
 
+    let aopsProblemHref = $derived(aopsProblemUrl(problem.aops_id));
     let aopsLinks = $derived(
-        problem.aops_id != null
-            ? [
-                  {
-                      label: "Art of Problem Solving",
-                      href: `https://artofproblemsolving.com/community/h${problem.aops_id}`,
-                  },
-              ]
+        aopsProblemHref != null
+            ? [{ label: "Art of Problem Solving", href: aopsProblemHref }]
             : [],
     );
 

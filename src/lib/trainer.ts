@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
-import { DIFFICULTY_RANGE, type ProblemRow } from "$lib/library";
+import {
+    DIFFICULTY_RANGE,
+    TESTS_EMBED,
+    TESTS_EMBED_INNER,
+    type ProblemRow,
+} from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -43,6 +48,10 @@ export type PracticeSettings = {
     // or null) for users helping fill in answers; "any" = both. Optional so older
     // session snapshots without it are tolerated (treated as "with").
     answerAvailability?: "with" | "without" | "any";
+    // Solution availability. "with" = only problems with at least one official
+    // solution; "without" = only those with none; "any" = both. Optional so older
+    // session snapshots without it are tolerated (treated as "any").
+    solutionAvailability?: "with" | "without" | "any";
     // Advanced progress filters — apply to the review queue only. `null` = "Any".
     timesSeen: Range | null;
     timesReviewed: Range | null;
@@ -127,9 +136,8 @@ export type PracticeResult = {
     progress: ProblemProgress | null;
 };
 
-const PROBLEM_SELECT = "*, tests(name, series_id, series(name))";
-const REVIEW_SELECT =
-    "problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, tests(name, series_id, series(name)))";
+const PROBLEM_SELECT = `*, ${TESTS_EMBED}`;
+const REVIEW_SELECT = `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${TESTS_EMBED})`;
 const MAX_RANDOM_ATTEMPTS = 6;
 const FALLBACK_PAGE_SIZE = 25;
 
@@ -159,6 +167,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         verifiedOnly: false,
         computational: null,
         answerAvailability: "with",
+        solutionAvailability: "any",
         timesSeen: null,
         timesReviewed: null,
         timesCorrect: null,
@@ -221,6 +230,25 @@ function applyAttributeFilters(
                 : next.or("answer_index.is.null,answer_index.lt.0");
     }
 
+    // Solution availability. Solutions live in `official_solutions` (text[]):
+    // "with" needs a non-empty array, "without" wants null/empty, "any" drops it.
+    const solutionAvailability = settings.solutionAvailability ?? "any";
+    if (solutionAvailability === "with") {
+        next = next
+            .not(`${prefix}official_solutions`, "is", null)
+            .neq(`${prefix}official_solutions`, "{}");
+    } else if (solutionAvailability === "without") {
+        next =
+            prefix === "problems."
+                ? next.or(
+                      "official_solutions.is.null,official_solutions.eq.{}",
+                      { referencedTable: "problems" },
+                  )
+                : next.or(
+                      "official_solutions.is.null,official_solutions.eq.{}",
+                  );
+    }
+
     if (settings.topic.length > 0) {
         next = next.in(`${prefix}topic`, settings.topic);
     }
@@ -271,7 +299,7 @@ async function fetchRandomCandidate(
     const offset = Math.floor(Math.random() * count);
     let selectStr = PROBLEM_SELECT;
     if (settings.seriesIds && settings.seriesIds.length > 0) {
-        selectStr = `*, tests!inner(name, series_id, series(name))`;
+        selectStr = `*, ${TESTS_EMBED_INNER}`;
     }
     let query = applyAttributeFilters(
         supabase.from("problems").select(selectStr),
@@ -327,7 +355,7 @@ async function fetchNewProblem(
 
     let fallbackSelect = PROBLEM_SELECT;
     if (settings.seriesIds && settings.seriesIds.length > 0) {
-        fallbackSelect = `*, tests!inner(name, series_id, series(name))`;
+        fallbackSelect = `*, ${TESTS_EMBED_INNER}`;
     }
     let fallback = applyAttributeFilters(
         supabase.from("problems").select(fallbackSelect),
@@ -393,7 +421,7 @@ function buildReviewBaseQuery(
 ) {
     let selectStr = REVIEW_SELECT;
     if (settings.seriesIds && settings.seriesIds.length > 0) {
-        selectStr = "problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, tests!inner(name, series_id, series(name)))";
+        selectStr = `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${TESTS_EMBED_INNER})`;
     }
     let query = applyAttributeFilters(
         supabase.from("problem_progress").select(selectStr, options),

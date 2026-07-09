@@ -4,6 +4,8 @@
     import {
         topicLabel,
         ratingIsProvisional,
+        aopsProblemUrl,
+        aopsCommunityUrl,
         type ProblemRow,
         type ProblemRating,
     } from "$lib/library";
@@ -20,6 +22,12 @@
         isTest: boolean;
         historyIndex: number;
         historyLength: number;
+        /**
+         * Reveal the AoPS thread links on the test name / problem number. Fed the
+         * finalized flag so links only appear once submitting can't leak the
+         * answer; each link is still omitted when its AoPS id is missing.
+         */
+        revealLinks?: boolean;
         onOpenAnswerSubmission: () => void;
     }
 
@@ -34,12 +42,24 @@
         isTest,
         historyIndex,
         historyLength,
+        revealLinks = false,
         onOpenAnswerSubmission,
     }: Props = $props();
 
     const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
+    // Linked segments read as clickable in the otherwise-muted bar via a hover
+    // underline plus a trailing new-tab glyph.
+    const linkCls =
+        "inline-flex items-center gap-0.5 hover:underline underline-offset-2 min-w-0";
 
     let topicName = $derived(problem ? topicLabel(problem.topic) : null);
+
+    let testHref = $derived(
+        revealLinks ? aopsCommunityUrl(problem.tests?.aops_category_id) : null,
+    );
+    let problemHref = $derived(
+        revealLinks ? aopsProblemUrl(problem.aops_id) : null,
+    );
 
     let lastReviewedLabel = $derived(
         currentProgress
@@ -69,10 +89,36 @@
         class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
     >
         {#if problem.tests?.name}
-            <span class="truncate">{problem.tests.name}</span>
+            {#if testHref}
+                <a
+                    href={testHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class={`truncate ${linkCls}`}
+                    title={`Open ${problem.tests.name} on Art of Problem Solving`}
+                >
+                    <span class="truncate">{problem.tests.name}</span>
+                    <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+                </a>
+            {:else}
+                <span class="truncate">{problem.tests.name}</span>
+            {/if}
             <span class="text-border shrink-0">•</span>
         {/if}
-        <span class="shrink-0">#{problem.n + 1}</span>
+        {#if problemHref}
+            <a
+                href={problemHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={`shrink-0 ${linkCls}`}
+                title="Open this problem on Art of Problem Solving"
+            >
+                #{problem.n + 1}
+                <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+            </a>
+        {:else}
+            <span class="shrink-0">#{problem.n + 1}</span>
+        {/if}
         {#if topicName}
             <span class="text-border shrink-0">•</span>
             <span class="truncate" title={topicName}>{topicName}</span>
