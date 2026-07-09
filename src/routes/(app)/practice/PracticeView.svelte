@@ -8,7 +8,7 @@
         type DropdownOption,
     } from "$lib/components/dropdown-menu";
     import { MathStatement } from "$lib/components/math-statement";
-    import { Problem, ProblemAnswer } from "$lib/components/problem";
+    import { Problem, ProblemAnswer, ProblemSolution } from "$lib/components/problem";
     import DebugInfo from "./DebugInfo.svelte";
     import { RatingCounter } from "$lib/components/rating-counter";
     import { RatingLifeBar } from "$lib/components/rating-life-bar";
@@ -571,6 +571,11 @@
     let submitted = $state(false);
     let correct = $state<boolean | null>(null);
     let flagged = $state(false);
+    // Once a finalized problem has solutions to show, the statement/answer collapse
+    // to their natural height (no vertical fill) so the solution panel gets the rest.
+    let solutionShown = $derived(
+        submitted && (problem?.official_solutions?.length ?? 0) > 0,
+    );
     let startedAt = $state(Date.now());
     let timerNow = $state(Date.now());
     let frozenElapsedMs = $state(0);
@@ -1515,6 +1520,13 @@
                             disabled={true}
                             mode="preview"
                         />
+                        {#if entry.problem.official_solutions?.length}
+                            <ProblemSolution
+                                class="mt-3"
+                                solutions={entry.problem.official_solutions}
+                                defaultOpen={entry.correct === false}
+                            />
+                        {/if}
                     </div>
                 {/each}
             </div>
@@ -1875,7 +1887,12 @@
                             {/if}
 
                             <div
-                                class="flex flex-1 min-h-fit w-full items-center justify-center"
+                                class={cn(
+                                    "flex min-h-fit w-full",
+                                    solutionShown
+                                        ? "flex-none items-start justify-start"
+                                        : "flex-1 items-center justify-center",
+                                )}
                             >
                                 {#if debugMode && showRawLatex && !focusModeActive}
                                     <pre
@@ -1911,6 +1928,19 @@
                                         : undefined}
                                 />
                             </div>
+
+                            <!-- Official worked solutions, revealed once the problem
+                                 is finalized. Auto-opens on a wrong answer; keyed per
+                                 problem so its open/selection state re-seeds. -->
+                            {#if solutionShown}
+                                {#key problem.id}
+                                    <ProblemSolution
+                                        class="w-full"
+                                        solutions={problem.official_solutions}
+                                        defaultOpen={correct === false}
+                                    />
+                                {/key}
+                            {/if}
                         </div>
 
                         {#if paused}
