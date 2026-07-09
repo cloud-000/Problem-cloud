@@ -37,6 +37,13 @@ export type PracticeSettings = {
     // is finalized as incorrect. Re-submitting an already-tried answer doesn't
     // consume a try. Optional so older snapshots are tolerated (treated as 2).
     triesPerProblem?: number;
+    // Adaptive difficulty. When on, every draw is constrained to problems whose
+    // overall Glicko rating sits within `adaptiveRange` points of the player's
+    // live rating, falling back to the nearest-rated problem (new draws) or the
+    // unconstrained queue (review/skipped) when the band is empty. Optional so
+    // older session snapshots are tolerated (adaptive treated as on by default).
+    adaptive?: boolean;
+    adaptiveRange?: number;
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
     // Problem-attribute filters — apply to every mode.
     topic: string[];
@@ -137,9 +144,27 @@ export type PracticeResult = {
 };
 
 const PROBLEM_SELECT = `*, ${TESTS_EMBED}`;
-const REVIEW_SELECT = `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${TESTS_EMBED})`;
 const MAX_RANDOM_ATTEMPTS = 6;
 const FALLBACK_PAGE_SIZE = 25;
+
+/** Adaptive difficulty: default half-width of the rating band (points ±). */
+export const ADAPTIVE_RANGE_DEFAULT = 200;
+/** Slider bounds for the adaptive rating-band half-width. */
+export const ADAPTIVE_RANGE_BOUNDS: Range = [50, 600];
+
+/** Inner rating embed, so a draw can be band-filtered by overall Glicko rating. */
+const RATING_INNER = "problem_ratings!inner(scope, rating, rd, attempts)";
+
+/**
+ * Settings augmented with a resolved rating band for adaptive draws. The band is
+ * `[center - range, center + range]` around the player's live rating, computed
+ * once per draw in {@link nextPracticeProblem}; `null` disables adaptive filtering
+ * for this draw (adaptive off, or no player rating yet). Never persisted — it is
+ * derived at draw time and layered over the stored {@link PracticeSettings}.
+ */
+type ResolvedSettings = PracticeSettings & {
+    ratingBand?: [number, number] | null;
+};
 
 // Mixed-mode interleave: 1 review : 2 new (lead with review so it never starves).
 const MIXED_PATTERN: PracticeSource[] = ["review", "practice", "practice"];
@@ -168,6 +193,8 @@ export function defaultPracticeSettings(): PracticeSettings {
         computational: null,
         answerAvailability: "with",
         solutionAvailability: "any",
+        adaptive: true,
+        adaptiveRange: ADAPTIVE_RANGE_DEFAULT,
         timesSeen: null,
         timesReviewed: null,
         timesCorrect: null,
@@ -208,7 +235,7 @@ function exclusionList(ids: Iterable<number>): string | null {
  */
 function applyAttributeFilters(
     query: any,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     prefix: "" | "problems." = "",
 ) {
     let next = query
@@ -269,7 +296,49 @@ function applyAttributeFilters(
         }
     }
 
+    // Adaptive difficulty: keep only problems whose overall-scope rating sits in
+    // the band. Filtered through the inner `problem_ratings` embed (nested under
+    // `problems` when drawing via progress), so the select strings must carry
+    // `RATING_INNER` whenever a band is present — see the `*Select` helpers.
+    if (settings.ratingBand) {
+        const rp = `${prefix}problem_ratings.`;
+        next = next
+            .eq(`${rp}scope`, "overall")
+            .gte(`${rp}rating`, settings.ratingBand[0])
+            .lte(`${rp}rating`, settings.ratingBand[1]);
+    }
+
     return next;
+}
+
+/** Select for a direct `problems` draw, widened for series scope / adaptive band. */
+function problemsDirectSelect(settings: ResolvedSettings): string {
+    const tests =
+        settings.seriesIds && settings.seriesIds.length > 0
+            ? TESTS_EMBED_INNER
+            : TESTS_EMBED;
+    const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
+    return `*, ${tests}${rating}`;
+}
+
+/** Minimal head-count select for a direct `problems` draw (ids + join anchors). */
+function problemsCountSelect(settings: ResolvedSettings): string {
+    let sel = "id";
+    if (settings.seriesIds && settings.seriesIds.length > 0) {
+        sel += ", tests!inner(series_id)";
+    }
+    if (settings.ratingBand) sel += ", problem_ratings!inner(rating)";
+    return sel;
+}
+
+/** Select for a `problem_progress` review draw, with the embedded problem widened. */
+function reviewSelect(settings: ResolvedSettings): string {
+    const tests =
+        settings.seriesIds && settings.seriesIds.length > 0
+            ? TESTS_EMBED_INNER
+            : TESTS_EMBED;
+    const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
+    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${tests}${rating})`;
 }
 
 /** Whether the settings permit answerless problems (any availability but "with"). */
@@ -292,17 +361,13 @@ function isEligibleProblem(
 
 async function fetchRandomCandidate(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     exclude: string | null,
     count: number,
 ): Promise<ProblemRow | null> {
     const offset = Math.floor(Math.random() * count);
-    let selectStr = PROBLEM_SELECT;
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        selectStr = `*, ${TESTS_EMBED_INNER}`;
-    }
     let query = applyAttributeFilters(
-        supabase.from("problems").select(selectStr),
+        supabase.from("problems").select(problemsDirectSelect(settings)),
         settings,
     );
     if (exclude) query = query.not("id", "in", exclude);
@@ -314,31 +379,38 @@ async function fetchRandomCandidate(
 }
 
 /**
+ * Problem ids to exclude from a "new" draw: everything already interacted with
+ * (`problem_progress`; RLS scopes to the current user, anon → none) plus anything
+ * already shown this session. Shared by the random and adaptive-nearest draws.
+ */
+async function seenProblemIds(
+    supabase: Supabase,
+    session: PracticeSession,
+): Promise<Set<number>> {
+    const excludeIds = new Set(session.shownIds);
+    const { data: seen, error } = await supabase
+        .from("problem_progress")
+        .select("problem_id");
+    if (error) throw error;
+    for (const row of seen ?? []) excludeIds.add(row.problem_id);
+    return excludeIds;
+}
+
+/**
  * A problem the user has not seen yet: no `problem_progress` row, and not already
  * shown this session. Reuses the random-offset selection so picks stay varied.
  */
 async function fetchNewProblem(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<ProblemRow | null> {
-    const excludeIds = new Set(session.shownIds);
+    const exclude = exclusionList(await seenProblemIds(supabase, session));
 
-    // Problems already interacted with (RLS scopes to the current user; anon → none).
-    const { data: seen, error: seenError } = await supabase
-        .from("problem_progress")
-        .select("problem_id");
-    if (seenError) throw seenError;
-    for (const row of seen ?? []) excludeIds.add(row.problem_id);
-
-    const exclude = exclusionList(excludeIds);
-
-    let countQuerySelect = "id";
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        countQuerySelect = "id, tests!inner(series_id)";
-    }
     let countQuery = applyAttributeFilters(
-        supabase.from("problems").select(countQuerySelect, { count: "exact", head: true }),
+        supabase
+            .from("problems")
+            .select(problemsCountSelect(settings), { count: "exact", head: true }),
         settings,
     );
     if (exclude) countQuery = countQuery.not("id", "in", exclude);
@@ -353,12 +425,8 @@ async function fetchNewProblem(
         if (isEligibleProblem(candidate, allowAnswerless)) return candidate;
     }
 
-    let fallbackSelect = PROBLEM_SELECT;
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        fallbackSelect = `*, ${TESTS_EMBED_INNER}`;
-    }
     let fallback = applyAttributeFilters(
-        supabase.from("problems").select(fallbackSelect),
+        supabase.from("problems").select(problemsDirectSelect(settings)),
         settings,
     );
     if (exclude) fallback = fallback.not("id", "in", exclude);
@@ -374,6 +442,87 @@ async function fetchNewProblem(
     if (eligible.length === 0) return null;
 
     return eligible[Math.floor(Math.random() * eligible.length)];
+}
+
+/**
+ * The unseen problem whose overall rating is closest to `center` — the "next
+ * closest" fallback when the adaptive band itself is empty. Queried through the
+ * `problem_ratings` table (a to-one embed to `problems`) so it can be ordered by
+ * the rating column directly, which a to-many embed on `problems` can't. Grabs a
+ * page just above and just below `center`, then picks the nearest eligible one.
+ */
+async function fetchNearestNewProblem(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+    center: number,
+): Promise<ProblemRow | null> {
+    const exclude = exclusionList(await seenProblemIds(supabase, session));
+    const allowAnswerless = allowsAnswerless(settings);
+    const tests =
+        settings.seriesIds && settings.seriesIds.length > 0
+            ? TESTS_EMBED_INNER
+            : TESTS_EMBED;
+    const select = `problem_id, rating, problems!inner(*, ${tests})`;
+
+    // The band is intentionally dropped here (nearest lives *outside* it); every
+    // other attribute filter still applies, under the `problems.` embed prefix.
+    const base = () => {
+        let q = applyAttributeFilters(
+            supabase.from("problem_ratings").select(select),
+            { ...settings, ratingBand: null },
+            "problems.",
+        ).eq("scope", "overall");
+        if (exclude) q = q.not("problem_id", "in", exclude);
+        return q;
+    };
+
+    type NearestRow = { rating: number; problems: ProblemRow | null };
+    const [above, below] = await Promise.all([
+        base().gte("rating", center).order("rating", { ascending: true }).limit(FALLBACK_PAGE_SIZE),
+        base().lt("rating", center).order("rating", { ascending: false }).limit(FALLBACK_PAGE_SIZE),
+    ]);
+    if (above.error) throw above.error;
+    if (below.error) throw below.error;
+
+    const rows = [
+        ...((above.data ?? []) as unknown as NearestRow[]),
+        ...((below.data ?? []) as unknown as NearestRow[]),
+    ].filter((r) => isEligibleProblem(r.problems, allowAnswerless));
+    if (rows.length === 0) return null;
+
+    let best = rows[0];
+    let bestDist = Math.abs(best.rating - center);
+    for (const r of rows.slice(1)) {
+        const dist = Math.abs(r.rating - center);
+        if (dist < bestDist) {
+            best = r;
+            bestDist = dist;
+        }
+    }
+    return best.problems;
+}
+
+/**
+ * A "new" draw honoring the adaptive band: an in-band problem first, then the
+ * nearest-rated one when the band is empty, and finally an unconstrained draw
+ * when nothing rated matches at all (so a fresh/unrated corpus never dead-ends).
+ * With no band this is just {@link fetchNewProblem}.
+ */
+async function fetchNewProblemDraw(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+    center: number | null,
+): Promise<ProblemRow | null> {
+    if (!settings.ratingBand || center == null) {
+        return fetchNewProblem(supabase, settings, session);
+    }
+    const inBand = await fetchNewProblem(supabase, settings, session);
+    if (inBand) return inBand;
+    const nearest = await fetchNearestNewProblem(supabase, settings, session, center);
+    if (nearest) return nearest;
+    return fetchNewProblem(supabase, { ...settings, ratingBand: null }, session);
 }
 
 /**
@@ -415,16 +564,12 @@ function toProgress(row: ReviewRow): ProblemProgress {
  */
 function buildReviewBaseQuery(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
     options: { count?: "exact"; head?: boolean } = {},
 ) {
-    let selectStr = REVIEW_SELECT;
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        selectStr = `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${TESTS_EMBED_INNER})`;
-    }
     let query = applyAttributeFilters(
-        supabase.from("problem_progress").select(selectStr, options),
+        supabase.from("problem_progress").select(reviewSelect(settings), options),
         settings,
         "problems.",
     );
@@ -458,7 +603,7 @@ function buildReviewBaseQuery(
 
 function buildSkippedBaseQuery(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
     options: { count?: "exact"; head?: boolean } = {},
 ) {
@@ -493,7 +638,7 @@ async function runReviewDraw(
  */
 async function fetchDueReviewProblem(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<Draw> {
     const now = new Date().toISOString();
@@ -529,7 +674,7 @@ async function fetchDueReviewProblem(
 
 async function fetchSkippedProblem(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<Draw> {
     const allowAnswerless = allowsAnswerless(settings);
@@ -564,15 +709,45 @@ async function fetchSkippedProblem(
     return draw;
 }
 
+/**
+ * A due-review draw honoring the adaptive band, relaxing to the unconstrained
+ * review queue when the band leaves nothing due (the schedule, not the band,
+ * governs review — the band only reorders which due problem surfaces first).
+ */
+async function fetchDueReviewDraw(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const draw = await fetchDueReviewProblem(supabase, settings, session);
+    if (draw.problem || !settings.ratingBand) return draw;
+    return fetchDueReviewProblem(supabase, { ...settings, ratingBand: null }, session);
+}
+
+/** A skipped-queue draw honoring the adaptive band, relaxing it when empty. */
+async function fetchSkippedDraw(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const draw = await fetchSkippedProblem(supabase, settings, session);
+    if (draw.problem || !settings.ratingBand) return draw;
+    return fetchSkippedProblem(supabase, { ...settings, ratingBand: null }, session);
+}
+
 async function drawFromSource(
     supabase: Supabase,
-    settings: PracticeSettings,
+    settings: ResolvedSettings,
     session: PracticeSession,
     source: PracticeSource,
+    center: number | null,
 ): Promise<Draw> {
     return source === "review"
-        ? fetchDueReviewProblem(supabase, settings, session)
-        : { problem: await fetchNewProblem(supabase, settings, session), progress: null };
+        ? fetchDueReviewDraw(supabase, settings, session)
+        : {
+              problem: await fetchNewProblemDraw(supabase, settings, session, center),
+              progress: null,
+          };
 }
 
 /**
@@ -582,25 +757,40 @@ async function drawFromSource(
  *
  * The caller records the returned problem's id in `session.shownIds` and bumps
  * `session.drawIndex` after a successful draw.
+ *
+ * `playerRating` is the drawer's live overall rating; with adaptive on it centers
+ * the rating band, so every draw prefers problems near the player's level. It is
+ * `null` before the rating loads (or for unrated users), which leaves the draw
+ * unconstrained until a rating exists.
  */
 export async function nextPracticeProblem(
     supabase: Supabase,
     settings: PracticeSettings,
     session: PracticeSession,
+    playerRating: number | null = null,
 ): Promise<PracticeResult> {
+    // Resolve the adaptive band once and layer it over the stored settings, so
+    // every draw path below reads it off `resolved` rather than recomputing it.
+    const center = settings.adaptive && playerRating != null ? playerRating : null;
+    const range = settings.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT;
+    const resolved: ResolvedSettings = {
+        ...settings,
+        ratingBand: center != null ? [center - range, center + range] : null,
+    };
+
     if (settings.mode === "new") {
         return {
-            problem: await fetchNewProblem(supabase, settings, session),
+            problem: await fetchNewProblemDraw(supabase, resolved, session, center),
             source: "practice",
             progress: null,
         };
     }
     if (settings.mode === "review") {
-        const draw = await fetchDueReviewProblem(supabase, settings, session);
+        const draw = await fetchDueReviewDraw(supabase, resolved, session);
         return { problem: draw.problem, source: "review", progress: draw.progress };
     }
     if (settings.mode === "skipped") {
-        const draw = await fetchSkippedProblem(supabase, settings, session);
+        const draw = await fetchSkippedDraw(supabase, resolved, session);
         return { problem: draw.problem, source: "review", progress: draw.progress };
     }
 
@@ -608,12 +798,12 @@ export async function nextPracticeProblem(
     const preferred = MIXED_PATTERN[session.drawIndex % MIXED_PATTERN.length];
     const fallback: PracticeSource = preferred === "review" ? "practice" : "review";
 
-    let draw = await drawFromSource(supabase, settings, session, preferred);
+    let draw = await drawFromSource(supabase, resolved, session, preferred, center);
     if (draw.problem) {
         return { problem: draw.problem, source: preferred, progress: draw.progress };
     }
 
-    draw = await drawFromSource(supabase, settings, session, fallback);
+    draw = await drawFromSource(supabase, resolved, session, fallback, center);
     return { problem: draw.problem, source: fallback, progress: draw.progress };
 }
 

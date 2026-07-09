@@ -52,7 +52,11 @@
         type TriState,
     } from "$lib/components/toggle";
     import { DIFFICULTY_RANGE, TOPICS } from "$lib/library";
-    import type { PracticeMode } from "$lib/trainer";
+    import {
+        ADAPTIVE_RANGE_BOUNDS,
+        ADAPTIVE_RANGE_DEFAULT,
+        type PracticeMode,
+    } from "$lib/trainer";
     import { cn } from "$lib/utils";
     import { fly } from "svelte/transition";
 
@@ -72,6 +76,8 @@
         lastSubmissionDays = $bindable<number | null>(null),
         lastOutcome = $bindable<"any" | "correct" | "incorrect">("any"),
         includeUnscheduled = $bindable(false),
+        adaptive = $bindable(true),
+        adaptiveRange = $bindable(ADAPTIVE_RANGE_DEFAULT),
         focusMode = $bindable(false),
         canReview = true,
         isTest = false,
@@ -98,6 +104,10 @@
         lastSubmissionDays: number | null;
         lastOutcome: "any" | "correct" | "incorrect";
         includeUnscheduled: boolean;
+        /** Adaptive difficulty: draw problems rated near the player's rating. */
+        adaptive: boolean;
+        /** Half-width (± Glicko points) of the adaptive rating band. */
+        adaptiveRange: number;
         focusMode: boolean;
         canReview?: boolean;
         /** Test format: show a read-only summary instead of the editable filters. */
@@ -150,6 +160,8 @@
         lastSubmissionDays = null;
         lastOutcome = "any";
         includeUnscheduled = false;
+        adaptive = true;
+        adaptiveRange = ADAPTIVE_RANGE_DEFAULT;
         focusMode = false;
         onFocusModeChange?.(focusMode);
     }
@@ -234,7 +246,7 @@
             role="radiogroup"
             aria-label="Problem mode"
         >
-            {#each MODES as m}
+            {#each MODES as m (m.value)}
                 {@const disabled = m.needsAuth && !canReview}
                 <button
                     type="button"
@@ -290,6 +302,38 @@
             step={1}
             label="Difficulty"
         />
+    </div>
+
+    <!-- Adaptive difficulty: draw problems rated near the player's rating. -->
+    <div class="flex flex-col gap-3 border-b border-border/30 pb-4">
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-medium text-muted-foreground">
+                    Adaptive difficulty
+                </span>
+                <span class="text-[10px] text-muted-foreground">
+                    {adaptive
+                        ? `Near your rating (±${adaptiveRange})`
+                        : "Off — draw across all ratings"}
+                </span>
+            </div>
+            <Switch bind:checked={adaptive} size="sm" />
+        </div>
+        {#if adaptive}
+            <div class="flex flex-col gap-2" transition:fly={{ y: -6, duration: 150 }}>
+                <span class="text-[10px] text-muted-foreground">
+                    Rating range (±{adaptiveRange})
+                </span>
+                <RangeSlider
+                    single
+                    bind:singleValue={adaptiveRange}
+                    min={ADAPTIVE_RANGE_BOUNDS[0]}
+                    max={ADAPTIVE_RANGE_BOUNDS[1]}
+                    step={25}
+                    label="Adaptive rating range"
+                />
+            </div>
+        {/if}
     </div>
 
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
@@ -397,7 +441,7 @@
                     <Switch bind:checked={includeUnscheduled} size="sm" />
                 </div>
 
-                {#each COUNTERS as c}
+                {#each COUNTERS as c (c.key)}
                     <div class="flex flex-col gap-2">
                         <div class="flex items-center justify-between gap-3">
                             <span class="text-xs font-medium text-muted-foreground">

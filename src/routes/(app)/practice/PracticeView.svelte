@@ -34,6 +34,7 @@
       type ProblemRating,
    } from "$lib/library";
    import {
+      ADAPTIVE_RANGE_DEFAULT,
       createSession,
       defaultPracticeSettings,
       fetchTestProblems,
@@ -110,6 +111,11 @@
    let lastSubmissionDays = $state<number | null>(null);
    let lastOutcome = $state<"any" | "correct" | "incorrect">("any");
    let includeUnscheduled = $state(false);
+   // Adaptive difficulty: constrain draws to problems rated within ±range of the
+   // player's live rating. On by default; the band is centered on `playerRating`
+   // at draw time (inert until that rating loads / for unrated users).
+   let adaptive = $state(true);
+   let adaptiveRange = $state(ADAPTIVE_RANGE_DEFAULT);
    let showSettings = $state(false);
    let paused = $state(false);
    let focusMode = $state(false);
@@ -206,6 +212,8 @@
       lastSubmissionDays = s.lastSubmissionDays;
       lastOutcome = s.lastOutcome;
       includeUnscheduled = s.includeUnscheduled;
+      adaptive = s.adaptive ?? true;
+      adaptiveRange = s.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT;
    }
 
    async function finishSession() {
@@ -800,6 +808,8 @@
          lastSubmissionDays,
          lastOutcome,
          includeUnscheduled,
+         adaptive,
+         adaptiveRange,
       };
    }
 
@@ -919,7 +929,12 @@
       paused = false;
 
       try {
-         const result = await nextPracticeProblem(supabase, settings, session);
+         const result = await nextPracticeProblem(
+            supabase,
+            settings,
+            session,
+            playerRating?.rating ?? null,
+         );
          if (token !== loadToken) return;
 
          if (result.problem) {
@@ -2168,6 +2183,8 @@
             bind:lastSubmissionDays
             bind:lastOutcome
             bind:includeUnscheduled
+            bind:adaptive
+            bind:adaptiveRange
             bind:focusMode
             canReview={!!user}
             {isTest}
