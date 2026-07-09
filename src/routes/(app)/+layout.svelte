@@ -84,6 +84,12 @@
         },
         { href: "/roadmap", icon: "map", label: "Roadmap", important: false },
         {
+            href: "/leaderboard",
+            icon: "leaderboard",
+            label: "Leaderboard",
+            important: false,
+        },
+        {
             href: "/admin",
             icon: "admin_panel_settings",
             label: "Admin",
