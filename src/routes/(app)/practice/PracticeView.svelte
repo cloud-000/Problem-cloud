@@ -981,6 +981,11 @@
     // footer next to the fresh result.
     let playerRating = $state<PlayerRating | null>(null);
     let ratingDelta = $state<number | null>(null);
+    // Guards playerRating writes against out-of-order resolution: a graded
+    // wrong try followed quickly by a correct one fires two overlapping
+    // fetches, and the onMount baseline fetch can straggle behind both. Only
+    // the most recently-initiated fetch may win.
+    let playerRatingSeq = 0;
 
     // The current problem's Glicko rating, for the metadata-row elo and the debug
     // panel's match preview. Trainer draws don't embed ratings, so fetch by id
@@ -1016,10 +1021,11 @@
 
     function refreshPlayerRating(after: Promise<void>, userId: string) {
         const before = playerRating?.rating ?? null;
+        const seq = ++playerRatingSeq;
         after
             .then(() => fetchPlayerRating(supabase, userId))
             .then((r) => {
-                if (!r) return;
+                if (!r || seq !== playerRatingSeq) return;
                 ratingDelta = before != null ? r.rating - before : null;
                 playerRating = r;
             })
@@ -1274,8 +1280,11 @@
 
         // Baseline for the live rating-delta chip; no await — it renders
         // whenever it lands.
+        const seq = ++playerRatingSeq;
         fetchPlayerRating(supabase, user.id)
-            .then((r) => (playerRating = r))
+            .then((r) => {
+                if (seq === playerRatingSeq) playerRating = r;
+            })
             .catch((e) => console.error("Failed to fetch player rating:", e));
 
         try {
@@ -1632,7 +1641,7 @@
                         </span>
                     </div>
                 {/if}
-            {:else if problem}
+            {:else if problem || loading}
                 {@const isTotal = timerMode === "total"}
                 {@const displayMs = isTotal ? totalElapsedMs : elapsedMs}
                 <div class="flex items-center gap-1.5">
