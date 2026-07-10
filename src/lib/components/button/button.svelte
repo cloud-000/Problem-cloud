@@ -11,7 +11,7 @@
         variants: {
             variant: {
                 default:
-                    "bg-primary text-primary-foreground hover:bg-primary/80",
+                    "border-primary-foreground bg-primary-foreground text-secondary-foreground shadow-sm shadow-primary-foreground/20 hover:border-primary-foreground/90 hover:bg-primary-foreground/90 hover:shadow-md hover:shadow-primary-foreground/25 focus-visible:border-primary-foreground focus-visible:ring-primary-foreground/25 active:shadow-sm",
                 outline:
                     "border-border bg-background hover:bg-muted hover:text-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 aria-expanded:bg-muted aria-expanded:text-foreground shadow-xs",
                 secondary:
