@@ -1,15 +1,7 @@
 <script lang="ts" module>
-    import type { Range } from "$lib/trainer";
-
-    /** Slider bounds for the advanced progress-counter filters. */
-    export const COUNTER_RANGE: Range = [0, 25];
-
-    /** Slider bounds for the tries-per-problem control. */
-    export const TRIES_RANGE: Range = [1, 5];
-
-    export type CounterKey = "seen" | "reviewed" | "correct" | "skipped";
-    export type CounterRanges = Record<CounterKey, Range>;
-    export type CounterEnabled = Record<CounterKey, boolean>;
+    import type { SelectOption } from "$lib/components/select";
+    import type { PracticeMode } from "$lib/trainer";
+    import type { CounterKey } from "./practice-settings";
 
     const COUNTERS: { key: CounterKey; label: string }[] = [
         { key: "seen", label: "Times seen" },
@@ -45,40 +37,23 @@
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
     import { RangeSlider } from "$lib/components/range-slider";
-    import { Select, type SelectOption } from "$lib/components/select";
+    import { Select } from "$lib/components/select";
+    import { Switch, TriStateSwitch, type TriState } from "$lib/components/toggle";
+    import { TOPICS } from "$lib/library";
+    import { ADAPTIVE_RANGE_BOUNDS } from "$lib/trainer";
     import {
-        Switch,
-        TriStateSwitch,
-        type TriState,
-    } from "$lib/components/toggle";
-    import { DIFFICULTY_RANGE, TOPICS } from "$lib/library";
-    import {
-        ADAPTIVE_RANGE_BOUNDS,
-        ADAPTIVE_RANGE_DEFAULT,
-        type PracticeMode,
-    } from "$lib/trainer";
+        COUNTER_RANGE,
+        DIFFICULTY_RANGE,
+        TRIES_RANGE,
+        resetPracticeSettingsForm,
+        type PracticeSettingsForm,
+    } from "./practice-settings";
     import { cn } from "$lib/utils";
     import { fly } from "svelte/transition";
 
     let {
-        mode = $bindable<PracticeMode>("new"),
-        topic = $bindable<string[]>([]),
-        difficulty = $bindable<[number, number]>([...DIFFICULTY_RANGE]),
-        verifiedOnly = $bindable(false),
-        computational = $bindable<TriState>("neutral"),
-        answerAvailability = $bindable<TriState>("off"),
-        solutionAvailability = $bindable<TriState>("neutral"),
-        triesPerProblem = $bindable(2),
-        seriesIds = $bindable<string[]>([]),
+        form = $bindable<PracticeSettingsForm>(),
         seriesOptions = [],
-        counterRanges,
-        counterEnabled,
-        lastSubmissionDays = $bindable<number | null>(null),
-        lastOutcome = $bindable<"any" | "correct" | "incorrect">("any"),
-        includeUnscheduled = $bindable(false),
-        adaptive = $bindable(true),
-        adaptiveRange = $bindable(ADAPTIVE_RANGE_DEFAULT),
-        focusMode = $bindable(false),
         canReview = true,
         isTest = false,
         testName = null,
@@ -86,29 +61,8 @@
         onFocusModeChange,
         onClose,
     }: {
-        mode: PracticeMode;
-        topic: string[];
-        difficulty: [number, number];
-        verifiedOnly: boolean;
-        computational: TriState;
-        /** off = With answer (default), neutral = Any, on = Without answer. */
-        answerAvailability: TriState;
-        /** on = With solution, off = Without solution, neutral = Any (default). */
-        solutionAvailability: TriState;
-        /** Attempts allowed per problem before it's finalized as incorrect. */
-        triesPerProblem: number;
-        seriesIds: string[];
+        form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
-        counterRanges: CounterRanges;
-        counterEnabled: CounterEnabled;
-        lastSubmissionDays: number | null;
-        lastOutcome: "any" | "correct" | "incorrect";
-        includeUnscheduled: boolean;
-        /** Adaptive difficulty: draw problems rated near the player's rating. */
-        adaptive: boolean;
-        /** Half-width (± Glicko points) of the adaptive rating band. */
-        adaptiveRange: number;
-        focusMode: boolean;
         canReview?: boolean;
         /** Test format: show a read-only summary instead of the editable filters. */
         isTest?: boolean;
@@ -139,31 +93,13 @@
     }
 
     function toggleFocusMode() {
-        focusMode = !focusMode;
-        onFocusModeChange?.(focusMode);
+        form.focusMode = !form.focusMode;
+        onFocusModeChange?.(form.focusMode);
     }
 
     function resetSettings() {
-        mode = "new";
-        topic = [];
-        difficulty = [...DIFFICULTY_RANGE];
-        verifiedOnly = false;
-        computational = "neutral";
-        answerAvailability = "off";
-        solutionAvailability = "neutral";
-        triesPerProblem = 2;
-        seriesIds = [];
-        for (const { key } of COUNTERS) {
-            counterEnabled[key] = false;
-            counterRanges[key] = [...COUNTER_RANGE];
-        }
-        lastSubmissionDays = null;
-        lastOutcome = "any";
-        includeUnscheduled = false;
-        adaptive = true;
-        adaptiveRange = ADAPTIVE_RANGE_DEFAULT;
-        focusMode = false;
-        onFocusModeChange?.(focusMode);
+        resetPracticeSettingsForm(form);
+        onFocusModeChange?.(form.focusMode);
     }
 </script>
 
@@ -199,11 +135,11 @@
                 Focus mode
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {focusMode ? "Minimal trainer" : "Full trainer"}
+                {form.focusMode ? "Minimal trainer" : "Full trainer"}
             </span>
         </div>
         <Switch
-            checked={focusMode}
+            checked={form.focusMode}
             onclick={toggleFocusMode}
             size="sm"
             aria-label="Toggle focus mode"
@@ -251,13 +187,13 @@
                 <button
                     type="button"
                     role="radio"
-                    aria-checked={mode === m.value}
+                    aria-checked={form.mode === m.value}
                     {disabled}
                     title={disabled ? "Sign in to review problems" : undefined}
-                    onclick={() => (mode = m.value)}
+                    onclick={() => (form.mode = m.value)}
                     class={cn(
                         "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                        mode === m.value
+                        form.mode === m.value
                             ? "bg-surface-container-lowest text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
                         disabled && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
@@ -272,7 +208,7 @@
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">Topic</span>
         <Combobox
-            bind:value={topic}
+            bind:value={form.topic}
             options={TOPICS}
             strict
             placeholder="Any topic"
@@ -283,7 +219,7 @@
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">Series</span>
         <Combobox
-            bind:value={seriesIds}
+            bind:value={form.seriesIds}
             options={seriesOptions}
             strict
             placeholder="All series"
@@ -293,10 +229,10 @@
 
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">
-            Difficulty ({difficulty[0]}-{difficulty[1]})
+            Difficulty ({form.difficulty[0]}-{form.difficulty[1]})
         </span>
         <RangeSlider
-            bind:value={difficulty}
+            bind:value={form.difficulty}
             min={DIFFICULTY_RANGE[0]}
             max={DIFFICULTY_RANGE[1]}
             step={1}
@@ -312,21 +248,21 @@
                     Adaptive difficulty
                 </span>
                 <span class="text-[10px] text-muted-foreground">
-                    {adaptive
-                        ? `Near your rating (±${adaptiveRange})`
+                    {form.adaptive
+                        ? `Near your rating (±${form.adaptiveRange})`
                         : "Off — draw across all ratings"}
                 </span>
             </div>
-            <Switch bind:checked={adaptive} size="sm" />
+            <Switch bind:checked={form.adaptive} size="sm" />
         </div>
-        {#if adaptive}
+        {#if form.adaptive}
             <div class="flex flex-col gap-2" transition:fly={{ y: -6, duration: 150 }}>
                 <span class="text-[10px] text-muted-foreground">
-                    Rating range (±{adaptiveRange})
+                    Rating range (±{form.adaptiveRange})
                 </span>
                 <RangeSlider
                     single
-                    bind:singleValue={adaptiveRange}
+                    bind:singleValue={form.adaptiveRange}
                     min={ADAPTIVE_RANGE_BOUNDS[0]}
                     max={ADAPTIVE_RANGE_BOUNDS[1]}
                     step={25}
@@ -342,14 +278,14 @@
                 Tries per problem
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {triesPerProblem === 1
+                {form.triesPerProblem === 1
                     ? "1 try"
-                    : `${triesPerProblem} tries`}
+                    : `${form.triesPerProblem} tries`}
             </span>
         </div>
         <RangeSlider
             single
-            bind:singleValue={triesPerProblem}
+            bind:singleValue={form.triesPerProblem}
             min={TRIES_RANGE[0]}
             max={TRIES_RANGE[1]}
             step={1}
@@ -363,10 +299,10 @@
                 Verified only
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {verifiedOnly ? "Verified" : "Any"}
+                {form.verifiedOnly ? "Verified" : "Any"}
             </span>
         </div>
-        <Switch bind:checked={verifiedOnly} size="sm" />
+        <Switch bind:checked={form.verifiedOnly} size="sm" />
     </div>
 
     <div class="flex items-center justify-between gap-3">
@@ -375,10 +311,10 @@
                 Computational
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {computationalLabel(computational)}
+                {computationalLabel(form.computational)}
             </span>
         </div>
-        <TriStateSwitch bind:value={computational} size="sm" />
+        <TriStateSwitch bind:value={form.computational} size="sm" />
     </div>
 
     <div class="flex items-center justify-between gap-3">
@@ -387,10 +323,10 @@
                 Answer availability
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {answerAvailabilityLabel(answerAvailability)}
+                {answerAvailabilityLabel(form.answerAvailability)}
             </span>
         </div>
-        <TriStateSwitch bind:value={answerAvailability} size="sm" />
+        <TriStateSwitch bind:value={form.answerAvailability} size="sm" />
     </div>
 
     <div class="flex items-center justify-between gap-3">
@@ -399,10 +335,10 @@
                 Solution availability
             </span>
             <span class="text-[10px] text-muted-foreground">
-                {solutionAvailabilityLabel(solutionAvailability)}
+                {solutionAvailabilityLabel(form.solutionAvailability)}
             </span>
         </div>
-        <TriStateSwitch bind:value={solutionAvailability} size="sm" />
+        <TriStateSwitch bind:value={form.solutionAvailability} size="sm" />
     </div>
 
     <!-- Advanced filters (collapsible) -->
@@ -433,12 +369,12 @@
                             Include unscheduled
                         </span>
                         <span class="text-[10px] text-muted-foreground">
-                            {includeUnscheduled
+                            {form.includeUnscheduled
                                 ? "Seen, not yet scheduled"
                                 : "Scheduled only"}
                         </span>
                     </div>
-                    <Switch bind:checked={includeUnscheduled} size="sm" />
+                    <Switch bind:checked={form.includeUnscheduled} size="sm" />
                 </div>
 
                 {#each COUNTERS as c (c.key)}
@@ -449,22 +385,22 @@
                             </span>
                             <div class="flex items-center gap-2">
                                 <span class="text-[10px] text-muted-foreground">
-                                    {counterEnabled[c.key]
-                                        ? `${counterRanges[c.key][0]}–${counterRanges[c.key][1]}`
+                                    {form.counterEnabled[c.key]
+                                        ? `${form.counterRanges[c.key][0]}–${form.counterRanges[c.key][1]}`
                                         : "Any"}
                                 </span>
                                 <Switch
                                     size="sm"
-                                    checked={counterEnabled[c.key]}
+                                    checked={form.counterEnabled[c.key]}
                                     onclick={() =>
-                                        (counterEnabled[c.key] = !counterEnabled[c.key])}
+                                        (form.counterEnabled[c.key] = !form.counterEnabled[c.key])}
                                     aria-label={`Filter ${c.label}`}
                                 />
                             </div>
                         </div>
-                        {#if counterEnabled[c.key]}
+                        {#if form.counterEnabled[c.key]}
                             <RangeSlider
-                                bind:value={counterRanges[c.key]}
+                                bind:value={form.counterRanges[c.key]}
                                 min={COUNTER_RANGE[0]}
                                 max={COUNTER_RANGE[1]}
                                 step={1}
@@ -480,11 +416,11 @@
                     </span>
                     <Select
                         options={DAYS_OPTIONS}
-                        value={lastSubmissionDays == null
+                        value={form.lastSubmissionDays == null
                             ? "any"
-                            : String(lastSubmissionDays)}
+                            : String(form.lastSubmissionDays)}
                         onchange={(v) =>
-                            (lastSubmissionDays = v === "any" ? null : Number(v))}
+                            (form.lastSubmissionDays = v === "any" ? null : Number(v))}
                     />
                 </div>
 
@@ -494,9 +430,9 @@
                     </span>
                     <Select
                         options={OUTCOME_OPTIONS}
-                        value={lastOutcome}
+                        value={form.lastOutcome}
                         onchange={(v) =>
-                            (lastOutcome = v as "any" | "correct" | "incorrect")}
+                            (form.lastOutcome = v as "any" | "correct" | "incorrect")}
                     />
                 </div>
             </div>
