@@ -83,6 +83,76 @@ export async function fetchSeriesReview(
         .sort(compareReviewTests);
 }
 
+/** A `{ value, label }` choice for a division/format filter control. */
+export type DimensionOption = { value: string; label: string };
+
+/** The minimal test shape needed to derive division/format filter options. */
+export type SeriesDimensionRow = {
+    division: string | null;
+    division_order: number | null;
+    format: string | null;
+    format_order: number | null;
+};
+
+/**
+ * The distinct, order-sorted division (or format) values present across a
+ * series' tests, as filter options. Pass `empty` to append an explicit
+ * "unclassified" choice (e.g. `{ value: "__no_division__", label: "No division" }`)
+ * — only surfaced when unclassified tests sit alongside real values, since a
+ * wholly-unclassified dimension is not a useful filter. Omit `empty` (the
+ * trainer's case) to leave unclassified tests unselectable.
+ */
+export function dimensionOptions(
+    rows: SeriesDimensionRow[],
+    dimension: "division" | "format",
+    empty?: DimensionOption,
+): DimensionOption[] {
+    const orderField = `${dimension}_order` as
+        | "division_order"
+        | "format_order";
+    const values = new Map<string, { label: string; order: number }>();
+    let hasEmpty = false;
+    for (const row of rows) {
+        const value = row[dimension]?.trim();
+        if (!value) {
+            hasEmpty = true;
+            continue;
+        }
+        const order = row[orderField] ?? Number.MAX_SAFE_INTEGER;
+        const current = values.get(value);
+        if (!current || order < current.order) {
+            values.set(value, { label: value, order });
+        }
+    }
+
+    const options = [...values.entries()]
+        .sort(
+            ([, a], [, b]) => a.order - b.order || a.label.localeCompare(b.label),
+        )
+        .map(([value, option]) => ({ value, label: option.label }));
+    if (empty && hasEmpty && options.length > 0) {
+        options.push(empty);
+    }
+    return options;
+}
+
+/**
+ * The compact per-test division/format metadata for a series — just enough to
+ * populate the trainer's division/format filter options, without pulling every
+ * problem and its progress the way {@link fetchSeriesReview} does.
+ */
+export async function fetchSeriesDimensions(
+    supabase: Supabase,
+    seriesId: number,
+): Promise<SeriesDimensionRow[]> {
+    const { data, error } = await supabase
+        .from("tests")
+        .select("division, division_order, format, format_order")
+        .eq("series_id", seriesId);
+    if (error) throw error;
+    return (data ?? []) as unknown as SeriesDimensionRow[];
+}
+
 export function statusForReview(
     progress: SeriesReviewProgress | null,
 ): SeriesReviewStatus {

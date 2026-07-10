@@ -30,6 +30,8 @@ export type PracticeSettingsForm = {
     solutionAvailability: PracticeTriState;
     triesPerProblem: number;
     seriesIds: string[];
+    divisions: string[];
+    formats: string[];
     counterRanges: CounterRanges;
     counterEnabled: CounterEnabled;
     lastSubmissionDays: number | null;
@@ -85,6 +87,8 @@ export function createPracticeSettingsForm(
         solutionAvailability: solutionToTri(settings.solutionAvailability),
         triesPerProblem: settings.triesPerProblem ?? 2,
         seriesIds: [...(settings.seriesIds ?? [])],
+        divisions: [...(settings.divisions ?? [])],
+        formats: [...(settings.formats ?? [])],
         counterRanges,
         counterEnabled,
         lastSubmissionDays: settings.lastSubmissionDays,
@@ -113,6 +117,8 @@ export function practiceSettingsFromForm(
         focusMode: form.focusMode,
         triesPerProblem: form.triesPerProblem,
         seriesIds: [...form.seriesIds],
+        divisions: [...form.divisions],
+        formats: [...form.formats],
         topic: [...form.topic],
         difficulty: [form.difficulty[0], form.difficulty[1]],
         verifiedOnly: form.verifiedOnly,

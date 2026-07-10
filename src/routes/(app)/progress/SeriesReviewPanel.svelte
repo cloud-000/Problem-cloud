@@ -6,7 +6,11 @@
     import { Select } from "$lib/components/select";
     import { fetchAllSeries, fetchByIds, type ProblemRow } from "$lib/library";
     import { fetchProgressBreakdown } from "$lib/progress-analytics";
-    import { fetchSeriesReview, type SeriesReviewTest } from "$lib/series-review";
+    import {
+        dimensionOptions,
+        fetchSeriesReview,
+        type SeriesReviewTest,
+    } from "$lib/series-review";
     import { modal } from "$lib/state/modal.svelte";
     import type { Database } from "$lib/types/database.types";
     import SeriesProblemModal from "./SeriesProblemModal.svelte";
@@ -28,61 +32,17 @@
     const NO_DIVISION = "__no_division__";
     const NO_FORMAT = "__no_format__";
 
-    type FilterOption = { value: string; label: string };
-
-    function dimensionOptions(
-        rows: SeriesReviewTest[],
-        dimension: "division" | "format",
-        orderField: "division_order" | "format_order",
-        emptyValue: string,
-        emptyLabel: string,
-    ): FilterOption[] {
-        const values = new Map<string, { label: string; order: number }>();
-        let hasEmpty = false;
-        for (const test of rows) {
-            const value = test[dimension]?.trim();
-            if (!value) {
-                hasEmpty = true;
-                continue;
-            }
-            const order = test[orderField] ?? Number.MAX_SAFE_INTEGER;
-            const current = values.get(value);
-            if (!current || order < current.order) {
-                values.set(value, { label: value, order });
-            }
-        }
-
-        const options = [...values.entries()]
-            .sort(
-                ([, a], [, b]) =>
-                    a.order - b.order || a.label.localeCompare(b.label),
-            )
-            .map(([value, option]) => ({ value, label: option.label }));
-        // A wholly unclassified dimension is not useful as a filter. Surface the
-        // explicit "No …" choice only when it sits alongside real values.
-        if (hasEmpty && options.length > 0) {
-            options.push({ value: emptyValue, label: emptyLabel });
-        }
-        return options;
-    }
-
     let divisionOptions = $derived(
-        dimensionOptions(
-            tests,
-            "division",
-            "division_order",
-            NO_DIVISION,
-            "No division",
-        ),
+        dimensionOptions(tests, "division", {
+            value: NO_DIVISION,
+            label: "No division",
+        }),
     );
     let formatOptions = $derived(
-        dimensionOptions(
-            tests,
-            "format",
-            "format_order",
-            NO_FORMAT,
-            "No format",
-        ),
+        dimensionOptions(tests, "format", {
+            value: NO_FORMAT,
+            label: "No format",
+        }),
     );
     let filteredTests = $derived(
         tests.filter((test) => {

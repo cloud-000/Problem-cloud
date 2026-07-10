@@ -31,6 +31,11 @@
       type PracticeSource,
       type ProblemProgress,
    } from "$lib/trainer";
+   import {
+      dimensionOptions,
+      fetchSeriesDimensions,
+      type DimensionOption,
+   } from "$lib/series-review";
    import { recordSubmission } from "$lib/progress";
    import {
       endSession,
@@ -93,6 +98,10 @@
       createPracticeSettingsForm(),
    );
    let seriesOptions = $state<{ value: string; label: string }[]>([]);
+   // Division/format options for the single selected series (empty otherwise, or
+   // when that series is unclassified). Populated by the effect below.
+   let divisionOptions = $state<DimensionOption[]>([]);
+   let formatOptions = $state<DimensionOption[]>([]);
    let showSettings = $state(false);
    let paused = $state(false);
 
@@ -111,6 +120,48 @@
    // Progress-backed modes need per-user progress. Without a session, pin to New.
    $effect(() => {
       if (!user && settingsForm.mode !== "new") settingsForm.mode = "new";
+   });
+
+   // Division/format scope is gated on a *single* selected series (each series
+   // has its own vocabulary). Null when 0 or 2+ series are selected.
+   let singleSeriesId = $derived(
+      settingsForm.seriesIds.length === 1
+         ? Number(settingsForm.seriesIds[0])
+         : null,
+   );
+
+   // Load the selected series' division/format options, and clear any stale
+   // division/format tags whenever the series scope changes — but not on the
+   // initial run, so a persisted session's tags survive mount.
+   let dimensionToken = 0;
+   let prevSingleSeriesId: number | null | undefined = undefined;
+   $effect(() => {
+      const id = singleSeriesId;
+      if (prevSingleSeriesId !== undefined && prevSingleSeriesId !== id) {
+         settingsForm.divisions = [];
+         settingsForm.formats = [];
+      }
+      prevSingleSeriesId = id;
+
+      if (id == null || !Number.isFinite(id)) {
+         divisionOptions = [];
+         formatOptions = [];
+         return;
+      }
+
+      const token = ++dimensionToken;
+      fetchSeriesDimensions(supabase, id)
+         .then((rows) => {
+            if (token !== dimensionToken) return;
+            divisionOptions = dimensionOptions(rows, "division");
+            formatOptions = dimensionOptions(rows, "format");
+         })
+         .catch((e) => {
+            if (token !== dimensionToken) return;
+            console.error("Failed to fetch series dimensions:", e);
+            divisionOptions = [];
+            formatOptions = [];
+         });
    });
 
    // Cross-load draw state for interleaving and forward progress.
@@ -1443,6 +1494,8 @@
          <SettingsPanel
             bind:form={settingsForm}
             {seriesOptions}
+            {divisionOptions}
+            {formatOptions}
             canReview={!!user}
             {isTest}
             {testName}

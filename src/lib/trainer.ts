@@ -45,6 +45,13 @@ export type PracticeSettings = {
     adaptive?: boolean;
     adaptiveRange?: number;
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
+    // Test-level draw scope, narrowing within a single selected series (each
+    // series has its own division/format vocabulary). Matched with `.in()`
+    // against `tests.division` / `tests.format`. Optional so older snapshots are
+    // tolerated (treated as no constraint). NOTE: `formats` (paper type — Sprint /
+    // Target / Team) is distinct from `format` (SessionFormat) above; don't conflate.
+    divisions?: string[];
+    formats?: string[];
     // Problem-attribute filters — apply to every mode.
     topic: string[];
     difficulty: Range;
@@ -187,6 +194,8 @@ export function defaultPracticeSettings(): PracticeSettings {
         focusMode: false,
         triesPerProblem: 2,
         seriesIds: [],
+        divisions: [],
+        formats: [],
         topic: [],
         difficulty: [...DIFFICULTY_RANGE],
         verifiedOnly: false,
@@ -220,6 +229,19 @@ export function defaultTestSettings(
         testId,
         timeLimitSeconds,
     };
+}
+
+/**
+ * Whether the draw filters on any `tests`-level attribute (series, division, or
+ * format). When true, the `tests` embed must be inner-joined so those filters
+ * actually constrain the parent `problems`/`problem_progress` rows.
+ */
+function scopesTests(settings: PracticeSettings): boolean {
+    return (
+        (settings.seriesIds?.length ?? 0) > 0 ||
+        (settings.divisions?.length ?? 0) > 0 ||
+        (settings.formats?.length ?? 0) > 0
+    );
 }
 
 /** PostgREST `in` list literal, or null when there is nothing to exclude. */
@@ -295,6 +317,17 @@ function applyAttributeFilters(
             next = next.in("problems.tests.series_id", settings.seriesIds.map(Number));
         }
     }
+    // Test-level division/format scope (gated in the UI to a single series). Null
+    // divisions/formats are simply excluded by `.in()`; there is no "unclassified"
+    // sentinel yet.
+    if (settings.divisions && settings.divisions.length > 0) {
+        const col = prefix === "" ? "tests.division" : "problems.tests.division";
+        next = next.in(col, settings.divisions);
+    }
+    if (settings.formats && settings.formats.length > 0) {
+        const col = prefix === "" ? "tests.format" : "problems.tests.format";
+        next = next.in(col, settings.formats);
+    }
 
     // Adaptive difficulty: keep only problems whose overall-scope rating sits in
     // the band. Filtered through the inner `problem_ratings` embed (nested under
@@ -313,10 +346,7 @@ function applyAttributeFilters(
 
 /** Select for a direct `problems` draw, widened for series scope / adaptive band. */
 function problemsDirectSelect(settings: ResolvedSettings): string {
-    const tests =
-        settings.seriesIds && settings.seriesIds.length > 0
-            ? TESTS_EMBED_INNER
-            : TESTS_EMBED;
+    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
     return `*, ${tests}${rating}`;
 }
@@ -324,8 +354,8 @@ function problemsDirectSelect(settings: ResolvedSettings): string {
 /** Minimal head-count select for a direct `problems` draw (ids + join anchors). */
 function problemsCountSelect(settings: ResolvedSettings): string {
     let sel = "id";
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        sel += ", tests!inner(series_id)";
+    if (scopesTests(settings)) {
+        sel += ", tests!inner(series_id, division, format)";
     }
     if (settings.ratingBand) sel += ", problem_ratings!inner(rating)";
     return sel;
@@ -333,10 +363,7 @@ function problemsCountSelect(settings: ResolvedSettings): string {
 
 /** Select for a `problem_progress` review draw, with the embedded problem widened. */
 function reviewSelect(settings: ResolvedSettings): string {
-    const tests =
-        settings.seriesIds && settings.seriesIds.length > 0
-            ? TESTS_EMBED_INNER
-            : TESTS_EMBED;
+    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
     return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${tests}${rating})`;
 }
@@ -459,10 +486,7 @@ async function fetchNearestNewProblem(
 ): Promise<ProblemRow | null> {
     const exclude = exclusionList(await seenProblemIds(supabase, session));
     const allowAnswerless = allowsAnswerless(settings);
-    const tests =
-        settings.seriesIds && settings.seriesIds.length > 0
-            ? TESTS_EMBED_INNER
-            : TESTS_EMBED;
+    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const select = `problem_id, rating, problems!inner(*, ${tests})`;
 
     // The band is intentionally dropped here (nearest lives *outside* it); every

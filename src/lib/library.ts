@@ -23,6 +23,10 @@ export type ProblemRow = Tables<"problems"> & {
         series?: { name: string } | null;
         /** AoPS community category id, for linking to the test's thread (`/c{id}`). */
         aops_category_id: string | null;
+        /** Competition stage (School / Regionals / State / …); null = unclassified. */
+        division: string | null;
+        /** Paper type (Sprint / Target / Team / …); null = unclassified. */
+        format: string | null;
     } | null;
     /** The current user's interaction state, normalized to a single row (or null). */
     progress?: ProblemProgress | null;
@@ -60,9 +64,9 @@ export type ProblemReviewEntry = {
  * the projection can't drift out of sync with the `ProblemRow.tests` type above.
  */
 export const TESTS_EMBED =
-    "tests(name, series_id, series(name), aops_category_id)";
+    "tests(name, series_id, series(name), aops_category_id, division, format)";
 export const TESTS_EMBED_INNER =
-    "tests!inner(name, series_id, series(name), aops_category_id)";
+    "tests!inner(name, series_id, series(name), aops_category_id, division, format)";
 
 const AOPS_COMMUNITY = "https://artofproblemsolving.com/community";
 

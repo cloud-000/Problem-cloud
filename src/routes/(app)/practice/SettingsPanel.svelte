@@ -54,6 +54,8 @@
     let {
         form = $bindable<PracticeSettingsForm>(),
         seriesOptions = [],
+        divisionOptions = [],
+        formatOptions = [],
         canReview = true,
         isTest = false,
         testName = null,
@@ -63,6 +65,13 @@
     }: {
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
+        /**
+         * Division/format choices for the single selected series (empty unless
+         * exactly one series is selected, or that series is unclassified). The
+         * parent clears `form.divisions`/`form.formats` when the scope changes.
+         */
+        divisionOptions?: { value: string; label: string }[];
+        formatOptions?: { value: string; label: string }[];
         canReview?: boolean;
         /** Test format: show a read-only summary instead of the editable filters. */
         isTest?: boolean;
@@ -226,6 +235,33 @@
             inputPlaceholder="Add series"
         />
     </div>
+
+    <!-- Division / Format: only when a single, classified series is selected. -->
+    {#if divisionOptions.length > 0}
+        <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+            <span class="text-xs font-medium text-muted-foreground">Division</span>
+            <Combobox
+                bind:value={form.divisions}
+                options={divisionOptions}
+                strict
+                placeholder="All divisions"
+                inputPlaceholder="Add division"
+            />
+        </div>
+    {/if}
+
+    {#if formatOptions.length > 0}
+        <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+            <span class="text-xs font-medium text-muted-foreground">Format</span>
+            <Combobox
+                bind:value={form.formats}
+                options={formatOptions}
+                strict
+                placeholder="All formats"
+                inputPlaceholder="Add format"
+            />
+        </div>
+    {/if}
 
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">
