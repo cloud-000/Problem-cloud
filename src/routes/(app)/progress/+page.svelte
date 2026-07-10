@@ -26,6 +26,8 @@
         type PlayerRatingPoint,
     } from "$lib/library";
     import { RatingChart } from "$lib/components/rating-chart";
+    import { Subtabs } from "$lib/components/subtabs";
+    import SeriesReviewPanel from "./SeriesReviewPanel.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -37,6 +39,7 @@
     let errorMsg = $state<string | null>(null);
     // Topic currently spinning up a drill session (disables its button).
     let drilling = $state<string | null>(null);
+    let activeView = $state("overview");
 
     // Time range → optional `from` bound handed to the RPC.
     let range = $state("all");
@@ -261,20 +264,31 @@
             </Button>
         </div>
     {:else}
-        <!-- Range control -->
-        <div class="flex items-end justify-end">
-            <div class="flex flex-col gap-1.5 w-full md:w-48">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >Time Range</span
-                >
-                <Select
-                    options={rangeOptions}
-                    bind:value={range}
-                    placeholder="Select range..."
-                />
-            </div>
-        </div>
+        <Subtabs bind:value={activeView}>
+            <Subtabs.List>
+                <Subtabs.Trigger value="overview" icon="insights">
+                    Overview
+                </Subtabs.Trigger>
+                <Subtabs.Trigger value="series" icon="grid_view">
+                    Series review
+                </Subtabs.Trigger>
+            </Subtabs.List>
+
+            <Subtabs.Content value="overview" class="space-y-6">
+                <!-- Range control -->
+                <div class="flex items-end justify-end">
+                    <div class="flex flex-col gap-1.5 w-full md:w-48">
+                        <span
+                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                            >Time Range</span
+                        >
+                        <Select
+                            options={rangeOptions}
+                            bind:value={range}
+                            placeholder="Select range..."
+                        />
+                    </div>
+                </div>
 
         {#if loading && rows.length === 0}
             <div class="flex flex-col items-center justify-center py-16 gap-3">
@@ -493,6 +507,12 @@
                     {/each}
                 </div>
             </div>
-        {/if}
+                {/if}
+            </Subtabs.Content>
+
+            <Subtabs.Content value="series">
+                <SeriesReviewPanel {supabase} />
+            </Subtabs.Content>
+        </Subtabs>
     {/if}
 </div>

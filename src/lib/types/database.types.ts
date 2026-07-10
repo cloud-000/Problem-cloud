@@ -111,6 +111,8 @@ export type Database = {
           aops_category_id: string | null
           difficulty: number | null
           is_computational: boolean
+          level: string | null
+          level_order: number | null
           name: string
           quality: number | null
           section: number
@@ -123,6 +125,8 @@ export type Database = {
           aops_category_id?: string | null
           difficulty?: number | null
           is_computational?: boolean
+          level?: string | null
+          level_order?: number | null
           name: string
           quality?: number | null
           section?: number
@@ -135,6 +139,8 @@ export type Database = {
           aops_category_id?: string | null
           difficulty?: number | null
           is_computational?: boolean
+          level?: string | null
+          level_order?: number | null
           name?: string
           quality?: number | null
           section?: number
@@ -891,6 +897,8 @@ export type Database = {
           has_all_answers: boolean
           id: number
           is_computational: boolean
+          level: string | null
+          level_order: number | null
           missing_answers_count: number
           name: string
           quality: number | null
@@ -907,6 +915,8 @@ export type Database = {
           has_all_answers?: boolean
           id?: number
           is_computational?: boolean
+          level?: string | null
+          level_order?: number | null
           missing_answers_count?: number
           name: string
           quality?: number | null
@@ -923,6 +933,8 @@ export type Database = {
           has_all_answers?: boolean
           id?: number
           is_computational?: boolean
+          level?: string | null
+          level_order?: number | null
           missing_answers_count?: number
           name?: string
           quality?: number | null

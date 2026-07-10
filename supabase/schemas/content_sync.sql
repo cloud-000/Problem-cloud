@@ -57,6 +57,10 @@ create unlogged table public._import_tests (
   aops_category_id text,
   section          integer not null default -1,
   type             text,
+  division         text,
+  division_order   smallint,
+  format           text,
+  format_order     smallint,
   is_computational boolean not null default false,
   difficulty       integer default 0,   -- seed-only
   quality          integer default 0    -- seed-only
@@ -218,28 +222,37 @@ begin
     raise exception 'sync: % staging test(s) reference an unknown series', v_bad;
   end if;
 
-  -- tests: match on sync_key. name/year/type/is_computational are scraper-owned;
+  -- tests: match on sync_key. name/year/type/division/format/is_computational
+  -- and their display orders are scraper-owned;
   -- difficulty/quality (and time_limit_seconds) are seed-then-lock. section and
   -- aops_category_id are identity components (baked into sync_key) so they only
   -- ever change by minting a new key -> a new row; not updated here.
   with src as (
     select it.sync_key, s.id as series_id, it.name, it.year, it.aops_category_id,
-           it.section, it.type, it.is_computational, it.difficulty, it.quality
+           it.section, it.type, it.division, it.division_order,
+           it.format, it.format_order,
+           it.is_computational, it.difficulty, it.quality
     from public._import_tests it
     join public.series s on s.name = it.series_name
   ),
   ins as (
     insert into public.tests
       (sync_key, series_id, name, year, aops_category_id, section,
-       type, is_computational, difficulty, quality)
+       type, division, division_order, format, format_order,
+       is_computational, difficulty, quality)
     select sync_key, series_id, name, year, aops_category_id, section,
-           type, is_computational, difficulty, quality
+           type, division, division_order, format, format_order,
+           is_computational, difficulty, quality
     from src
     on conflict (sync_key) do update
       set series_id        = excluded.series_id,
           name             = excluded.name,
           year             = excluded.year,
           type             = excluded.type,
+          division         = excluded.division,
+          division_order   = excluded.division_order,
+          format           = excluded.format,
+          format_order     = excluded.format_order,
           is_computational = excluded.is_computational
     returning (xmax = 0) as inserted
   )

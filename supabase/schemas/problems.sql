@@ -17,7 +17,16 @@ create table public.tests (
   year             integer,
   aops_category_id text,
   section          integer not null default -1,
+  -- what type, ie "AIME (which encompass, AIME and all it's user mocks, etc)"
   type             text,
+  -- Optional normalized hierarchy metadata for series-review grouping.
+  -- Division captures the competition stage (School / Regionals / State /
+  -- Nationals); format captures the paper type (Sprint / Target / Team).
+  division         text,
+  division_order   smallint,
+  format           text,
+  format_order     smallint,
+
   is_computational boolean not null default false,
   difficulty       integer default 0,
   quality          integer default 0,

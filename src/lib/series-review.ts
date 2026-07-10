@@ -1,0 +1,163 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, Tables } from "$lib/types/database.types";
+
+type Supabase = SupabaseClient<Database>;
+
+export type SeriesReviewProgress = Pick<
+    Tables<"problem_progress">,
+    | "times_seen"
+    | "times_reviewed"
+    | "times_correct"
+    | "times_skipped"
+    | "last_correct"
+    | "last_reviewed_at"
+    | "next_review_at"
+    | "repetitions"
+>;
+
+export type SeriesReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
+    progress: SeriesReviewProgress | null;
+};
+
+export type SeriesReviewTest = {
+    id: number;
+    name: string;
+    year: number | null;
+    division: string | null;
+    division_order: number | null;
+    format: string | null;
+    format_order: number | null;
+    problems: SeriesReviewProblem[];
+};
+
+export type SeriesReviewStatus =
+    | "unseen"
+    | "skipped"
+    | "needs-work"
+    | "learning"
+    | "confident";
+
+type RawReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
+    problem_progress?: SeriesReviewProgress[] | null;
+};
+
+type RawReviewTest = Omit<SeriesReviewTest, "problems"> & {
+    problems?: RawReviewProblem[] | null;
+};
+
+const PROGRESS_FIELDS = [
+    "times_seen",
+    "times_reviewed",
+    "times_correct",
+    "times_skipped",
+    "last_correct",
+    "last_reviewed_at",
+    "next_review_at",
+    "repetitions",
+].join(",");
+
+/** Load the compact all-time state needed by the series review matrix. */
+export async function fetchSeriesReview(
+    supabase: Supabase,
+    seriesId: number,
+): Promise<SeriesReviewTest[]> {
+    const { data, error } = await supabase
+        .from("tests")
+        .select(
+            `id,name,year,division,division_order,format,format_order,problems!inner(id,n,problem_progress(${PROGRESS_FIELDS}))`,
+        )
+        .eq("series_id", seriesId);
+    if (error) throw error;
+
+    return ((data ?? []) as unknown as RawReviewTest[])
+        .map((test) => ({
+            ...test,
+            problems: (test.problems ?? [])
+                .map(({ problem_progress, ...problem }) => ({
+                    ...problem,
+                    progress: problem_progress?.[0] ?? null,
+                }))
+                .sort((a, b) => a.n - b.n),
+        }))
+        .filter((test) => test.problems.length > 0)
+        .sort(compareReviewTests);
+}
+
+export function statusForReview(
+    progress: SeriesReviewProgress | null,
+): SeriesReviewStatus {
+    if (!progress || progress.times_seen === 0) return "unseen";
+    if (progress.times_reviewed === 0) return "skipped";
+    if (progress.repetitions >= 2) return "confident";
+    if (progress.repetitions === 1) return "learning";
+    return "needs-work";
+}
+
+export function reviewIsDue(
+    progress: SeriesReviewProgress | null,
+    now = Date.now(),
+): boolean {
+    if (!progress?.next_review_at) return false;
+    return new Date(progress.next_review_at).getTime() <= now;
+}
+
+export function compareReviewTests(a: SeriesReviewTest, b: SeriesReviewTest) {
+    const yearA = a.year ?? Number.NEGATIVE_INFINITY;
+    const yearB = b.year ?? Number.NEGATIVE_INFINITY;
+    if (yearA !== yearB) return yearB - yearA;
+
+    const divisionOrderA = a.division_order ?? Number.MAX_SAFE_INTEGER;
+    const divisionOrderB = b.division_order ?? Number.MAX_SAFE_INTEGER;
+    if (divisionOrderA !== divisionOrderB) return divisionOrderA - divisionOrderB;
+
+    const divisionCompare = compareOptionalLabel(a.division, b.division);
+    if (divisionCompare) return divisionCompare;
+
+    const formatOrderA = a.format_order ?? Number.MAX_SAFE_INTEGER;
+    const formatOrderB = b.format_order ?? Number.MAX_SAFE_INTEGER;
+    if (formatOrderA !== formatOrderB) return formatOrderA - formatOrderB;
+
+    const formatCompare = compareOptionalLabel(a.format, b.format);
+    return formatCompare || a.name.localeCompare(b.name) || a.id - b.id;
+}
+
+export function reviewRowLabel(test: SeriesReviewTest): string {
+    const parts = [test.division, test.format].filter(
+        (part): part is string => Boolean(part?.trim()),
+    );
+    if (parts.length > 0) return parts.join(" · ");
+
+    const withoutYear = test.year
+        ? test.name.replace(new RegExp(`^${test.year}\\s*`), "").trim()
+        : test.name;
+    return withoutYear || test.name;
+}
+
+function compareOptionalLabel(a: string | null, b: string | null): number {
+    const aLabel = a?.trim() || null;
+    const bLabel = b?.trim() || null;
+    if (aLabel && !bLabel) return -1;
+    if (!aLabel && bLabel) return 1;
+    return (aLabel ?? "").localeCompare(bLabel ?? "");
+}
+
+export type SeriesReviewSummary = {
+    total: number;
+    attempted: number;
+    confident: number;
+};
+
+export function summarizeSeriesReview(
+    tests: SeriesReviewTest[],
+): SeriesReviewSummary {
+    const problems = tests.flatMap((test) => test.problems);
+    return {
+        total: problems.length,
+        attempted: problems.filter(
+            (problem) => (problem.progress?.times_reviewed ?? 0) > 0,
+        ).length,
+        confident: problems.filter(
+            (problem) => statusForReview(problem.progress) === "confident",
+        ).length,
+    };
+}
