@@ -34,7 +34,7 @@
    import {
       dimensionOptions,
       fetchSeriesDimensions,
-      type DimensionOption,
+      type SeriesDimensionRow,
    } from "$lib/series-review";
    import { recordSubmission } from "$lib/progress";
    import {
@@ -76,6 +76,7 @@
       createPracticeSettingsForm,
       practiceSettingsFromForm,
       type PracticeSettingsForm,
+      type SeriesScopeConfig,
    } from "./practice-settings";
    import {
       applyTestOutcome,
@@ -98,10 +99,10 @@
       createPracticeSettingsForm(),
    );
    let seriesOptions = $state<{ value: string; label: string }[]>([]);
-   // Division/format options for the single selected series (empty otherwise, or
-   // when that series is unclassified). Populated by the effect below.
-   let divisionOptions = $state<DimensionOption[]>([]);
-   let formatOptions = $state<DimensionOption[]>([]);
+   // One entry per *selected* series that carries division/format vocabulary, so
+   // the settings panel can show a per-series division/format row (unclassified
+   // series contribute none). Populated by the effect below.
+   let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
    let showSettings = $state(false);
    let paused = $state(false);
 
@@ -122,46 +123,62 @@
       if (!user && settingsForm.mode !== "new") settingsForm.mode = "new";
    });
 
-   // Division/format scope is gated on a *single* selected series (each series
-   // has its own vocabulary). Null when 0 or 2+ series are selected.
-   let singleSeriesId = $derived(
-      settingsForm.seriesIds.length === 1
-         ? Number(settingsForm.seriesIds[0])
-         : null,
-   );
-
-   // Load the selected series' division/format options, and clear any stale
-   // division/format tags whenever the series scope changes — but not on the
-   // initial run, so a persisted session's tags survive mount.
+   // Division/format is a per-series narrowing (each series has its own
+   // vocabulary), so for every selected series we fetch its dimensions and build
+   // a scope row — but only for classified series (those with actual division or
+   // format values). Fetched dimensions are cached across selection changes.
    let dimensionToken = 0;
-   let prevSingleSeriesId: number | null | undefined = undefined;
+   const dimensionCache = new Map<number, SeriesDimensionRow[]>();
+
+   // Keep `settingsForm.seriesScopes` in step with the classified selection:
+   // drop entries for deselected series (so stale tags never leak into the draw
+   // or the persisted snapshot) and seed an empty entry for each classified one
+   // so the panel's comboboxes have a bindable target.
+   function reconcileScopes(classifiedIds: string[]) {
+      const scopes = settingsForm.seriesScopes;
+      const keep = new Set(classifiedIds);
+      for (const key of Object.keys(scopes)) {
+         if (!keep.has(key)) delete scopes[key];
+      }
+      for (const id of classifiedIds) {
+         scopes[id] ??= { divisions: [], formats: [] };
+      }
+   }
+
    $effect(() => {
-      const id = singleSeriesId;
-      if (prevSingleSeriesId !== undefined && prevSingleSeriesId !== id) {
-         settingsForm.divisions = [];
-         settingsForm.formats = [];
-      }
-      prevSingleSeriesId = id;
-
-      if (id == null || !Number.isFinite(id)) {
-         divisionOptions = [];
-         formatOptions = [];
-         return;
-      }
-
+      const ids = [...settingsForm.seriesIds];
+      const names = seriesOptions;
       const token = ++dimensionToken;
-      fetchSeriesDimensions(supabase, id)
-         .then((rows) => {
-            if (token !== dimensionToken) return;
-            divisionOptions = dimensionOptions(rows, "division");
-            formatOptions = dimensionOptions(rows, "format");
-         })
-         .catch((e) => {
-            if (token !== dimensionToken) return;
-            console.error("Failed to fetch series dimensions:", e);
-            divisionOptions = [];
-            formatOptions = [];
-         });
+
+      void (async () => {
+         const configs: SeriesScopeConfig[] = [];
+         for (const idStr of ids) {
+            const id = Number(idStr);
+            if (!Number.isFinite(id)) continue;
+            let rows = dimensionCache.get(id);
+            if (!rows) {
+               try {
+                  rows = await fetchSeriesDimensions(supabase, id);
+               } catch (e) {
+                  console.error("Failed to fetch series dimensions:", e);
+                  continue;
+               }
+               dimensionCache.set(id, rows);
+            }
+            const divisions = dimensionOptions(rows, "division");
+            const formats = dimensionOptions(rows, "format");
+            if (divisions.length === 0 && formats.length === 0) continue;
+            configs.push({
+               id: idStr,
+               name: names.find((o) => o.value === idStr)?.label ?? `Series ${idStr}`,
+               divisionOptions: divisions,
+               formatOptions: formats,
+            });
+         }
+         if (token !== dimensionToken) return;
+         reconcileScopes(configs.map((c) => c.id));
+         seriesScopeConfigs = configs;
+      })();
    });
 
    // Cross-load draw state for interleaving and forward progress.
@@ -1494,8 +1511,7 @@
          <SettingsPanel
             bind:form={settingsForm}
             {seriesOptions}
-            {divisionOptions}
-            {formatOptions}
+            {seriesScopeConfigs}
             canReview={!!user}
             {isTest}
             {testName}

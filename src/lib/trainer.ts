@@ -45,13 +45,16 @@ export type PracticeSettings = {
     adaptive?: boolean;
     adaptiveRange?: number;
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
-    // Test-level draw scope, narrowing within a single selected series (each
-    // series has its own division/format vocabulary). Matched with `.in()`
-    // against `tests.division` / `tests.format`. Optional so older snapshots are
-    // tolerated (treated as no constraint). NOTE: `formats` (paper type — Sprint /
-    // Target / Team) is distinct from `format` (SessionFormat) above; don't conflate.
-    divisions?: string[];
-    formats?: string[];
+    // Per-series test-level draw scope. Keyed by series id (string, matching
+    // `seriesIds`); each entry narrows *that* series' draws to the chosen
+    // divisions and/or formats (an empty axis = no narrowing on that axis).
+    // Because division/format vocabulary is per-series, the draw is an
+    // OR-of-ANDs across series (see {@link seriesScopeFilter}), so one series'
+    // "State" never leaks onto another. Entries for series not in `seriesIds`
+    // are ignored. Optional so older snapshots are tolerated (no constraint).
+    // NOTE: `formats` (paper type — Sprint/Target/Team) is distinct from
+    // `format` (SessionFormat) above; don't conflate.
+    seriesScopes?: Record<string, { divisions: string[]; formats: string[] }>;
     // Problem-attribute filters — apply to every mode.
     topic: string[];
     difficulty: Range;
@@ -194,8 +197,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         focusMode: false,
         triesPerProblem: 2,
         seriesIds: [],
-        divisions: [],
-        formats: [],
+        seriesScopes: {},
         topic: [],
         difficulty: [...DIFFICULTY_RANGE],
         verifiedOnly: false,
@@ -232,16 +234,59 @@ export function defaultTestSettings(
 }
 
 /**
- * Whether the draw filters on any `tests`-level attribute (series, division, or
- * format). When true, the `tests` embed must be inner-joined so those filters
- * actually constrain the parent `problems`/`problem_progress` rows.
+ * Whether the draw filters on any `tests`-level attribute. Scoping is always
+ * anchored to `seriesIds` (a division/format scope only narrows a selected
+ * series), so this reduces to "any series selected". When true, the `tests`
+ * embed must be inner-joined so the filter constrains the parent
+ * `problems`/`problem_progress` rows.
  */
 function scopesTests(settings: PracticeSettings): boolean {
-    return (
-        (settings.seriesIds?.length ?? 0) > 0 ||
-        (settings.divisions?.length ?? 0) > 0 ||
-        (settings.formats?.length ?? 0) > 0
-    );
+    return (settings.seriesIds?.length ?? 0) > 0;
+}
+
+/** Whether any selected series carries a division/format narrowing. */
+function hasSeriesScope(settings: PracticeSettings): boolean {
+    const scopes = settings.seriesScopes ?? {};
+    return (settings.seriesIds ?? []).some((id) => {
+        const scope = scopes[id];
+        return (
+            (scope?.divisions?.length ?? 0) > 0 ||
+            (scope?.formats?.length ?? 0) > 0
+        );
+    });
+}
+
+/** Double-quote + escape a value for a PostgREST `in.(…)` list literal. */
+function pgQuote(value: string): string {
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The comma-separated OR body scoping a draw to the selected series, narrowing
+ * each series by its own divisions/formats. Because vocabulary is per-series,
+ * this is an OR-of-ANDs — one branch per series, each requiring that series'
+ * id and (if set) its division/format membership — so a division chosen for one
+ * series never applies to another. A series with no narrowing contributes a
+ * bare `series_id.eq.N` branch (all its problems pass). Consumed via `.or(body,
+ * { referencedTable })` against the (possibly nested) embedded `tests` table.
+ * Only called when {@link hasSeriesScope} is true; otherwise the plainer
+ * `series_id in (…)` membership filter is used.
+ */
+function seriesScopeFilter(settings: PracticeSettings): string {
+    const scopes = settings.seriesScopes ?? {};
+    return (settings.seriesIds ?? [])
+        .map((id) => {
+            const scope = scopes[id];
+            const terms = [`series_id.eq.${Number(id)}`];
+            if (scope?.divisions?.length) {
+                terms.push(`division.in.(${scope.divisions.map(pgQuote).join(",")})`);
+            }
+            if (scope?.formats?.length) {
+                terms.push(`format.in.(${scope.formats.map(pgQuote).join(",")})`);
+            }
+            return terms.length === 1 ? terms[0] : `and(${terms.join(",")})`;
+        })
+        .join(",");
 }
 
 /** PostgREST `in` list literal, or null when there is nothing to exclude. */
@@ -310,23 +355,19 @@ function applyAttributeFilters(
     if (settings.computational != null) {
         next = next.eq(`${prefix}is_computational`, settings.computational);
     }
+    // Series scope. With no per-series division/format narrowing this is plain
+    // `series_id` membership (unchanged behavior). When at least one series is
+    // narrowed, switch to the per-series OR-of-ANDs so each series is filtered by
+    // its *own* divisions/formats. Both target the embedded `tests` table
+    // (nested under `problems` when drawing through `problem_progress`); the
+    // embed is inner-joined (see the `*Select` helpers) so these drop the parent.
     if (settings.seriesIds && settings.seriesIds.length > 0) {
-        if (prefix === "") {
-            next = next.in("tests.series_id", settings.seriesIds.map(Number));
+        const embed = prefix === "" ? "tests" : "problems.tests";
+        if (hasSeriesScope(settings)) {
+            next = next.or(seriesScopeFilter(settings), { referencedTable: embed });
         } else {
-            next = next.in("problems.tests.series_id", settings.seriesIds.map(Number));
+            next = next.in(`${embed}.series_id`, settings.seriesIds.map(Number));
         }
-    }
-    // Test-level division/format scope (gated in the UI to a single series). Null
-    // divisions/formats are simply excluded by `.in()`; there is no "unclassified"
-    // sentinel yet.
-    if (settings.divisions && settings.divisions.length > 0) {
-        const col = prefix === "" ? "tests.division" : "problems.tests.division";
-        next = next.in(col, settings.divisions);
-    }
-    if (settings.formats && settings.formats.length > 0) {
-        const col = prefix === "" ? "tests.format" : "problems.tests.format";
-        next = next.in(col, settings.formats);
     }
 
     // Adaptive difficulty: keep only problems whose overall-scope rating sits in

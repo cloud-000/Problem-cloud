@@ -1,4 +1,5 @@
 import { DIFFICULTY_RANGE, boolToTri, triToBool } from "$lib/library";
+import type { DimensionOption } from "$lib/series-review";
 import {
     ADAPTIVE_RANGE_DEFAULT,
     defaultPracticeSettings,
@@ -15,6 +16,33 @@ export type PracticeTriState = "on" | "off" | "neutral";
 export type CounterKey = "seen" | "reviewed" | "correct" | "skipped";
 export type CounterRanges = Record<CounterKey, Range>;
 export type CounterEnabled = Record<CounterKey, boolean>;
+/** Per-series division/format narrowing, keyed by series id (string). */
+export type SeriesScope = { divisions: string[]; formats: string[] };
+export type SeriesScopes = Record<string, SeriesScope>;
+
+/**
+ * A settings-panel row for narrowing one selected series by division/format.
+ * Built per selected *classified* series (unclassified series get no row); the
+ * option lists come from that series' tests.
+ */
+export type SeriesScopeConfig = {
+    id: string;
+    name: string;
+    divisionOptions: DimensionOption[];
+    formatOptions: DimensionOption[];
+};
+
+/** Deep-clone the per-series scope map so form and snapshot never share arrays. */
+function cloneScopes(raw: SeriesScopes | undefined | null): SeriesScopes {
+    const out: SeriesScopes = {};
+    for (const [id, scope] of Object.entries(raw ?? {})) {
+        out[id] = {
+            divisions: [...(scope?.divisions ?? [])],
+            formats: [...(scope?.formats ?? [])],
+        };
+    }
+    return out;
+}
 
 export type PracticeSettingsForm = {
     mode: PracticeMode;
@@ -30,8 +58,7 @@ export type PracticeSettingsForm = {
     solutionAvailability: PracticeTriState;
     triesPerProblem: number;
     seriesIds: string[];
-    divisions: string[];
-    formats: string[];
+    seriesScopes: SeriesScopes;
     counterRanges: CounterRanges;
     counterEnabled: CounterEnabled;
     lastSubmissionDays: number | null;
@@ -67,6 +94,25 @@ export function createPracticeSettingsForm(
     const counterRanges = {} as CounterRanges;
     const counterEnabled = {} as CounterEnabled;
 
+    // Migrate a legacy flat divisions/formats snapshot (the single-series-gate
+    // era) into the per-series map: those tags implicitly belonged to the one
+    // selected series, so re-key them onto it. Newer snapshots carry
+    // `seriesScopes` directly and skip this.
+    let seriesScopes = cloneScopes(settings.seriesScopes);
+    const legacy = raw as { divisions?: string[]; formats?: string[] };
+    if (
+        Object.keys(seriesScopes).length === 0 &&
+        ((legacy.divisions?.length ?? 0) > 0 || (legacy.formats?.length ?? 0) > 0) &&
+        (settings.seriesIds?.length ?? 0) === 1
+    ) {
+        seriesScopes = {
+            [settings.seriesIds![0]]: {
+                divisions: [...(legacy.divisions ?? [])],
+                formats: [...(legacy.formats ?? [])],
+            },
+        };
+    }
+
     for (const key of Object.keys(COUNTER_FIELDS) as CounterKey[]) {
         const range = settings[COUNTER_FIELDS[key]] as Range | null;
         counterEnabled[key] = range != null;
@@ -87,8 +133,7 @@ export function createPracticeSettingsForm(
         solutionAvailability: solutionToTri(settings.solutionAvailability),
         triesPerProblem: settings.triesPerProblem ?? 2,
         seriesIds: [...(settings.seriesIds ?? [])],
-        divisions: [...(settings.divisions ?? [])],
-        formats: [...(settings.formats ?? [])],
+        seriesScopes,
         counterRanges,
         counterEnabled,
         lastSubmissionDays: settings.lastSubmissionDays,
@@ -117,8 +162,7 @@ export function practiceSettingsFromForm(
         focusMode: form.focusMode,
         triesPerProblem: form.triesPerProblem,
         seriesIds: [...form.seriesIds],
-        divisions: [...form.divisions],
-        formats: [...form.formats],
+        seriesScopes: cloneScopes(form.seriesScopes),
         topic: [...form.topic],
         difficulty: [form.difficulty[0], form.difficulty[1]],
         verifiedOnly: form.verifiedOnly,

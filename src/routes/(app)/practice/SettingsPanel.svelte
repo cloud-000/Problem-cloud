@@ -47,6 +47,7 @@
         TRIES_RANGE,
         resetPracticeSettingsForm,
         type PracticeSettingsForm,
+        type SeriesScopeConfig,
     } from "./practice-settings";
     import { cn } from "$lib/utils";
     import { fly } from "svelte/transition";
@@ -54,8 +55,7 @@
     let {
         form = $bindable<PracticeSettingsForm>(),
         seriesOptions = [],
-        divisionOptions = [],
-        formatOptions = [],
+        seriesScopeConfigs = [],
         canReview = true,
         isTest = false,
         testName = null,
@@ -66,12 +66,12 @@
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
         /**
-         * Division/format choices for the single selected series (empty unless
-         * exactly one series is selected, or that series is unclassified). The
-         * parent clears `form.divisions`/`form.formats` when the scope changes.
+         * One collapsible division/format row per selected *classified* series
+         * (unclassified series contribute none). The parent keeps
+         * `form.seriesScopes` reconciled with this list, so each config id has a
+         * bindable `form.seriesScopes[id]` entry.
          */
-        divisionOptions?: { value: string; label: string }[];
-        formatOptions?: { value: string; label: string }[];
+        seriesScopeConfigs?: SeriesScopeConfig[];
         canReview?: boolean;
         /** Test format: show a read-only summary instead of the editable filters. */
         isTest?: boolean;
@@ -82,6 +82,26 @@
     } = $props();
 
     let advancedOpen = $state(false);
+    // Per-series scope rows expand/collapse independently. A row defaults to open
+    // when it's the only one or already carries a selection; `expandedScopes`
+    // holds explicit user overrides thereafter.
+    let expandedScopes = $state<Record<string, boolean>>({});
+
+    function scopeOpen(cfg: SeriesScopeConfig): boolean {
+        const scope = form.seriesScopes[cfg.id];
+        const hasSelection =
+            (scope?.divisions.length ?? 0) > 0 || (scope?.formats.length ?? 0) > 0;
+        return (
+            expandedScopes[cfg.id] ??
+            (seriesScopeConfigs.length === 1 || hasSelection)
+        );
+    }
+
+    function scopeSummary(cfg: SeriesScopeConfig): string {
+        const scope = form.seriesScopes[cfg.id];
+        const parts = [...(scope?.divisions ?? []), ...(scope?.formats ?? [])];
+        return parts.length ? parts.join(" · ") : "All";
+    }
 
     function computationalLabel(value: TriState) {
         if (value === "on") return "Computational";
@@ -236,30 +256,75 @@
         />
     </div>
 
-    <!-- Division / Format: only when a single, classified series is selected. -->
-    {#if divisionOptions.length > 0}
+    <!-- Division / Format: one collapsible row per selected classified series,
+         each narrowing that series by its own vocabulary. -->
+    {#if seriesScopeConfigs.length > 0}
         <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
-            <span class="text-xs font-medium text-muted-foreground">Division</span>
-            <Combobox
-                bind:value={form.divisions}
-                options={divisionOptions}
-                strict
-                placeholder="All divisions"
-                inputPlaceholder="Add division"
-            />
-        </div>
-    {/if}
-
-    {#if formatOptions.length > 0}
-        <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
-            <span class="text-xs font-medium text-muted-foreground">Format</span>
-            <Combobox
-                bind:value={form.formats}
-                options={formatOptions}
-                strict
-                placeholder="All formats"
-                inputPlaceholder="Add format"
-            />
+            <span class="text-xs font-medium text-muted-foreground">
+                Division &amp; format
+            </span>
+            <div class="flex flex-col gap-1.5">
+                {#each seriesScopeConfigs as cfg (cfg.id)}
+                    {@const open = scopeOpen(cfg)}
+                    <div class="rounded-lg border border-border/50 bg-surface-container-low/40">
+                        <button
+                            type="button"
+                            class="flex w-full items-center gap-2 px-2.5 py-2 text-left"
+                            aria-expanded={open}
+                            onclick={() => (expandedScopes[cfg.id] = !open)}
+                        >
+                            <Icon
+                                name="keyboard_arrow_down"
+                                class={cn(
+                                    "size-[1em] shrink-0 text-muted-foreground transition-transform",
+                                    !open && "-rotate-90",
+                                )}
+                            />
+                            <span class="min-w-0 flex-1 truncate text-xs font-medium">
+                                {cfg.name}
+                            </span>
+                            <span class="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">
+                                {scopeSummary(cfg)}
+                            </span>
+                        </button>
+                        {#if open}
+                            <div
+                                class="flex flex-col gap-3 px-2.5 pt-0.5 pb-3"
+                                transition:fly={{ y: -4, duration: 120 }}
+                            >
+                                {#if cfg.divisionOptions.length > 0}
+                                    <div class="flex flex-col gap-1.5">
+                                        <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                            Division
+                                        </span>
+                                        <Combobox
+                                            bind:value={form.seriesScopes[cfg.id].divisions}
+                                            options={cfg.divisionOptions}
+                                            strict
+                                            placeholder="All divisions"
+                                            inputPlaceholder="Add division"
+                                        />
+                                    </div>
+                                {/if}
+                                {#if cfg.formatOptions.length > 0}
+                                    <div class="flex flex-col gap-1.5">
+                                        <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                            Format
+                                        </span>
+                                        <Combobox
+                                            bind:value={form.seriesScopes[cfg.id].formats}
+                                            options={cfg.formatOptions}
+                                            strict
+                                            placeholder="All formats"
+                                            inputPlaceholder="Add format"
+                                        />
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
         </div>
     {/if}
 

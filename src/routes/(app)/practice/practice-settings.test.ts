@@ -20,8 +20,7 @@ describe("practice settings form", () => {
         expect(form.triesPerProblem).toBe(2);
         expect(form.adaptive).toBe(true);
         expect(form.seriesIds).toEqual([]);
-        expect(form.divisions).toEqual([]);
-        expect(form.formats).toEqual([]);
+        expect(form.seriesScopes).toEqual({});
         expect(form.counterEnabled.seen).toBe(true);
         expect(form.counterRanges.seen).toEqual([2, 8]);
         expect(form.counterEnabled.skipped).toBe(false);
@@ -33,8 +32,7 @@ describe("practice settings form", () => {
             topic: ["geometry"],
             difficulty: [3, 9],
             seriesIds: ["12"],
-            divisions: ["State"],
-            formats: ["Sprint"],
+            seriesScopes: { "12": { divisions: ["State"], formats: ["Sprint"] } },
             timesCorrect: [1, 4],
             computational: true,
             answerAvailability: "without",
@@ -45,19 +43,45 @@ describe("practice settings form", () => {
         form.topic.push("algebra");
         form.difficulty[0] = 0;
         form.seriesIds.push("13");
-        form.divisions.push("National");
-        form.formats.push("Target");
+        form.seriesScopes["12"].divisions.push("National");
+        form.seriesScopes["13"] = { divisions: ["Chapter"], formats: [] };
         form.counterRanges.correct[0] = 0;
 
         expect(snapshot.topic).toEqual(["geometry"]);
         expect(snapshot.difficulty).toEqual([3, 9]);
         expect(snapshot.seriesIds).toEqual(["12"]);
-        expect(snapshot.divisions).toEqual(["State"]);
-        expect(snapshot.formats).toEqual(["Sprint"]);
+        expect(snapshot.seriesScopes).toEqual({
+            "12": { divisions: ["State"], formats: ["Sprint"] },
+        });
         expect(snapshot.timesCorrect).toEqual([1, 4]);
         expect(snapshot.computational).toBe(true);
         expect(snapshot.answerAvailability).toBe("without");
         expect(snapshot.solutionAvailability).toBe("with");
+    });
+
+    test("migrates a legacy flat divisions/formats snapshot onto its series", () => {
+        const form = createPracticeSettingsForm({
+            seriesIds: ["12"],
+            // Legacy single-series-gate shape (pre-per-series scopes).
+            divisions: ["State"],
+            formats: ["Sprint"],
+        } as Partial<Parameters<typeof createPracticeSettingsForm>[0]> & {
+            divisions: string[];
+            formats: string[];
+        });
+        expect(form.seriesScopes).toEqual({
+            "12": { divisions: ["State"], formats: ["Sprint"] },
+        });
+    });
+
+    test("does not migrate legacy tags when the series is ambiguous", () => {
+        const form = createPracticeSettingsForm({
+            seriesIds: ["12", "13"],
+            divisions: ["State"],
+        } as Partial<Parameters<typeof createPracticeSettingsForm>[0]> & {
+            divisions: string[];
+        });
+        expect(form.seriesScopes).toEqual({});
     });
 
     test("disabled counters serialize as null", () => {
