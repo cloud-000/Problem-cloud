@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 import {
@@ -36,7 +36,7 @@ const supabase: Handle = async ({ event, resolve }) => {
             return { session: null, user: null };
         }
         const {
-            data: { session },
+            data: { session: rawSession },
         } = await event.locals.supabase.auth.getSession();
 
         const claims = claimsData.claims as any;
@@ -56,6 +56,20 @@ const supabase: Handle = async ({ event, resolve }) => {
             user_metadata: claims.user_metadata || {},
             is_anonymous: claims.is_anonymous,
         };
+
+        // Rebuild the session with our JWT-validated `user`, reading only the
+        // token fields — never `rawSession.user`, whose warning proxy would
+        // trip on serialization downstream (getSession()'s user is untrusted).
+        const session: Session | null = rawSession
+            ? {
+                  access_token: rawSession.access_token,
+                  refresh_token: rawSession.refresh_token,
+                  expires_in: rawSession.expires_in,
+                  expires_at: rawSession.expires_at,
+                  token_type: rawSession.token_type,
+                  user,
+              }
+            : null;
 
         return { session, user };
     };
