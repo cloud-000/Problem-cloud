@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ProblemRow } from "$lib/library";
+import type { ProblemProgress } from "$lib/progress";
 import {
-    commitPracticeAnswerState,
+    commitPracticeHistoryEntry,
     createPracticeAnswerState,
     createPracticeHistoryEntry,
     practiceAttemptFromAnswerState,
@@ -10,6 +11,19 @@ import {
 } from "./practice-state";
 
 const problem = { id: 7, choices: ["A", "B"], answer_index: 1 } as ProblemRow;
+const progress: ProblemProgress = {
+    times_seen: 1,
+    times_correct: 1,
+    times_reviewed: 1,
+    times_skipped: 0,
+    last_correct: true,
+    last_reviewed_at: null,
+    last_submission_at: null,
+    next_review_at: null,
+    solved: true,
+    mastery: "confident",
+    engagement: null,
+};
 
 describe("practice answer history", () => {
     test("creates complete independent defaults", () => {
@@ -51,13 +65,14 @@ describe("practice answer history", () => {
             eliminatedChoices: [1],
         });
 
-        commitPracticeAnswerState(entry, live);
+        commitPracticeHistoryEntry(entry, live, progress);
         const restored = restorePracticeAnswerState(entry);
         restored.triedAnswers.push("new");
         restored.eliminatedChoices.push(0);
 
         expect(entry.triedAnswers).toEqual(["c:0", "a:x"]);
         expect(entry.eliminatedChoices).toEqual([1]);
+        expect(entry.progress).toEqual(progress);
         expect(entry).toMatchObject({
             selectedChoice: 0,
             answer: "x",
@@ -73,6 +88,7 @@ describe("practice answer history", () => {
     test("converts fetched submissions into historical entries", () => {
         const entry = practiceHistoryEntryFromSubmission({
             problem,
+            progress,
             source: null,
             selectedChoice: 1,
             isCorrect: true,
@@ -93,6 +109,7 @@ describe("practice answer history", () => {
         });
         expect(entry.triedAnswers).toEqual([]);
         expect(entry.eliminatedChoices).toEqual([]);
+        expect(entry.progress).toEqual(progress);
     });
 
     test("converts live answer state into an attempt", () => {

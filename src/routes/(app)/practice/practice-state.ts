@@ -76,11 +76,13 @@ export function restorePracticeAnswerState(
     return snapshotPracticeAnswerState(entry);
 }
 
-export function commitPracticeAnswerState(
+export function commitPracticeHistoryEntry(
     entry: PracticeHistoryEntry,
     state: PracticeAnswerState,
+    progress: ProblemProgress | null,
 ): void {
     Object.assign(entry, snapshotPracticeAnswerState(state));
+    entry.progress = progress ? { ...progress } : null;
 }
 
 export function practiceHistoryEntryFromSubmission(
@@ -89,7 +91,7 @@ export function practiceHistoryEntryFromSubmission(
     return createPracticeHistoryEntry({
         problem: submission.problem,
         source: (submission.source as PracticeSource) ?? "practice",
-        progress: null,
+        progress: submission.progress,
         selectedChoice: submission.selectedChoice,
         submitted: !submission.skipped,
         correct: submission.isCorrect,

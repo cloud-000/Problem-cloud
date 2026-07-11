@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
 import { TESTS_EMBED, type ProblemRow } from "$lib/library";
+import type { ProblemProgress } from "$lib/progress";
 import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
 
 type Supabase = SupabaseClient<Database>;
+
+const SESSION_PROGRESS_EMBED =
+    "problem_progress(times_seen, times_correct, times_reviewed, times_skipped, last_correct, last_reviewed_at, last_submission_at, next_review_at, solved, mastery, engagement)";
 
 export type PracticeSessionRow = Tables<"practice_sessions">;
 
@@ -205,6 +209,7 @@ export async function setCurrentProblem(
  */
 export type SessionHistoryEntry = {
     problem: ProblemRow;
+    progress: ProblemProgress | null;
     source: string | null;
     selectedChoice: number | null;
     isCorrect: boolean | null;
@@ -223,8 +228,12 @@ function mapSubmissionRow(row: {
     source: string | null;
     problems: unknown;
 }): SessionHistoryEntry {
+    const { problem_progress, ...problem } = row.problems as ProblemRow & {
+        problem_progress?: ProblemProgress[] | null;
+    };
     return {
-        problem: row.problems as unknown as ProblemRow,
+        problem,
+        progress: problem_progress?.[0] ?? null,
         source: row.source,
         selectedChoice: row.selected_choice,
         isCorrect: row.is_correct,
@@ -248,7 +257,7 @@ export async function fetchSessionHistory(
     const { data, error } = await supabase
         .from("submissions")
         .select(
-            `selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, ${TESTS_EMBED})`,
+            `selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
@@ -285,7 +294,7 @@ export async function fetchOlderSubmission(
     let query = supabase
         .from("submissions")
         .select(
-            `id, selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, ${TESTS_EMBED})`,
+            `id, selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .in("source", ["practice", "review"])

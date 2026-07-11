@@ -65,7 +65,7 @@
    import PracticeFooter from "./PracticeFooter.svelte";
    import TestResults from "./TestResults.svelte";
    import {
-      commitPracticeAnswerState,
+      commitPracticeHistoryEntry,
       createPracticeAnswerState,
       createPracticeHistoryEntry,
       practiceHistoryEntryFromSubmission,
@@ -671,10 +671,14 @@
       ratingBar?.settle();
       const entry = history[historyIndex];
       if (!entry) return;
-      commitPracticeAnswerState(entry, {
-         ...answerState,
-         elapsedMs: liveElapsed(),
-      });
+      commitPracticeHistoryEntry(
+         entry,
+         {
+            ...answerState,
+            elapsedMs: liveElapsed(),
+         },
+         currentProgress,
+      );
    }
 
    // Load a history entry into the live view. The timer only resumes for the
@@ -1446,6 +1450,11 @@
                            mastery={currentProgress?.mastery ?? null}
                            engagement={currentProgress?.engagement ?? null}
                            prompt={!currentProgress?.mastery}
+                           suggestedMastery={answerState.correct
+                              ? answerState.triesUsed > 0
+                                 ? "learning"
+                                 : "confident"
+                              : "needs_work"}
                            onchange={(state) => {
                               currentProgress = currentProgress ?? {
                                  times_seen: 1,

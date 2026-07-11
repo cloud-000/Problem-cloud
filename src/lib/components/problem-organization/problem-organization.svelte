@@ -21,6 +21,7 @@
         mastery = null,
         engagement = null,
         prompt = false,
+        suggestedMastery = null,
         onchange,
         class: className,
     }: {
@@ -28,6 +29,8 @@
         mastery?: Mastery | null;
         engagement?: Engagement | null;
         prompt?: boolean;
+        /** Optional recommendation to emphasize without saving it for the user. */
+        suggestedMastery?: Mastery | null;
         onchange?: (state: PersonalProblemState) => void;
         class?: string;
     } = $props();
@@ -109,28 +112,30 @@
     <div class={cn("flex flex-wrap items-center gap-1.5", className)}>
         {#if prompt && !localMastery}
             <div class="flex w-full flex-wrap items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5">
-                <span class="mr-auto text-xs font-medium">How well do you know this?</span>
+                <div class="mr-auto flex flex-col gap-0.5">
+                    <span class="text-xs font-medium">How well do you know this?</span>
+                    <span class="text-[0.6875rem] text-muted-foreground">Optional — choose one or continue without answering.</span>
+                </div>
                 {#each masteryChoices as choice (choice.value)}
-                    <Button variant="outline" size="sm" disabled={saving != null} onclick={() => chooseMastery(choice.value)}>
+                    <Button
+                        variant={choice.value === suggestedMastery ? "default" : "outline"}
+                        size="sm"
+                        disabled={saving != null}
+                        onclick={() => chooseMastery(choice.value)}
+                    >
                         {choice.label}
+                        {#if choice.value === suggestedMastery}
+                            <span class="opacity-75">· Suggested</span>
+                        {/if}
                     </Button>
                 {/each}
             </div>
         {:else}
-            <span class={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", masteryClass(localMastery))}>
-                {localMastery ? MASTERY_LABELS[localMastery] : "Unassessed"}
-            </span>
-            {#if localEngagement}
-                <span class="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">
-                    <Icon name={engagementChoices.find((item) => item.value === localEngagement)?.icon ?? "bookmark"} fontsize="0.85rem" />
-                    {ENGAGEMENT_LABELS[localEngagement]}
-                </span>
-            {/if}
             <details class="group/organize relative">
                 <summary class="flex size-7 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60" aria-label="Set mastery and plan">
-                    <Icon name={saving ? "progress_activity" : "tune"} class={saving ? "animate-spin" : undefined} />
+                    <Icon name="tune" />
                 </summary>
-                <div class="absolute right-0 z-40 mt-1 w-64 space-y-3 rounded-lg border border-border/70 bg-popover p-3 text-popover-foreground shadow-lg">
+                <div class="absolute left-0 bottom-full z-40 mb-1 w-64 space-y-3 rounded-lg border border-border/70 bg-surface-container-lowest p-3 text-foreground shadow-lg">
                     <fieldset class="space-y-1.5" disabled={saving != null}>
                         <legend class="text-xs font-semibold text-muted-foreground">Mastery</legend>
                         <div class="grid grid-cols-2 gap-1">
@@ -153,6 +158,15 @@
                     </fieldset>
                 </div>
             </details>
+            <span class={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", masteryClass(localMastery))}>
+                {localMastery ? MASTERY_LABELS[localMastery] : "Unassessed"}
+            </span>
+            {#if localEngagement}
+                <span class="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">
+                    <Icon name={engagementChoices.find((item) => item.value === localEngagement)?.icon ?? "bookmark"} fontsize="0.85rem" />
+                    {ENGAGEMENT_LABELS[localEngagement]}
+                </span>
+            {/if}
         {/if}
     </div>
 {/if}
