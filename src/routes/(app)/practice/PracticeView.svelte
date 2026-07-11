@@ -7,6 +7,7 @@
    import type { DropdownOption } from "$lib/components/dropdown-menu";
    import { MathStatement } from "$lib/components/math-statement";
    import { ProblemAnswer, ProblemSolution } from "$lib/components/problem";
+   import { ProblemOrganization } from "$lib/components/problem-organization";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       topicLabel,
@@ -1437,6 +1438,33 @@
                               : undefined}
                         />
                      </div>
+
+                     {#if answerState.submitted && answerState.correct !== null}
+                        <ProblemOrganization
+                           class="w-full"
+                           problemId={problem.id}
+                           mastery={currentProgress?.mastery ?? null}
+                           engagement={currentProgress?.engagement ?? null}
+                           prompt={!currentProgress?.mastery}
+                           onchange={(state) => {
+                              currentProgress = currentProgress ?? {
+                                 times_seen: 1,
+                                 times_reviewed: 1,
+                                 times_correct: answerState.correct ? 1 : 0,
+                                 times_skipped: 0,
+                                 last_submission_at: new Date().toISOString(),
+                                 last_reviewed_at: new Date().toISOString(),
+                                 last_correct: answerState.correct,
+                                 next_review_at: null,
+                                 solved: answerState.correct === true,
+                                 mastery: null,
+                                 engagement: null,
+                              };
+                              currentProgress.mastery = state.mastery;
+                              currentProgress.engagement = state.engagement;
+                           }}
+                        />
+                     {/if}
 
                      <!-- Official worked solutions, revealed once the problem
                                  is finalized. Auto-opens on a wrong answer; keyed per

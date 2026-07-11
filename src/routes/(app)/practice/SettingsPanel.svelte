@@ -1,6 +1,7 @@
 <script lang="ts" module>
     import type { SelectOption } from "$lib/components/select";
     import type { PracticeMode } from "$lib/trainer";
+    import type { Engagement, Mastery } from "$lib/progress";
     import type { CounterKey } from "./practice-settings";
 
     const COUNTERS: { key: CounterKey; label: string }[] = [
@@ -13,8 +14,23 @@
     const MODES: { value: PracticeMode; label: string; needsAuth: boolean }[] = [
         { value: "new", label: "New", needsAuth: false },
         { value: "review", label: "Due Review", needsAuth: true },
-        { value: "skipped", label: "Skipped", needsAuth: true },
+        { value: "skipped", label: "Skipped, unsolved", needsAuth: true },
+        { value: "list", label: "My list", needsAuth: true },
         { value: "mixed", label: "Mixed", needsAuth: true },
+    ];
+
+    const MASTERY_OPTIONS: { value: Mastery | "unassessed"; label: string }[] = [
+        { value: "unassessed", label: "Unassessed" },
+        { value: "needs_work", label: "Needs work" },
+        { value: "learning", label: "Learning" },
+        { value: "confident", label: "Confident" },
+    ];
+
+    const PLAN_OPTIONS: { value: Engagement; label: string }[] = [
+        { value: "working", label: "Working on" },
+        { value: "revisit", label: "Revisit" },
+        { value: "later", label: "Later" },
+        { value: "ignored", label: "Ignored" },
     ];
 
     const DAYS_OPTIONS: SelectOption[] = [
@@ -203,7 +219,7 @@
             </p>
         </div>
     {:else}
-        <!-- Primary control: New / Due Review / Skipped / Mixed -->
+        <!-- Primary control: source of the next problem. -->
         <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
         <span class="text-xs font-medium text-muted-foreground">Problems</span>
         <div
@@ -232,6 +248,24 @@
                 </button>
             {/each}
         </div>
+        {#if form.mode === "list"}
+            <Select
+                options={PLAN_OPTIONS}
+                value={form.listEngagement}
+                onchange={(value) => (form.listEngagement = value as Engagement)}
+            />
+        {/if}
+    </div>
+
+    <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
+        <span class="text-xs font-medium text-muted-foreground">Mastery</span>
+        <Combobox
+            bind:value={form.mastery}
+            options={MASTERY_OPTIONS}
+            strict
+            placeholder="Any mastery"
+            inputPlaceholder="Add mastery"
+        />
     </div>
 
     <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
@@ -463,20 +497,6 @@
                     Refine progress-based queues. Applies to Due Review,
                     Skipped, and the review half of Mixed.
                 </p>
-
-                <div class="flex items-center justify-between gap-3">
-                    <div class="flex flex-col gap-0.5">
-                        <span class="text-xs font-medium text-muted-foreground">
-                            Include unscheduled
-                        </span>
-                        <span class="text-[10px] text-muted-foreground">
-                            {form.includeUnscheduled
-                                ? "Seen, not yet scheduled"
-                                : "Scheduled only"}
-                        </span>
-                    </div>
-                    <Switch bind:checked={form.includeUnscheduled} size="sm" />
-                </div>
 
                 {#each COUNTERS as c (c.key)}
                     <div class="flex flex-col gap-2">

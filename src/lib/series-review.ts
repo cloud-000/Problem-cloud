@@ -1,19 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
+import {
+    reviewScheduleFor,
+    statusFor,
+    type ActivityStatus,
+    type Mastery,
+    type ProblemProgress,
+} from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
 
-export type SeriesReviewProgress = Pick<
-    Tables<"problem_progress">,
-    | "times_seen"
-    | "times_reviewed"
-    | "times_correct"
-    | "times_skipped"
-    | "last_correct"
-    | "last_reviewed_at"
-    | "next_review_at"
-    | "repetitions"
->;
+export type SeriesReviewProgress = ProblemProgress;
 
 export type SeriesReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
     progress: SeriesReviewProgress | null;
@@ -30,12 +27,7 @@ export type SeriesReviewTest = {
     problems: SeriesReviewProblem[];
 };
 
-export type SeriesReviewStatus =
-    | "unseen"
-    | "skipped"
-    | "needs-work"
-    | "learning"
-    | "confident";
+export type SeriesReviewStatus = ActivityStatus;
 
 type RawReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
     problem_progress?: SeriesReviewProgress[] | null;
@@ -53,7 +45,9 @@ const PROGRESS_FIELDS = [
     "last_correct",
     "last_reviewed_at",
     "next_review_at",
-    "repetitions",
+    "solved",
+    "mastery",
+    "engagement",
 ].join(",");
 
 /** Load the compact all-time state needed by the series review matrix. */
@@ -156,19 +150,14 @@ export async function fetchSeriesDimensions(
 export function statusForReview(
     progress: SeriesReviewProgress | null,
 ): SeriesReviewStatus {
-    if (!progress || progress.times_seen === 0) return "unseen";
-    if (progress.times_reviewed === 0) return "skipped";
-    if (progress.repetitions >= 2) return "confident";
-    if (progress.repetitions === 1) return "learning";
-    return "needs-work";
+    return statusFor(progress);
 }
 
 export function reviewIsDue(
     progress: SeriesReviewProgress | null,
     now = Date.now(),
 ): boolean {
-    if (!progress?.next_review_at) return false;
-    return new Date(progress.next_review_at).getTime() <= now;
+    return reviewScheduleFor(progress, now) === "due";
 }
 
 export function compareReviewTests(a: SeriesReviewTest, b: SeriesReviewTest) {
@@ -214,7 +203,8 @@ function compareOptionalLabel(a: string | null, b: string | null): number {
 export type SeriesReviewSummary = {
     total: number;
     attempted: number;
-    confident: number;
+    due: number;
+    mastery: Record<Mastery | "unassessed", number>;
 };
 
 export function summarizeSeriesReview(
@@ -226,8 +216,18 @@ export function summarizeSeriesReview(
         attempted: problems.filter(
             (problem) => (problem.progress?.times_reviewed ?? 0) > 0,
         ).length,
-        confident: problems.filter(
-            (problem) => statusForReview(problem.progress) === "confident",
-        ).length,
+        due: problems.filter((problem) => reviewIsDue(problem.progress)).length,
+        mastery: {
+            unassessed: problems.filter((problem) => !problem.progress?.mastery).length,
+            needs_work: problems.filter(
+                (problem) => problem.progress?.mastery === "needs_work",
+            ).length,
+            learning: problems.filter(
+                (problem) => problem.progress?.mastery === "learning",
+            ).length,
+            confident: problems.filter(
+                (problem) => problem.progress?.mastery === "confident",
+            ).length,
+        },
     };
 }

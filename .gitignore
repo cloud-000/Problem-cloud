@@ -30,6 +30,7 @@ supabase/.temp/
 supabase/migrations/
 supabase/seed.sql
 supabase/snippets/sample-seed.sql
+supabase/dead-migrations
 
 # AI
 CLAUDE.md

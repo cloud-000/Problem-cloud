@@ -63,7 +63,7 @@
 
     let lastReviewedLabel = $derived(
         currentProgress
-            ? formatReviewDate(currentProgress.lastSubmissionAt)
+            ? formatReviewDate(currentProgress.last_submission_at)
             : null,
     );
 
@@ -155,7 +155,7 @@
                 {#if currentProgress}
                     <span class="inline-flex items-center gap-1">
                         <Icon name="visibility" class={iconCls} />
-                        Seen {currentProgress.timesSeen}×
+                        Seen {currentProgress.times_seen}×
                     </span>
                     {#if lastReviewedLabel}
                         <span class="text-border">•</span>

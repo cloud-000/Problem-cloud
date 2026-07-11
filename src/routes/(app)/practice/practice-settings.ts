@@ -1,5 +1,6 @@
 import { DIFFICULTY_RANGE, boolToTri, triToBool } from "$lib/library";
 import type { DimensionOption } from "$lib/series-review";
+import type { Engagement, Mastery } from "$lib/progress";
 import {
     ADAPTIVE_RANGE_DEFAULT,
     defaultPracticeSettings,
@@ -64,6 +65,8 @@ export type PracticeSettingsForm = {
     lastSubmissionDays: number | null;
     lastOutcome: "any" | "correct" | "incorrect";
     includeUnscheduled: boolean;
+    mastery: (Mastery | "unassessed")[];
+    listEngagement: Engagement;
     adaptive: boolean;
     adaptiveRange: number;
 };
@@ -138,7 +141,9 @@ export function createPracticeSettingsForm(
         counterEnabled,
         lastSubmissionDays: settings.lastSubmissionDays,
         lastOutcome: settings.lastOutcome,
-        includeUnscheduled: settings.includeUnscheduled,
+        includeUnscheduled: false,
+        mastery: [...(settings.mastery ?? [])],
+        listEngagement: settings.listEngagement ?? "working",
         adaptive: settings.adaptive ?? true,
         adaptiveRange: settings.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT,
     };
@@ -185,7 +190,9 @@ export function practiceSettingsFromForm(
         timesSkipped: counterFilter(form, "skipped"),
         lastSubmissionDays: form.lastSubmissionDays,
         lastOutcome: form.lastOutcome,
-        includeUnscheduled: form.includeUnscheduled,
+        includeUnscheduled: false,
+        mastery: [...form.mastery],
+        listEngagement: form.listEngagement,
         adaptive: form.adaptive,
         adaptiveRange: form.adaptiveRange,
     };

@@ -110,9 +110,11 @@ export type Database = {
         Row: {
           aops_category_id: string | null
           difficulty: number | null
+          division: string | null
+          division_order: number | null
+          format: string | null
+          format_order: number | null
           is_computational: boolean
-          level: string | null
-          level_order: number | null
           name: string
           quality: number | null
           section: number
@@ -124,9 +126,11 @@ export type Database = {
         Insert: {
           aops_category_id?: string | null
           difficulty?: number | null
+          division?: string | null
+          division_order?: number | null
+          format?: string | null
+          format_order?: number | null
           is_computational?: boolean
-          level?: string | null
-          level_order?: number | null
           name: string
           quality?: number | null
           section?: number
@@ -138,9 +142,11 @@ export type Database = {
         Update: {
           aops_category_id?: string | null
           difficulty?: number | null
+          division?: string | null
+          division_order?: number | null
+          format?: string | null
+          format_order?: number | null
           is_computational?: boolean
-          level?: string | null
-          level_order?: number | null
           name?: string
           quality?: number | null
           section?: number
@@ -374,6 +380,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "practice_sessions_current_problem_id_fkey"
+            columns: ["current_problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
+          {
             foreignKeyName: "practice_sessions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -386,10 +399,12 @@ export type Database = {
         Row: {
           created_at: string
           ease_factor: number
+          engagement: string | null
           interval_days: number
           last_correct: boolean | null
           last_reviewed_at: string | null
           last_submission_at: string | null
+          mastery: string | null
           next_review_at: string | null
           problem_id: number
           repetitions: number
@@ -405,10 +420,12 @@ export type Database = {
         Insert: {
           created_at?: string
           ease_factor?: number
+          engagement?: string | null
           interval_days?: number
           last_correct?: boolean | null
           last_reviewed_at?: string | null
           last_submission_at?: string | null
+          mastery?: string | null
           next_review_at?: string | null
           problem_id: number
           repetitions?: number
@@ -424,10 +441,12 @@ export type Database = {
         Update: {
           created_at?: string
           ease_factor?: number
+          engagement?: string | null
           interval_days?: number
           last_correct?: boolean | null
           last_reviewed_at?: string | null
           last_submission_at?: string | null
+          mastery?: string | null
           next_review_at?: string | null
           problem_id?: number
           repetitions?: number
@@ -447,6 +466,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "problem_progress_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
           },
           {
             foreignKeyName: "problem_progress_user_id_fkey"
@@ -496,6 +522,13 @@ export type Database = {
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "problem_rating_history_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
         ]
       }
       problem_rating_stats: {
@@ -524,6 +557,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "problems"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "problem_rating_stats_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: true
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
           },
         ]
       }
@@ -565,6 +605,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "problem_ratings_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
           },
         ]
       }
@@ -875,6 +922,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "submissions_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
+          {
             foreignKeyName: "submissions_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
@@ -894,11 +948,13 @@ export type Database = {
         Row: {
           aops_category_id: string | null
           difficulty: number | null
+          division: string | null
+          division_order: number | null
+          format: string | null
+          format_order: number | null
           has_all_answers: boolean
           id: number
           is_computational: boolean
-          level: string | null
-          level_order: number | null
           missing_answers_count: number
           name: string
           quality: number | null
@@ -912,11 +968,13 @@ export type Database = {
         Insert: {
           aops_category_id?: string | null
           difficulty?: number | null
+          division?: string | null
+          division_order?: number | null
+          format?: string | null
+          format_order?: number | null
           has_all_answers?: boolean
           id?: number
           is_computational?: boolean
-          level?: string | null
-          level_order?: number | null
           missing_answers_count?: number
           name: string
           quality?: number | null
@@ -930,11 +988,13 @@ export type Database = {
         Update: {
           aops_category_id?: string | null
           difficulty?: number | null
+          division?: string | null
+          division_order?: number | null
+          format?: string | null
+          format_order?: number | null
           has_all_answers?: boolean
           id?: number
           is_computational?: boolean
-          level?: string | null
-          level_order?: number | null
           missing_answers_count?: number
           name?: string
           quality?: number | null
@@ -1011,6 +1071,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "user_submitted_feedback_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
+          {
             foreignKeyName: "user_submitted_feedback_reviewed_by_fkey"
             columns: ["reviewed_by"]
             isOneToOne: false
@@ -1061,6 +1128,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "submissions_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
+          {
             foreignKeyName: "submissions_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
@@ -1073,6 +1147,69 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_problem_index: {
+        Row: {
+          answer_index: number | null
+          difficulty: number | null
+          division: string | null
+          engagement: string | null
+          format: string | null
+          has_choices: boolean | null
+          has_solution: boolean | null
+          has_statement: boolean | null
+          is_computational: boolean | null
+          is_ignored: boolean | null
+          last_correct: boolean | null
+          last_reviewed_at: string | null
+          last_submission_at: string | null
+          mastery: string | null
+          n: number | null
+          next_review_at: string | null
+          problem_id: number | null
+          quality: number | null
+          series_id: number | null
+          solved: boolean | null
+          tags: string[] | null
+          test_id: number | null
+          times_correct: number | null
+          times_reviewed: number | null
+          times_seen: number | null
+          times_skipped: number | null
+          topic: string | null
+          total_time_ms: number | null
+          verified: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problems_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["test_id"]
+          },
+          {
+            foreignKeyName: "problems_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tests_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tests_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["series_id"]
           },
         ]
       }
@@ -1104,6 +1241,26 @@ export type Database = {
           w: number
         }
         Returns: Record<string, unknown>
+      }
+      problem_state_summary: {
+        Args: { p_series_id?: number }
+        Returns: {
+          attempted: number
+          confident: number
+          ignored: number
+          later: number
+          learning: number
+          needs_work: number
+          no_plan: number
+          review_due: number
+          revisit: number
+          seen: number
+          skipped_only: number
+          total: number
+          unassessed: number
+          unseen: number
+          working: number
+        }[]
       }
       progress_breakdown: {
         Args: {
@@ -1187,6 +1344,22 @@ export type Database = {
       set_feedback_status: {
         Args: { p_feedback_id: number; p_status: string }
         Returns: undefined
+      }
+      set_problem_engagement: {
+        Args: { p_engagement: string; p_problem_id: number }
+        Returns: {
+          engagement: string
+          mastery: string
+          problem_id: number
+        }[]
+      }
+      set_problem_mastery: {
+        Args: { p_mastery: string; p_problem_id: number }
+        Returns: {
+          engagement: string
+          mastery: string
+          problem_id: number
+        }[]
       }
       sync_scraped_content: {
         Args: { dry_run?: boolean }

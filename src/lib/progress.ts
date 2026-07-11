@@ -28,20 +28,144 @@ function collapseRating(problem: RawEmbeddedProblem | null): ProblemRow | null {
     return { ...rest, rating: overallProblemRating(problem_ratings) };
 }
 
-/** The few progress fields surfaced alongside a problem (see `library.ts`). */
-export type ProblemProgress = Pick<
+export type Mastery = "needs_work" | "learning" | "confident";
+export type Engagement = "working" | "revisit" | "later" | "ignored";
+export type ActivityStatus = "unseen" | "skipped_only" | "attempted" | "solved";
+export type ReviewSchedule = "unscheduled" | "upcoming" | "due";
+
+/** Shared per-problem state used by Library, Find, Trainer and Progress. */
+type ProblemProgressRow = Pick<
     Tables<"problem_progress">,
-    "times_correct" | "times_reviewed" | "last_correct" | "next_review_at" | "solved"
+    | "times_seen"
+    | "times_correct"
+    | "times_reviewed"
+    | "times_skipped"
+    | "last_correct"
+    | "last_reviewed_at"
+    | "last_submission_at"
+    | "next_review_at"
+    | "solved"
+    | "mastery"
+    | "engagement"
 >;
+export type ProblemProgress = Omit<ProblemProgressRow, "mastery" | "engagement"> & {
+    mastery: Mastery | null;
+    engagement: Engagement | null;
+};
 
-/** Derived interaction state used by the Explore indicator. */
-export type ProgressStatus = "unseen" | "attempted" | "solved";
-
-/** No row → unseen; solved → solved; otherwise (seen/attempted) → attempted. */
-export function statusFor(progress?: ProblemProgress | null): ProgressStatus {
-    if (!progress) return "unseen";
+/** Activity is derived only from factual counters, never from personal state. */
+export function statusFor(progress?: ProblemProgress | null): ActivityStatus {
+    if (!progress || progress.times_seen === 0) return "unseen";
     if (progress.solved) return "solved";
+    if (progress.times_reviewed === 0) return "skipped_only";
     return "attempted";
+}
+
+export function reviewScheduleFor(
+    progress?: Pick<ProblemProgress, "next_review_at"> | null,
+    now = Date.now(),
+): ReviewSchedule {
+    if (!progress?.next_review_at) return "unscheduled";
+    return new Date(progress.next_review_at).getTime() <= now ? "due" : "upcoming";
+}
+
+export type PersonalProblemState = {
+    problem_id: number;
+    mastery: Mastery | null;
+    engagement: Engagement | null;
+};
+
+export const MASTERY_LABELS: Record<Mastery, string> = {
+    needs_work: "Needs work",
+    learning: "Learning",
+    confident: "Confident",
+};
+
+export const ENGAGEMENT_LABELS: Record<Engagement, string> = {
+    working: "Working on",
+    revisit: "Revisit",
+    later: "Later",
+    ignored: "Ignored",
+};
+
+export async function setProblemMastery(
+    supabase: Supabase,
+    problemId: number,
+    mastery: Mastery | null,
+): Promise<PersonalProblemState> {
+    const { data, error } = await supabase.rpc("set_problem_mastery", {
+        p_problem_id: problemId,
+        p_mastery: mastery as string,
+    });
+    if (error) throw error;
+    return (data?.[0] ?? {
+        problem_id: problemId,
+        mastery: null,
+        engagement: null,
+    }) as PersonalProblemState;
+}
+
+export async function setProblemEngagement(
+    supabase: Supabase,
+    problemId: number,
+    engagement: Engagement | null,
+): Promise<PersonalProblemState> {
+    const { data, error } = await supabase.rpc("set_problem_engagement", {
+        p_problem_id: problemId,
+        p_engagement: engagement as string,
+    });
+    if (error) throw error;
+    return (data?.[0] ?? {
+        problem_id: problemId,
+        mastery: null,
+        engagement: null,
+    }) as PersonalProblemState;
+}
+
+export type ProblemStateSummary = {
+    total: number;
+    unseen: number;
+    seen: number;
+    attempted: number;
+    skipped_only: number;
+    review_due: number;
+    unassessed: number;
+    needs_work: number;
+    learning: number;
+    confident: number;
+    no_plan: number;
+    working: number;
+    revisit: number;
+    later: number;
+    ignored: number;
+};
+
+export async function fetchProblemStateSummary(
+    supabase: Supabase,
+    seriesId: number | null = null,
+): Promise<ProblemStateSummary> {
+    const { data, error } = await supabase.rpc(
+        "problem_state_summary",
+        seriesId == null ? {} : { p_series_id: seriesId },
+    );
+    if (error) throw error;
+    return (data?.[0] ?? {
+        total: 0,
+        unseen: 0,
+        seen: 0,
+        attempted: 0,
+        skipped_only: 0,
+        review_due: 0,
+        unassessed: 0,
+        needs_work: 0,
+        learning: 0,
+        confident: 0,
+        no_plan: 0,
+        working: 0,
+        revisit: 0,
+        later: 0,
+        ignored: 0,
+    }) as ProblemStateSummary;
 }
 
 export type SubmissionSource = "practice" | "library" | "review";

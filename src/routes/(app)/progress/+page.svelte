@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { PageData } from "./$types";
     import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Select } from "$lib/components/select";
@@ -28,6 +29,10 @@
     import { RatingChart } from "$lib/components/rating-chart";
     import { Subtabs } from "$lib/components/subtabs";
     import SeriesReviewPanel from "./SeriesReviewPanel.svelte";
+    import {
+        fetchProblemStateSummary,
+        type ProblemStateSummary,
+    } from "$lib/progress";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -35,6 +40,7 @@
     let rows = $state<TopicStat[]>([]);
     // Full rating climb (all-time); sliced to the selected range for display.
     let ratingHistory = $state<PlayerRatingPoint[]>([]);
+    let stateSummary = $state<ProblemStateSummary | null>(null);
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
     // Topic currently spinning up a drill session (disables its button).
@@ -74,9 +80,10 @@
         }
         loading = true;
         try {
-            [rows, ratingHistory] = await Promise.all([
+            [rows, ratingHistory, stateSummary] = await Promise.all([
                 fetchProgressBreakdown(supabase, "topic", { from }),
                 fetchPlayerRatingHistory(supabase, user.id),
+                fetchProblemStateSummary(supabase),
             ]);
             errorMsg = null;
         } catch (e) {
@@ -210,7 +217,7 @@
                 name: `Drill: ${topicLabel(topicKey)}`,
                 settings,
             });
-            await goto(`/practice?session=${session.id}`);
+            await goto(resolve(`/practice?session=${session.id}`));
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to start drill";
             drilling = null;
@@ -289,6 +296,30 @@
                         />
                     </div>
                 </div>
+
+                {#if stateSummary}
+                    <section class="space-y-3 rounded-xl border border-border/60 bg-surface-container-low/40 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <h2 class="text-sm font-bold uppercase tracking-wider text-muted-foreground">Mastery and plans</h2>
+                                <p class="mt-0.5 text-xs text-muted-foreground">Current all-time organization · independent of the activity range</p>
+                            </div>
+                            <span class="text-xs text-muted-foreground">{stateSummary.review_due} review due</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+                            <div class="rounded-lg bg-surface-container-lowest p-3"><div class="text-xs text-muted-foreground">Unassessed</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.unassessed}</div></div>
+                            <div class="rounded-lg bg-destructive/10 p-3 text-destructive"><div class="text-xs">Needs work</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.needs_work}</div></div>
+                            <div class="rounded-lg bg-unsure/10 p-3 text-unsure"><div class="text-xs">Learning</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.learning}</div></div>
+                            <div class="rounded-lg bg-correct/10 p-3 text-correct"><div class="text-xs">Confident</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.confident}</div></div>
+                        </div>
+                        <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>Working on <strong class="text-foreground">{stateSummary.working}</strong></span>
+                            <span>· Revisit <strong class="text-foreground">{stateSummary.revisit}</strong></span>
+                            <span>· Later <strong class="text-foreground">{stateSummary.later}</strong></span>
+                            <span>· Ignored <strong class="text-foreground">{stateSummary.ignored}</strong></span>
+                        </div>
+                    </section>
+                {/if}
 
         {#if loading && rows.length === 0}
             <div class="flex flex-col items-center justify-center py-16 gap-3">

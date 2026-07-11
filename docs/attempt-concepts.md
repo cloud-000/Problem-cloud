@@ -87,8 +87,11 @@ encounter up to and including this row — the rating time-effort input, again r
 ## 4. `problem_progress` — the all-time rolling aggregate
 
 One row per `(user, problem)`, maintained by the `handle_new_submission` AFTER-INSERT
-trigger. It is **derived from the same logged rows** — a folded summary, not an
-independent source of truth:
+trigger. Its factual counters and SM-2 fields are **derived from the same logged
+rows** — a folded summary, not an independent source of truth. The table can also
+hold explicit `mastery` and `engagement` values set through narrow RPCs. Those
+personal fields may create a row before any submission, so **row existence does
+not mean seen; `times_seen > 0` does.**
 
 | Column | Increments on | Notes |
 | --- | --- | --- |
@@ -99,6 +102,8 @@ independent source of truth:
 | `last_correct` | — | outcome of the **last** graded row |
 | `ease_factor` / `repetitions` / `interval_days` / `next_review_at` | graded rows | SM-2 spaced-repetition schedule |
 | `solved` | generated | `times_correct > 0` |
+| `mastery` | user RPC | explicit self-assessment; never inferred from repetitions |
+| `engagement` | user RPC | explicit next-step plan; never inferred from skips |
 
 Because it folds the *same rows*, it inherits §1's blind spot: a wrong→right sitting
 bumps `times_reviewed = 1, times_correct = 1` — indistinguishable from a clean first-try

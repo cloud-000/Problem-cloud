@@ -13,6 +13,8 @@
         type ProblemRating,
     } from "$lib/library";
     import { statusFor } from "$lib/progress";
+    import { reviewScheduleFor, type Engagement, type Mastery } from "$lib/progress";
+    import { ProblemOrganization } from "$lib/components/problem-organization";
     import { cn } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
 
@@ -28,6 +30,7 @@
         isInstantFeedback?: boolean;
         /** Enables debugging affordances, e.g. the raw-text statement toggle. */
         debug?: boolean;
+        promptMastery?: boolean;
         class?: string;
     };
 
@@ -40,6 +43,7 @@
         disabled = false,
         isInstantFeedback = false,
         debug = false,
+        promptMastery = false,
         class: className,
     }: Props = $props();
 
@@ -49,6 +53,8 @@
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
+    let mastery = $derived<Mastery | null>(problem.progress?.mastery ?? null);
+    let engagement = $derived<Engagement | null>(problem.progress?.engagement ?? null);
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
@@ -125,6 +131,11 @@
                 <StatusTag status="solved" size="sm" />
             {:else if status === "attempted"}
                 <StatusTag status="attempted" size="sm" />
+            {:else if status === "skipped_only"}
+                <StatusTag status="skipped" label="Skipped only" size="sm" />
+            {/if}
+            {#if reviewScheduleFor(problem.progress) === "due"}
+                <StatusTag status="review" label="Review due" size="sm" />
             {/if}
         </div>
 
@@ -195,6 +206,17 @@
             </div>
         </div>
     </header>
+
+    <ProblemOrganization
+        problemId={problem.id}
+        {mastery}
+        {engagement}
+        prompt={promptMastery}
+        onchange={(state) => {
+            mastery = state.mastery;
+            engagement = state.engagement;
+        }}
+    />
 
     {#if debug && showRaw}
         <pre

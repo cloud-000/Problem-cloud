@@ -6,10 +6,12 @@ import {
     TESTS_EMBED_INNER,
     type ProblemRow,
 } from "$lib/library";
+import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
+export type { ProblemProgress } from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
 
-export type PracticeMode = "new" | "review" | "skipped" | "mixed";
+export type PracticeMode = "new" | "review" | "skipped" | "list" | "mixed";
 
 /**
  * The session *format* — how the whole practice run behaves — as opposed to
@@ -76,8 +78,10 @@ export type PracticeSettings = {
     timesSkipped: Range | null;
     lastSubmissionDays: number | null; // only reviewed within the last N days
     lastOutcome: "any" | "correct" | "incorrect";
-    // Also surface seen problems with no scheduled review (`next_review_at IS NULL`).
+    /** Legacy snapshot field. Unscheduled rows are no longer served as due. */
     includeUnscheduled: boolean;
+    mastery: (Mastery | "unassessed")[];
+    listEngagement: Engagement;
 };
 
 /**
@@ -134,17 +138,6 @@ export type PracticeSession = {
     shownIds: Set<number>;
     /** Monotonic draw counter; drives the Mixed-mode interleave pattern. */
     drawIndex: number;
-};
-
-/** Per-user progress for the shown problem (null for never-seen / New). */
-export type ProblemProgress = {
-    timesSeen: number;
-    timesReviewed: number;
-    timesCorrect: number;
-    timesSkipped: number;
-    lastSubmissionAt: string | null;
-    lastCorrect: boolean | null;
-    nextReviewAt: string | null;
 };
 
 export type PracticeResult = {
@@ -213,6 +206,8 @@ export function defaultPracticeSettings(): PracticeSettings {
         lastSubmissionDays: null,
         lastOutcome: "any",
         includeUnscheduled: false,
+        mastery: [],
+        listEngagement: "working",
     };
 }
 
@@ -406,7 +401,7 @@ function problemsCountSelect(settings: ResolvedSettings): string {
 function reviewSelect(settings: ResolvedSettings): string {
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
-    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_correct, problems!inner(*, ${tests}${rating})`;
+    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_reviewed_at, last_correct, solved, mastery, engagement, problems!inner(*, ${tests}${rating})`;
 }
 
 /** Whether the settings permit answerless problems (any availability but "with"). */
@@ -453,14 +448,25 @@ async function fetchRandomCandidate(
  */
 async function seenProblemIds(
     supabase: Supabase,
+    settings: PracticeSettings,
     session: PracticeSession,
 ): Promise<Set<number>> {
     const excludeIds = new Set(session.shownIds);
     const { data: seen, error } = await supabase
         .from("problem_progress")
-        .select("problem_id");
+        .select("problem_id, times_seen, mastery, engagement");
     if (error) throw error;
-    for (const row of seen ?? []) excludeIds.add(row.problem_id);
+    for (const row of seen ?? []) {
+        const mastery = settings.mastery ?? [];
+        const masteryMatches =
+            mastery.length === 0 ||
+            (row.mastery == null
+                ? mastery.includes("unassessed")
+                : mastery.includes(row.mastery as Mastery));
+        if (row.times_seen > 0 || row.engagement === "ignored" || !masteryMatches) {
+            excludeIds.add(row.problem_id);
+        }
+    }
     return excludeIds;
 }
 
@@ -473,7 +479,20 @@ async function fetchNewProblem(
     settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<ProblemRow | null> {
-    const exclude = exclusionList(await seenProblemIds(supabase, session));
+    if (
+        settings.mastery?.length > 0 &&
+        !settings.mastery.includes("unassessed")
+    ) {
+        const draw = await runReviewDraw(
+            excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
+                .eq("times_seen", 0)
+                .order("problem_id"),
+            allowsAnswerless(settings),
+        );
+        return draw.problem;
+    }
+
+    const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
 
     let countQuery = applyAttributeFilters(
         supabase
@@ -525,7 +544,7 @@ async function fetchNearestNewProblem(
     session: PracticeSession,
     center: number,
 ): Promise<ProblemRow | null> {
-    const exclude = exclusionList(await seenProblemIds(supabase, session));
+    const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
     const allowAnswerless = allowsAnswerless(settings);
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const select = `problem_id, rating, problems!inner(*, ${tests})`;
@@ -606,20 +625,37 @@ type ReviewRow = {
     times_correct: number;
     times_skipped: number;
     last_submission_at: string | null;
+    last_reviewed_at: string | null;
     last_correct: boolean | null;
+    solved: boolean;
+    mastery: Mastery | null;
+    engagement: Engagement | null;
     problems: ProblemRow | null;
 };
 
 function toProgress(row: ReviewRow): ProblemProgress {
     return {
-        timesSeen: row.times_seen,
-        timesReviewed: row.times_reviewed,
-        timesCorrect: row.times_correct,
-        timesSkipped: row.times_skipped,
-        lastSubmissionAt: row.last_submission_at,
-        lastCorrect: row.last_correct,
-        nextReviewAt: row.next_review_at,
+        times_seen: row.times_seen,
+        times_reviewed: row.times_reviewed,
+        times_correct: row.times_correct,
+        times_skipped: row.times_skipped,
+        last_submission_at: row.last_submission_at,
+        last_reviewed_at: row.last_reviewed_at,
+        last_correct: row.last_correct,
+        next_review_at: row.next_review_at,
+        solved: row.solved,
+        mastery: row.mastery,
+        engagement: row.engagement,
     };
+}
+
+function applyMasteryFilter(query: any, mastery: PracticeSettings["mastery"]) {
+    if (!mastery?.length) return query;
+    const includeNull = mastery.includes("unassessed");
+    const values = mastery.filter((value) => value !== "unassessed");
+    if (includeNull && values.length === 0) return query.is("mastery", null);
+    if (!includeNull) return query.in("mastery", values);
+    return query.or(`mastery.is.null,mastery.in.(${values.join(",")})`);
 }
 
 /**
@@ -638,6 +674,7 @@ function buildReviewBaseQuery(
         settings,
         "problems.",
     );
+    query = applyMasteryFilter(query, settings.mastery ?? []);
 
     const counters: [keyof Database["public"]["Tables"]["problem_progress"]["Row"], Range | null][] =
         [
@@ -666,13 +703,17 @@ function buildReviewBaseQuery(
     return query;
 }
 
+function excludeIgnored(query: any) {
+    return query.or("engagement.is.null,engagement.neq.ignored");
+}
+
 function buildSkippedBaseQuery(
     supabase: Supabase,
     settings: ResolvedSettings,
     session: PracticeSession,
     options: { count?: "exact"; head?: boolean } = {},
 ) {
-    return buildReviewBaseQuery(supabase, settings, session, options)
+    return excludeIgnored(buildReviewBaseQuery(supabase, settings, session, options))
         .gt("times_skipped", 0)
         .eq("solved", false);
 }
@@ -695,11 +736,8 @@ async function runReviewDraw(
 }
 
 /**
- * The review problem whose scheduled date is nearest to now, preferring dates
- * that have already passed (closest-passed = least overdue first). When nothing
- * is due, fall back to the soonest upcoming review in the future. With
- * `includeUnscheduled`, seen problems that have no scheduled date at all are
- * considered before the future fallback (they are reviewable at any time).
+ * The oldest problem that is actually due. Future and unscheduled rows never
+ * enter this queue; explicit Revisit intent owns unscheduled reinforcement.
  */
 async function fetchDueReviewProblem(
     supabase: Supabase,
@@ -709,30 +747,26 @@ async function fetchDueReviewProblem(
     const now = new Date().toISOString();
     const allowAnswerless = allowsAnswerless(settings);
 
-    // 1. Closest review date that has already passed (nearest to now first).
-    let draw = await runReviewDraw(
-        buildReviewBaseQuery(supabase, settings, session)
+    return runReviewDraw(
+        excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
             .not("next_review_at", "is", null)
             .lte("next_review_at", now)
-            .order("next_review_at", { ascending: false }),
+            .order("next_review_at", { ascending: true }),
         allowAnswerless,
     );
-    if (draw.problem) return draw;
+}
 
-    // 2. Seen problems with no scheduled review at all (opt-in).
-    if (settings.includeUnscheduled) {
-        draw = await runReviewDraw(
-            buildReviewBaseQuery(supabase, settings, session).is("next_review_at", null),
-            allowAnswerless,
-        );
-        if (draw.problem) return draw;
-    }
-
-    // 3. Fallback: the soonest upcoming review still in the future.
+async function fetchListProblem(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const allowAnswerless = allowsAnswerless(settings);
     return runReviewDraw(
         buildReviewBaseQuery(supabase, settings, session)
-            .gt("next_review_at", now)
-            .order("next_review_at", { ascending: true }),
+            .eq("engagement", settings.listEngagement ?? "working")
+            .order("last_submission_at", { ascending: true, nullsFirst: true })
+            .order("problem_id", { ascending: true }),
         allowAnswerless,
     );
 }
@@ -800,6 +834,16 @@ async function fetchSkippedDraw(
     return fetchSkippedProblem(supabase, { ...settings, ratingBand: null }, session);
 }
 
+async function fetchListDraw(
+    supabase: Supabase,
+    settings: ResolvedSettings,
+    session: PracticeSession,
+): Promise<Draw> {
+    const draw = await fetchListProblem(supabase, settings, session);
+    if (draw.problem || !settings.ratingBand) return draw;
+    return fetchListProblem(supabase, { ...settings, ratingBand: null }, session);
+}
+
 async function drawFromSource(
     supabase: Supabase,
     settings: ResolvedSettings,
@@ -856,6 +900,10 @@ export async function nextPracticeProblem(
     }
     if (settings.mode === "skipped") {
         const draw = await fetchSkippedDraw(supabase, resolved, session);
+        return { problem: draw.problem, source: "review", progress: draw.progress };
+    }
+    if (settings.mode === "list") {
+        const draw = await fetchListDraw(supabase, resolved, session);
         return { problem: draw.problem, source: "review", progress: draw.progress };
     }
 

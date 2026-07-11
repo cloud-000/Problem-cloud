@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
 import type { TriState } from "$lib/components/toggle";
 import type { Option } from "$lib/components/combobox";
-import type { ProblemProgress } from "$lib/progress";
+import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -96,7 +96,7 @@ export function aopsCommunityUrl(
 // scopes the embed to the signed-in user, so it returns a 0/1-element array per
 // problem (always empty for anonymous users).
 const PROGRESS_SELECT =
-    "problem_progress(times_correct, times_reviewed, last_correct, next_review_at, solved)";
+    "problem_progress(times_seen, times_correct, times_reviewed, times_skipped, last_correct, last_reviewed_at, last_submission_at, next_review_at, solved, mastery, engagement)";
 
 // The problem's ratings, embedded via the problem_ratings FK — one row per scope
 // (only 'overall' today; topic scopes later). World-readable, so this is populated
@@ -338,6 +338,8 @@ export interface Filters {
     difficulty?: [number, number];
     quality?: [number, number];
     verified?: boolean | null;
+    mastery?: (Mastery | "unassessed")[];
+    engagement?: (Engagement | "none")[];
 }
 
 /** Page size for the infinite-scroll result feed. */
@@ -405,31 +407,61 @@ export async function fetchProblems(
     f: Filters = {},
     page = 0,
 ): Promise<ProblemRow[]> {
-    // `tests!inner` so filtering through the relationship (series scope) works.
-    let q = supabase
+    // Page ids through the caller-scoped flat index first. Personal-state filters
+    // therefore run before pagination and null means truly unassessed/no plan,
+    // including problems with no problem_progress row.
+    let index = supabase.from("user_problem_index").select("problem_id");
+    if (f.testId != null) index = index.eq("test_id", f.testId);
+    else if (f.seriesId != null) index = index.eq("series_id", f.seriesId);
+    if (f.topic?.length) index = index.in("topic", f.topic);
+    if (f.tags?.length) index = index.contains("tags", f.tags);
+    if (f.difficulty)
+        index = index
+            .gte("difficulty", f.difficulty[0])
+            .lte("difficulty", f.difficulty[1]);
+    if (f.quality)
+        index = index.gte("quality", f.quality[0]).lte("quality", f.quality[1]);
+    if (f.isComputational != null)
+        index = index.eq("is_computational", f.isComputational);
+    if (f.verified != null) index = index.eq("verified", f.verified);
+    index = applyNullableStateFilter(index, "mastery", f.mastery, "unassessed");
+    index = applyNullableStateFilter(index, "engagement", f.engagement, "none");
+
+    const { data: idRows, error: indexError } = await index
+        .order("n")
+        .order("problem_id")
+        .range(...pageRange(page));
+    if (indexError) throw indexError;
+    const ids = (idRows ?? [])
+        .map((row) => row.problem_id)
+        .filter((id): id is number => id != null);
+    if (ids.length === 0) return [];
+
+    const { data, error } = await supabase
         .from("problems")
         .select(
-            `*, tests!inner(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
-        );
-    if (f.testId != null) q = q.eq("test_id", f.testId);
-    else if (f.seriesId != null) q = q.eq("tests.series_id", f.seriesId);
-    if (f.topic?.length) q = q.in("topic", f.topic);
-    if (f.tags?.length) q = q.contains("tags", f.tags);
-    if (f.difficulty)
-        q = q.gte("difficulty", f.difficulty[0]).lte("difficulty", f.difficulty[1]);
-    if (f.quality)
-        q = q.gte("quality", f.quality[0]).lte("quality", f.quality[1]);
-    if (f.isComputational != null)
-        q = q.eq("is_computational", f.isComputational);
-    if (f.verified != null) q = q.eq("verified", f.verified);
-    const { data, error } = await q
-        .order("n")
-        .order("id")
-        .range(...pageRange(page));
+            `*, tests(name, series_id, series(name), aops_category_id, division, format), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
+        )
+        .in("id", ids);
     if (error) throw error;
-    return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>).map(
-        normalizeEmbeds,
-    );
+    const order = new Map(ids.map((id, i) => [id, i]));
+    return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>)
+        .map(normalizeEmbeds)
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}
+
+function applyNullableStateFilter(
+    query: any,
+    column: "mastery" | "engagement",
+    values: string[] | undefined,
+    nullValue: "unassessed" | "none",
+) {
+    if (!values?.length) return query;
+    const includeNull = values.includes(nullValue);
+    const concrete = values.filter((value) => value !== nullValue);
+    if (includeNull && concrete.length === 0) return query.is(column, null);
+    if (!includeNull) return query.in(column, concrete);
+    return query.or(`${column}.is.null,${column}.in.(${concrete.join(",")})`);
 }
 
 /**

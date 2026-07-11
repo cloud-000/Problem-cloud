@@ -15,6 +15,7 @@
         type Filters,
     } from "$lib/library";
     import type { LibraryStore } from "$lib/state/library.svelte";
+    import type { Engagement, Mastery } from "$lib/progress";
     import { untrack } from "svelte";
 
     let {
@@ -44,6 +45,22 @@
     ]);
     let quality = $state<[number, number]>(f.quality ?? [...QUALITY_RANGE]);
     let verified = $state<TriState>(boolToTri(f.verified));
+    let mastery = $state<(Mastery | "unassessed")[]>([...(f.mastery ?? [])]);
+    let engagement = $state<(Engagement | "none")[]>([...(f.engagement ?? [])]);
+
+    const masteryOptions = [
+        { value: "unassessed", label: "Unassessed" },
+        { value: "needs_work", label: "Needs work" },
+        { value: "learning", label: "Learning" },
+        { value: "confident", label: "Confident" },
+    ];
+    const engagementOptions = [
+        { value: "none", label: "No plan" },
+        { value: "working", label: "Working on" },
+        { value: "revisit", label: "Revisit" },
+        { value: "later", label: "Later" },
+        { value: "ignored", label: "Ignored" },
+    ];
 
     // Parents locked in by drilling — shown as removable scope chips. Reactive so
     // clearing one re-runs the patch effect (dropping its id) and reveals the series
@@ -111,6 +128,8 @@
                 quality: rangeOrUndef(quality, QUALITY_RANGE),
                 isComputational: triToBool(isComputational),
                 verified: triToBool(verified),
+                mastery: mastery.length ? mastery : undefined,
+                engagement: engagement.length ? engagement : undefined,
             };
         }
         store.patchFilters(patch);
@@ -253,6 +272,24 @@
                 bind:value={tags}
                 placeholder="Any tags…"
                 inputPlaceholder="Add tag…"
+            />
+        </div>
+        <div class="flex flex-col gap-1.5">
+            {@render field("Mastery")}
+            <Combobox
+                bind:value={mastery}
+                options={masteryOptions}
+                strict
+                placeholder="Any mastery…"
+            />
+        </div>
+        <div class="flex flex-col gap-1.5">
+            {@render field("Plan")}
+            <Combobox
+                bind:value={engagement}
+                options={engagementOptions}
+                strict
+                placeholder="Any plan…"
             />
         </div>
         <div class="flex flex-col gap-1.5">
