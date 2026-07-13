@@ -56,6 +56,16 @@ create table public.problems (
   test_id            bigint references public.tests(id) on delete cascade,
   n                  integer not null,        -- problem number within the test
 
+  -- Duplicate pointer. When this row is an ALIAS of another problem (the same
+  -- real-world problem placed under a different test, e.g. AMC 10A #18 also
+  -- appears as AMC 12A #12), canonical_id points at the CANONICAL problem that
+  -- owns the shared state. NULL means this row is its own canonical. Rating
+  -- (problem_ratings) and per-user progress (problem_progress) are keyed on the
+  -- canonical: submissions are canonicalized on insert (see submissions.sql) and
+  -- the read views resolve through coalesce(canonical_id, id). Scraper-owned:
+  -- set every sync from the staged canonical_sync_key (content_sync.sql).
+  canonical_id       bigint references public.problems(id) on delete set null,
+
   -- content
   statement          text,                  -- statement parts
   choices            text[],                  -- choice texts; null if not MCQ
@@ -85,6 +95,9 @@ create table public.problems (
 
 create index problems_test_id_idx on public.problems(test_id);
 create unique index problems_sync_key_idx on public.problems(sync_key);
+-- Aliases only; canonicals (the common case) are excluded so the index stays small.
+create index problems_canonical_id_idx on public.problems(canonical_id)
+  where canonical_id is not null;
 
 -- Enable Row Level Security (RLS)
 alter table public.series enable row level security;

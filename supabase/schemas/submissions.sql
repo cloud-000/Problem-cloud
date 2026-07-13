@@ -51,6 +51,42 @@ create unique index submissions_test_session_problem_uidx
   on public.submissions(session_id, problem_id)
   where source = 'test';
 
+-- Canonicalize duplicate problems at the source. If the submitted problem is an
+-- ALIAS (problems.canonical_id set), rewrite problem_id to the canonical BEFORE
+-- any other trigger sees the row, so a single real-world problem has ONE shared
+-- rating and ONE shared per-user progress no matter which test placement the user
+-- solved it under (e.g. AMC 10A #18 vs AMC 12A #12). Everything downstream
+-- (encounter annotation, SM-2 progress, Glicko rating) then keys off the
+-- canonical with zero further changes.
+--
+-- Ordering is load-bearing: Postgres fires BEFORE-row triggers in trigger-NAME
+-- order, and set_submission_encounter's trigger is `on_submission_annotate`, so
+-- this trigger's name MUST sort before it ('a_' < 'on_'). Do not rename without
+-- preserving that order.
+create or replace function public.canonicalize_submission_problem()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_canonical bigint;
+begin
+  select canonical_id into v_canonical
+  from public.problems
+  where id = new.problem_id;
+  if v_canonical is not null then
+    new.problem_id := v_canonical;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace trigger a_canonicalize_submission
+  before insert on public.submissions
+  for each row
+  execute function public.canonicalize_submission_problem();
+
 -- Per-(user, problem) factual aggregate + SM-2 scheduling + user-owned
 -- organization. A row may exist with times_seen = 0 when a user classifies an
 -- unseen problem; row existence is therefore not an activity signal.
@@ -383,11 +419,20 @@ select
   coalesce(pp.solved, false) as solved,
   pp.mastery,
   pp.engagement,
-  coalesce(pp.engagement = 'ignored', false) as is_ignored
+  coalesce(pp.engagement = 'ignored', false) as is_ignored,
+  -- The canonical this row shares state with (NULL when it is its own canonical).
+  -- NOTE: pgdelta recreates this view (DROP+CREATE, never CREATE OR REPLACE) on any
+  -- body change, which DROPS the grant below. The generated migration must re-add
+  -- `grant select ... to authenticated` by hand -- pgdelta will not re-emit an
+  -- otherwise-unchanged grant after the DROP.
+  p.canonical_id
 from public.problems p
 left join public.tests t on t.id = p.test_id
+-- Progress is keyed on the canonical, so an alias placement reflects the shared
+-- progress of the real problem (submissions are canonicalized on insert, so an
+-- alias never accrues its own progress row anyway).
 left join public.problem_progress pp
-  on pp.problem_id = p.id and pp.user_id = auth.uid();
+  on pp.problem_id = coalesce(p.canonical_id, p.id) and pp.user_id = auth.uid();
 
 grant select on public.user_problem_index to authenticated;
 
@@ -438,3 +483,188 @@ as $$
 $$;
 
 grant execute on function public.problem_state_summary(bigint) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Duplicate-problem backfill (one-time, admin-only).
+--
+-- Rebuilds a single (user, problem) problem_progress row by REPLAYING that pair's
+-- submissions in chronological order through the exact SM-2 recurrence that
+-- handle_new_submission applies live — the progress analogue of
+-- recompute_ratings(). User-owned intent columns (mastery/engagement) are
+-- preserved (the on-conflict update omits them). Used by
+-- canonicalize_existing_user_data() below to merge an alias's history into its
+-- canonical, and reusable as a general repair tool.
+-- ---------------------------------------------------------------------------
+create or replace function public.recompute_problem_progress(
+  p_user_id uuid,
+  p_problem_id bigint
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  s        record;
+  ts       integer := 0;   -- times_seen
+  tr       integer := 0;   -- times_reviewed
+  tc       integer := 0;   -- times_correct
+  tk       integer := 0;   -- times_skipped
+  ttime    bigint  := 0;   -- total_time_ms
+  last_sub timestamptz;
+  last_rev timestamptz;
+  last_cor boolean;
+  ef       real    := 2.5;
+  reps     integer := 0;
+  iv       integer := 0;
+  nra      timestamptz;
+  q        integer;
+begin
+  for s in
+    select elapsed_ms, skipped, is_correct, created_at
+    from public.submissions
+    where user_id = p_user_id and problem_id = p_problem_id
+    order by created_at asc, id asc
+  loop
+    ts    := ts + 1;
+    ttime := ttime + coalesce(s.elapsed_ms, 0);
+    last_sub := s.created_at;
+    if s.skipped then
+      tk := tk + 1;                         -- skips don't advance SM-2
+    else
+      tr := tr + 1;
+      last_rev := s.created_at;
+      last_cor := coalesce(s.is_correct, false);
+      if coalesce(s.is_correct, false) then
+        tc := tc + 1; q := 5;
+      else
+        q := 2;
+      end if;
+      if q < 3 then
+        reps := 0; iv := 1;
+      else
+        if reps = 0 then iv := 1;
+        elsif reps = 1 then iv := 6;
+        else iv := round(iv * ef)::integer;
+        end if;
+        reps := reps + 1;
+      end if;
+      ef := ef + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+      if ef < 1.3 then ef := 1.3; end if;
+      nra := s.created_at + (iv || ' days')::interval;
+    end if;
+  end loop;
+
+  if ts = 0 then
+    return;   -- no submissions for this pair; leave any intent-only row untouched
+  end if;
+
+  insert into public.problem_progress (
+    user_id, problem_id, times_seen, times_reviewed, times_correct,
+    times_skipped, total_time_ms, last_submission_at, last_reviewed_at,
+    last_correct, ease_factor, repetitions, interval_days, next_review_at,
+    created_at, updated_at
+  ) values (
+    p_user_id, p_problem_id, ts, tr, tc, tk, ttime, last_sub, last_rev,
+    last_cor, ef, reps, iv, nra, now(), now()
+  )
+  on conflict (user_id, problem_id) do update set
+    times_seen = excluded.times_seen,
+    times_reviewed = excluded.times_reviewed,
+    times_correct = excluded.times_correct,
+    times_skipped = excluded.times_skipped,
+    total_time_ms = excluded.total_time_ms,
+    last_submission_at = excluded.last_submission_at,
+    last_reviewed_at = excluded.last_reviewed_at,
+    last_correct = excluded.last_correct,
+    ease_factor = excluded.ease_factor,
+    repetitions = excluded.repetitions,
+    interval_days = excluded.interval_days,
+    next_review_at = excluded.next_review_at,
+    updated_at = now();
+  -- mastery/engagement omitted above => user-owned intent survives the rebuild.
+end;
+$$;
+
+-- One-time migration of EXISTING user data onto canonical problems. Safe to run
+-- only AFTER a content sync has populated problems.canonical_id (i.e. the scraper
+-- has emitted canonical_sync_key). Idempotent: re-running is a near no-op because
+-- submissions are already canonical. Steps:
+--   1. Repoint historical submissions from each alias to its canonical.
+--   2. Drop the now-stale alias-keyed progress + rating rows (rebuilt below).
+--   3. Replay progress for every affected (user, canonical) pair.
+--   4. recompute_ratings() to rebuild all ratings from the corrected log.
+-- Note: an alias-only mastery/engagement note (rare) is dropped in step 2; the
+-- user can re-set it on the canonical.
+create or replace function public.canonicalize_existing_user_data()
+returns table (
+  submissions_moved      bigint,
+  progress_rebuilt       bigint,
+  alias_progress_dropped bigint,
+  alias_ratings_dropped  bigint
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_moved   bigint := 0;
+  v_rebuilt bigint := 0;
+  v_prog    bigint := 0;
+  v_rat     bigint := 0;
+  r         record;
+begin
+  -- Affected (user, canonical) pairs, captured BEFORE repointing.
+  create temporary table _affected_pairs on commit drop as
+  select distinct s.user_id, p.canonical_id as problem_id
+  from public.submissions s
+  join public.problems p on p.id = s.problem_id
+  where p.canonical_id is not null;
+
+  with moved as (
+    update public.submissions s
+    set problem_id = p.canonical_id
+    from public.problems p
+    where p.id = s.problem_id and p.canonical_id is not null
+    returning 1
+  )
+  select pg_catalog.count(*) into v_moved from moved;
+
+  with d as (
+    delete from public.problem_progress pp
+    using public.problems p
+    where p.id = pp.problem_id and p.canonical_id is not null
+    returning 1
+  )
+  select pg_catalog.count(*) into v_prog from d;
+
+  with d as (
+    delete from public.problem_ratings rr
+    using public.problems p
+    where p.id = rr.problem_id and p.canonical_id is not null
+    returning 1
+  )
+  select pg_catalog.count(*) into v_rat from d;
+
+  delete from public.problem_rating_stats st
+  using public.problems p
+  where p.id = st.problem_id and p.canonical_id is not null;
+
+  delete from public.problem_rating_history h
+  using public.problems p
+  where p.id = h.problem_id and p.canonical_id is not null;
+
+  for r in select user_id, problem_id from _affected_pairs loop
+    perform public.recompute_problem_progress(r.user_id, r.problem_id);
+    v_rebuilt := v_rebuilt + 1;
+  end loop;
+
+  perform public.recompute_ratings();
+
+  return query select v_moved, v_rebuilt, v_prog, v_rat;
+end;
+$$;
+
+revoke all on function public.recompute_problem_progress(uuid, bigint) from public;
+revoke all on function public.canonicalize_existing_user_data() from public;
+grant execute on function public.recompute_problem_progress(uuid, bigint) to service_role;
+grant execute on function public.canonicalize_existing_user_data() to service_role;

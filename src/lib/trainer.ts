@@ -429,10 +429,13 @@ async function fetchRandomCandidate(
     count: number,
 ): Promise<ProblemRow | null> {
     const offset = Math.floor(Math.random() * count);
+    // Exclude duplicate aliases (canonical_id set): the same real-world problem
+    // is served once, under its canonical. Aliases still appear in list/test-mode
+    // draws (which target a specific test), just not in cross-catalog discovery.
     let query = applyAttributeFilters(
         supabase.from("problems").select(problemsDirectSelect(settings)),
         settings,
-    );
+    ).is("canonical_id", null);
     if (exclude) query = query.not("id", "in", exclude);
 
     const { data, error } = await query.order("id").range(offset, offset).maybeSingle();
@@ -494,12 +497,14 @@ async function fetchNewProblem(
 
     const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
 
+    // `.is("canonical_id", null)` keeps the count aligned with the alias-excluded
+    // draws below (a duplicate is discovered once, under its canonical).
     let countQuery = applyAttributeFilters(
         supabase
             .from("problems")
             .select(problemsCountSelect(settings), { count: "exact", head: true }),
         settings,
-    );
+    ).is("canonical_id", null);
     if (exclude) countQuery = countQuery.not("id", "in", exclude);
     const { count, error } = await countQuery;
 
@@ -515,7 +520,7 @@ async function fetchNewProblem(
     let fallback = applyAttributeFilters(
         supabase.from("problems").select(problemsDirectSelect(settings)),
         settings,
-    );
+    ).is("canonical_id", null);
     if (exclude) fallback = fallback.not("id", "in", exclude);
     const { data, error: fallbackError } = await fallback
         .order("id")

@@ -69,6 +69,11 @@ create unlogged table public._import_tests (
 create unlogged table public._import_problems (
   sync_key           text primary key,
   test_sync_key      text not null,   -- resolved to test_id at merge time
+  -- Duplicate pointer: the sync_key of the CANONICAL problem this row is an alias
+  -- of (same real-world problem under another test). NULL / equal to sync_key
+  -- means "not an alias". Resolved to problems.canonical_id after the problem
+  -- upsert (a second pass, since the canonical may be inserted in the same batch).
+  canonical_sync_key text,
   n                  integer not null,
   aops_id            integer,
   statement          text,
@@ -306,6 +311,28 @@ begin
     pg_catalog.count(*) filter (where not inserted)
   into v_problems_ins, v_problems_upd
   from ins;
+
+  -- Resolve duplicate pointers (canonical_sync_key -> canonical_id). A SECOND
+  -- pass, because an alias's canonical may have been inserted in this same batch.
+  -- canonical_id is scraper-owned structural state (not seed-then-lock), so we
+  -- reset every staged problem's pointer first — a removed/renamed alias link
+  -- must never leave a stale pointer — then set it for the aliases whose
+  -- canonical resolves. Only rows in THIS import are touched (p.sync_key = ip.*),
+  -- so untouched series are unaffected. The scraper collapses link chains, so a
+  -- canonical_sync_key always names a true canonical (never itself an alias).
+  update public.problems p
+  set canonical_id = null
+  from public._import_problems ip
+  where p.sync_key = ip.sync_key
+    and p.canonical_id is not null;
+
+  update public.problems p
+  set canonical_id = c.id
+  from public._import_problems ip
+  join public.problems c on c.sync_key = ip.canonical_sync_key
+  where p.sync_key = ip.sync_key
+    and ip.canonical_sync_key is not null
+    and ip.canonical_sync_key <> ip.sync_key;
 
   -- Unmatched: live problems whose test is part of THIS import (so a partial
   -- scrape never flags untouched series) but whose sync_key is absent from the

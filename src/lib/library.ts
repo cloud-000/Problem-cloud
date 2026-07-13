@@ -104,6 +104,14 @@ const PROGRESS_SELECT =
 // modules that embed problems (e.g. submissions in `progress.ts`) can nest it.
 export const RATING_SELECT = "problem_ratings(scope, rating, rd, attempts)";
 
+// Shared state for a DUPLICATE problem. When a row is an alias (canonical_id
+// set), its rating and per-user progress live under the canonical, not itself —
+// submissions are canonicalized on insert, so an alias never has its own rows.
+// This self-referential embed (problems.canonical_id -> problems.id) nests the
+// canonical's progress + rating so the app can show shared state on either
+// placement. Null for a canonical/standalone row (then its own embeds are used).
+export const CANONICAL_STATE_SELECT = `canonical:canonical_id(${PROGRESS_SELECT}, ${RATING_SELECT})`;
+
 /** Pick the single `overall`-scope rating out of an embedded `problem_ratings` array. */
 export function overallProblemRating(
     ratings: (ProblemRating & { scope: string })[] | null | undefined,
@@ -264,8 +272,15 @@ export function glickoMatchPreview(
 }
 
 type ProblemEmbeds = {
+    canonical_id?: number | null;
     problem_progress?: ProblemProgress[] | null;
     problem_ratings?: (ProblemRating & { scope: string })[] | null;
+    // The canonical's shared state, present only for alias rows (see
+    // CANONICAL_STATE_SELECT). Its embeds override the row's own empty ones.
+    canonical?: {
+        problem_progress?: ProblemProgress[] | null;
+        problem_ratings?: (ProblemRating & { scope: string })[] | null;
+    } | null;
 };
 
 /**
@@ -274,15 +289,19 @@ type ProblemEmbeds = {
  */
 function normalizeEmbeds<T extends ProblemEmbeds>(
     row: T,
-): Omit<T, "problem_progress" | "problem_ratings"> & {
+): Omit<T, "problem_progress" | "problem_ratings" | "canonical"> & {
     progress: ProblemProgress | null;
     rating: ProblemRating | null;
 } {
-    const { problem_progress, problem_ratings, ...rest } = row;
+    const { problem_progress, problem_ratings, canonical, ...rest } = row;
+    // An alias shares the canonical's rating + progress; a canonical/standalone
+    // row (canonical == null) uses its own embeds.
+    const progressRows = canonical?.problem_progress ?? problem_progress;
+    const ratingRows = canonical?.problem_ratings ?? problem_ratings;
     return {
         ...rest,
-        progress: problem_progress?.[0] ?? null,
-        rating: overallProblemRating(problem_ratings),
+        progress: progressRows?.[0] ?? null,
+        rating: overallProblemRating(ratingRows),
     };
 }
 
@@ -440,7 +459,7 @@ export async function fetchProblems(
     const { data, error } = await supabase
         .from("problems")
         .select(
-            `*, tests(name, series_id, series(name), aops_category_id, division, format), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
+            `*, tests(name, series_id, series(name), aops_category_id, division, format), ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT}`,
         )
         .in("id", ids);
     if (error) throw error;
@@ -494,7 +513,7 @@ export async function fetchByIds(
     const { data, error } = await supabase
         .from("problems")
         .select(
-            `*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}`,
+            `*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT}`,
         )
         .in("id", ids);
     if (error) throw error;

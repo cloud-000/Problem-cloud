@@ -38,6 +38,7 @@ export type Database = {
         Row: {
           answer_index: number | null
           aops_id: number | null
+          canonical_sync_key: string | null
           choices: string[] | null
           difficulty: number | null
           is_computational: boolean
@@ -55,6 +56,7 @@ export type Database = {
         Insert: {
           answer_index?: number | null
           aops_id?: number | null
+          canonical_sync_key?: string | null
           choices?: string[] | null
           difficulty?: number | null
           is_computational?: boolean
@@ -72,6 +74,7 @@ export type Database = {
         Update: {
           answer_index?: number | null
           aops_id?: number | null
+          canonical_sync_key?: string | null
           choices?: string[] | null
           difficulty?: number | null
           is_computational?: boolean
@@ -620,6 +623,7 @@ export type Database = {
           answer_index: number | null
           aops_id: number | null
           built_at: string
+          canonical_id: number | null
           choices: string[] | null
           difficulty: number | null
           id: number
@@ -639,6 +643,7 @@ export type Database = {
           answer_index?: number | null
           aops_id?: number | null
           built_at?: string
+          canonical_id?: number | null
           choices?: string[] | null
           difficulty?: number | null
           id?: number
@@ -658,6 +663,7 @@ export type Database = {
           answer_index?: number | null
           aops_id?: number | null
           built_at?: string
+          canonical_id?: number | null
           choices?: string[] | null
           difficulty?: number | null
           id?: number
@@ -674,6 +680,20 @@ export type Database = {
           verified?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
           {
             foreignKeyName: "problems_test_id_fkey"
             columns: ["test_id"]
@@ -1153,6 +1173,7 @@ export type Database = {
       user_problem_index: {
         Row: {
           answer_index: number | null
+          canonical_id: number | null
           difficulty: number | null
           division: string | null
           engagement: string | null
@@ -1183,6 +1204,20 @@ export type Database = {
           verified: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
           {
             foreignKeyName: "problems_test_id_fkey"
             columns: ["test_id"]
@@ -1217,6 +1252,15 @@ export type Database = {
     Functions: {
       admin_recompute_ratings: { Args: never; Returns: Json }
       backfill_content_sync_keys: { Args: never; Returns: undefined }
+      canonicalize_existing_user_data: {
+        Args: never
+        Returns: {
+          alias_progress_dropped: number
+          alias_ratings_dropped: number
+          progress_rebuilt: number
+          submissions_moved: number
+        }[]
+      }
       glicko_e: {
         Args: { r: number; r_j: number; rd_j: number }
         Returns: number
@@ -1332,6 +1376,10 @@ export type Database = {
         }
       }
       recalculate_test_answers: { Args: { t_id: number }; Returns: undefined }
+      recompute_problem_progress: {
+        Args: { p_problem_id: number; p_user_id: string }
+        Returns: undefined
+      }
       recompute_ratings: { Args: never; Returns: Json }
       review_answer_suggestion: {
         Args: {
