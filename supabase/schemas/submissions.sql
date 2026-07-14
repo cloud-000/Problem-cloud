@@ -12,6 +12,13 @@ create table public.submissions (
   user_id         uuid   references public.profiles(id) on delete cascade not null,
   problem_id      bigint references public.problems(id) on delete cascade not null,
   selected_choice integer,                 -- null for skips / non-MCQ
+  -- The solver's free-text response for non-MCQ (computational / free-response)
+  -- problems; null for MCQ (the choice is in selected_choice) and skips. Persisted
+  -- so a graded answer stays auditable/re-gradable: grading is lexical (answersMatch)
+  -- and the stored correct answer can carry unit labels/LaTeX, so keeping the raw
+  -- response lets a later re-grade + recompute_ratings repair a grading change, and
+  -- lets the results screen show what was typed after a reload.
+  answer          text,
   is_correct      boolean,                  -- null when skipped
   skipped         boolean not null default false,
   flagged         boolean not null default false,

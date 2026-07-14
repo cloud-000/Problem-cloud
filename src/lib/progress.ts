@@ -174,6 +174,11 @@ export type SubmissionInput = {
     problemId: number;
     /** null for skips / non-MCQ answers. */
     selectedChoice: number | null;
+    /**
+     * Free-text response for non-MCQ (free-response/computational) problems, so a
+     * graded answer stays auditable/re-gradable. null/omitted for MCQ and skips.
+     */
+    answer?: string | null;
     /** null when skipped. */
     isCorrect: boolean | null;
     skipped: boolean;
@@ -205,6 +210,7 @@ export async function recordSubmission(
         user_id: userId,
         problem_id: input.problemId,
         selected_choice: input.selectedChoice,
+        answer: input.answer ?? null,
         is_correct: input.isCorrect,
         skipped: input.skipped,
         flagged: input.flagged,

@@ -58,6 +58,7 @@
     import { Switch, TriStateSwitch, type TriState } from "$lib/components/toggle";
     import { TOPICS } from "$lib/library";
     import { ADAPTIVE_RANGE_BOUNDS } from "$lib/trainer";
+    import { formatDuration, type Pacing } from "$lib/test-timing";
     import {
         COUNTER_RANGE,
         RATING_RANGE,
@@ -77,6 +78,8 @@
         isTest = false,
         testName = null,
         timeLimitSeconds = null,
+        pacing = null,
+        strictTiming = true,
         onFocusModeChange,
         onClose,
         maxWidth = 900,
@@ -97,6 +100,9 @@
         isTest?: boolean;
         testName?: string | null;
         timeLimitSeconds?: number | null;
+        /** Test format: how time is spent (pooled vs. segmented pairs/singles). */
+        pacing?: Pacing | null;
+        strictTiming?: boolean;
         onFocusModeChange?: (value: boolean) => void;
         onClose?: () => void;
         maxWidth?: number;
@@ -219,6 +225,14 @@
         onFocusModeChange?.(form.focusMode);
     }
 
+    // Per-problem timer (practice only). Off = null (untimed); on seeds a default.
+    const PER_PROBLEM_SECONDS_BOUNDS = [15, 180] as const;
+    const PER_PROBLEM_SECONDS_DEFAULT = 45;
+    function toggleTimedPractice() {
+        form.perProblemSeconds =
+            form.perProblemSeconds == null ? PER_PROBLEM_SECONDS_DEFAULT : null;
+    }
+
     function resetSettings() {
         resetPracticeSettingsForm(form);
         onFocusModeChange?.(form.focusMode);
@@ -322,12 +336,23 @@
                         : `${Math.round(timeLimitSeconds / 60)} min`}
                 </span>
             </div>
-            <p
-                class="rounded-md bg-surface-container-low p-3 text-[11px] leading-relaxed text-muted-foreground"
-            >
-                Answer the problems in any order. Nothing is graded until you
-                submit the test, then you'll see your results.
-            </p>
+            {#if pacing?.kind === "segmented"}
+                <div class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-muted-foreground"
+                        >Pacing</span
+                    >
+                    <span class="text-sm text-foreground">
+                        {pacing.segmentSize === 1
+                            ? `${formatDuration(pacing.secondsPerSegment)} per problem`
+                            : `${formatDuration(pacing.secondsPerSegment)} per ${pacing.segmentSize}-problem segment`}
+                    </span>
+                    <span class="text-[10px] text-muted-foreground">
+                        {strictTiming
+                            ? "Strict — each segment locks at 0:00"
+                            : "Lenient — timer turns red, overrun allowed"}
+                    </span>
+                </div>
+            {/if}
         </div>
     {:else}
         <!-- Primary control: source of the next problem. -->
@@ -539,6 +564,52 @@
             step={1}
             label="Tries per problem"
         />
+    </div>
+
+    <!-- Timed practice: a per-problem countdown that auto-advances at zero. -->
+    <div class="flex flex-col gap-3 border-b border-border/30 pb-4">
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-medium text-muted-foreground">
+                    Timed practice
+                </span>
+                <span class="text-[10px] text-muted-foreground">
+                    {form.perProblemSeconds == null
+                        ? "Off — no per-problem limit"
+                        : `${form.perProblemSeconds}s per problem`}
+                </span>
+            </div>
+            <Switch
+                checked={form.perProblemSeconds != null}
+                onclick={toggleTimedPractice}
+                size="sm"
+                aria-label="Toggle timed practice"
+            />
+        </div>
+        {#if form.perProblemSeconds != null}
+            <div
+                class="flex flex-col gap-2"
+                transition:fly={{ y: -6, duration: 150 }}
+            >
+                <span class="text-[10px] text-muted-foreground">
+                    Time per problem ({form.perProblemSeconds}s)
+                </span>
+                <RangeSlider
+                    single
+                    bind:singleValue={
+                        () =>
+                            form.perProblemSeconds ??
+                            PER_PROBLEM_SECONDS_DEFAULT,
+                        (v) => (form.perProblemSeconds = v)
+                    }
+                    min={PER_PROBLEM_SECONDS_BOUNDS[0]}
+                    max={PER_PROBLEM_SECONDS_BOUNDS[1]}
+                    step={5}
+                    label="Time per problem"
+                    formatValue={(v) => `${v}s`}
+                />
+            </div>
+        {/if}
     </div>
 
     <div class="flex items-center justify-between gap-3">

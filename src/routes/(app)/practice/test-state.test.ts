@@ -39,9 +39,41 @@ describe("test drafts", () => {
         expect(draft.answers[1]).toMatchObject({ answer: "4", elapsedMs: 123, flagged: true });
 
         const restored = [entry(1, ["A", "B"], 1), entry(2, ["4"], 0)];
-        expect(restoreTestDraft(restored, draft)).toBe(1);
+        expect(restoreTestDraft(restored, draft)).toEqual({
+            historyIndex: 1,
+            segmentIndex: 0,
+        });
         expect(restored[0].selectedChoice).toBe(0);
         expect(restored[1]).toMatchObject({ answer: "4", elapsedMs: 123, flagged: true });
+    });
+
+    test("persists and restores the current segment for segmented pacing", () => {
+        const history = [entry(1, ["A", "B"], 1), entry(2, ["4"], 0)];
+        const draft = createTestDraft(
+            history,
+            1,
+            createPracticeAnswerState({ answer: "4" }),
+            2,
+        );
+        expect(draft.segmentIndex).toBe(2);
+
+        const roundTripped = parseTestDraft(JSON.stringify(draft));
+        expect(roundTripped?.segmentIndex).toBe(2);
+
+        const restored = [entry(1, ["A", "B"], 1), entry(2, ["4"], 0)];
+        expect(restoreTestDraft(restored, roundTripped)).toEqual({
+            historyIndex: 1,
+            segmentIndex: 2,
+        });
+    });
+
+    test("defaults segmentIndex to 0 when absent or invalid", () => {
+        expect(parseTestDraft(JSON.stringify({ historyIndex: 0, answers: [] }))?.segmentIndex).toBe(0);
+        expect(
+            parseTestDraft(JSON.stringify({ historyIndex: 0, segmentIndex: -3, answers: [] }))
+                ?.segmentIndex,
+        ).toBe(0);
+        expect(restoreTestDraft([], null)).toEqual({ historyIndex: 0, segmentIndex: 0 });
     });
 
     test("rejects malformed JSON and invalid shapes", () => {
@@ -56,7 +88,7 @@ describe("test drafts", () => {
             setItem() { throw new Error("full"); },
             removeItem() { throw new Error("blocked"); },
         };
-        const draft = { historyIndex: 0, answers: [] };
+        const draft = { historyIndex: 0, segmentIndex: 0, answers: [] };
         expect(loadTestDraft(null, 1)).toBeNull();
         expect(loadTestDraft(throwing, 1)).toBeNull();
         expect(() => writeTestDraft(throwing, 1, draft)).not.toThrow();
@@ -65,16 +97,32 @@ describe("test drafts", () => {
 });
 
 describe("test grading", () => {
-    test("preserves separate MCQ and exact trimmed free-response rules", () => {
+    test("grades MCQ by choice index and free-response with answersMatch", () => {
         const mcq = entry(1, ["A", "B"], 1);
         mcq.selectedChoice = 1;
         expect(testOutcome(mcq)).toEqual({ skipped: false, correct: true });
 
+        // Free-response uses the normalizing matcher, matching live practice.
         const free = entry(2, ["x + 1"], 0);
         free.answer = " x + 1 ";
         expect(testOutcome(free)).toEqual({ skipped: false, correct: true });
+        // Whitespace differences no longer count as wrong (the old `===` bug).
         free.answer = "x+1";
+        expect(testOutcome(free)).toEqual({ skipped: false, correct: true });
+        // A genuinely different value is still wrong.
+        free.answer = "x+2";
         expect(testOutcome(free)).toEqual({ skipped: false, correct: false });
+    });
+
+    test("grades a unit-labeled stored answer against a bare value (regression)", () => {
+        // Real data: correct answer stored as "8 pies"; solver types "8".
+        const labeled = entry(3, ["8 pies"], 0);
+        labeled.answer = "8";
+        expect(testOutcome(labeled)).toEqual({ skipped: false, correct: true });
+
+        const cm = entry(4, ["19 cm"], 0);
+        cm.answer = "19";
+        expect(testOutcome(cm)).toEqual({ skipped: false, correct: true });
     });
 
     test("detects skipped answers and summarizes all outcomes", () => {
@@ -97,14 +145,19 @@ describe("test grading", () => {
         });
     });
 
-    test("keeps recorded grades when a restored free-response answer is unavailable", () => {
+    test("trusts the stored grade when a reloaded free-response answer is blank", () => {
+        // A reloaded submission has no answer text, only the stored grade. The
+        // summary must trust `submitted`/`correct` rather than re-inferring a
+        // skip from the (blank) answer — otherwise a graded-correct problem is
+        // miscounted as skipped (the reported reload bug).
         const restored = entry(5, ["4"], 0);
         restored.submitted = true;
         restored.correct = true;
+        restored.skipped = false;
         expect(summarizeTestResults([restored])).toEqual({
             correct: 1,
             incorrect: 0,
-            skipped: 1,
+            skipped: 0,
         });
     });
 });

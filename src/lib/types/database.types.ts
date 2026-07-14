@@ -883,6 +883,7 @@ export type Database = {
       }
       submissions: {
         Row: {
+          answer: string | null
           attempt: number | null
           created_at: string
           elapsed_ms: number | null
@@ -900,6 +901,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          answer?: string | null
           attempt?: number | null
           created_at?: string
           elapsed_ms?: number | null
@@ -917,6 +919,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          answer?: string | null
           attempt?: number | null
           created_at?: string
           elapsed_ms?: number | null

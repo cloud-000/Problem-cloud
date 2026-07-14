@@ -14,6 +14,10 @@
         paused,
         focusModeActive,
         canGoBack,
+        segmented = false,
+        canSegmentForward = false,
+        lastSegment = true,
+        onAdvanceSegment,
         flagged,
         moreOptions,
         submittingTest,
@@ -37,6 +41,13 @@
         paused: boolean;
         focusModeActive: boolean;
         canGoBack: boolean;
+        /** Segmented Test pacing: replaces the whole-test footer with per-segment lock+advance. */
+        segmented?: boolean;
+        /** Whether Next can step to another problem within the current segment. */
+        canSegmentForward?: boolean;
+        /** Whether the current segment is the last (its submit ends the test). */
+        lastSegment?: boolean;
+        onAdvanceSegment?: () => void;
         flagged: boolean;
         moreOptions: DropdownOption[];
         submittingTest: boolean;
@@ -109,7 +120,37 @@
 
     <div class="flex items-center gap-2">
         {#if view.mode === "test"}
-            {#if !isLatest}
+            {#if segmented}
+                {#if canSegmentForward}
+                    <Button
+                        variant="ghost"
+                        onclick={onForward}
+                        aria-label="Next problem"
+                        class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                    >
+                        <Icon name="arrow_forward" />
+                    </Button>
+                {/if}
+                {#if lastSegment}
+                    <Button
+                        onclick={onSubmitTest}
+                        disabled={submittingTest}
+                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                    >
+                        <Icon name="done_all" />
+                        Submit test
+                    </Button>
+                {:else}
+                    <Button
+                        onclick={() => onAdvanceSegment?.()}
+                        disabled={submittingTest}
+                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                    >
+                        Submit &amp; continue
+                        <Icon name="arrow_forward" />
+                    </Button>
+                {/if}
+            {:else if !isLatest}
                 <Button
                     variant="ghost"
                     onclick={onForward}

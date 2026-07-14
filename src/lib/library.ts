@@ -528,16 +528,32 @@ export async function fetchByIds(
  * the Test-session creator. Newest first; unpaginated (bounded by the API's
  * `max_rows`).
  */
+/**
+ * A test as needed by the new-session (Test format) picker: identity plus the
+ * fields that drive the client-side timing rule ({@link import("./test-timing")}).
+ * `problemCount` is the count of `problems` rows the test owns, derived from the
+ * PostgREST `problems(count)` embed.
+ */
+export type TestSummary = Pick<
+    TestRow,
+    "id" | "name" | "year" | "series_id" | "format" | "time_limit_seconds"
+> & { problemCount: number };
+
 export async function fetchAllTests(
     supabase: Supabase,
-): Promise<Pick<TestRow, "id" | "name" | "year" | "time_limit_seconds" | "missing_answers_count">[]> {
+): Promise<TestSummary[]> {
     const { data, error } = await supabase
         .from("tests")
-        .select("id, name, year, time_limit_seconds, missing_answers_count")
+        .select("id, name, year, series_id, format, time_limit_seconds, problems(count)")
         .order("year", { ascending: false })
         .order("name");
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []).map((t) => {
+        const { problems, ...rest } = t as typeof t & {
+            problems: { count: number }[] | null;
+        };
+        return { ...rest, problemCount: problems?.[0]?.count ?? 0 };
+    });
 }
 
 /** Lightweight `{id, name}` list to populate the series filter combobox. */

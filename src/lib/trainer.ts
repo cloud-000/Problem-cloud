@@ -6,6 +6,7 @@ import {
     type ProblemRow,
 } from "$lib/library";
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
+import type { Pacing } from "$lib/test-timing";
 export type { ProblemProgress } from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
@@ -31,6 +32,18 @@ export type PracticeSettings = {
     // the total time allotment in seconds (null = unlimited / untimed).
     testId: number | null;
     timeLimitSeconds: number | null;
+    // Test-format only: how the test's time is spent. `pooled` (or absent) is the
+    // historical single-clock behavior; `segmented` splits the test into
+    // independently-timed segments (MATHCOUNTS Target/Countdown) that lock in
+    // order without carrying time over. `timeLimitSeconds` above is kept in sync
+    // as the "≈ total" for display/summary. Optional so older snapshots (which
+    // predate segmentation) are tolerated as pooled.
+    pacing?: Pacing | null;
+    // Test-format only: strict expiry (default) hard-locks a segment and
+    // auto-advances at 0:00; lenient lets the segment clock run red and overrun
+    // until the user submits. Only meaningful for segmented pacing. Optional so
+    // older snapshots are tolerated (treated as strict).
+    strictTiming?: boolean;
     // UI-only preference for a minimal trainer surface. Stored in session
     // settings jsonb alongside the draw filters.
     focusMode: boolean;
@@ -38,6 +51,12 @@ export type PracticeSettings = {
     // is finalized as incorrect. Re-submitting an already-tried answer doesn't
     // consume a try. Optional so older snapshots are tolerated (treated as 2).
     triesPerProblem?: number;
+    // Practice-format only: a per-problem answering time limit in seconds. When
+    // set, the trainer runs a countdown on the current problem and, at zero,
+    // auto-finishes it (grades the entered answer, else skips) and advances to the
+    // next. `null`/absent = untimed (count-up). Optional so older snapshots are
+    // tolerated (treated as untimed).
+    perProblemSeconds?: number | null;
     // Adaptive difficulty. When on, every draw is constrained to problems whose
     // overall Glicko rating sits within `adaptiveRange` points of the player's
     // live rating, falling back to the nearest-rated problem (new draws) or the
@@ -215,6 +234,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         timeLimitSeconds: null,
         focusMode: false,
         triesPerProblem: 2,
+        perProblemSeconds: null,
         seriesIds: [],
         seriesScopes: {},
         topic: [],
@@ -245,12 +265,16 @@ export function defaultPracticeSettings(): PracticeSettings {
 export function defaultTestSettings(
     testId: number,
     timeLimitSeconds: number | null,
+    pacing: Pacing | null = null,
+    strictTiming = true,
 ): PracticeSettings {
     return {
         ...defaultPracticeSettings(),
         format: "test",
         testId,
         timeLimitSeconds,
+        pacing,
+        strictTiming,
     };
 }
 

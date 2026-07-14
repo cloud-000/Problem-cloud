@@ -156,6 +156,31 @@ Contrast the same three attempts under **Route A** (not what we do): 3 rows,
 
 ---
 
+## 7. `answer` — the persisted free-text response
+
+- **Column:** `submissions.answer text` (null for MCQ, whose choice is in
+  `selected_choice`, and for skips).
+- **What it's for:** free-response / computational problems are graded **lexically**
+  by `answersMatch` (`src/lib/utils/answer-matcher.ts`) — it strips unit labels and
+  normalizes LaTeX/whitespace/decimals — because a stored correct answer often
+  carries a label (e.g. `"8 pies"`, `"19 cm"`) the solver won't retype. Persisting
+  the raw response keeps a graded answer **auditable and re-gradable**: a later
+  grading change can re-run `answersMatch` over stored answers and
+  `recompute_ratings()` to repair `is_correct`. It also lets the deferred-grading
+  Test **results screen show what was typed** after a reload (the review UI can't
+  infer it otherwise).
+- **Grading parity:** live practice (`submitAnswer`) and deferred Test grading
+  (`testOutcome`/`applyTestOutcome`, `src/routes/(app)/practice/test-state.ts`) use
+  the **same** `answersMatch`. (Historically the Test path used raw `===`, which
+  marked label-carrying answers wrong.)
+
+> **Historical caveat:** submissions recorded **before** this column existed have no
+> stored `answer`, and Test grades written before the `answersMatch` fix used exact
+> string equality. Those rows (and any rating/`problem_progress` they fed) can't be
+> cleanly re-graded — the typed answer is gone — so they're left as-is.
+
+---
+
 ## See also
 
 - **`docs/ratings.md`** — the rating pipeline; `attempt`/`encounter`/`encounter_ms` as

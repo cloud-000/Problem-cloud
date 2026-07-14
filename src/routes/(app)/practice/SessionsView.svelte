@@ -8,7 +8,7 @@
     import { RangeSlider } from "$lib/components/range-slider";
     import { Select, type SelectOption } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
-    import { fetchAllTests } from "$lib/library";
+    import { fetchAllSeries, fetchAllTests, type TestSummary } from "$lib/library";
     import {
         fetchSessions,
         startSession,
@@ -17,6 +17,14 @@
         resumeSession,
         type PracticeSessionRow,
     } from "$lib/sessions";
+    import {
+        resolveTimingRule,
+        timingPacing,
+        timingSummary,
+        timingTotalSeconds,
+        type Pacing,
+        type TimingRule,
+    } from "$lib/test-timing";
     import { defaultPracticeSettings, defaultTestSettings } from "$lib/trainer";
     import { cn } from "$lib/utils";
     import SessionCard from "./SessionCard.svelte";
@@ -30,53 +38,90 @@
     let busy = $state(false);
 
     // ---- New-session dialog ----------------------------------------------------
-    type TestOption = Awaited<ReturnType<typeof fetchAllTests>>[number];
-
-    const TIME_MIN = 5; // slider bounds, in minutes
-    const TIME_MAX = 240;
-    const DEFAULT_TIME_MIN = 75;
+    type SeriesOption = Awaited<ReturnType<typeof fetchAllSeries>>[number];
 
     let dialogOpen = $state(false);
     let dialogName = $state("");
     let dialogFormat = $state<"practice" | "test">("practice");
-    let tests = $state<TestOption[]>([]);
+    let series = $state<SeriesOption[]>([]);
+    let tests = $state<TestSummary[]>([]);
     let testsLoading = $state(false);
-    let selectedTestId = $state<string>(""); // stringified id for <Select>
-    let timeMinutes = $state(DEFAULT_TIME_MIN);
+    let selectedSeriesId = $state<string>(""); // stringified id for <Select>
+    let selectedTestId = $state<string>("");
+    // Slider value in the resolved rule's unit (min/pair, sec/problem, or total min).
+    let unitValue = $state(0);
     let unlimited = $state(false);
+    // Segmented pacing only: strict expiry hard-locks + auto-advances each segment
+    // at 0:00; lenient lets the clock run red and overrun until the user submits.
+    let strictTiming = $state(true);
 
+    let seriesOptions = $derived<SelectOption[]>(
+        series.map((s) => ({ value: String(s.id), label: s.name })),
+    );
+    // Tests scoped to the chosen series, newest first (fetch order preserved).
+    let seriesTests = $derived(
+        selectedSeriesId === ""
+            ? []
+            : tests.filter((t) => String(t.series_id) === selectedSeriesId),
+    );
     let testOptions = $derived<SelectOption[]>(
-        tests.map((t) => {
-            const yearStr = t.year ? ` (${t.year})` : "";
-            const missingStr =
-                t.missing_answers_count && t.missing_answers_count > 0
-                    ? ` — ${t.missing_answers_count} missing`
-                    : "";
-            return {
-                value: String(t.id),
-                label: `${t.name}${yearStr}${missingStr}`,
-            };
-        }),
+        seriesTests.map((t) => ({
+            value: String(t.id),
+            label: t.year ? `${t.name} (${t.year})` : t.name,
+        })),
+    );
+    let selectedTest = $derived(
+        tests.find((t) => String(t.id) === selectedTestId) ?? null,
+    );
+    let selectedSeriesName = $derived(
+        series.find((s) => String(s.id) === selectedSeriesId)?.name ?? null,
+    );
+    // The active timing rule for the chosen test — drives the slider's unit,
+    // bounds, and label. Null until a test is picked.
+    let rule = $derived<TimingRule | null>(
+        selectedTest
+            ? resolveTimingRule({
+                  seriesName: selectedSeriesName,
+                  format: selectedTest.format,
+                  problemCount: selectedTest.problemCount,
+                  dbTimeLimitSeconds: selectedTest.time_limit_seconds,
+              })
+            : null,
+    );
+    // Reads the reactive `rule`, so it re-runs when the slider unit changes.
+    function sliderFormat(v: number): string {
+        return rule?.mode === "per-problem-seconds" ? `${v}s` : `${v}m`;
+    }
+    // Segmented rules (Target pairs / Countdown problems) pace the test in
+    // independently-timed segments, which is where strict/lenient timing applies.
+    let isSegmentedRule = $derived(
+        rule?.mode === "per-pair-minutes" || rule?.mode === "per-problem-seconds",
     );
     let canCreate = $derived(
-        dialogFormat === "practice" || selectedTestId !== "",
+        dialogFormat === "practice" ||
+            (selectedSeriesId !== "" && selectedTestId !== ""),
     );
 
     function openDialog() {
         if (!user || busy) return;
         dialogName = "";
         dialogFormat = "practice";
+        selectedSeriesId = "";
         selectedTestId = "";
-        timeMinutes = DEFAULT_TIME_MIN;
+        unitValue = 0;
         unlimited = false;
+        strictTiming = true;
         dialogOpen = true;
-        if (tests.length === 0) loadTests();
+        if (tests.length === 0 || series.length === 0) loadTests();
     }
 
     async function loadTests() {
         testsLoading = true;
         try {
-            tests = await fetchAllTests(supabase);
+            [series, tests] = await Promise.all([
+                fetchAllSeries(supabase),
+                fetchAllTests(supabase),
+            ]);
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to load tests";
         } finally {
@@ -84,19 +129,23 @@
         }
     }
 
-    // Seed the time control from the chosen test's default allotment.
+    function onSeriesChange(value: string) {
+        selectedSeriesId = value;
+        selectedTestId = "";
+    }
+
+    // Seed the time slider from the chosen test's timing rule.
     function onTestChange(value: string) {
         selectedTestId = value;
         const test = tests.find((t) => String(t.id) === value);
-        if (test?.time_limit_seconds != null) {
-            unlimited = false;
-            timeMinutes = Math.min(
-                TIME_MAX,
-                Math.max(TIME_MIN, Math.round(test.time_limit_seconds / 60)),
-            );
-        } else if (test) {
-            unlimited = true;
-        }
+        if (!test) return;
+        unlimited = false;
+        unitValue = resolveTimingRule({
+            seriesName: selectedSeriesName,
+            format: test.format,
+            problemCount: test.problemCount,
+            dbTimeLimitSeconds: test.time_limit_seconds,
+        }).unitDefault;
     }
 
     async function loadSessions() {
@@ -127,8 +176,21 @@
             let settings = defaultPracticeSettings();
             if (dialogFormat === "test") {
                 const testId = Number(selectedTestId);
-                const timeLimitSeconds = unlimited ? null : timeMinutes * 60;
-                settings = defaultTestSettings(testId, timeLimitSeconds);
+                const timeLimitSeconds =
+                    unlimited || !rule
+                        ? null
+                        : timingTotalSeconds(rule, unitValue);
+                // Unlimited overrides segmentation (no per-segment clocks either).
+                const pacing: Pacing =
+                    unlimited || !rule
+                        ? { kind: "pooled", totalSeconds: null }
+                        : timingPacing(rule, unitValue);
+                settings = defaultTestSettings(
+                    testId,
+                    timeLimitSeconds,
+                    pacing,
+                    strictTiming,
+                );
             }
             const row = await startSession(supabase, user.id, {
                 name,
@@ -368,35 +430,47 @@
                     </button>
                 {/each}
             </div>
-            <p class="text-[10px] text-muted-foreground">
-                {dialogFormat === "test"
-                    ? "Work a whole test; grading is held until you submit."
-                    : "Free practice with immediate feedback."}
-            </p>
         </div>
 
         <!-- Test options -->
         {#if dialogFormat === "test"}
-            <div class="flex flex-col gap-1.5">
-                <span class="text-xs font-medium text-muted-foreground"
-                    >Test</span
+            {#if testsLoading}
+                <div
+                    class="flex items-center gap-2 text-xs text-muted-foreground py-2"
                 >
-                {#if testsLoading}
-                    <div
-                        class="flex items-center gap-2 text-xs text-muted-foreground py-2"
+                    <Icon name="progress_activity" class="animate-spin" />
+                    Loading tests...
+                </div>
+            {:else}
+                <!-- Series -->
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-xs font-medium text-muted-foreground"
+                        >Series</span
                     >
-                        <Icon name="progress_activity" class="animate-spin" />
-                        Loading tests...
-                    </div>
-                {:else}
+                    <Select
+                        options={seriesOptions}
+                        value={selectedSeriesId}
+                        placeholder="Choose a series"
+                        onchange={onSeriesChange}
+                    />
+                </div>
+
+                <!-- Test -->
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-xs font-medium text-muted-foreground"
+                        >Test</span
+                    >
                     <Select
                         options={testOptions}
                         value={selectedTestId}
-                        placeholder="Choose a test"
+                        placeholder={selectedSeriesId === ""
+                            ? "Select a series first"
+                            : "Choose a test"}
+                        disabled={selectedSeriesId === ""}
                         onchange={onTestChange}
                     />
-                {/if}
-            </div>
+                </div>
+            {/if}
 
             <div class="flex items-center justify-between gap-3">
                 <div class="flex flex-col gap-0">
@@ -410,20 +484,39 @@
                 <Switch bind:checked={unlimited} size="sm" />
             </div>
 
-            {#if !unlimited}
+            {#if !unlimited && rule}
                 <div class="flex flex-col gap-2">
                     <span class="text-xs font-medium text-muted-foreground">
-                        Time limit ({timeMinutes} min)
+                        {rule.unitLabel} ({sliderFormat(unitValue)})
                     </span>
                     <RangeSlider
                         single
-                        bind:singleValue={timeMinutes}
-                        min={TIME_MIN}
-                        max={TIME_MAX}
-                        step={5}
-                        label="Time limit"
-                        formatValue={(v) => `${v}m`}
+                        bind:singleValue={unitValue}
+                        min={rule.unitMin}
+                        max={rule.unitMax}
+                        step={rule.unitStep}
+                        label={rule.unitLabel}
+                        formatValue={sliderFormat}
                     />
+                    <p class="text-[10px] text-muted-foreground">
+                        {timingSummary(rule, unitValue)}
+                    </p>
+                </div>
+            {/if}
+
+            {#if !unlimited && isSegmentedRule}
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex flex-col gap-0">
+                        <span class="text-xs font-medium text-muted-foreground"
+                            >Strict timing</span
+                        >
+                        <span class="text-[10px] text-muted-foreground">
+                            {strictTiming
+                                ? "Locks each segment at 0:00"
+                                : "Timer turns red; you may overrun"}
+                        </span>
+                    </div>
+                    <Switch bind:checked={strictTiming} size="sm" />
                 </div>
             {/if}
         {/if}

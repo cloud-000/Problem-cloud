@@ -1,4 +1,5 @@
 import { boolToTri, triToBool } from "$lib/library";
+import type { Pacing } from "$lib/test-timing";
 import type { DimensionOption } from "$lib/series-review";
 import type { Engagement, Mastery } from "$lib/progress";
 import {
@@ -51,6 +52,8 @@ export type PracticeSettingsForm = {
     format: SessionFormat;
     testId: number | null;
     timeLimitSeconds: number | null;
+    pacing: Pacing | null;
+    strictTiming: boolean;
     focusMode: boolean;
     topic: string[];
     difficulty: Range;
@@ -59,6 +62,7 @@ export type PracticeSettingsForm = {
     answerAvailability: PracticeTriState;
     solutionAvailability: PracticeTriState;
     triesPerProblem: number;
+    perProblemSeconds: number | null;
     seriesIds: string[];
     seriesScopes: SeriesScopes;
     counterRanges: CounterRanges;
@@ -142,6 +146,8 @@ export function createPracticeSettingsForm(
         format: settings.format ?? "practice",
         testId: settings.testId ?? null,
         timeLimitSeconds: settings.timeLimitSeconds ?? null,
+        pacing: settings.pacing ?? null,
+        strictTiming: settings.strictTiming ?? true,
         focusMode: settings.focusMode ?? false,
         topic: [...settings.topic],
         difficulty: normalizeDifficulty(settings.difficulty),
@@ -150,6 +156,7 @@ export function createPracticeSettingsForm(
         answerAvailability: availabilityToTri(settings.answerAvailability),
         solutionAvailability: solutionToTri(settings.solutionAvailability),
         triesPerProblem: settings.triesPerProblem ?? 2,
+        perProblemSeconds: settings.perProblemSeconds ?? null,
         seriesIds: [...(settings.seriesIds ?? [])],
         seriesScopes,
         counterRanges,
@@ -179,8 +186,11 @@ export function practiceSettingsFromForm(
         format: form.format,
         testId: form.testId,
         timeLimitSeconds: form.timeLimitSeconds,
+        pacing: form.pacing,
+        strictTiming: form.strictTiming,
         focusMode: form.focusMode,
         triesPerProblem: form.triesPerProblem,
+        perProblemSeconds: form.perProblemSeconds,
         seriesIds: [...form.seriesIds],
         seriesScopes: cloneScopes(form.seriesScopes),
         topic: [...form.topic],

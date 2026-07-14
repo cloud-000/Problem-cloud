@@ -91,6 +91,7 @@ describe("practice answer history", () => {
             progress,
             source: null,
             selectedChoice: 1,
+            answer: "42",
             isCorrect: true,
             skipped: false,
             flagged: true,
@@ -101,6 +102,7 @@ describe("practice answer history", () => {
         expect(entry).toMatchObject({
             source: "practice",
             selectedChoice: 1,
+            answer: "42",
             submitted: true,
             correct: true,
             flagged: true,

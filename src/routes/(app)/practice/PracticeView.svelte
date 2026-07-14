@@ -38,6 +38,14 @@
       type SeriesDimensionRow,
    } from "$lib/series-review";
    import { recordSubmission } from "$lib/progress";
+   import { countdownRemainingMs } from "$lib/countdown";
+   import {
+      isLastSegment,
+      segmentCount,
+      segmentElapsedMs,
+      segmentRange,
+   } from "$lib/segment-timing";
+   import { Countdown } from "$lib/components/countdown";
    import {
       endSession,
       fetchSession,
@@ -118,6 +126,35 @@
    let testFinished = $state(false);
    let focusModeActive = $derived(settingsForm.focusMode && !testFinished);
    let submittingTest = $state(false);
+
+   // ---- Segmented Test pacing (MATHCOUNTS Target / Countdown) -----------------
+   // A segmented test works its problems in fixed-size, independently-timed
+   // segments (Target = pairs, Countdown = singles): time doesn't carry between
+   // segments and you can't navigate back into a locked (earlier) one. Grading is
+   // unchanged — a segment boundary only freezes the problems behind it; the whole
+   // test is still graded once at the end via submitTest(). Pooled tests (a
+   // `pooled`/absent pacing) keep the single-clock behavior untouched.
+   let segmentSize = $derived(
+      isTest && settingsForm.pacing?.kind === "segmented"
+         ? settingsForm.pacing.segmentSize
+         : 0,
+   );
+   let isSegmented = $derived(isTest && segmentSize > 0);
+   let secondsPerSegment = $derived(
+      settingsForm.pacing?.kind === "segmented"
+         ? settingsForm.pacing.secondsPerSegment
+         : null,
+   );
+   // Strict (default) hard-locks + auto-advances a segment at 0:00; lenient lets
+   // its clock run red and overrun until the user chooses to continue.
+   let strictTiming = $derived(settingsForm.strictTiming ?? true);
+   // The furthest-reached, still-active segment. Earlier segments are locked.
+   let currentSegment = $state(0);
+   // Between-segment card ("Pair N of M — starting"): freezes the new segment's
+   // clock until dismissed (Start button for pairs, ~3s auto-flash for singles).
+   let interstitial = $state<{ segment: number } | null>(null);
+   let interstitialToken = 0;
+   const INTERSTITIAL_FLASH_MS = 3000;
 
    // Progress-backed modes need per-user progress. Without a session, pin to New.
    $effect(() => {
@@ -244,10 +281,15 @@
       writeStoredTestDraft(
          localStorage,
          currentSessionId,
-         createTestDraft(history, historyIndex, {
-            ...answerState,
-            elapsedMs: liveElapsed(),
-         }),
+         createTestDraft(
+            history,
+            historyIndex,
+            {
+               ...answerState,
+               elapsedMs: liveElapsed(),
+            },
+            currentSegment,
+         ),
       );
    }
 
@@ -302,8 +344,29 @@
          const draft = loadStoredTestDraft(localStorage, s.id);
 
          if (history.length > 0) {
-            const start = restoreTestDraft(history, draft);
-            restore(start);
+            const place = restoreTestDraft(history, draft);
+            if (isSegmented) {
+               // Never resume into an already-locked segment: clamp the current
+               // segment and land on a problem within it (its start if the saved
+               // spot fell outside).
+               const maxSeg = Math.max(
+                  0,
+                  segmentCount(history.length, segmentSize) - 1,
+               );
+               currentSegment = Math.min(place.segmentIndex, maxSeg);
+               const [segStart, segEnd] = segmentRange(
+                  currentSegment,
+                  segmentSize,
+                  history.length,
+               );
+               restore(
+                  place.historyIndex >= segStart && place.historyIndex < segEnd
+                     ? place.historyIndex
+                     : segStart,
+               );
+            } else {
+               restore(place.historyIndex);
+            }
          }
       } catch (e) {
          error = (e as Error).message;
@@ -331,6 +394,9 @@
                   user_id: user.id,
                   problem_id: e.problem.id,
                   selected_choice: e.selectedChoice,
+                  // Persist the free-text response (non-MCQ) so the grade stays
+                  // auditable/re-gradable; null for MCQ/blank.
+                  answer: e.answer.trim() ? e.answer : null,
                   is_correct: outcome.correct,
                   skipped: outcome.skipped,
                   flagged: e.flagged,
@@ -374,6 +440,48 @@
       } finally {
          submittingTest = false;
       }
+   }
+
+   // Segmented pacing: lock the current segment and move to the next. On the last
+   // segment this is the end of the test → grade via submitTest(). No grading
+   // happens here otherwise — the just-left segment's problems are simply frozen
+   // (they stay in `history`, editable-looking but unreachable via nav).
+   function advanceSegment() {
+      if (!isSegmented || testFinished || submittingTest) return;
+      if (onLastSegment) {
+         submitTest();
+         return;
+      }
+      commitCurrent();
+      const next = currentSegment + 1;
+      currentSegment = next;
+      const [start] = segmentRange(next, segmentSize, history.length);
+      startInterstitial(next, start);
+   }
+
+   // Show the between-segment card and land (frozen) on the new segment's first
+   // problem. Single-problem segments (Countdown) get a brief auto-dismissing
+   // flash instead of a card the user must click through.
+   function startInterstitial(segment: number, firstIndex: number) {
+      restore(firstIndex);
+      interstitial = { segment };
+      if (segmentSize === 1) {
+         const token = ++interstitialToken;
+         setTimeout(() => {
+            if (token === interstitialToken) dismissInterstitial();
+         }, INTERSTITIAL_FLASH_MS);
+      }
+   }
+
+   // Dismiss the interstitial and resume the new segment's clock from where the
+   // (fresh) entry left off, so the frozen interval isn't counted against it.
+   function dismissInterstitial() {
+      if (!interstitial) return;
+      interstitialToken += 1;
+      interstitial = null;
+      const now = Date.now();
+      startedAt = now - answerState.elapsedMs;
+      timerNow = now;
    }
 
    // Persist / clear the session's in-progress problem (fire-and-forget). The
@@ -477,9 +585,35 @@
    let loadToken = 0;
 
    let isLatest = $derived(historyIndex === history.length - 1);
+
+   // Segmented pacing geometry. `segBounds` is the current segment's half-open
+   // [start, end) problem-index range; navigation is confined to it. Defined here
+   // (ahead of the nav derives below) since `canGoBack` reads `segBounds`.
+   let segTotal = $derived(
+      isSegmented ? segmentCount(history.length, segmentSize) : 1,
+   );
+   let segBounds = $derived<[number, number]>(
+      isSegmented
+         ? segmentRange(currentSegment, segmentSize, history.length)
+         : [0, history.length],
+   );
+   let onLastSegment = $derived(
+      isSegmented
+         ? isLastSegment(currentSegment, history.length, segmentSize)
+         : true,
+   );
+   let canSegmentForward = $derived(
+      isSegmented && historyIndex < segBounds[1] - 1,
+   );
+
    // Back is available either within the materialized history, or when a previous
-   // problem has been prefetched from the server (any session).
-   let canGoBack = $derived(historyIndex > 0 || olderPrefetch != null);
+   // problem has been prefetched from the server (any session). Segmented tests
+   // confine Back to the current segment (no returning to a locked one).
+   let canGoBack = $derived(
+      isSegmented
+         ? historyIndex > segBounds[0]
+         : historyIndex > 0 || olderPrefetch != null,
+   );
    let isProblemMcq = $derived(!!problem && (problem.choices?.length ?? 0) > 1);
    let cannotSubmit = $derived(
       !problem ||
@@ -544,6 +678,9 @@
       !!problem &&
          !loading &&
          !paused &&
+         // A between-segment interstitial freezes the new segment's clock until
+         // dismissed (always null for pooled tests / practice).
+         interstitial == null &&
          // Formats that freeze on navigate only tick the latest, unanswered
          // problem; non-freezing formats (test) tick whatever is shown until
          // the run is finished.
@@ -585,6 +722,40 @@
               0,
               settingsForm.timeLimitSeconds * 1000 - totalElapsedMs,
            ),
+   );
+
+   // Timed practice: a per-problem answering limit (practice format only). Its
+   // countdown only applies to the active problem being answered — the latest,
+   // unanswered one — so navigating back to review shows the normal count-up.
+   let perProblemLimitMs = $derived(
+      !isTest && settingsForm.perProblemSeconds != null
+         ? settingsForm.perProblemSeconds * 1000
+         : null,
+   );
+   let problemRemainingMs = $derived(
+      perProblemLimitMs != null && !answerState.submitted && isLatest
+         ? countdownRemainingMs(perProblemLimitMs, elapsedMs)
+         : null,
+   );
+
+   // Segmented pacing: per-segment elapsed sums the segment's problems
+   // (live-substituting the on-screen one), and the countdown floors at zero — no
+   // carry-over from the total clock. (Geometry: `segBounds`/`segTotal`/… defined
+   // higher, before the navigation derives that consume them.)
+   let segmentElapsed = $derived(
+      isSegmented
+         ? segmentElapsedMs(
+              currentSegment,
+              segmentSize,
+              history.length,
+              (i) => (i === historyIndex ? elapsedMs : history[i]?.elapsedMs ?? 0),
+           )
+         : 0,
+   );
+   let segmentRemainingMs = $derived(
+      isSegmented && secondsPerSegment != null
+         ? countdownRemainingMs(secondsPerSegment * 1000, segmentElapsed)
+         : null,
    );
 
    // Total time across the test from the committed per-problem values (no live
@@ -837,7 +1008,9 @@
          .catch((e) => console.error("Failed to refresh player rating:", e));
    }
 
-   function submitAnswer() {
+   // `force` finalizes on this submit even if tries remain (used when the
+   // per-problem timer expires — time's up, no more retries).
+   function submitAnswer(force = false) {
       // Per-answer grading is only for formats that grade immediately; test
       // defers all grading to submitTest().
       if (!behavior.gradeImmediately) return;
@@ -871,6 +1044,7 @@
       // feedback (without revealing the correct answer), and let the user retry.
       // Correct answers and ungraded problems always finalize on submit.
       if (
+         !force &&
          isCorrect === false &&
          answerState.triesUsed + 1 < settingsForm.triesPerProblem
       ) {
@@ -902,6 +1076,7 @@
          const recorded = recordSubmission(supabase, user.id, {
             problemId: problem.id,
             selectedChoice: answerState.selectedChoice,
+            answer: isProblemMcq ? null : answerState.answer,
             isCorrect,
             skipped: false,
             flagged: answerState.flagged,
@@ -960,9 +1135,34 @@
       }
    }
 
+   // Timed practice: the per-problem clock hit zero. Finalize the current problem
+   // *in place* — grade the entered answer (forced final, no retries), or record a
+   // timeout skip when blank — and reveal it. We deliberately do NOT advance; the
+   // user reviews the result and clicks Next when ready (same as a normal submit).
+   function handleTimeExpired() {
+      if (isTest || paused || !problem || loading || answerState.submitted) return;
+      const hasInput = isProblemMcq
+         ? answerState.selectedChoice != null
+         : !!answerState.answer.trim();
+      if (hasInput) {
+         submitAnswer(true);
+         return;
+      }
+      // Blank at expiry: record the skip, then freeze + reveal in place so the
+      // problem resolves (marks submitted → answer shown, input disabled, Next).
+      recordSkip();
+      answerState.elapsedMs = liveElapsed();
+      answerState.submitted = true;
+   }
+
    function goBack() {
       if (!canGoBack || loading) return;
       commitCurrent();
+      // Segmented tests never leave the current segment.
+      if (isSegmented) {
+         if (historyIndex > segBounds[0]) restore(historyIndex - 1);
+         return;
+      }
       // Within the materialized history, just step back. At the oldest
       // materialized entry, `canGoBack` guarantees (root) a prefetched
       // server-older entry to step into instead.
@@ -1022,6 +1222,14 @@
    function goForward() {
       if (loading) return;
       if (isTest) {
+         // Segmented: step only within the current segment; crossing a boundary
+         // is the "Submit & continue" action, not a plain Next.
+         if (isSegmented) {
+            if (historyIndex >= segBounds[1] - 1) return;
+            commitCurrent();
+            restore(historyIndex + 1);
+            return;
+         }
          if (isLatest) return;
          commitCurrent();
          restore(historyIndex + 1);
@@ -1201,6 +1409,7 @@
       void answerState.flagged;
       void historyIndex;
       void history.length;
+      void currentSegment;
       // Debounce so rapid changes (e.g. typing a free-response answer) coalesce
       // into one localStorage write instead of stringifying history per
       // keystroke. The 5s heartbeat below bounds any data loss.
@@ -1214,11 +1423,35 @@
       return () => clearInterval(timer);
    });
 
-   // Auto-submit a timed test the moment the clock runs out.
+   // Auto-submit a *pooled* timed test the moment the single clock runs out.
+   // Segmented tests run their own per-segment expiry (below), never this.
    $effect(() => {
-      if (!isTest || testFinished || submittingTest) return;
+      if (!isTest || isSegmented || testFinished || submittingTest) return;
       if (settingsForm.timeLimitSeconds != null && remainingMs === 0) {
          submitTest();
+      }
+   });
+
+   // Segmented Test pacing: on strict timing, lock + advance the moment the
+   // current segment's clock hits zero (the last segment's expiry submits the
+   // test). Lenient timing skips this — the clock runs red and the user drives
+   // "Submit & continue". Frozen while an interstitial is up.
+   $effect(() => {
+      if (!isSegmented || testFinished || submittingTest || loading) return;
+      if (!strictTiming || interstitial != null) return;
+      if (segmentRemainingMs === 0) {
+         advanceSegment();
+      }
+   });
+
+   // Timed practice: auto-finish + advance the moment the per-problem clock hits
+   // zero. `problemRemainingMs` is only non-null for the active (latest,
+   // unanswered) problem, and `timerRunning` gates out paused/loading/frozen
+   // states, so this fires exactly once per problem.
+   $effect(() => {
+      if (!timerRunning) return;
+      if (problemRemainingMs === 0) {
+         handleTimeExpired();
       }
    });
 </script>
@@ -1237,6 +1470,7 @@
       {skippedAttempts}
       {testFinished}
       historyLength={history.length}
+      showTestClock={!isSegmented}
       timeLimitSeconds={settingsForm.timeLimitSeconds}
       {remainingMs}
       {totalElapsedMs}
@@ -1248,6 +1482,7 @@
       {paused}
       bind:timerMode
       {elapsedMs}
+      {problemRemainingMs}
       onToggleSettings={() => (showSettings = !showSettings)}
       onTogglePause={togglePause}
    />
@@ -1369,6 +1604,31 @@
             </div>
          {:else}
             <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
+               {#if isSegmented && !testFinished}
+                  <div
+                     class="flex items-center justify-between gap-3 border-b border-border/50 px-6 py-2"
+                  >
+                     <div class="flex min-w-0 flex-col">
+                        <span class="text-xs font-semibold text-foreground">
+                           {segmentSize === 1
+                              ? `Problem ${currentSegment + 1} of ${segTotal}`
+                              : `Pair ${currentSegment + 1} of ${segTotal}`}
+                        </span>
+                        <span class="text-[10px] text-muted-foreground">
+                           {strictTiming
+                              ? "Locks at 0:00 — no going back"
+                              : "You may overrun — submit when ready"}
+                        </span>
+                     </div>
+                     {#if segmentRemainingMs != null}
+                        <Countdown
+                           remainingMs={segmentRemainingMs}
+                           label="Time left in this segment"
+                           icon="timer"
+                        />
+                     {/if}
+                  </div>
+               {/if}
                <div class="relative flex-1 flex flex-col min-h-0 w-full">
                   <!-- Problem statement and choices: Scrollable area -->
                   <div
@@ -1438,7 +1698,7 @@
                               ? answerState.submitted || !isLatest || paused
                               : false}
                            onEnter={behavior.gradeImmediately
-                              ? submitAnswer
+                              ? () => submitAnswer()
                               : undefined}
                         />
                      </div>
@@ -1507,6 +1767,48 @@
                               timerMode === "total" ? "problem" : "total")}
                      />
                   {/if}
+
+                  {#if interstitial}
+                     <div
+                        class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/95 px-6 text-center backdrop-blur-(--backdrop-blur)"
+                        transition:fade={{ duration: 150 }}
+                     >
+                        <div
+                           class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary"
+                        >
+                           <Icon
+                              name={segmentSize === 1 ? "bolt" : "layers"}
+                              fontsize={24}
+                           />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                           <h2 class="text-lg font-semibold">
+                              {segmentSize === 1
+                                 ? `Problem ${interstitial.segment + 1} of ${segTotal}`
+                                 : `Pair ${interstitial.segment + 1} of ${segTotal}`}
+                           </h2>
+                           <p class="text-xs text-muted-foreground">
+                              {#if segmentSize === 1}
+                                 Starting…
+                              {:else}
+                                 Previous pair locked{secondsPerSegment != null
+                                    ? ` · ${Math.round(secondsPerSegment / 60)} min`
+                                    : ""}
+                              {/if}
+                           </p>
+                        </div>
+                        {#if segmentSize > 1}
+                           <Button
+                              size="sm"
+                              class="gap-1.5"
+                              onclick={dismissInterstitial}
+                           >
+                              Start pair
+                              <Icon name="arrow_forward" />
+                           </Button>
+                        {/if}
+                     </div>
+                  {/if}
                </div>
 
                <PracticeFooter
@@ -1516,6 +1818,10 @@
                   {paused}
                   {focusModeActive}
                   {canGoBack}
+                  segmented={isSegmented}
+                  {canSegmentForward}
+                  lastSegment={onLastSegment}
+                  onAdvanceSegment={advanceSegment}
                   flagged={answerState.flagged}
                   {moreOptions}
                   {submittingTest}
@@ -1530,7 +1836,7 @@
                   onForward={goForward}
                   onJumpToLatest={jumpToLatest}
                   onLoadProblem={() => loadProblem()}
-                  onSubmitAnswer={submitAnswer}
+                  onSubmitAnswer={() => submitAnswer()}
                   onSubmitTest={submitTest}
                />
             </div>
@@ -1554,6 +1860,8 @@
          {isTest}
          {testName}
          timeLimitSeconds={settingsForm.timeLimitSeconds}
+         pacing={settingsForm.pacing}
+         strictTiming={settingsForm.strictTiming ?? true}
          onFocusModeChange={setFocusMode}
          onClose={() => (showSettings = false)}
          open={showSettings}

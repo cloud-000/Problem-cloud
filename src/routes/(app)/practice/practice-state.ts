@@ -24,6 +24,12 @@ export type PracticeHistoryEntry = PracticeAnswerState & {
     source: PracticeSource;
     progress: ProblemProgress | null;
     submissionId?: number;
+    // Explicit persisted skip flag (from `submissions.skipped`). Set when the
+    // entry is rebuilt from a stored submission — where the free-text answer is
+    // NOT persisted, so a skip can't be inferred from a (now-blank) answer — and
+    // when a test is graded. Absent on live entries (their typed answer is present
+    // and drives inference in the review UI).
+    skipped?: boolean;
 };
 
 export function createPracticeAnswerState(
@@ -54,12 +60,14 @@ export function createPracticeHistoryEntry({
     source,
     progress,
     submissionId,
+    skipped,
     ...answerState
 }: {
     problem: ProblemRow;
     source: PracticeSource;
     progress: ProblemProgress | null;
     submissionId?: number;
+    skipped?: boolean;
 } & Partial<PracticeAnswerState>): PracticeHistoryEntry {
     return {
         problem,
@@ -67,6 +75,7 @@ export function createPracticeHistoryEntry({
         progress,
         ...createPracticeAnswerState(answerState),
         ...(submissionId == null ? {} : { submissionId }),
+        ...(skipped == null ? {} : { skipped }),
     };
 }
 
@@ -93,11 +102,15 @@ export function practiceHistoryEntryFromSubmission(
         source: (submission.source as PracticeSource) ?? "practice",
         progress: submission.progress,
         selectedChoice: submission.selectedChoice,
+        answer: submission.answer ?? "",
         submitted: !submission.skipped,
         correct: submission.isCorrect,
         flagged: submission.flagged,
         elapsedMs: submission.elapsedMs,
         submissionId: submission.submissionId,
+        // Persisted skip: the free-text answer isn't stored, so the review UI
+        // must trust this flag rather than infer a skip from the blank answer.
+        skipped: submission.skipped,
     });
 }
 

@@ -212,6 +212,8 @@ export type SessionHistoryEntry = {
     progress: ProblemProgress | null;
     source: string | null;
     selectedChoice: number | null;
+    /** Persisted free-text response (non-MCQ); "" when none was stored. */
+    answer: string;
     isCorrect: boolean | null;
     skipped: boolean;
     flagged: boolean;
@@ -221,6 +223,7 @@ export type SessionHistoryEntry = {
 /** Shape a raw `submissions` row (with embedded `problems`) into a history entry. */
 function mapSubmissionRow(row: {
     selected_choice: number | null;
+    answer: string | null;
     is_correct: boolean | null;
     skipped: boolean;
     flagged: boolean;
@@ -236,6 +239,7 @@ function mapSubmissionRow(row: {
         progress: problem_progress?.[0] ?? null,
         source: row.source,
         selectedChoice: row.selected_choice,
+        answer: row.answer ?? "",
         isCorrect: row.is_correct,
         skipped: row.skipped,
         flagged: row.flagged,
@@ -257,7 +261,7 @@ export async function fetchSessionHistory(
     const { data, error } = await supabase
         .from("submissions")
         .select(
-            `selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
+            `selected_choice, answer, is_correct, skipped, flagged, elapsed_ms, source, problems(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
@@ -294,7 +298,7 @@ export async function fetchOlderSubmission(
     let query = supabase
         .from("submissions")
         .select(
-            `id, selected_choice, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
+            `id, selected_choice, answer, is_correct, skipped, flagged, elapsed_ms, source, problems!inner(*, ${TESTS_EMBED}, ${SESSION_PROGRESS_EMBED})`,
         )
         .eq("session_id", sessionId)
         .in("source", ["practice", "review"])

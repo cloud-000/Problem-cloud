@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
+    import { Countdown } from "$lib/components/countdown";
     import { Icon } from "$lib/components/icon";
     import { RatingCounter } from "$lib/components/rating-counter";
     import { RatingLifeBar } from "$lib/components/rating-life-bar";
@@ -24,6 +25,7 @@
         skippedAttempts,
         testFinished,
         historyLength,
+        showTestClock = true,
         timeLimitSeconds,
         remainingMs,
         totalElapsedMs,
@@ -35,6 +37,7 @@
         paused,
         timerMode = $bindable<"problem" | "total">(),
         elapsedMs,
+        problemRemainingMs = null,
         onToggleSettings,
         onTogglePause,
     }: {
@@ -50,6 +53,8 @@
         skippedAttempts: number;
         testFinished: boolean;
         historyLength: number;
+        /** Segmented tests show their clock in a per-segment header instead. */
+        showTestClock?: boolean;
         timeLimitSeconds: number | null;
         remainingMs: number | null;
         totalElapsedMs: number;
@@ -61,6 +66,8 @@
         paused: boolean;
         timerMode: "problem" | "total";
         elapsedMs: number;
+        /** Timed practice: ms left on the current problem, or null when untimed. */
+        problemRemainingMs?: number | null;
         onToggleSettings: () => void;
         onTogglePause: () => void;
     } = $props();
@@ -132,7 +139,7 @@
             />
         {/if}
         {#if isTest}
-            {#if !testFinished && historyLength > 0}
+            {#if showTestClock && !testFinished && historyLength > 0}
                 {@const timed = timeLimitSeconds != null}
                 {@const low = timed && remainingMs != null && remainingMs <= 60_000}
                 {@const displayMs = timed ? (remainingMs ?? 0) : totalElapsedMs}
@@ -173,25 +180,34 @@
                         {/if}
                     </div>
                 {/if}
-                <button
-                    type="button"
-                    onclick={() => (timerMode = isTotal ? "problem" : "total")}
-                    class={cn(
-                        "inline-flex h-8 items-center justify-center rounded-md bg-surface-container-low transition-colors hover:bg-surface-container",
-                        focusModeActive ? "w-8 px-0" : "gap-1 px-2.5",
-                    )}
-                    title={isTotal
-                        ? `Total session time: ${formatElapsed(displayMs)} — click for this problem`
-                        : `Time on this problem: ${formatElapsed(displayMs)} — click for session total`}
-                    aria-label={isTotal ? "Total session time" : "Time on this problem"}
-                >
-                    {#if !focusModeActive}
-                        <Icon name={isTotal ? "timelapse" : "schedule"} class={iconCls} />
-                    {/if}
-                    <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
-                        {formatElapsed(displayMs)}
-                    </span>
-                </button>
+                {#if problemRemainingMs != null}
+                    <Countdown
+                        remainingMs={problemRemainingMs}
+                        label="Time on this problem"
+                        icon="timer"
+                        compact={focusModeActive}
+                    />
+                {:else}
+                    <button
+                        type="button"
+                        onclick={() => (timerMode = isTotal ? "problem" : "total")}
+                        class={cn(
+                            "inline-flex h-8 items-center justify-center rounded-md bg-surface-container-low transition-colors hover:bg-surface-container",
+                            focusModeActive ? "w-8 px-0" : "gap-1 px-2.5",
+                        )}
+                        title={isTotal
+                            ? `Total session time: ${formatElapsed(displayMs)} — click for this problem`
+                            : `Time on this problem: ${formatElapsed(displayMs)} — click for session total`}
+                        aria-label={isTotal ? "Total session time" : "Time on this problem"}
+                    >
+                        {#if !focusModeActive}
+                            <Icon name={isTotal ? "timelapse" : "schedule"} class={iconCls} />
+                        {/if}
+                        <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
+                            {formatElapsed(displayMs)}
+                        </span>
+                    </button>
+                {/if}
             </div>
         {/if}
     </div>
