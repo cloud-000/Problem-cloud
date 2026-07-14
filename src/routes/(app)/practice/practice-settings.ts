@@ -1,8 +1,9 @@
-import { DIFFICULTY_RANGE, boolToTri, triToBool } from "$lib/library";
+import { boolToTri, triToBool } from "$lib/library";
 import type { DimensionOption } from "$lib/series-review";
 import type { Engagement, Mastery } from "$lib/progress";
 import {
     ADAPTIVE_RANGE_DEFAULT,
+    RATING_RANGE,
     defaultPracticeSettings,
     type PracticeMode,
     type PracticeSettings,
@@ -90,6 +91,20 @@ function solutionToTri(
     return value === "with" ? "on" : value === "without" ? "off" : "neutral";
 }
 
+/**
+ * Difficulty is now a Glicko-rating band (see {@link RATING_RANGE}). Legacy
+ * snapshots stored it in the old 0–100 domain; those sit entirely below the
+ * rating floor, so reset them to full range (no constraint) rather than letting
+ * the slider clamp both handles to the minimum. Otherwise just clamp into bounds.
+ */
+function normalizeDifficulty(range: Range): Range {
+    if (range[1] < RATING_RANGE[0]) return [...RATING_RANGE];
+    return [
+        Math.max(range[0], RATING_RANGE[0]),
+        Math.min(range[1], RATING_RANGE[1]),
+    ];
+}
+
 export function createPracticeSettingsForm(
     raw: Partial<PracticeSettings> = {},
 ): PracticeSettingsForm {
@@ -129,7 +144,7 @@ export function createPracticeSettingsForm(
         timeLimitSeconds: settings.timeLimitSeconds ?? null,
         focusMode: settings.focusMode ?? false,
         topic: [...settings.topic],
-        difficulty: [settings.difficulty[0], settings.difficulty[1]],
+        difficulty: normalizeDifficulty(settings.difficulty),
         verifiedOnly: settings.verifiedOnly,
         computational: boolToTri(settings.computational),
         answerAvailability: availabilityToTri(settings.answerAvailability),
@@ -205,4 +220,4 @@ export function resetPracticeSettingsForm(
     Object.assign(form, defaults);
 }
 
-export { DIFFICULTY_RANGE };
+export { RATING_RANGE };

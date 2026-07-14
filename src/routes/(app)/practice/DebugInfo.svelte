@@ -141,16 +141,16 @@
                 <Switch bind:checked={showRawLatex} size="sm" />
             </div>
 
-            <!-- Difficulty and Quality -->
+            <!-- Difficulty (problem rating) and Quality -->
             <div class="flex items-center justify-between gap-4 py-0.5">
                 <span class="text-muted-foreground font-mono"
-                    >Diff / Quality</span
+                    >Rating / Quality</span
                 >
                 <span
                     class="font-mono bg-surface-container px-2 py-0.5 rounded border border-border/50 text-foreground font-semibold"
                 >
-                    D: {problem.difficulty ?? "N/A"} / Q: {problem.quality ??
-                        "N/A"}
+                    R: {problemRating ? Math.round(problemRating.rating) : "N/A"}
+                    / Q: {problem.quality ?? "N/A"}
                 </span>
             </div>
 

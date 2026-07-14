@@ -30,7 +30,7 @@ describe("practice settings form", () => {
     test("round trips filters and clones every array", () => {
         const form = createPracticeSettingsForm({
             topic: ["geometry"],
-            difficulty: [3, 9],
+            difficulty: [800, 1600],
             seriesIds: ["12"],
             seriesScopes: { "12": { divisions: ["State"], formats: ["Sprint"] } },
             timesCorrect: [1, 4],
@@ -48,7 +48,7 @@ describe("practice settings form", () => {
         form.counterRanges.correct[0] = 0;
 
         expect(snapshot.topic).toEqual(["geometry"]);
-        expect(snapshot.difficulty).toEqual([3, 9]);
+        expect(snapshot.difficulty).toEqual([800, 1600]);
         expect(snapshot.seriesIds).toEqual(["12"]);
         expect(snapshot.seriesScopes).toEqual({
             "12": { divisions: ["State"], formats: ["Sprint"] },

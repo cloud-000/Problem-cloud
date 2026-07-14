@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import {
-    DIFFICULTY_RANGE,
     TESTS_EMBED,
     TESTS_EMBED_INNER,
     type ProblemRow,
@@ -155,6 +154,33 @@ export const ADAPTIVE_RANGE_DEFAULT = 200;
 /** Slider bounds for the adaptive rating-band half-width. */
 export const ADAPTIVE_RANGE_BOUNDS: Range = [50, 600];
 
+/**
+ * Bounds for the manual Difficulty control, which is a Glicko-rating band on the
+ * problem's overall rating (the deprecated `problems.difficulty` column is dead —
+ * every row is 0 — so difficulty now targets the live rating). Only consulted when
+ * Adaptive difficulty is off; adaptive centers its own band on the player instead.
+ * Wide enough to cover the corpus (currently ~500–2400) with headroom.
+ */
+export const RATING_RANGE: Range = [500, 2500];
+
+/**
+ * Resolve the manual Difficulty range into a rating band, or `null` for "no
+ * constraint". Returns null at (or beyond) full range, and — defensively —
+ * whenever the stored range sits entirely below the rating floor, which is how a
+ * legacy snapshot (difficulty in the old 0–100 domain) reads; those must not be
+ * interpreted as a 0–100 *rating* band (which would match nothing).
+ */
+function manualRatingBand(range: Range | undefined): [number, number] | null {
+    if (!range) return null;
+    const [rawLo, rawHi] = range;
+    if (rawHi < RATING_RANGE[0]) return null;
+    const lo = Math.max(rawLo, RATING_RANGE[0]);
+    const hi = Math.min(rawHi, RATING_RANGE[1]);
+    if (lo <= RATING_RANGE[0] && hi >= RATING_RANGE[1]) return null;
+    if (lo > hi) return null;
+    return [lo, hi];
+}
+
 /** Inner rating embed, so a draw can be band-filtered by overall Glicko rating. */
 const RATING_INNER = "problem_ratings!inner(scope, rating, rd, attempts)";
 
@@ -192,7 +218,7 @@ export function defaultPracticeSettings(): PracticeSettings {
         seriesIds: [],
         seriesScopes: {},
         topic: [],
-        difficulty: [...DIFFICULTY_RANGE],
+        difficulty: [...RATING_RANGE],
         verifiedOnly: false,
         computational: null,
         answerAvailability: "with",
@@ -300,16 +326,29 @@ function applyAttributeFilters(
     settings: ResolvedSettings,
     prefix: "" | "problems." = "",
 ) {
+    // Eligibility floor: a usable problem always has a non-blank statement.
     let next = query
         .not(`${prefix}statement`, "is", null)
-        .not(`${prefix}choices`, "is", null);
+        .neq(`${prefix}statement`, "");
 
     // Answer availability. "no answer" is `answer_index = -1` (the column default)
     // or null; "with" requires a real index (>= 0); "any" drops the constraint.
     const answerAvailability = settings.answerAvailability ?? "with";
     if (answerAvailability === "with") {
-        next = next.gte(`${prefix}answer_index`, 0);
+        // Graded draws also need comparable choices. A graded problem's correct
+        // answer is `choices[answer_index]` — MCQ (>1 choice) or computational
+        // free-response (a single choice holding the answer) — so an `answer_index
+        // >= 0` row must carry a non-empty `choices` array. Excluding the empty
+        // array (`{}`) here keeps the SQL pool aligned with `isEligibleProblem`
+        // so the count/candidate/fallback draws don't overcount and whiff.
+        next = next
+            .gte(`${prefix}answer_index`, 0)
+            .not(`${prefix}choices`, "is", null)
+            .neq(`${prefix}choices`, "{}");
     } else if (answerAvailability === "without") {
+        // Answerless problems (incl. computational free-response stubs with an
+        // empty `choices` array) run ungraded — the "help contribute answers"
+        // pool — so choices are intentionally *not* required here.
         // `.or()` against an embedded resource needs the referenced table named.
         next =
             prefix === "problems."
@@ -341,11 +380,9 @@ function applyAttributeFilters(
     if (settings.topic.length > 0) {
         next = next.in(`${prefix}topic`, settings.topic);
     }
-    if (settings.difficulty) {
-        next = next
-            .gte(`${prefix}difficulty`, settings.difficulty[0])
-            .lte(`${prefix}difficulty`, settings.difficulty[1]);
-    }
+    // Difficulty is no longer a column filter — it resolves into `ratingBand`
+    // (see nextPracticeProblem / manualRatingBand) and is applied via the rating
+    // embed below, exactly like the adaptive band.
     if (settings.verifiedOnly) next = next.eq(`${prefix}verified`, true);
     if (settings.computational != null) {
         next = next.eq(`${prefix}is_computational`, settings.computational);
@@ -414,10 +451,14 @@ function isEligibleProblem(
     allowAnswerless = false,
 ): problem is ProblemRow {
     if (!problem?.statement?.trim()) return false;
-    if (!problem.choices?.length) return false;
-    // When answerless problems are permitted, the recorded answer is optional;
-    // the draw query has already narrowed to the requested availability.
+    // When answerless problems are permitted, the recorded answer AND choices are
+    // both optional: answerless computational free-response stubs carry an empty
+    // `choices` array and run ungraded (the "help contribute answers" pool). The
+    // draw query has already narrowed to the requested availability.
     if (allowAnswerless) return true;
+    // Graded problems need comparable choices — MCQ options, or a single choice
+    // holding a computational answer — with `answer_index` pointing into them.
+    if (!problem.choices?.length) return false;
     if (problem.answer_index == null) return false;
     return problem.answer_index >= 0 && problem.answer_index < problem.choices.length;
 }
@@ -883,14 +924,24 @@ export async function nextPracticeProblem(
     session: PracticeSession,
     playerRating: number | null = null,
 ): Promise<PracticeResult> {
-    // Resolve the adaptive band once and layer it over the stored settings, so
+    // Resolve the rating band once and layer it over the stored settings, so
     // every draw path below reads it off `resolved` rather than recomputing it.
+    // Two mutually exclusive sources feed the same band:
+    //   • Adaptive on  → a *soft* band centered on the player's live rating
+    //     (`center` set), which the new-problem draw relaxes to nearest/unrated
+    //     when empty so it never dead-ends.
+    //   • Adaptive off → the manual Difficulty range as a *hard* rating filter
+    //     (`center` stays null → no relaxation on the new-problem draw).
+    // When adaptive is on the manual Difficulty is ignored (the UI hides it).
     const center = settings.adaptive && playerRating != null ? playerRating : null;
     const range = settings.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT;
-    const resolved: ResolvedSettings = {
-        ...settings,
-        ratingBand: center != null ? [center - range, center + range] : null,
-    };
+    const ratingBand =
+        center != null
+            ? ([center - range, center + range] as [number, number])
+            : settings.adaptive
+              ? null
+              : manualRatingBand(settings.difficulty);
+    const resolved: ResolvedSettings = { ...settings, ratingBand };
 
     if (settings.mode === "new") {
         return {

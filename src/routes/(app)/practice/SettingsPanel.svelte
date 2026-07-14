@@ -59,7 +59,7 @@
     import { ADAPTIVE_RANGE_BOUNDS } from "$lib/trainer";
     import {
         COUNTER_RANGE,
-        DIFFICULTY_RANGE,
+        RATING_RANGE,
         TRIES_RANGE,
         resetPracticeSettingsForm,
         type PracticeSettingsForm,
@@ -362,20 +362,8 @@
         </div>
     {/if}
 
-    <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
-        <span class="text-xs font-medium text-muted-foreground">
-            Difficulty ({form.difficulty[0]}-{form.difficulty[1]})
-        </span>
-        <RangeSlider
-            bind:value={form.difficulty}
-            min={DIFFICULTY_RANGE[0]}
-            max={DIFFICULTY_RANGE[1]}
-            step={1}
-            label="Difficulty"
-        />
-    </div>
-
-    <!-- Adaptive difficulty: draw problems rated near the player's rating. -->
+    <!-- Adaptive difficulty draws near the player's rating; with it off, the
+         manual Difficulty band (a rating range) takes over. -->
     <div class="flex flex-col gap-3 border-b border-border/30 pb-4">
         <div class="flex items-center justify-between gap-3">
             <div class="flex flex-col gap-0.5">
@@ -385,7 +373,7 @@
                 <span class="text-[10px] text-muted-foreground">
                     {form.adaptive
                         ? `Near your rating (±${form.adaptiveRange})`
-                        : "Off — draw across all ratings"}
+                        : "Off — pick a difficulty range below"}
                 </span>
             </div>
             <Switch bind:checked={form.adaptive} size="sm" />
@@ -402,6 +390,20 @@
                     max={ADAPTIVE_RANGE_BOUNDS[1]}
                     step={25}
                     label="Adaptive rating range"
+                />
+            </div>
+        {:else}
+            <div class="flex flex-col gap-2" transition:fly={{ y: -6, duration: 150 }}>
+                <span class="text-[10px] text-muted-foreground">
+                    Difficulty — problem rating ({form.difficulty[0]}–{form
+                        .difficulty[1]})
+                </span>
+                <RangeSlider
+                    bind:value={form.difficulty}
+                    min={RATING_RANGE[0]}
+                    max={RATING_RANGE[1]}
+                    step={50}
+                    label="Difficulty (problem rating)"
                 />
             </div>
         {/if}
