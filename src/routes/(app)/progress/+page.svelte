@@ -3,6 +3,7 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
+    import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
     import { Select } from "$lib/components/select";
     import {
@@ -22,6 +23,7 @@
     import { defaultPracticeSettings } from "$lib/trainer";
     import {
         topicLabel as topicName,
+        fetchAllSeries,
         fetchPlayerRatingHistory,
         RATING_PROVISIONAL_RD,
         type PlayerRatingPoint,
@@ -46,6 +48,12 @@
     // Topic currently spinning up a drill session (disables its button).
     let drilling = $state<string | null>(null);
     let activeView = $state("overview");
+
+    // Series lens for the overview: empty = all series. The breakdown RPC takes a
+    // multi-series array; the state summary is single-series, so it only narrows
+    // when exactly one series is picked (all-time otherwise).
+    let seriesOptions = $state<{ value: string; label: string }[]>([]);
+    let selectedSeriesIds = $state<string[]>([]);
 
     // Time range → optional `from` bound handed to the RPC.
     let range = $state("all");
@@ -73,7 +81,7 @@
         return `${Math.floor(s / 60)}m ${s % 60}s`;
     }
 
-    async function load(from?: string) {
+    async function load(from?: string, seriesIds: number[] = []) {
         if (!user) {
             loading = false;
             return;
@@ -81,9 +89,15 @@
         loading = true;
         try {
             [rows, ratingHistory, stateSummary] = await Promise.all([
-                fetchProgressBreakdown(supabase, "topic", { from }),
+                fetchProgressBreakdown(supabase, "topic", {
+                    from,
+                    seriesIds: seriesIds.length ? seriesIds : undefined,
+                }),
                 fetchPlayerRatingHistory(supabase, user.id),
-                fetchProblemStateSummary(supabase),
+                fetchProblemStateSummary(
+                    supabase,
+                    seriesIds.length === 1 ? seriesIds[0] : null,
+                ),
             ]);
             errorMsg = null;
         } catch (e) {
@@ -93,9 +107,26 @@
         }
     }
 
-    // (Re)load on mount and whenever the range changes.
+    // Series options for the overview lens (public list; empty = all series).
     $effect(() => {
-        void load(rangeFrom(range));
+        let cancelled = false;
+        fetchAllSeries(supabase)
+            .then((series) => {
+                if (cancelled) return;
+                seriesOptions = series.map((s) => ({
+                    value: String(s.id),
+                    label: s.name,
+                }));
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    });
+
+    // (Re)load on mount and whenever the range or series lens changes.
+    $effect(() => {
+        void load(rangeFrom(range), selectedSeriesIds.map(Number));
     });
 
     // Overall totals, aggregated from the single topic query (topics are disjoint
@@ -285,9 +316,22 @@
             </div>
 
             <Subtabs.Content value="overview" class="mx-auto w-full max-w-5xl space-y-6">
-                <!-- Range control -->
-                <div class="flex items-end justify-end">
-                    <div class="flex flex-col gap-1.5 w-full md:w-48">
+                <!-- Series + range lens -->
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                        <span
+                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                            >Series</span
+                        >
+                        <Combobox
+                            bind:value={selectedSeriesIds}
+                            options={seriesOptions}
+                            strict
+                            placeholder="All series"
+                            inputPlaceholder="Add series…"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1.5 w-full sm:w-48">
                         <span
                             class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                             >Time Range</span

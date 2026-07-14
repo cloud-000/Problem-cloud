@@ -159,35 +159,20 @@
 </script>
 
 <div class="space-y-6">
-    <section class="mx-auto w-full max-w-5xl space-y-4" aria-labelledby="review-scope-heading">
-        <div class="flex items-start gap-3">
-            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-foreground">
-                <Icon name="view_cozy" fontsize="1.25rem" />
-            </div>
-            <div class="min-w-0">
-                <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Review scope</p>
-                <h2 id="review-scope-heading" class="mt-0.5 text-lg font-semibold">Choose the tests to compare</h2>
-                <p class="mt-1 text-sm text-muted-foreground">
-                    Start with a series, then narrow it by division or format if needed.
-                </p>
-            </div>
-        </div>
-
+    <section class="mx-auto w-full max-w-5xl space-y-4">
         <div class="rounded-2xl border border-border/60 bg-surface-container-low/40 p-4 shadow-xs sm:p-5">
-            <div class="mb-4 flex items-center gap-2">
-                <Icon name="filter_alt" class="text-muted-foreground" />
-                <h3 class="text-sm font-semibold">Test filters</h3>
-                {#if hasFilters}
+            {#if hasFilters}
+                <div class="mb-4 flex items-center justify-end">
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="ml-auto h-7"
+                        class="h-7"
                         onclick={clearFilters}
                     >
                         Clear filters
                     </Button>
-                {/if}
-            </div>
+                </div>
+            {/if}
             <div class="grid gap-4 md:grid-cols-3">
                 <label class="flex min-w-0 flex-col gap-1.5">
                     <span
