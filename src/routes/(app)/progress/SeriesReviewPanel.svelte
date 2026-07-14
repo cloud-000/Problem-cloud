@@ -158,119 +158,129 @@
     }
 </script>
 
-<div class="space-y-5">
-    <div class="space-y-1">
-        <h2 class="text-lg font-semibold">Series review</h2>
-        <p class="text-sm text-muted-foreground">
-            Scan every test in a series and see which problems still need work.
-        </p>
-    </div>
+<div class="space-y-6">
+    <section class="mx-auto w-full max-w-5xl space-y-4" aria-labelledby="review-scope-heading">
+        <div class="flex items-start gap-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-foreground">
+                <Icon name="view_cozy" fontsize="1.25rem" />
+            </div>
+            <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Review scope</p>
+                <h2 id="review-scope-heading" class="mt-0.5 text-lg font-semibold">Choose the tests to compare</h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Start with a series, then narrow it by division or format if needed.
+                </p>
+            </div>
+        </div>
 
-    <div class="rounded-xl border border-border/60 bg-surface-container-low/40 p-3">
-        <div class="mb-3 flex items-center gap-2">
-            <Icon name="tune" class="text-muted-foreground" />
-            <h3 class="text-sm font-medium">Matrix settings</h3>
-            {#if hasFilters}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="ml-auto h-7"
-                    onclick={clearFilters}
-                >
+        <div class="rounded-2xl border border-border/60 bg-surface-container-low/40 p-4 shadow-xs sm:p-5">
+            <div class="mb-4 flex items-center gap-2">
+                <Icon name="filter_alt" class="text-muted-foreground" />
+                <h3 class="text-sm font-semibold">Test filters</h3>
+                {#if hasFilters}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="ml-auto h-7"
+                        onclick={clearFilters}
+                    >
+                        Clear filters
+                    </Button>
+                {/if}
+            </div>
+            <div class="grid gap-4 md:grid-cols-3">
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span
+                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                        Series
+                    </span>
+                    <Select
+                        options={seriesOptions}
+                        bind:value={seriesId}
+                        placeholder={loadingSeries ? "Loading series…" : "Choose a series"}
+                        disabled={loadingSeries || seriesOptions.length === 0}
+                    />
+                </label>
+                {#if divisionOptions.length > 0}
+                    <div class="flex min-w-0 flex-col gap-1.5">
+                        <span
+                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        >
+                            Division
+                        </span>
+                        <Combobox
+                            bind:value={selectedDivisions}
+                            options={divisionOptions}
+                            strict
+                            placeholder="All divisions"
+                            inputPlaceholder="Add division…"
+                            disabled={loadingGrid}
+                        />
+                    </div>
+                {/if}
+                {#if formatOptions.length > 0}
+                    <div class="flex min-w-0 flex-col gap-1.5">
+                        <span
+                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        >
+                            Format
+                        </span>
+                        <Combobox
+                            bind:value={selectedFormats}
+                            options={formatOptions}
+                            strict
+                            placeholder="All formats"
+                            inputPlaceholder="Add format…"
+                            disabled={loadingGrid}
+                        />
+                    </div>
+                {/if}
+            </div>
+        </div>
+
+        {#if errorMsg}
+            <div
+                class="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-destructive"
+            >
+                <span>{errorMsg}</span>
+                <Button variant="ghost" size="sm" onclick={() => (errorMsg = null)}>
+                    Dismiss
+                </Button>
+            </div>
+        {/if}
+
+        {#if loadingSeries || loadingGrid}
+            <div class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 py-12 text-sm text-muted-foreground">
+                <Icon name="progress_activity" class="animate-spin" />
+                Loading series review…
+            </div>
+        {:else if !seriesId}
+            <div class="rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
+                No series are available.
+            </div>
+        {:else if tests.length === 0}
+            <div class="rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
+                This series has no reviewable problems yet.
+            </div>
+        {:else if filteredTests.length === 0}
+            <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12 text-center">
+                <div class="text-sm text-muted-foreground">
+                    No tests match the selected division and format.
+                </div>
+                <Button variant="outline" size="sm" onclick={clearFilters}>
                     Clear filters
                 </Button>
-            {/if}
-        </div>
-        <div class="grid gap-3 md:grid-cols-3">
-            <label class="flex min-w-0 flex-col gap-1.5">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Series
-                </span>
-                <Select
-                    options={seriesOptions}
-                    bind:value={seriesId}
-                    placeholder={loadingSeries ? "Loading series…" : "Choose a series"}
-                    disabled={loadingSeries || seriesOptions.length === 0}
-                />
-            </label>
-            {#if divisionOptions.length > 0}
-                <div class="flex min-w-0 flex-col gap-1.5">
-                    <span
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Division
-                    </span>
-                    <Combobox
-                        bind:value={selectedDivisions}
-                        options={divisionOptions}
-                        strict
-                        placeholder="All divisions"
-                        inputPlaceholder="Add division…"
-                        disabled={loadingGrid}
-                    />
-                </div>
-            {/if}
-            {#if formatOptions.length > 0}
-                <div class="flex min-w-0 flex-col gap-1.5">
-                    <span
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Format
-                    </span>
-                    <Combobox
-                        bind:value={selectedFormats}
-                        options={formatOptions}
-                        strict
-                        placeholder="All formats"
-                        inputPlaceholder="Add format…"
-                        disabled={loadingGrid}
-                    />
-                </div>
-            {/if}
-        </div>
-    </div>
+            </div>
+        {/if}
+    </section>
 
     <!-- Data state -->
     <div class="sr-only" aria-live="polite">
         {filteredTests.length} visible test{filteredTests.length === 1 ? "" : "s"}
     </div>
 
-    {#if errorMsg}
-        <div
-            class="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-destructive"
-        >
-            <span>{errorMsg}</span>
-            <Button variant="ghost" size="sm" onclick={() => (errorMsg = null)}>
-                Dismiss
-            </Button>
-        </div>
-    {/if}
-
-    {#if loadingSeries || loadingGrid}
-        <div class="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-            <Icon name="progress_activity" class="animate-spin" />
-            Loading series review…
-        </div>
-    {:else if !seriesId}
-        <div class="py-16 text-center text-sm text-muted-foreground">
-            No series are available.
-        </div>
-    {:else if tests.length === 0}
-        <div class="py-16 text-center text-sm text-muted-foreground">
-            This series has no reviewable problems yet.
-        </div>
-    {:else if filteredTests.length === 0}
-        <div class="flex flex-col items-center gap-3 py-16 text-center">
-            <div class="text-sm text-muted-foreground">
-                No tests match the selected division and format.
-            </div>
-            <Button variant="outline" size="sm" onclick={clearFilters}>
-                Clear filters
-            </Button>
-        </div>
-    {:else}
+    {#if !loadingSeries && !loadingGrid && seriesId && tests.length > 0 && filteredTests.length > 0}
         {#key matrixKey}
             <SeriesReviewGrid
                 tests={filteredTests}

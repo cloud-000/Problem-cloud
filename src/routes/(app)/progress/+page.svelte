@@ -225,9 +225,9 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
+<div class="flex w-full max-w-none flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
     <!-- Header -->
-    <div class="border-b border-border/80 pb-4 space-y-1">
+    <div class="max-w-5xl mx-auto w-full border-b border-border/80 pb-4 space-y-1">
         <h1
             class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
         >
@@ -239,49 +239,52 @@
             Progress
         </h1>
         <p class="text-sm text-muted-foreground">
-            See how you're doing by topic, and drill straight into your weak
-            spots.
+            Understand what is improving, then choose exactly what to review next.
         </p>
     </div>
 
     {#if !user}
         <!-- Unauthenticated prompt -->
-        <div
-            class="flex flex-col items-center justify-center gap-4 text-center py-16"
-        >
+        <div class="max-w-5xl mx-auto w-full">
             <div
-                class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
+                class="flex flex-col items-center justify-center gap-4 text-center py-16"
             >
-                <Icon name="insights" fontsize="2.5rem" />
+                <div
+                    class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
+                >
+                    <Icon name="insights" fontsize="2.5rem" />
+                </div>
+                <div class="flex flex-col gap-1">
+                    <h2 class="text-lg font-semibold">
+                        Sign in to view your progress
+                    </h2>
+                    <p class="text-sm text-muted-foreground">
+                        We track your accuracy and pace by topic automatically once
+                        you're logged in.
+                    </p>
+                </div>
+                <Button
+                    href="/auth/login"
+                    class="bg-primary text-primary-foreground hover:bg-primary/95 mt-2 px-6 shadow-sm"
+                >
+                    Log In
+                </Button>
             </div>
-            <div class="flex max-w-5xl flex-col gap-1">
-                <h2 class="text-lg font-semibold">
-                    Sign in to view your progress
-                </h2>
-                <p class="text-sm text-muted-foreground">
-                    We track your accuracy and pace by topic automatically once
-                    you're logged in.
-                </p>
-            </div>
-            <Button
-                href="/auth/login"
-                class="bg-primary text-primary-foreground hover:bg-primary/95 mt-2 px-6 shadow-sm"
-            >
-                Log In
-            </Button>
         </div>
     {:else}
-        <Subtabs bind:value={activeView}>
-            <Subtabs.List>
-                <Subtabs.Trigger value="overview" icon="insights">
-                    Overview
-                </Subtabs.Trigger>
-                <Subtabs.Trigger value="series" icon="grid_view">
-                    Series review
-                </Subtabs.Trigger>
-            </Subtabs.List>
+        <Subtabs bind:value={activeView} class="w-full flex flex-col gap-6">
+            <div class="max-w-5xl mx-auto w-full border-b border-border/80">
+                <Subtabs.List class="border-b-0">
+                    <Subtabs.Trigger value="overview" icon="insights">
+                        Overview
+                    </Subtabs.Trigger>
+                    <Subtabs.Trigger value="series" icon="grid_view">
+                        Series review
+                    </Subtabs.Trigger>
+                </Subtabs.List>
+            </div>
 
-            <Subtabs.Content value="overview" class="space-y-6">
+            <Subtabs.Content value="overview" class="mx-auto w-full max-w-5xl space-y-6">
                 <!-- Range control -->
                 <div class="flex items-end justify-end">
                     <div class="flex flex-col gap-1.5 w-full md:w-48">
@@ -541,7 +544,7 @@
                 {/if}
             </Subtabs.Content>
 
-            <Subtabs.Content value="series">
+            <Subtabs.Content value="series" class="w-full">
                 <SeriesReviewPanel {supabase} />
             </Subtabs.Content>
         </Subtabs>
