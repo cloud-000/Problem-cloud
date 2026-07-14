@@ -48,9 +48,12 @@
 
     const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
     // Linked segments read as clickable in the otherwise-muted bar via a hover
-    // underline plus a trailing new-tab glyph.
-    const linkCls =
-        "inline-flex items-center gap-0.5 hover:underline underline-offset-2 min-w-0";
+    // underline plus a trailing new-tab glyph. !text-[1em] overrides the
+    // Material Symbols stylesheet's default 24px font-size.
+    const linkCls = "group inline-flex items-center gap-0.5 min-w-0";
+    const linkTextCls = "group-hover:underline underline-offset-2";
+    const linkIconCls =
+        "shrink-0 !text-[1em] leading-none opacity-60 transition-opacity group-hover:opacity-100";
 
     let topicName = $derived(problem ? topicLabel(problem.topic) : null);
 
@@ -97,8 +100,8 @@
                     class={`truncate ${linkCls}`}
                     title={`Open ${problem.tests.name} on Art of Problem Solving`}
                 >
-                    <span class="truncate">{problem.tests.name}</span>
-                    <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+                    <span class={`truncate ${linkTextCls}`}>{problem.tests.name}</span>
+                    <Icon name="open_in_new" class={linkIconCls} />
                 </a>
             {:else}
                 <span class="truncate">{problem.tests.name}</span>
@@ -113,8 +116,8 @@
                 class={`shrink-0 ${linkCls}`}
                 title="Open this problem on Art of Problem Solving"
             >
-                #{problem.n + 1}
-                <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+                <span class={linkTextCls}>#{problem.n + 1}</span>
+                <Icon name="open_in_new" class={linkIconCls} />
             </a>
         {:else}
             <span class="shrink-0">#{problem.n + 1}</span>

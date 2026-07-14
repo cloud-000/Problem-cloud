@@ -54,6 +54,7 @@
                     <Icon
                         name={link.icon ?? "open_in_new"}
                         class="text-muted-foreground"
+                        fontsize={200}
                     />
                     <span class="min-w-0 truncate">{link.label}</span>
                 </a>

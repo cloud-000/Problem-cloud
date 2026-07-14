@@ -1312,7 +1312,7 @@
                >
                   <Icon name="quiz" fontsize={20} />
                </div>
-               <div class="flex max-w-sm flex-col gap-1">
+               <div class="flex max-w-3xl flex-col gap-1">
                   <h2 class="text-sm font-semibold">
                      This test has no answerable problems
                   </h2>
@@ -1333,7 +1333,7 @@
                >
                   <Icon name="filter_alt_off" fontsize={20} />
                </div>
-               <div class="flex max-w-sm flex-col gap-1">
+               <div class="flex max-w-3xl flex-col gap-1">
                   <h2 class="text-sm font-semibold">No matching problems</h2>
                   <p class="text-xs text-muted-foreground">
                      {#if settingsForm.mode === "skipped"}

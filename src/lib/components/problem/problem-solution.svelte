@@ -41,6 +41,9 @@
     const PILL_LIMIT = 4;
     let useDropdown = $derived(count > PILL_LIMIT);
 
+    const toggleIconCls =
+        "shrink-0 !text-[1em] leading-none transition-transform duration-200";
+
     let dropdownOptions = $derived<DropdownOption[]>(
         items.map((_, i) => ({
             label: `Solution ${i + 1}`,
@@ -60,12 +63,10 @@
         >
             <Icon
                 name="expand_more"
-                class={cn(
-                    "size-[1.15em] transition-transform duration-200",
-                    expanded && "rotate-180",
-                )}
+                opticalSize={20}
+                class={cn(toggleIconCls, expanded && "rotate-180")}
             />
-            {count > 1 ? "Solutions" : "Solution"}
+            <span>{count > 1 ? "Solutions" : "Solution"}</span>
         </button>
 
         {#if expanded}
