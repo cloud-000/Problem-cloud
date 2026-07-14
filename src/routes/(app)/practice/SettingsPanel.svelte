@@ -49,6 +49,7 @@
 </script>
 
 <script lang="ts">
+    import { onMount } from "svelte";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
@@ -78,6 +79,8 @@
         timeLimitSeconds = null,
         onFocusModeChange,
         onClose,
+        maxWidth = 900,
+        minWidth = 280
     }: {
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
@@ -95,6 +98,8 @@
         timeLimitSeconds?: number | null;
         onFocusModeChange?: (value: boolean) => void;
         onClose?: () => void;
+        maxWidth?: number;
+        minWidth?: number;
     } = $props();
 
     let advancedOpen = $state(false);
@@ -102,6 +107,66 @@
     // when it's the only one or already carries a selection; `expandedScopes`
     // holds explicit user overrides thereafter.
     let expandedScopes = $state<Record<string, boolean>>({});
+
+    let width = $state(320);
+    let isLg = $state(false);
+    let isDragging = $state(false);
+
+    onMount(() => {
+        try {
+            const savedWidth = localStorage.getItem("settings_panel_width");
+            if (savedWidth !== null) {
+                const parsed = parseInt(savedWidth, 10);
+                if (!isNaN(parsed)) {
+                    width = Math.max(minWidth, Math.min(maxWidth, parsed));
+                }
+            }
+        } catch (_) {}
+
+        const mediaQuery = window.matchMedia("(min-width: 1024px)");
+        isLg = mediaQuery.matches;
+        const handler = (e: MediaQueryListEvent) => {
+            isLg = e.matches;
+        };
+        mediaQuery.addEventListener("change", handler);
+        return () => {
+            mediaQuery.removeEventListener("change", handler);
+        };
+    });
+
+    let startX = 0;
+    let startWidth = 0;
+
+    function onPointerDown(e: PointerEvent) {
+        if (e.button !== 0) return; // only left click
+        isDragging = true;
+        startX = e.clientX;
+        startWidth = width;
+        const target = e.currentTarget as HTMLElement;
+        try {
+            target.setPointerCapture(e.pointerId);
+        } catch (_) {}
+    }
+
+    function onPointerMove(e: PointerEvent) {
+        if (!isDragging) return;
+        const deltaX = e.clientX - startX;
+        // Panel is on the right, dragging left increases width
+        width = Math.max(280, Math.min(600, startWidth - deltaX));
+    }
+
+    function onPointerUp(e: PointerEvent) {
+        if (!isDragging) return;
+        isDragging = false;
+        const target = e.currentTarget as HTMLElement;
+        try {
+            target.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        try {
+            localStorage.setItem("settings_panel_width", String(width));
+        } catch (_) {}
+        window.dispatchEvent(new Event("resize"));
+    }
 
     function scopeOpen(cfg: SeriesScopeConfig): boolean {
         const scope = form.seriesScopes[cfg.id];
@@ -150,9 +215,34 @@
 
 <aside
     transition:fly={{ x: 30, duration: 200 }}
-    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col gap-5 bg-surface-container-lowest p-5 h-full shadow-2xl border-l border-border/50 overflow-y-auto overflow-x-hidden lg:static lg:w-80 lg:h-full lg:bg-transparent lg:shadow-none lg:py-0 lg:px-6 lg:border-y-0 lg:border-r-0 lg:rounded-none"
+    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col bg-surface-container-lowest h-full shadow-2xl border-l border-border/50 overflow-hidden lg:relative lg:w-80 lg:h-full lg:bg-transparent lg:shadow-none lg:border-y-0 lg:border-r-0 lg:rounded-none"
+    style:width={isLg ? `${width}px` : undefined}
 >
-    <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
+    {#if isLg}
+        <!-- Drag Handle for Resizing (large screens only) -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+            class={cn(
+                "absolute top-0 bottom-0 left-0 w-2 -ml-1 cursor-col-resize z-50 group flex items-center justify-center select-none h-full",
+                isDragging && "bg-primary-foreground/5"
+            )}
+            onpointerdown={onPointerDown}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+        >
+            <div
+                class={cn(
+                    "w-[2px] h-8 rounded-full bg-border transition-all duration-150",
+                    "group-hover:bg-primary-foreground group-hover:h-12",
+                    isDragging && "bg-primary-foreground h-16"
+                )}
+            ></div>
+        </div>
+    {/if}
+
+    <div class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:py-0 lg:px-6 w-full h-full">
+        <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
         <div>
             <h2 class="text-sm font-semibold">
                 {isTest ? "Test" : "Settings"}
@@ -571,4 +661,5 @@
             Reset settings
         </Button>
     {/if}
+    </div>
 </aside>
