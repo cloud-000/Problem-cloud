@@ -137,6 +137,7 @@
         mediaQuery.addEventListener("change", handler);
         return () => {
             mediaQuery.removeEventListener("change", handler);
+            document.body.classList.remove("select-none", "cursor-col-resize");
         };
     });
 
@@ -145,6 +146,8 @@
 
     function onPointerDown(e: PointerEvent) {
         if (e.button !== 0) return; // only left click
+        e.preventDefault();
+        e.stopPropagation();
         isDragging = true;
         startX = e.clientX;
         startWidth = displayWidth;
@@ -152,6 +155,7 @@
         try {
             target.setPointerCapture(e.pointerId);
         } catch (_) {}
+        document.body.classList.add("select-none", "cursor-col-resize");
     }
 
     function onPointerMove(e: PointerEvent) {
@@ -173,6 +177,7 @@
             localStorage.setItem("settings_panel_width", String(width));
         } catch (_) {}
         window.dispatchEvent(new Event("resize"));
+        document.body.classList.remove("select-none", "cursor-col-resize");
     }
 
     function scopeOpen(cfg: SeriesScopeConfig): boolean {
