@@ -21,6 +21,7 @@
     } from "$lib/series-review";
     import { cn } from "$lib/utils";
     import { SvelteMap } from "svelte/reactivity";
+    import SeriesReviewDetailCard from "./SeriesReviewDetailCard.svelte";
 
     let {
         tests,
@@ -68,6 +69,7 @@
     ];
 
     let selected = $state<Selection | null>(null);
+    let cardPosition = $state({ x: 0, y: 0 });
     let activityFilter = $state("any");
     let masteryFilter = $state("any");
     let planFilter = $state("any");
@@ -149,7 +151,7 @@
     }
 </script>
 
-<div class="space-y-6">
+<div class={cn("space-y-6 transition-all duration-200", selected && "pb-36 sm:pb-28")}>
     <section class="mx-auto w-full max-w-5xl space-y-4" aria-labelledby="problem-filter-heading">
         <div class="rounded-2xl border border-border/60 bg-surface-container-low/40 p-4 shadow-xs sm:p-5">
             <div class="mb-4 flex flex-wrap items-start gap-3">
@@ -202,41 +204,7 @@
             </div>
         </div>
 
-        {#if selected}
-            {@const progress = selected.problem.progress}
-            <div class="rounded-2xl border border-primary/25 bg-primary/5 p-4 shadow-xs" aria-live="polite">
-                <div class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    <Icon name="ads_click" fontsize="1rem" />
-                    Selected problem
-                </div>
-                <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-                <div class="min-w-0 flex-1">
-                    <div class="truncate font-medium">{selected.test.name}</div>
-                    <div class="text-xs text-muted-foreground">Problem {selected.problem.n + 1} · {activityMeta[statusForReview(progress)].label}{#if reviewIsDue(progress)} · Review due{/if}</div>
-                </div>
-                <dl class="flex flex-wrap gap-x-5 gap-y-1 text-xs">
-                    <div><dt class="text-muted-foreground">Correct</dt><dd class="font-mono font-medium">{progress?.times_correct ?? 0}/{progress?.times_reviewed ?? 0}</dd></div>
-                    <div><dt class="text-muted-foreground">Last result</dt><dd class="font-medium">{progress?.last_correct == null ? "—" : progress.last_correct ? "Correct" : "Incorrect"}</dd></div>
-                    <div><dt class="text-muted-foreground">Next review</dt><dd class="font-medium">{detailDate(progress?.next_review_at)}</dd></div>
-                </dl>
-                <ProblemOrganization
-                    problemId={selected.problem.id}
-                    mastery={progress?.mastery ?? null}
-                    engagement={progress?.engagement ?? null}
-                    onchange={(state) => {
-                        if (selected?.problem.progress) {
-                            selected.problem.progress.mastery = state.mastery;
-                            selected.problem.progress.engagement = state.engagement;
-                        }
-                    }}
-                />
-                <Button size="sm" class="gap-1.5" disabled={openingProblemId === selected.problem.id} onclick={() => onOpenProblem(selected!.problem.id)}>
-                    <Icon name={openingProblemId === selected.problem.id ? "progress_activity" : "open_in_new"} class={openingProblemId === selected.problem.id ? "animate-spin" : undefined} />
-                    Open problem
-                </Button>
-                </div>
-            </div>
-        {/if}
+
     </section>
 
     <section class="w-full overflow-hidden rounded-2xl border border-border/60 bg-surface-container-low/30 shadow-xs" aria-labelledby="matrix-heading">
@@ -274,8 +242,10 @@
             <table class="w-max min-w-full border-separate border-spacing-1" aria-label="Series problem review matrix">
                 <thead><tr>
                     <th scope="col" class="sticky left-0 z-30 w-16 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Year</th>
-                    {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 max-w-48 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Test</th>{/if}
+                    {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 w-32 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Test</th>{/if}
+                    <th scope="col" class="w-auto p-0 border-none"></th>
                     {#each columns as column (column)}<th scope="col" class="size-8 min-w-8 text-center font-mono text-[0.7rem] font-normal text-muted-foreground">{column + 1}</th>{/each}
+                    <th scope="col" class="w-auto p-0 border-none"></th>
                 </tr></thead>
                 {#each yearGroups as [year, yearTests] (year)}
                     <tbody>
@@ -283,7 +253,8 @@
                             {@const byNumber = new Map(test.problems.map((problem) => [problem.n, problem]))}
                             <tr>
                                 {#if rowIndex === 0}<th scope="rowgroup" rowspan={yearTests.length} class="sticky left-0 z-20 w-16 bg-surface-container-low px-2 text-left align-top text-xs font-semibold">{year ?? "Other"}</th>{/if}
-                                {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-48 bg-surface-container-low px-2 text-left text-xs font-medium" title={test.name}><span class="block max-w-44 truncate">{reviewRowLabel(test)}</span></th>{/if}
+                                {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-32 bg-surface-container-low px-2 text-left text-xs font-medium" title={test.name}><span class="block max-w-28 truncate">{reviewRowLabel(test)}</span></th>{/if}
+                                <td class="p-0 border-none"></td>
                                 {#each columns as column (column)}
                                     {@const problem = byNumber.get(column)}
                                     <td class="size-8 min-w-8 p-0 text-center align-middle">
@@ -304,6 +275,7 @@
                                         {/if}
                                     </td>
                                 {/each}
+                                <td class="p-0 border-none"></td>
                             </tr>
                         {/each}
                     </tbody>
@@ -312,4 +284,14 @@
             </div>
         {/if}
     </section>
+
+    {#if selected}
+        <SeriesReviewDetailCard
+            {selected}
+            {openingProblemId}
+            onOpenProblem={onOpenProblem}
+            onClose={() => (selected = null)}
+            bind:position={cardPosition}
+        />
+    {/if}
 </div>
