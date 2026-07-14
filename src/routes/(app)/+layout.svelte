@@ -387,7 +387,7 @@
    <div class="flex flex-col flex-1 h-full overflow-hidden">
       {#if topbar.visible || !isMobilePortrait}
          <div
-            class="relative z-30 flex h-12 shrink-0 items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 px-2 select-none"
+            class="relative z-40 flex h-12 shrink-0 items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 px-2 select-none"
          >
             <div
                class="absolute inset-0 bg-background backdrop-blur-(--backdrop-blur) -z-10"

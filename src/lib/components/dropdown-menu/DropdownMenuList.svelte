@@ -146,10 +146,23 @@
     function isSubmenuOpen(i: number): boolean {
         return isItemActive(i) && !!options[i].submenu?.length;
     }
+
+    // Action to portal the element to document.body to escape topbar stacking context
+    function portal(node: HTMLElement) {
+        document.body.appendChild(node);
+        return {
+            destroy() {
+                if (node.parentNode) {
+                    node.parentNode.removeChild(node);
+                }
+            }
+        };
+    }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 <ul
+    use:portal
     bind:this={menuEl}
     role="menu"
     tabindex="-1"

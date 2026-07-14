@@ -32,9 +32,9 @@
     function handleWindowClick(e: MouseEvent) {
         if (!open) return;
         const target = e.target as HTMLElement;
-        if (containerEl && !containerEl.contains(target)) {
-            open = false;
-        }
+        if (containerEl && containerEl.contains(target)) return;
+        if (target.closest('[role="menu"]')) return;
+        open = false;
     }
 
     // Close the dropdown when scrolling or resizing to prevent menu floating
