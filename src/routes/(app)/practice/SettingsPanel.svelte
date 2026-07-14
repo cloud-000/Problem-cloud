@@ -80,7 +80,8 @@
         onFocusModeChange,
         onClose,
         maxWidth = 900,
-        minWidth = 280
+        minWidth = 280,
+        open = false
     }: {
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
@@ -100,6 +101,7 @@
         onClose?: () => void;
         maxWidth?: number;
         minWidth?: number;
+        open?: boolean;
     } = $props();
 
     let advancedOpen = $state(false);
@@ -214,9 +216,13 @@
 </script>
 
 <aside
-    transition:fly={{ x: 30, duration: 200 }}
-    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col bg-surface-container-lowest h-full shadow-2xl border-l border-border/50 overflow-hidden lg:relative lg:w-80 lg:h-full lg:bg-transparent lg:shadow-none lg:border-y-0 lg:border-r-0 lg:rounded-none"
-    style:width={isLg ? `${width}px` : undefined}
+    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col bg-surface-container-lowest h-full shadow-2xl border-l border-border/50 overflow-hidden lg:relative lg:h-full lg:bg-transparent lg:shadow-none lg:border-y-0 lg:border-r-0 lg:rounded-none"
+    style:width={isLg ? (open ? `${width}px` : "0px") : undefined}
+    style:transform={isLg ? undefined : (open ? "none" : "translateX(100%)")}
+    style:opacity={open ? "1" : "0"}
+    style:pointer-events={open ? "auto" : "none"}
+    style:border-left-width={isLg ? (open ? "1px" : "0px") : undefined}
+    style:transition={isDragging ? "none" : "width 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), border-left-width 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)"}
 >
     {#if isLg}
         <!-- Drag Handle for Resizing (large screens only) -->
@@ -241,7 +247,10 @@
         </div>
     {/if}
 
-    <div class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:py-0 lg:px-6 w-full h-full">
+    <div 
+        class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:py-0 lg:px-6 w-full h-full"
+        style:width={isLg ? `${width}px` : undefined}
+    >
         <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
         <div>
             <h2 class="text-sm font-semibold">

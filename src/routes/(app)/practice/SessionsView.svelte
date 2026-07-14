@@ -20,7 +20,6 @@
     import { defaultPracticeSettings, defaultTestSettings } from "$lib/trainer";
     import { cn } from "$lib/utils";
     import SessionCard from "./SessionCard.svelte";
-    import SettingsPanel from "./SettingsPanel.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);

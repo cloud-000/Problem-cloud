@@ -1543,19 +1543,20 @@
          <div
             class="fixed inset-0 z-40 bg-black/40 backdrop-blur-(--backdrop-blur) lg:hidden"
             onclick={() => (showSettings = false)}
-            transition:fade={{ duration: 150 }}
+            transition:fade={{ duration: 200 }}
          ></div>
-         <SettingsPanel
-            bind:form={settingsForm}
-            {seriesOptions}
-            {seriesScopeConfigs}
-            canReview={!!user}
-            {isTest}
-            {testName}
-            timeLimitSeconds={settingsForm.timeLimitSeconds}
-            onFocusModeChange={setFocusMode}
-            onClose={() => (showSettings = false)}
-         />
       {/if}
+      <SettingsPanel
+         bind:form={settingsForm}
+         {seriesOptions}
+         {seriesScopeConfigs}
+         canReview={!!user}
+         {isTest}
+         {testName}
+         timeLimitSeconds={settingsForm.timeLimitSeconds}
+         onFocusModeChange={setFocusMode}
+         onClose={() => (showSettings = false)}
+         open={showSettings}
+      />
    </div>
 </div>
