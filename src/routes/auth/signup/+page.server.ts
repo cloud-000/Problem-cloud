@@ -8,7 +8,7 @@ export const actions: Actions = {
         const username = formData.get("username") as string;
         const password = formData.get("password") as string;
 
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -20,6 +20,13 @@ export const actions: Actions = {
 
         if (error) {
             return fail(400, { message: "Invalid email or password" });
+        }
+
+        if (!data.session) {
+            return {
+                confirmationRequired: true,
+                email,
+            };
         }
 
         redirect(303, "/");

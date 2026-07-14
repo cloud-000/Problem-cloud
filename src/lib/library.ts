@@ -315,6 +315,7 @@ export const TOPICS: Option[] = [
     { value: "C", label: "Combinatorics" },
     { value: "G", label: "Geometry" },
     { value: "N", label: "Number Theory" },
+    { value: "K", label: "Calculus" },
     { value: "O", label: "Other" },
 ];
 
