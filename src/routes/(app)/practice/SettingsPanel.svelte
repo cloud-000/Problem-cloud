@@ -110,7 +110,11 @@
     // holds explicit user overrides thereafter.
     let expandedScopes = $state<Record<string, boolean>>({});
 
+    let windowWidth = $state(1024);
+    let resolvedMaxWidth = $derived(Math.max(windowWidth * 0.5, maxWidth));
+
     let width = $state(320);
+    let displayWidth = $derived(Math.max(minWidth, Math.min(resolvedMaxWidth, width)));
     let isLg = $state(false);
     let isDragging = $state(false);
 
@@ -120,7 +124,7 @@
             if (savedWidth !== null) {
                 const parsed = parseInt(savedWidth, 10);
                 if (!isNaN(parsed)) {
-                    width = Math.max(minWidth, Math.min(maxWidth, parsed));
+                    width = Math.max(minWidth, Math.min(resolvedMaxWidth, parsed));
                 }
             }
         } catch (_) {}
@@ -143,7 +147,7 @@
         if (e.button !== 0) return; // only left click
         isDragging = true;
         startX = e.clientX;
-        startWidth = width;
+        startWidth = displayWidth;
         const target = e.currentTarget as HTMLElement;
         try {
             target.setPointerCapture(e.pointerId);
@@ -154,7 +158,7 @@
         if (!isDragging) return;
         const deltaX = e.clientX - startX;
         // Panel is on the right, dragging left increases width
-        width = Math.max(280, Math.min(600, startWidth - deltaX));
+        width = Math.max(minWidth, Math.min(resolvedMaxWidth, startWidth - deltaX));
     }
 
     function onPointerUp(e: PointerEvent) {
@@ -164,6 +168,7 @@
         try {
             target.releasePointerCapture(e.pointerId);
         } catch (_) {}
+        width = displayWidth;
         try {
             localStorage.setItem("settings_panel_width", String(width));
         } catch (_) {}
@@ -215,9 +220,11 @@
     }
 </script>
 
+<svelte:window bind:innerWidth={windowWidth} />
+
 <aside
     class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col bg-surface-container-lowest h-full shadow-2xl border-l border-border/50 overflow-hidden lg:relative lg:h-full lg:bg-transparent lg:shadow-none lg:border-y-0 lg:border-r-0 lg:rounded-none"
-    style:width={isLg ? (open ? `${width}px` : "0px") : undefined}
+    style:width={isLg ? (open ? `${displayWidth}px` : "0px") : undefined}
     style:transform={isLg ? undefined : (open ? "none" : "translateX(100%)")}
     style:opacity={open ? "1" : "0"}
     style:pointer-events={open ? "auto" : "none"}
@@ -249,7 +256,7 @@
 
     <div 
         class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:py-0 lg:px-6 w-full h-full"
-        style:width={isLg ? `${width}px` : undefined}
+        style:width={isLg ? `${displayWidth}px` : undefined}
     >
         <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
         <div>
