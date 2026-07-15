@@ -311,7 +311,8 @@
                 </Button>
                 <Button
                     size="sm"
-                    class="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/95 shadow-sm"
+                    variant="primary"
+                    class="gap-1.5 shadow-sm"
                     onclick={openDialog}
                     disabled={busy}
                 >
@@ -346,7 +347,8 @@
                 </Button>
                 <Button
                     href="/auth/login"
-                    class="bg-primary text-primary-foreground hover:bg-primary/95 px-6 shadow-sm"
+                    variant="primary"
+                    class="px-6 shadow-sm"
                 >
                     Log In
                 </Button>
@@ -578,9 +580,9 @@
         </Button>
         <Button
             size="sm"
+            variant="primary"
             onclick={confirmCreate}
             disabled={busy || !canCreate}
-            class="bg-primary text-primary-foreground hover:bg-primary/95"
         >
             Start
         </Button>

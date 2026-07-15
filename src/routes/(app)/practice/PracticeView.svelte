@@ -2130,12 +2130,13 @@
                <div class="mt-5 flex justify-end border-t border-border/60 pt-4">
                   <Button
                      size="sm"
+                     variant="primary"
                      disabled={submittingTest || paused}
                      onclick={() => {
                         overviewOpen = false;
                         requestSubmitTest();
                      }}
-                     class="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/95"
+                     class="gap-1.5"
                   >
                      <Icon name="done_all" />
                      Submit test
@@ -2177,8 +2178,8 @@
                </Button>
                <Button
                   size="sm"
+                  variant="primary"
                   onclick={confirmProceed}
-                  class="bg-primary text-primary-foreground hover:bg-primary/95"
                >
                   {confirmKind === "advance"
                      ? "Continue"

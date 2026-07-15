@@ -311,7 +311,8 @@
             </div>
             <Button
                 href="/auth/login"
-                class="bg-primary text-primary-foreground hover:bg-primary/95 mt-2 px-6 shadow-sm"
+                variant="primary"
+                class="mt-2 px-6 shadow-sm"
             >
                 Log In
             </Button>

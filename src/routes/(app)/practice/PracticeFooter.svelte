@@ -142,9 +142,10 @@
                     <!-- Countdown reveal: first press grades this problem in place;
                          the next continues past the revealed result. -->
                     <Button
+                        variant="primary"
                         onclick={() => onAdvanceSegment?.()}
                         disabled={submittingTest || paused}
-                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                        class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
                     >
                         {#if !segmentRevealed}
                             Submit
@@ -158,18 +159,20 @@
                     </Button>
                 {:else if lastSegment}
                     <Button
+                        variant="primary"
                         onclick={onSubmitTest}
                         disabled={submittingTest || paused}
-                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                        class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
                     >
                         <Icon name="done_all" />
                         Submit test
                     </Button>
                 {:else}
                     <Button
+                        variant="primary"
                         onclick={() => onAdvanceSegment?.()}
                         disabled={submittingTest || paused}
-                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                        class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
                     >
                         Submit &amp; continue
                         <Icon name="arrow_forward" />
@@ -187,9 +190,10 @@
                 </Button>
             {:else}
                 <Button
+                    variant="primary"
                     onclick={onSubmitTest}
                     disabled={submittingTest || paused}
-                    class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                    class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
                 >
                     <Icon name="done_all" />
                     Submit test
@@ -224,8 +228,9 @@
                 </span>
             {/if}
             <Button
+                variant="primary"
                 onclick={onLoadProblem}
-                class="bg-primary/90 text-primary-foreground hover:bg-primary text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
             >
                 Next
                 <Icon name="arrow_forward" />
@@ -248,9 +253,10 @@
                 </Button>
             {/if}
             <Button
+                variant="primary"
                 disabled={cannotSubmit}
                 onclick={onSubmitAnswer}
-                class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 shadow-sm rounded-lg"
+                class="text-xs font-semibold px-4 py-2 h-9 rounded-lg"
             >
                 Submit
             </Button>

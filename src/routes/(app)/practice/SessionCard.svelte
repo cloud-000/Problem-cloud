@@ -129,8 +129,8 @@
             />
             <Button
                 size="sm"
+                variant="primary"
                 onclick={saveRename}
-                class="bg-primary text-primary-foreground hover:bg-primary/95"
             >
                 Save
             </Button>
@@ -142,7 +142,7 @@
         <div class="flex items-center gap-2 p-4">
             <Button
                 size="icon-lg"
-                variant="outline"
+                variant={session.status === "active" ? "primary" : "outline"}
                 disabled={busy}
                 onclick={onContinue}
                 aria-label={session.status === "active"
@@ -155,9 +155,7 @@
                     : isTest
                       ? "View test results"
                       : "Resume session"}
-                class={session.status === "active"
-                    ? "shrink-0 rounded-full border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "shrink-0 rounded-full"}
+                class="shrink-0 rounded-full"
             >
                 <Icon
                     name={session.status === "active"

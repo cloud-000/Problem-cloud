@@ -194,12 +194,13 @@
                 >
                     Please log in to view and manage your profile details.
                 </span>
-                <a
+                <Button
                     href="/auth/login"
-                    class="inline-flex items-center justify-center h-9 rounded-md bg-primary text-primary-foreground px-4 text-sm font-medium transition-colors hover:bg-primary/95 shadow-xs"
+                    variant="primary"
+                    class="px-4 shadow-xs"
                 >
                     Log In
-                </a>
+                </Button>
             </div>
         {/if}
     </div>
