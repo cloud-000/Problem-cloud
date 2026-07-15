@@ -32,6 +32,8 @@
         debug?: boolean;
         promptMastery?: boolean;
         class?: string;
+        /** Fired when the user presses Enter in the free-response input. */
+        onEnter?: () => void;
     };
 
     let {
@@ -45,6 +47,7 @@
         debug = false,
         promptMastery = false,
         class: className,
+        onEnter,
     }: Props = $props();
 
     // Show the raw statement string instead of the rendered math. Debug-only.
@@ -238,6 +241,7 @@
         {showAnswerState}
         {disabled}
         {isInstantFeedback}
+        {onEnter}
     />
 
     {#if mode !== "preview"}

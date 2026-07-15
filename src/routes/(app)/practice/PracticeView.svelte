@@ -1929,9 +1929,11 @@
                               : revealActive || paused}
                            onEnter={behavior.gradeImmediately
                               ? () => submitAnswer()
-                              : revealPerSegment && !segmentRevealed && !paused
-                                ? () => advanceSegment()
-                                : undefined}
+                              : isSegmented
+                                ? () => requestAdvanceSegment()
+                                : !isLatest && !paused
+                                  ? () => goForward()
+                                  : undefined}
                         />
                      </div>
 

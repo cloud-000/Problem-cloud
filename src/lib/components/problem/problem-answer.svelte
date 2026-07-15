@@ -119,7 +119,11 @@
         }
         if (event.key !== "Enter" || disabled) return;
         event.preventDefault();
-        onEnter?.();
+        if (onEnter) {
+            onEnter();
+        } else if (isInstantFeedback) {
+            trigger(true);
+        }
     }
 
     function clearFeedbackTimer() {
