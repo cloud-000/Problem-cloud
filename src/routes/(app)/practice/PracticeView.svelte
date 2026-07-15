@@ -766,9 +766,8 @@
    }
 
    // ---- Submit guards ---------------------------------------------------------
-   // A stray click on "Submit test" / "Submit & continue" shouldn't silently end a
-   // run (or burn a segment) with blanks. We confirm only when there's something to
-   // warn about — a fully-answered submit goes straight through.
+   // A manual test submission always asks for confirmation while the test clock
+   // still has time. Segment advances keep their narrower blank-round guard.
    let confirmOpen = $state(false);
    let confirmKind = $state<"submit" | "advance">("submit");
    let unansweredCount = $derived(
@@ -779,7 +778,7 @@
 
    function requestSubmitTest() {
       if (submittingTest || testFinished || paused) return;
-      if (unansweredCount > 0) {
+      if (remainingMs == null || remainingMs > 0 || unansweredCount > 0) {
          confirmKind = "submit";
          confirmOpen = true;
          return;
@@ -2125,6 +2124,22 @@
                   Flagged
                </span>
             </div>
+            {#if !testFinished}
+               <div class="mt-5 flex justify-end border-t border-border/60 pt-4">
+                  <Button
+                     size="sm"
+                     disabled={submittingTest || paused}
+                     onclick={() => {
+                        overviewOpen = false;
+                        requestSubmitTest();
+                     }}
+                     class="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/95"
+                  >
+                     <Icon name="done_all" />
+                     Submit test
+                  </Button>
+               </div>
+            {/if}
          </Modal>
 
          <Modal
@@ -2139,9 +2154,15 @@
                   You haven't answered anything in this round. Continuing locks it
                   — you won't be able to come back.
                {:else}
-                  {unansweredCount}
-                  {unansweredCount === 1 ? "problem is" : "problems are"} still
-                  unanswered. Submit anyway, or go back and finish them.
+                  {#if unansweredCount > 0}
+                     {unansweredCount}
+                     {unansweredCount === 1 ? "problem is" : "problems are"}
+                     still unanswered. Submit anyway, or go back and finish
+                     {unansweredCount === 1 ? "it" : "them"}.
+                  {:else}
+                     All problems are answered and there is still time remaining.
+                     Are you ready to submit your test?
+                  {/if}
                {/if}
             </p>
             {#snippet footer()}
@@ -2157,7 +2178,11 @@
                   onclick={confirmProceed}
                   class="bg-primary text-primary-foreground hover:bg-primary/95"
                >
-                  {confirmKind === "advance" ? "Continue" : "Submit anyway"}
+                  {confirmKind === "advance"
+                     ? "Continue"
+                     : unansweredCount > 0
+                       ? "Submit anyway"
+                       : "Submit test"}
                </Button>
             {/snippet}
          </Modal>

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Modal } from "$lib/components/modal";
     import { ProblemReview } from "$lib/components/problem";
     import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
     import { SegmentBar } from "$lib/components/segment-bar";
@@ -33,11 +34,40 @@
         }),
     );
 
-    // Jump from the overview grid to a problem's review card.
+    let focusedIndex = $state(0);
+    let reviewOpen = $state(false);
+    let focusedEntry = $derived(history[focusedIndex]);
+
     function scrollToProblem(index: number) {
-        document
-            .getElementById(`test-review-${index}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const target = document.getElementById(`test-review-${index}`);
+        const scrollContainer = target?.closest<HTMLElement>(
+            "[data-test-results-scroll]",
+        );
+        const summaryPanel = scrollContainer?.querySelector<HTMLElement>(
+            "[data-test-results-summary]",
+        );
+        if (!target || !scrollContainer || !summaryPanel) return;
+        const targetTop = target.getBoundingClientRect().top;
+        const containerTop = scrollContainer.getBoundingClientRect().top;
+        scrollContainer.scrollTo({
+            top:
+                scrollContainer.scrollTop +
+                targetTop -
+                containerTop -
+                summaryPanel.offsetHeight -
+                16,
+            behavior: "smooth",
+        });
+    }
+
+    function openProblem(index: number) {
+        focusedIndex = index;
+        reviewOpen = true;
+    }
+
+    function showProblem(index: number) {
+        if (index < 0 || index >= history.length) return;
+        focusedIndex = index;
     }
 </script>
 
@@ -47,9 +77,9 @@
     </span>
 {/snippet}
 
-<div class="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
+<div data-test-results-scroll class="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 pt-4">
-        <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-surface-container-lowest p-5">
+        <div data-test-results-summary class="sticky top-0 z-20 flex flex-col gap-3 rounded-xl border border-border/60 bg-surface-container-lowest p-5 shadow-sm">
             <div class="flex items-center gap-2">
                 <Icon name="task_alt" class="text-primary" fontsize={22} />
                 <h2 class="text-lg font-semibold">Test complete</h2>
@@ -75,6 +105,18 @@
         <div class="flex flex-col gap-3">
             {#each history as entry, index (entry.problem.id)}
                 <div id={`test-review-${index}`} class="scroll-mt-4">
+                    <div class="mb-1.5 flex justify-end">
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onclick={() => openProblem(index)}
+                            aria-label={`Open problem ${entry.problem.n + 1} in focused view`}
+                            title="Open in focused view"
+                            class="text-muted-foreground hover:text-primary-foreground"
+                        >
+                            <Icon name="open_in_full" />
+                        </Button>
+                    </div>
                     <ProblemReview {entry} elapsedMs={entry.elapsedMs} />
                 </div>
             {/each}
@@ -84,3 +126,44 @@
         </div>
     </div>
 </div>
+
+<Modal
+    bind:open={reviewOpen}
+    size="xl"
+    title={focusedEntry ? `Problem ${focusedEntry.problem.n + 1}` : "Problem review"}
+    description={focusedEntry?.problem.tests?.name ?? "Test review"}
+    onClose={() => (reviewOpen = false)}
+>
+    {#if focusedEntry}
+        <ProblemReview
+            entry={focusedEntry}
+            elapsedMs={focusedEntry.elapsedMs}
+            class="border-0 bg-transparent p-0"
+        />
+    {/if}
+
+    {#snippet footer()}
+        <div class="mr-auto text-xs font-mono tabular-nums text-muted-foreground">
+            {focusedIndex + 1} of {history.length}
+        </div>
+        <Button
+            variant="outline"
+            size="sm"
+            disabled={focusedIndex === 0}
+            onclick={() => showProblem(focusedIndex - 1)}
+            aria-label="Previous problem"
+        >
+            <Icon name="arrow_back" />
+            Previous
+        </Button>
+        <Button
+            size="sm"
+            disabled={focusedIndex === history.length - 1}
+            onclick={() => showProblem(focusedIndex + 1)}
+            aria-label="Next problem"
+        >
+            Next
+            <Icon name="arrow_forward" />
+        </Button>
+    {/snippet}
+</Modal>

@@ -140,27 +140,34 @@
         </div>
     {:else}
         <div class="flex items-center gap-2 p-4">
-            <!-- Status that morphs into Continue/Resume on hover -->
-            <StatusTag
-                class="shrink-0"
-                status={session.status === "active" ? "active" : "ended"}
+            <Button
+                size="icon-lg"
+                variant="outline"
                 disabled={busy}
-                action={{
-                    label:
-                        session.status === "active"
-                            ? "Continue"
-                            : isTest
-                              ? "Results"
-                              : "Resume",
-                    icon:
-                        session.status === "active"
-                            ? "play_arrow"
-                            : isTest
-                              ? "visibility"
-                              : "restart_alt",
-                    onclick: onContinue,
-                }}
-            />
+                onclick={onContinue}
+                aria-label={session.status === "active"
+                    ? "Continue session"
+                    : isTest
+                      ? "View test results"
+                      : "Resume session"}
+                title={session.status === "active"
+                    ? "Continue session"
+                    : isTest
+                      ? "View test results"
+                      : "Resume session"}
+                class={session.status === "active"
+                    ? "shrink-0 rounded-full border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "shrink-0 rounded-full"}
+            >
+                <Icon
+                    name={session.status === "active"
+                        ? "play_arrow"
+                        : isTest
+                          ? "visibility"
+                          : "restart_alt"}
+                    fontsize={24}
+                />
+            </Button>
 
             <button
                 type="button"

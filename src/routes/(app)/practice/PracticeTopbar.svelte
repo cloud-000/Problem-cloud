@@ -111,18 +111,18 @@
             <button
                 type="button"
                 onclick={onOpenOverview}
-                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-border/60 bg-surface-container-low px-2 py-1 transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary-foreground/25 bg-primary/70 px-2 py-1 transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
                 title="View all problems"
                 aria-label="View all problems"
             >
-                <Icon name="apps" class="size-[1em] shrink-0 text-primary" />
+                <Icon name="apps" class="size-[1em] shrink-0 text-primary-foreground" />
                 {#if sessionName}
                     <span class="hidden max-w-32 truncate text-xs font-medium text-foreground sm:inline">{sessionName}</span>
                 {/if}
                 <SegmentBar
                     class="hidden h-1.5 w-12 sm:block"
                     segments={[
-                        { value: answeredCount, color: "var(--color-primary)", label: "Answered" },
+                        { value: answeredCount, color: "var(--color-primary-foreground)", label: "Answered" },
                         { value: Math.max(0, historyLength - answeredCount), color: "var(--color-surface-container-high)", label: "Unanswered" },
                     ]}
                 />

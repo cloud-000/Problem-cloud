@@ -46,7 +46,7 @@
             case "skipped":
                 return "border-unsure/30 bg-unsure/15 text-unsure";
             case "answered":
-                return "border-primary/30 bg-primary/15 text-primary";
+                return "border-primary-foreground bg-primary-foreground text-surface-container-lowest shadow-xs";
             default:
                 return "border-border/60 bg-surface-container text-muted-foreground";
         }
