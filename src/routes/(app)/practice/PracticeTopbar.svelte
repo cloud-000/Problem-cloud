@@ -92,113 +92,46 @@
         >
             <Icon name="arrow_back" class={iconCls} />
         </a>
-        <Button
-            variant="ghost"
-            size="sm"
-            class={cn(
-                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
-                showSettings && "bg-muted text-foreground",
-            )}
-            onclick={onToggleSettings}
-            aria-expanded={showSettings}
-            aria-label="Toggle settings"
-        >
-            <Icon name="tune" class={iconCls} />
-        </Button>
-        {#if isTest && !testFinished && historyLength > 0}
-            <!-- Progress pill: name + answered/total + a thin progress bar, and the
-                 entry point to the problem-overview sheet. -->
-            <button
-                type="button"
-                onclick={onOpenOverview}
-                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary-foreground/25 bg-primary/70 px-2 py-1 transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
-                title="View all problems"
-                aria-label="View all problems"
-            >
-                <Icon name="apps" class="size-[1em] shrink-0 text-primary-foreground" />
-                {#if sessionName}
-                    <span class="hidden max-w-32 truncate text-xs font-medium text-foreground sm:inline">{sessionName}</span>
+        {#if isTest && ((allowPause && !testFinished && problemVisible && !loading) || (showTestClock && !testFinished && historyLength > 0))}
+            <div class="flex items-center gap-1.5 shrink-0">
+                {#if allowPause && !testFinished && problemVisible && !loading}
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="text-muted-foreground hover:text-foreground"
+                        onclick={onTogglePause}
+                        aria-label={paused ? "Resume test" : "Pause test"}
+                        title={paused ? "Resume" : "Pause"}
+                    >
+                        <Icon name={paused ? "play_arrow" : "pause"} class={iconCls} />
+                    </Button>
                 {/if}
-                <SegmentBar
-                    class="hidden h-1.5 w-12 sm:block"
-                    segments={[
-                        { value: answeredCount, color: "var(--color-primary-foreground)", label: "Answered" },
-                        { value: Math.max(0, historyLength - answeredCount), color: "var(--color-surface-container-high)", label: "Unanswered" },
-                    ]}
-                />
-                <span class="text-[11px] font-medium tabular-nums text-muted-foreground">
-                    {answeredCount}<span class="opacity-60">/{historyLength}</span>
-                </span>
-            </button>
-        {:else if sessionName}
-            <span class="shrink-0 truncate text-xs opacity-50 max-w-24 sm:max-w-40">{sessionName}</span>
-        {/if}
-        <!-- Rating is hidden during a test (showLiveFeedback is off): a mock
-             shouldn't leak live skill feedback while you work. -->
-        {#if playerRating && showLiveFeedback}
-            <div class="flex items-center text-xs text-muted-foreground/50 gap-1.5 min-w-0 flex-1">
-                <RatingCounter value={playerRating.rating} class="text-foreground font-medium" />
-                <RatingLifeBar
-                    bind:this={ratingBar}
-                    {playerRating}
-                    tierSize={200}
-                    class="h-2 w-full min-w-0"
-                />
+                {#if showTestClock && !testFinished && historyLength > 0}
+                    {@const timed = timeLimitSeconds != null}
+                    {@const low = timed && remainingMs != null && remainingMs <= 60_000}
+                    {@const displayMs = timed ? (remainingMs ?? 0) : totalElapsedMs}
+                    <div
+                        class={cn(
+                            "inline-flex h-8 items-center justify-center rounded-md",
+                            focusModeActive ? "w-8 px-0" : "gap-1.5 px-2.5",
+                            low ? "bg-destructive/15 text-destructive" : "bg-surface-container-low",
+                        )}
+                        title={`${timed ? "Time remaining" : "Elapsed time"}: ${formatElapsed(displayMs)}`}
+                        aria-label={timed ? "Time remaining" : "Elapsed time"}
+                    >
+                        {#if !focusModeActive}
+                            <Icon name={timed ? "timer" : "schedule"} class={iconCls} />
+                        {/if}
+                        <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
+                            {formatElapsed(displayMs)}
+                        </span>
+                    </div>
+                {/if}
             </div>
-        {/if}
-    </div>
-{/snippet}
-
-{#snippet topbarRight()}
-    <div class="flex items-center gap-2 min-w-0 flex-1">
-        {#if showLiveFeedback && !focusModeActive}
-            <SegmentBar
-                class="min-w-15 w-full h-2"
-                segments={[
-                    { value: correctAttempts, color: "var(--color-correct)", label: "Solved" },
-                    { value: incorrectAttempts, color: "var(--color-destructive)", label: "Incorrect" },
-                    { value: skippedAttempts, color: "var(--color-unsure)", label: "Skipped" },
-                ]}
-            />
-        {/if}
-        {#if isTest}
-            {#if allowPause && !testFinished && problemVisible && !loading}
-                <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="text-muted-foreground hover:text-foreground"
-                    onclick={onTogglePause}
-                    aria-label={paused ? "Resume test" : "Pause test"}
-                    title={paused ? "Resume" : "Pause"}
-                >
-                    <Icon name={paused ? "play_arrow" : "pause"} class={iconCls} />
-                </Button>
-            {/if}
-            {#if showTestClock && !testFinished && historyLength > 0}
-                {@const timed = timeLimitSeconds != null}
-                {@const low = timed && remainingMs != null && remainingMs <= 60_000}
-                {@const displayMs = timed ? (remainingMs ?? 0) : totalElapsedMs}
-                <div
-                    class={cn(
-                        "inline-flex h-8 items-center justify-center rounded-md",
-                        focusModeActive ? "w-8 px-0" : "gap-1.5 px-2.5",
-                        low ? "bg-destructive/15 text-destructive" : "bg-surface-container-low",
-                    )}
-                    title={`${timed ? "Time remaining" : "Elapsed time"}: ${formatElapsed(displayMs)}`}
-                    aria-label={timed ? "Time remaining" : "Elapsed time"}
-                >
-                    {#if !focusModeActive}
-                        <Icon name={timed ? "timer" : "schedule"} class={iconCls} />
-                    {/if}
-                    <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
-                        {formatElapsed(displayMs)}
-                    </span>
-                </div>
-            {/if}
         {:else if problemVisible || loading}
             {@const isTotal = timerMode === "total"}
             {@const displayMs = isTotal ? totalElapsedMs : elapsedMs}
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 shrink-0">
                 {#if allowPause}
                     <div class="size-8 shrink-0">
                         {#if !submitted && isLatest}
@@ -245,5 +178,74 @@
                 {/if}
             </div>
         {/if}
+        {#if isTest && !testFinished && historyLength > 0}
+            <!-- Progress pill: name + answered/total + a thin progress bar, and the
+                 entry point to the problem-overview sheet. -->
+            <button
+                type="button"
+                onclick={onOpenOverview}
+                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary-foreground/25 bg-primary/70 px-2 py-1 transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
+                title="View all problems"
+                aria-label="View all problems"
+            >
+                <Icon name="apps" class="size-[1em] shrink-0 text-primary-foreground" />
+                {#if sessionName}
+                    <span class="hidden max-w-32 truncate text-xs font-medium text-foreground sm:inline">{sessionName}</span>
+                {/if}
+                <SegmentBar
+                    class="hidden h-1.5 w-12 sm:block"
+                    segments={[
+                        { value: answeredCount, color: "var(--color-primary-foreground)", label: "Answered" },
+                        { value: Math.max(0, historyLength - answeredCount), color: "var(--color-surface-container-high)", label: "Unanswered" },
+                    ]}
+                />
+                <span class="text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {answeredCount}<span class="opacity-60">/{historyLength}</span>
+                </span>
+            </button>
+        {:else if sessionName}
+            <span class="shrink-0 truncate text-xs opacity-50 max-w-24 sm:max-w-40">{sessionName}</span>
+        {/if}
+        <!-- Rating is hidden during a test (showLiveFeedback is off): a mock
+             shouldn't leak live skill feedback while you work. -->
+        {#if playerRating && showLiveFeedback}
+            <div class="flex items-center text-xs text-muted-foreground/50 gap-1.5 min-w-0 flex-1">
+                <RatingCounter value={playerRating.rating} class="text-foreground font-medium" />
+                <RatingLifeBar
+                    bind:this={ratingBar}
+                    {playerRating}
+                    tierSize={200}
+                    class="h-2 w-full min-w-0"
+                />
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
+{#snippet topbarRight()}
+    <div class="flex items-center gap-2 min-w-0 flex-1 justify-end">
+        {#if showLiveFeedback && !focusModeActive}
+            <SegmentBar
+                class="min-w-15 w-full h-2"
+                segments={[
+                    { value: correctAttempts, color: "var(--color-correct)", label: "Solved" },
+                    { value: incorrectAttempts, color: "var(--color-destructive)", label: "Incorrect" },
+                    { value: skippedAttempts, color: "var(--color-unsure)", label: "Skipped" },
+                ]}
+            />
+        {/if}
+        <Button
+            variant="ghost"
+            size="sm"
+            class={cn(
+                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
+                showSettings && "bg-muted text-foreground",
+            )}
+            onclick={onToggleSettings}
+            aria-expanded={showSettings}
+            aria-label="Toggle settings"
+        >
+            <Icon name="tune" class={iconCls} />
+        </Button>
     </div>
 {/snippet}
