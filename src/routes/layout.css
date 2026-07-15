@@ -119,6 +119,7 @@
     --text-body: 16px;
     --text-code-notation: 14px;
     --text-label-caps: 12px;
+    --text-xxs: 10px;
 
     /* Border Radii */
     --radius-sm: 0.125rem; /* 2px standard rounded-sm card/button */
@@ -242,6 +243,7 @@
     --text-body: var(--text-body);
     --text-code-notation: var(--text-code-notation);
     --text-label-caps: var(--text-label-caps);
+    --text-xxs: var(--text-xxs);
 
     /* Border Radii mapping */
     --radius-sm: var(--radius-sm);
@@ -357,6 +359,10 @@
     line-height: 1;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+}
+
+@utility text-xxs {
+    font-size: var(--text-xxs);
 }
 
 /* Combobox duplicate-entry "shake" cue (see components/combobox). */

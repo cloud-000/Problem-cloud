@@ -382,10 +382,7 @@
                 />
                 Roadmap
             </h1>
-            <p class="text-sm text-muted-foreground">
-                Shape the future of ProblemCloud. View what we're working on and
-                vote for your favorite features.
-            </p>
+
         </div>
         {#if isAdmin}
             <Button

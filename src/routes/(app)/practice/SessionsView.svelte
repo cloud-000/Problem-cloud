@@ -293,10 +293,7 @@
                 />
                 Train
             </h1>
-            <p class="text-sm text-muted-foreground">
-                Start a focused session to group your practice, or practice
-                freely without one.
-            </p>
+
         </div>
         {#if user}
             <div class="flex items-center gap-2">
@@ -500,7 +497,7 @@
                     <span class="text-xs font-medium text-muted-foreground"
                         >Unlimited time</span
                     >
-                    <span class="text-[10px] text-muted-foreground">
+                    <span class="text-xxs text-muted-foreground">
                         {unlimited ? "No time limit" : "Timed"}
                     </span>
                 </div>
@@ -521,7 +518,7 @@
                         label={rule.unitLabel}
                         formatValue={sliderFormat}
                     />
-                    <p class="text-[10px] text-muted-foreground">
+                    <p class="text-xxs text-muted-foreground">
                         {timingSummary(rule, unitValue)}
                     </p>
                 </div>
@@ -533,7 +530,7 @@
                         <span class="text-xs font-medium text-muted-foreground"
                             >Strict timing</span
                         >
-                        <span class="text-[10px] text-muted-foreground">
+                        <span class="text-xxs text-muted-foreground">
                             {strictTiming
                                 ? "Locks each segment at 0:00"
                                 : "Timer turns red; you may overrun"}
@@ -549,7 +546,7 @@
                         <span class="text-xs font-medium text-muted-foreground"
                             >Reveal after each problem</span
                         >
-                        <span class="text-[10px] text-muted-foreground">
+                        <span class="text-xxs text-muted-foreground">
                             {revealPerSegment
                                 ? "Show the answer before the next problem"
                                 : "Grade everything at the end"}
@@ -564,11 +561,11 @@
                     <span class="text-xs font-medium text-muted-foreground"
                         >Allow pausing</span
                     >
-                    <span class="text-[10px] text-muted-foreground">
-                        {allowPause
-                            ? "You can pause the clock mid-test"
-                            : "Runs uninterrupted, like the real thing"}
-                    </span>
+                    {#if allowPause}
+                        <span class="text-xxs text-muted-foreground">
+                            You can pause the clock mid-test
+                        </span>
+                    {/if}
                 </div>
                 <Switch bind:checked={allowPause} size="sm" />
             </div>

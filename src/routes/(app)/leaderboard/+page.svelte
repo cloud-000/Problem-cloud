@@ -51,9 +51,7 @@
             />
             Leaderboard
         </h1>
-        <p class="text-sm text-muted-foreground">
-            See how your skill rating ranks against every player.
-        </p>
+
     </div>
 
     {#if loading && entries.length === 0}

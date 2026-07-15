@@ -159,8 +159,7 @@
                     <Icon name="tune" fontsize="1.1rem" />
                 </div>
                 <div class="min-w-0 flex-1">
-                    <h3 id="problem-filter-heading" class="text-sm font-semibold">Refine the problems</h3>
-                    <p class="mt-0.5 text-xs text-muted-foreground">Use any combination of filters to focus the matrix.</p>
+                    <h3 id="problem-filter-heading" class="text-sm font-semibold">Filters</h3>
                 </div>
                 {#if hasStateFilters}
                     <Button variant="ghost" size="sm" class="h-8" onclick={clearStateFilters}>

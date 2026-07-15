@@ -62,10 +62,7 @@
                     <h2 class="text-xl font-semibold text-foreground">
                         Paused
                     </h2>
-                    <p class="mt-1 text-sm text-muted-foreground">
-                        {showingTotal ? "Session time" : "Problem time"} frozen
-                        at {formatElapsed(displayedElapsedMs)}
-                    </p>
+
                 </div>
             </div>
             <div

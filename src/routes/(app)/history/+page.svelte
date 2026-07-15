@@ -284,10 +284,7 @@
             />
             History
         </h1>
-        <p class="text-sm text-muted-foreground">
-            Track your practice history and review past problem-solving
-            attempts.
-        </p>
+
     </div>
 
     {#if !user}

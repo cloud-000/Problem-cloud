@@ -269,9 +269,7 @@
             />
             Progress
         </h1>
-        <p class="text-sm text-muted-foreground">
-            Understand what is improving, then choose exactly what to review next.
-        </p>
+
     </div>
 
     {#if !user}
