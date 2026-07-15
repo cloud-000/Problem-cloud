@@ -274,7 +274,7 @@
     {/if}
 
     <div 
-        class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:py-0 lg:px-6 w-full h-full"
+        class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:pt-0 lg:pb-6 lg:px-6 w-full"
         style:width={isLg ? `${displayWidth}px` : undefined}
     >
         <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
