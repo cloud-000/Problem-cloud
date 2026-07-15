@@ -17,6 +17,8 @@
         segmented = false,
         canSegmentForward = false,
         lastSegment = true,
+        revealMode = false,
+        segmentRevealed = false,
         onAdvanceSegment,
         flagged,
         moreOptions,
@@ -47,6 +49,10 @@
         canSegmentForward?: boolean;
         /** Whether the current segment is the last (its submit ends the test). */
         lastSegment?: boolean;
+        /** Countdown per-segment reveal: the primary button grades in place first. */
+        revealMode?: boolean;
+        /** Reveal mode: the current segment has been graded and is showing its result. */
+        segmentRevealed?: boolean;
         onAdvanceSegment?: () => void;
         flagged: boolean;
         moreOptions: DropdownOption[];
@@ -125,16 +131,35 @@
                     <Button
                         variant="ghost"
                         onclick={onForward}
+                        disabled={paused}
                         aria-label="Next problem"
-                        class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                        class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
                     >
                         <Icon name="arrow_forward" />
                     </Button>
                 {/if}
-                {#if lastSegment}
+                {#if revealMode}
+                    <!-- Countdown reveal: first press grades this problem in place;
+                         the next continues past the revealed result. -->
+                    <Button
+                        onclick={() => onAdvanceSegment?.()}
+                        disabled={submittingTest || paused}
+                        class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
+                    >
+                        {#if !segmentRevealed}
+                            Submit
+                        {:else if lastSegment}
+                            <Icon name="done_all" />
+                            Finish test
+                        {:else}
+                            Next problem
+                            <Icon name="arrow_forward" />
+                        {/if}
+                    </Button>
+                {:else if lastSegment}
                     <Button
                         onclick={onSubmitTest}
-                        disabled={submittingTest}
+                        disabled={submittingTest || paused}
                         class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
                     >
                         <Icon name="done_all" />
@@ -143,7 +168,7 @@
                 {:else}
                     <Button
                         onclick={() => onAdvanceSegment?.()}
-                        disabled={submittingTest}
+                        disabled={submittingTest || paused}
                         class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
                     >
                         Submit &amp; continue
@@ -154,15 +179,16 @@
                 <Button
                     variant="ghost"
                     onclick={onForward}
+                    disabled={paused}
                     aria-label="Next problem"
-                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5"
+                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
                 >
                     <Icon name="arrow_forward" />
                 </Button>
             {:else}
                 <Button
                     onclick={onSubmitTest}
-                    disabled={submittingTest}
+                    disabled={submittingTest || paused}
                     class="bg-primary/90 text-primary-foreground hover:bg-primary disabled:opacity-40 text-xs font-semibold px-4 py-2 h-9 gap-1.5 shadow-sm rounded-lg"
                 >
                     <Icon name="done_all" />

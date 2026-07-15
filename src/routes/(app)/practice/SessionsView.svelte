@@ -54,6 +54,11 @@
     // Segmented pacing only: strict expiry hard-locks + auto-advances each segment
     // at 0:00; lenient lets the clock run red and overrun until the user submits.
     let strictTiming = $state(true);
+    // Test-format opt-ins (both default off, matching a real mock). `allowPause`
+    // restores the pausable clock; `revealPerSegment` grades + reveals each
+    // Countdown problem the moment its segment is submitted.
+    let allowPause = $state(false);
+    let revealPerSegment = $state(false);
 
     let seriesOptions = $derived<SelectOption[]>(
         series.map((s) => ({ value: String(s.id), label: s.name })),
@@ -97,6 +102,9 @@
     let isSegmentedRule = $derived(
         rule?.mode === "per-pair-minutes" || rule?.mode === "per-problem-seconds",
     );
+    // Countdown (single-problem segments) is the only pacing where per-segment
+    // reveal makes sense — a pair or a pooled clock reveals nothing mid-run.
+    let isCountdownRule = $derived(rule?.mode === "per-problem-seconds");
     let canCreate = $derived(
         dialogFormat === "practice" ||
             (selectedSeriesId !== "" && selectedTestId !== ""),
@@ -111,6 +119,8 @@
         unitValue = 0;
         unlimited = false;
         strictTiming = true;
+        allowPause = false;
+        revealPerSegment = false;
         dialogOpen = true;
         if (tests.length === 0 || series.length === 0) loadTests();
     }
@@ -190,6 +200,12 @@
                     timeLimitSeconds,
                     pacing,
                     strictTiming,
+                    allowPause,
+                    // Only Countdown (single-problem segments) honors per-segment
+                    // reveal; force it off otherwise so a stale toggle can't leak.
+                    pacing.kind === "segmented" && pacing.segmentSize === 1
+                        ? revealPerSegment
+                        : false,
                 );
             }
             const row = await startSession(supabase, user.id, {
@@ -519,6 +535,36 @@
                     <Switch bind:checked={strictTiming} size="sm" />
                 </div>
             {/if}
+
+            {#if !unlimited && isCountdownRule}
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex flex-col gap-0">
+                        <span class="text-xs font-medium text-muted-foreground"
+                            >Reveal after each problem</span
+                        >
+                        <span class="text-[10px] text-muted-foreground">
+                            {revealPerSegment
+                                ? "Show the answer before the next problem"
+                                : "Grade everything at the end"}
+                        </span>
+                    </div>
+                    <Switch bind:checked={revealPerSegment} size="sm" />
+                </div>
+            {/if}
+
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-0">
+                    <span class="text-xs font-medium text-muted-foreground"
+                        >Allow pausing</span
+                    >
+                    <span class="text-[10px] text-muted-foreground">
+                        {allowPause
+                            ? "You can pause the clock mid-test"
+                            : "Runs uninterrupted, like the real thing"}
+                    </span>
+                </div>
+                <Switch bind:checked={allowPause} size="sm" />
+            </div>
         {/if}
     </div>
     {#snippet footer()}

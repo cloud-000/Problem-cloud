@@ -54,6 +54,8 @@ export type PracticeSettingsForm = {
     timeLimitSeconds: number | null;
     pacing: Pacing | null;
     strictTiming: boolean;
+    allowPause: boolean;
+    revealPerSegment: boolean;
     focusMode: boolean;
     topic: string[];
     difficulty: Range;
@@ -148,6 +150,8 @@ export function createPracticeSettingsForm(
         timeLimitSeconds: settings.timeLimitSeconds ?? null,
         pacing: settings.pacing ?? null,
         strictTiming: settings.strictTiming ?? true,
+        allowPause: settings.allowPause ?? false,
+        revealPerSegment: settings.revealPerSegment ?? false,
         focusMode: settings.focusMode ?? false,
         topic: [...settings.topic],
         difficulty: normalizeDifficulty(settings.difficulty),
@@ -188,6 +192,8 @@ export function practiceSettingsFromForm(
         timeLimitSeconds: form.timeLimitSeconds,
         pacing: form.pacing,
         strictTiming: form.strictTiming,
+        allowPause: form.allowPause,
+        revealPerSegment: form.revealPerSegment,
         focusMode: form.focusMode,
         triesPerProblem: form.triesPerProblem,
         perProblemSeconds: form.perProblemSeconds,

@@ -25,6 +25,8 @@
         skippedAttempts,
         testFinished,
         historyLength,
+        answeredCount = 0,
+        onOpenOverview,
         showTestClock = true,
         timeLimitSeconds,
         remainingMs,
@@ -53,6 +55,10 @@
         skippedAttempts: number;
         testFinished: boolean;
         historyLength: number;
+        /** Test-format: how many problems have a response so far. */
+        answeredCount?: number;
+        /** Open the problem-overview ("bubble sheet"). */
+        onOpenOverview?: () => void;
         /** Segmented tests show their clock in a per-segment header instead. */
         showTestClock?: boolean;
         timeLimitSeconds: number | null;
@@ -99,20 +105,37 @@
         >
             <Icon name="tune" class={iconCls} />
         </Button>
-        {#if sessionName || isTest}
-            <div class="flex flex-row items-center gap-1.5 shrink-0">
-                {#if isTest}
-                    <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                        <Icon name="quiz" class="size-[1em]" />
-                        Test
-                    </span>
-                {/if}
+        {#if isTest && !testFinished && historyLength > 0}
+            <!-- Progress pill: name + answered/total + a thin progress bar, and the
+                 entry point to the problem-overview sheet. -->
+            <button
+                type="button"
+                onclick={onOpenOverview}
+                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-border/60 bg-surface-container-low px-2 py-1 transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                title="View all problems"
+                aria-label="View all problems"
+            >
+                <Icon name="apps" class="size-[1em] shrink-0 text-primary" />
                 {#if sessionName}
-                    <span class="opacity-50 text-xs truncate max-w-24 sm:max-w-40">{sessionName}</span>
+                    <span class="hidden max-w-32 truncate text-xs font-medium text-foreground sm:inline">{sessionName}</span>
                 {/if}
-            </div>
+                <SegmentBar
+                    class="hidden h-1.5 w-12 sm:block"
+                    segments={[
+                        { value: answeredCount, color: "var(--color-primary)", label: "Answered" },
+                        { value: Math.max(0, historyLength - answeredCount), color: "var(--color-surface-container-high)", label: "Unanswered" },
+                    ]}
+                />
+                <span class="text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {answeredCount}<span class="opacity-60">/{historyLength}</span>
+                </span>
+            </button>
+        {:else if sessionName}
+            <span class="shrink-0 truncate text-xs opacity-50 max-w-24 sm:max-w-40">{sessionName}</span>
         {/if}
-        {#if playerRating}
+        <!-- Rating is hidden during a test (showLiveFeedback is off): a mock
+             shouldn't leak live skill feedback while you work. -->
+        {#if playerRating && showLiveFeedback}
             <div class="flex items-center text-xs text-muted-foreground/50 gap-1.5 min-w-0 flex-1">
                 <RatingCounter value={playerRating.rating} class="text-foreground font-medium" />
                 <RatingLifeBar
@@ -139,6 +162,18 @@
             />
         {/if}
         {#if isTest}
+            {#if allowPause && !testFinished && problemVisible && !loading}
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="text-muted-foreground hover:text-foreground"
+                    onclick={onTogglePause}
+                    aria-label={paused ? "Resume test" : "Pause test"}
+                    title={paused ? "Resume" : "Pause"}
+                >
+                    <Icon name={paused ? "play_arrow" : "pause"} class={iconCls} />
+                </Button>
+            {/if}
             {#if showTestClock && !testFinished && historyLength > 0}
                 {@const timed = timeLimitSeconds != null}
                 {@const low = timed && remainingMs != null && remainingMs <= 60_000}

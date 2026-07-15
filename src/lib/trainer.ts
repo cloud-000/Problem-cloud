@@ -44,6 +44,17 @@ export type PracticeSettings = {
     // until the user submits. Only meaningful for segmented pacing. Optional so
     // older snapshots are tolerated (treated as strict).
     strictTiming?: boolean;
+    // Test-format only: allow pausing the session clock (a creation-time opt-in).
+    // Tests default to no-pause (a mock should run uninterrupted); flipping this on
+    // restores the pause affordance the practice format always has. Optional so
+    // older snapshots are tolerated (treated as false / no pause).
+    allowPause?: boolean;
+    // Test-format only, segmented Countdown (single-problem segments) only: grade
+    // and reveal each problem's outcome the moment its segment is submitted, rather
+    // than deferring every reveal to the end. Final grading/recording is unchanged
+    // (still one append-only grade at submitTest); this only surfaces the outcome
+    // early. Optional so older snapshots are tolerated (treated as false).
+    revealPerSegment?: boolean;
     // UI-only preference for a minimal trainer surface. Stored in session
     // settings jsonb alongside the draw filters.
     focusMode: boolean;
@@ -267,6 +278,8 @@ export function defaultTestSettings(
     timeLimitSeconds: number | null,
     pacing: Pacing | null = null,
     strictTiming = true,
+    allowPause = false,
+    revealPerSegment = false,
 ): PracticeSettings {
     return {
         ...defaultPracticeSettings(),
@@ -275,6 +288,8 @@ export function defaultTestSettings(
         timeLimitSeconds,
         pacing,
         strictTiming,
+        allowPause,
+        revealPerSegment,
     };
 }
 

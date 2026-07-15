@@ -6,7 +6,7 @@
         aopsCommunityUrl,
         type ProblemReviewEntry,
     } from "$lib/library";
-    import { cn } from "$lib/utils";
+    import { cn, formatElapsed } from "$lib/utils";
     import Problem from "./problem.svelte";
     import ProblemSolution from "./problem-solution.svelte";
 
@@ -14,6 +14,7 @@
         entry,
         showHeader = true,
         autoRevealSolution = true,
+        elapsedMs = null,
         class: className,
     }: {
         entry: ProblemReviewEntry;
@@ -23,6 +24,8 @@
         /** Auto-open the solution on a wrong answer (trainer post-test review).
          * Off in long lists so solutions start collapsed. */
         autoRevealSolution?: boolean;
+        /** Time spent on this problem, shown as a header chip. Null hides it. */
+        elapsedMs?: number | null;
         class?: string;
     } = $props();
 
@@ -90,6 +93,15 @@
             <StatusTag size="sm" {status} />
             {#if entry.flagged}
                 <Icon name="flag" class="size-[1.1em] text-unsure" fill />
+            {/if}
+            {#if elapsedMs != null}
+                <span
+                    class="ml-auto inline-flex shrink-0 items-center gap-1 font-mono tabular-nums text-muted-foreground"
+                    title="Time spent on this problem"
+                >
+                    <Icon name="schedule" class="size-[1em]" />
+                    {formatElapsed(elapsedMs)}
+                </span>
             {/if}
         </div>
     {/if}

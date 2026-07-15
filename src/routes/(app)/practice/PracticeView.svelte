@@ -8,6 +8,8 @@
    import { MathStatement } from "$lib/components/math-statement";
    import { ProblemAnswer, ProblemSolution } from "$lib/components/problem";
    import { ProblemOrganization } from "$lib/components/problem-organization";
+   import { Modal } from "$lib/components/modal";
+   import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       topicLabel,
@@ -37,7 +39,7 @@
       fetchSeriesDimensions,
       type SeriesDimensionRow,
    } from "$lib/series-review";
-   import { recordSubmission } from "$lib/progress";
+   import { recordSubmission, setProblemMastery, type Mastery } from "$lib/progress";
    import { countdownRemainingMs } from "$lib/countdown";
    import {
       isLastSegment,
@@ -120,7 +122,16 @@
    // flow; "test" = work a whole test with deferred grading). Older snapshots
    // predate `format`, so a missing value is treated as "practice".
    let isTest = $derived(settingsForm.format === "test");
-   let behavior = $derived(FORMAT_BEHAVIOR[settingsForm.format]);
+   // Per-format defaults, overlaid with the session's creation-time opt-ins. Only
+   // `allowPause` is currently overridable: a test runs uninterrupted by default,
+   // but the user can enable pausing when creating it. Everything else stays as the
+   // format dictates.
+   let behavior = $derived({
+      ...FORMAT_BEHAVIOR[settingsForm.format],
+      allowPause: isTest
+         ? (settingsForm.allowPause ?? false)
+         : FORMAT_BEHAVIOR[settingsForm.format].allowPause,
+   });
    // Test lifecycle: true once the test has been submitted (or re-opened as an
    // already-ended test), which switches the view over to the results screen.
    let testFinished = $state(false);
@@ -140,6 +151,13 @@
          : 0,
    );
    let isSegmented = $derived(isTest && segmentSize > 0);
+   // Countdown-only (single-problem segments): grade + reveal each problem's
+   // outcome the instant its segment is submitted, instead of deferring every
+   // reveal to the results screen. Final recording is still a single deferred
+   // grade in submitTest(); this only surfaces the outcome early.
+   let revealPerSegment = $derived(
+      isSegmented && segmentSize === 1 && (settingsForm.revealPerSegment ?? false),
+   );
    let secondsPerSegment = $derived(
       settingsForm.pacing?.kind === "segmented"
          ? settingsForm.pacing.secondsPerSegment
@@ -150,6 +168,14 @@
    let strictTiming = $derived(settingsForm.strictTiming ?? true);
    // The furthest-reached, still-active segment. Earlier segments are locked.
    let currentSegment = $state(0);
+   // Countdown reveal: true once the current single-problem segment has been graded
+   // and revealed in place, awaiting the user's "Next" to advance. Freezes the
+   // segment clock and suppresses strict auto-advance until they continue.
+   let segmentRevealed = $state(false);
+   // The on-screen problem is currently showing its graded outcome (Countdown
+   // reveal, mid-test). Drives answer-state reveal + input lock without touching
+   // the format-wide behavior flags.
+   let revealActive = $derived(revealPerSegment && segmentRevealed);
    // Between-segment card ("Pair N of M — starting"): freezes the new segment's
    // clock until dismissed (Start button for pairs, ~3s auto-flash for singles).
    let interstitial = $state<{ segment: number } | null>(null);
@@ -423,6 +449,16 @@
                   throw insertError;
                }
             }
+            // Auto-assign the suggested mastery for every attempted problem the
+            // user never rated (skips carry no knowledge signal, so they're left
+            // alone). Mirrors the trainer's leave-behavior; fire-and-forget.
+            for (const e of history) {
+               if (e.skipped || e.progress?.mastery) continue;
+               const m: Mastery = e.correct ? "confident" : "needs_work";
+               setProblemMastery(supabase, e.problem.id, m).catch((err) =>
+                  console.error("Failed to auto-assign mastery:", err),
+               );
+            }
             // Grades are in, so the local draft is obsolete — drop it now, not
             // after endSession, so a failed end can't strand stale answers
             // that a resubmit would silently discard.
@@ -448,6 +484,13 @@
    // (they stay in `history`, editable-looking but unreachable via nav).
    function advanceSegment() {
       if (!isSegmented || testFinished || submittingTest) return;
+      // Countdown reveal: the first activation grades + reveals this problem in
+      // place; the actual advance waits for the user to continue past the result.
+      if (revealPerSegment && !segmentRevealed) {
+         revealCurrentSegment();
+         return;
+      }
+      segmentRevealed = false;
       if (onLastSegment) {
          submitTest();
          return;
@@ -457,6 +500,24 @@
       currentSegment = next;
       const [start] = segmentRange(next, segmentSize, history.length);
       startInterstitial(next, start);
+   }
+
+   // Countdown reveal: grade the current single-problem segment locally and show
+   // its outcome in place (answer state + solution), freezing the clock until the
+   // user continues. Final grading is still deferred to submitTest(), which
+   // recomputes every outcome from the stored answer — so this early reveal never
+   // changes the recorded result.
+   function revealCurrentSegment() {
+      if (!problem) return;
+      answerState.elapsedMs = liveElapsed();
+      commitCurrent();
+      const entry = history[historyIndex];
+      if (entry) {
+         applyTestOutcome(entry);
+         answerState.submitted = true;
+         answerState.correct = entry.correct;
+      }
+      segmentRevealed = true;
    }
 
    // Show the between-segment card and land (frozen) on the new segment's first
@@ -561,6 +622,22 @@
    let loading = $state(true);
    let error = $state<string | null>(null);
    let answerState = $state<PracticeAnswerState>(createPracticeAnswerState());
+   // Whether the user made any explicit mastery choice for the on-screen problem
+   // (including deliberately clearing it to "Unassessed"). Reset per problem in
+   // restore()/loadProblem(). When false on leave, the suggested mastery is
+   // auto-applied so a graded problem doesn't linger unassessed.
+   let masteryTouched = $state(false);
+   // The mastery we recommend for the just-graded problem: correct-first-try →
+   // confident, correct-with-retries → learning, wrong → needs work. Also fed to
+   // the ProblemOrganization prompt so the emphasized suggestion and the
+   // auto-applied value are always the same.
+   let suggestedMastery = $derived<Mastery>(
+      answerState.correct
+         ? answerState.triesUsed > 0
+            ? "learning"
+            : "confident"
+         : "needs_work",
+   );
    // Once a finalized problem has solutions to show, the statement/answer collapse
    // to their natural height (no vertical fill) so the solution panel gets the rest.
    let solutionShown = $derived(
@@ -622,6 +699,125 @@
             ? answerState.selectedChoice == null
             : !answerState.answer.trim()),
    );
+
+   // ---- Test problem overview ("bubble sheet") --------------------------------
+   // A grid of every problem in the test, color-coded by state, that also serves
+   // as a jump target. Answered-ness for the on-screen problem reflects the live
+   // (uncommitted) edits; every other cell reads its committed history entry.
+   let overviewOpen = $state(false);
+
+   function isAnsweredAt(index: number): boolean {
+      if (index === historyIndex) {
+         return isProblemMcq
+            ? answerState.selectedChoice != null
+            : !!answerState.answer.trim();
+      }
+      const entry = history[index];
+      if (!entry) return false;
+      const isMcq = (entry.problem.choices?.length ?? 0) > 1;
+      return isMcq ? entry.selectedChoice != null : !!entry.answer.trim();
+   }
+
+   let answeredCount = $derived(
+      isTest
+         ? history.reduce((n, _entry, i) => n + (isAnsweredAt(i) ? 1 : 0), 0)
+         : 0,
+   );
+
+   let overviewCells = $derived.by<ProblemGridCell[]>(() => {
+      if (!isTest) return [];
+      return history.map((entry, i) => {
+         const current = i === historyIndex;
+         const flagged = current ? answerState.flagged : entry.flagged;
+         let state: ProblemGridCell["state"];
+         // A graded entry (finished test, or a Countdown segment revealed early)
+         // paints its recorded outcome; anything ungraded is just answered or not.
+         if (entry.submitted && entry.correct !== null) {
+            state = entry.correct ? "correct" : "incorrect";
+         } else if (entry.skipped) {
+            state = "skipped";
+         } else {
+            state = isAnsweredAt(i) ? "answered" : "unanswered";
+         }
+         // Mid-test segmented pacing locks earlier/future segments — only the
+         // current segment's cells are jumpable.
+         const disabled =
+            isSegmented && !testFinished
+               ? i < segBounds[0] || i >= segBounds[1]
+               : false;
+         return { label: entry.problem.n + 1, state, current, flagged, disabled };
+      });
+   });
+
+   // Jump straight to a problem from the overview grid (pooled tests: anywhere;
+   // segmented mid-test: only within the current, unlocked segment).
+   function jumpToIndex(index: number) {
+      overviewOpen = false;
+      if (loading || index === historyIndex) return;
+      if (index < 0 || index >= history.length) return;
+      if (
+         isSegmented &&
+         !testFinished &&
+         (index < segBounds[0] || index >= segBounds[1])
+      )
+         return;
+      commitCurrent();
+      restore(index);
+   }
+
+   // ---- Submit guards ---------------------------------------------------------
+   // A stray click on "Submit test" / "Submit & continue" shouldn't silently end a
+   // run (or burn a segment) with blanks. We confirm only when there's something to
+   // warn about — a fully-answered submit goes straight through.
+   let confirmOpen = $state(false);
+   let confirmKind = $state<"submit" | "advance">("submit");
+   let unansweredCount = $derived(
+      isTest
+         ? history.reduce((n, _entry, i) => n + (isAnsweredAt(i) ? 0 : 1), 0)
+         : 0,
+   );
+
+   function requestSubmitTest() {
+      if (submittingTest || testFinished || paused) return;
+      if (unansweredCount > 0) {
+         confirmKind = "submit";
+         confirmOpen = true;
+         return;
+      }
+      submitTest();
+   }
+
+   function requestAdvanceSegment() {
+      if (submittingTest || testFinished || paused) return;
+      // In reveal mode the grade-in-place beat is itself the "are you sure" step,
+      // so skip the blank-segment confirm and let advanceSegment reveal/continue.
+      if (revealPerSegment) {
+         advanceSegment();
+         return;
+      }
+      // Only guard a wholly-blank segment — the case where a stray click would
+      // lock a segment the user never actually worked.
+      const [start, end] = segBounds;
+      let anyAnswered = false;
+      for (let i = start; i < end; i++) {
+         if (isAnsweredAt(i)) {
+            anyAnswered = true;
+            break;
+         }
+      }
+      if (!anyAnswered) {
+         confirmKind = "advance";
+         confirmOpen = true;
+         return;
+      }
+      advanceSegment();
+   }
+
+   function confirmProceed() {
+      confirmOpen = false;
+      if (confirmKind === "submit") submitTest();
+      else advanceSegment();
+   }
 
    let moreOptions = $derived<DropdownOption[]>([
       {
@@ -686,7 +882,7 @@
          // the run is finished.
          (behavior.freezeOnNavigate
             ? !answerState.submitted && isLatest
-            : !testFinished),
+            : !testFinished && !segmentRevealed),
    );
 
    function elapsedAt(now: number) {
@@ -836,12 +1032,30 @@
    }
 
    // Save the live view state back into its history entry before navigating away.
+   // Practice only: if the user leaves a graded problem without ever touching its
+   // mastery, save the suggested value rather than leaving it unassessed. An
+   // explicit choice (including clearing to "Unassessed") sets `masteryTouched` and
+   // is respected. Fire-and-forget; the DB write mirrors the ProblemOrganization path.
+   function maybeAutoAssignMastery() {
+      if (!user || isTest) return;
+      if (!problem || !answerState.submitted || answerState.correct === null) return;
+      if (masteryTouched || currentProgress?.mastery) return;
+      if (currentProgress) currentProgress.mastery = suggestedMastery;
+      const id = problem.id;
+      setProblemMastery(supabase, id, suggestedMastery).catch((e) =>
+         console.error("Failed to auto-assign mastery:", e),
+      );
+   }
+
    function commitCurrent() {
       // Leaving the current problem: finish the life-bar's change animation now
       // so its tween/decay tail doesn't play out on the next problem.
       ratingBar?.settle();
       const entry = history[historyIndex];
       if (!entry) return;
+      // Auto-apply the suggested mastery before snapshotting, so the committed
+      // entry carries it too.
+      maybeAutoAssignMastery();
       commitPracticeHistoryEntry(
          entry,
          {
@@ -862,6 +1076,8 @@
       currentSource = entry.source;
       currentProgress = entry.progress;
       answerState = restorePracticeAnswerState(entry);
+      masteryTouched = false;
+      segmentRevealed = false;
 
       const now = Date.now();
       timerNow = now;
@@ -1264,7 +1480,17 @@
 
    function togglePause() {
       if (!behavior.allowPause) return;
-      if (!problem || answerState.submitted || loading || !isLatest) return;
+      if (!problem || loading) return;
+      // In a test the clock runs for whichever problem is shown until the final
+      // submit, so pausing is allowed any time before the run is finished (but
+      // not while a between-segment interstitial is up). In practice only the
+      // live (latest, unanswered) problem's clock can be paused.
+      if (
+         isTest
+            ? testFinished || interstitial != null
+            : answerState.submitted || !isLatest
+      )
+         return;
       if (paused) {
          startedAt = Date.now() - answerState.elapsedMs;
          paused = false;
@@ -1438,7 +1664,9 @@
    // "Submit & continue". Frozen while an interstitial is up.
    $effect(() => {
       if (!isSegmented || testFinished || submittingTest || loading) return;
-      if (!strictTiming || interstitial != null) return;
+      // Once revealed, the clock is frozen and the user drives the advance —
+      // don't let a lingering 0:00 auto-advance past the revealed result.
+      if (!strictTiming || interstitial != null || segmentRevealed) return;
       if (segmentRemainingMs === 0) {
          advanceSegment();
       }
@@ -1470,6 +1698,8 @@
       {skippedAttempts}
       {testFinished}
       historyLength={history.length}
+      {answeredCount}
+      onOpenOverview={() => (overviewOpen = true)}
       showTestClock={!isSegmented}
       timeLimitSeconds={settingsForm.timeLimitSeconds}
       {remainingMs}
@@ -1691,31 +1921,31 @@
                            bind:answer={answerState.answer}
                            bind:selectedChoice={answerState.selectedChoice}
                            bind:eliminated={answerState.eliminatedChoices}
-                           showAnswerState={behavior.revealAnswerState &&
+                           showAnswerState={(behavior.revealAnswerState ||
+                              revealActive) &&
                               answerState.submitted &&
                               hasAnswer}
                            disabled={behavior.freezeOnNavigate
                               ? answerState.submitted || !isLatest || paused
-                              : false}
+                              : revealActive || paused}
                            onEnter={behavior.gradeImmediately
                               ? () => submitAnswer()
-                              : undefined}
+                              : revealPerSegment && !segmentRevealed && !paused
+                                ? () => advanceSegment()
+                                : undefined}
                         />
                      </div>
 
-                     {#if answerState.submitted && answerState.correct !== null}
+                     {#if behavior.gradeImmediately && answerState.submitted && answerState.correct !== null}
                         <ProblemOrganization
                            class="w-full"
                            problemId={problem.id}
                            mastery={currentProgress?.mastery ?? null}
                            engagement={currentProgress?.engagement ?? null}
                            prompt={!currentProgress?.mastery}
-                           suggestedMastery={answerState.correct
-                              ? answerState.triesUsed > 0
-                                 ? "learning"
-                                 : "confident"
-                              : "needs_work"}
+                           {suggestedMastery}
                            onchange={(state) => {
+                              masteryTouched = true;
                               currentProgress = currentProgress ?? {
                                  times_seen: 1,
                                  times_reviewed: 1,
@@ -1751,6 +1981,7 @@
 
                   {#if paused}
                      <PauseOverlay
+                        {isTest}
                         {elapsedMs}
                         {totalElapsedMs}
                         {timerMode}
@@ -1821,7 +2052,9 @@
                   segmented={isSegmented}
                   {canSegmentForward}
                   lastSegment={onLastSegment}
-                  onAdvanceSegment={advanceSegment}
+                  revealMode={revealPerSegment}
+                  {segmentRevealed}
+                  onAdvanceSegment={requestAdvanceSegment}
                   flagged={answerState.flagged}
                   {moreOptions}
                   {submittingTest}
@@ -1837,7 +2070,7 @@
                   onJumpToLatest={jumpToLatest}
                   onLoadProblem={() => loadProblem()}
                   onSubmitAnswer={() => submitAnswer()}
-                  onSubmitTest={submitTest}
+                  onSubmitTest={requestSubmitTest}
                />
             </div>
          {/if}
@@ -1866,5 +2099,75 @@
          onClose={() => (showSettings = false)}
          open={showSettings}
       />
+
+      {#if isTest}
+         <Modal
+            bind:open={overviewOpen}
+            title="Problems"
+            description={`${answeredCount} of ${history.length} answered`}
+            size="lg"
+            onClose={() => (overviewOpen = false)}
+         >
+            <ProblemGrid cells={overviewCells} onSelect={jumpToIndex} />
+            <div
+               class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground"
+            >
+               {#if testFinished || revealPerSegment}
+                  {@render swatch("bg-correct/60", "Correct")}
+                  {@render swatch("bg-destructive/60", "Incorrect")}
+                  {@render swatch("bg-unsure/60", "Skipped")}
+               {:else}
+                  {@render swatch("bg-primary/60", "Answered")}
+                  {@render swatch("bg-surface-container border border-border/60", "Not answered")}
+               {/if}
+               <span class="inline-flex items-center gap-1.5">
+                  <Icon name="flag" class="size-[1em] text-unsure" fill />
+                  Flagged
+               </span>
+            </div>
+         </Modal>
+
+         <Modal
+            bind:open={confirmOpen}
+            size="sm"
+            title={confirmKind === "advance"
+               ? "Submit this round?"
+               : "Submit test?"}
+         >
+            <p class="text-sm text-muted-foreground">
+               {#if confirmKind === "advance"}
+                  You haven't answered anything in this round. Continuing locks it
+                  — you won't be able to come back.
+               {:else}
+                  {unansweredCount}
+                  {unansweredCount === 1 ? "problem is" : "problems are"} still
+                  unanswered. Submit anyway, or go back and finish them.
+               {/if}
+            </p>
+            {#snippet footer()}
+               <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={() => (confirmOpen = false)}
+               >
+                  Keep working
+               </Button>
+               <Button
+                  size="sm"
+                  onclick={confirmProceed}
+                  class="bg-primary text-primary-foreground hover:bg-primary/95"
+               >
+                  {confirmKind === "advance" ? "Continue" : "Submit anyway"}
+               </Button>
+            {/snippet}
+         </Modal>
+      {/if}
    </div>
 </div>
+
+{#snippet swatch(cls: string, label: string)}
+   <span class="inline-flex items-center gap-1.5">
+      <span class={cn("inline-block size-3 rounded-[3px]", cls)}></span>
+      {label}
+   </span>
+{/snippet}

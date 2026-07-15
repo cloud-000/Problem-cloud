@@ -2,6 +2,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { ProblemReview } from "$lib/components/problem";
+    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
     import { SegmentBar } from "$lib/components/segment-bar";
     import { formatElapsed } from "$lib/utils";
     import type { PracticeHistoryEntry } from "./practice-state";
@@ -16,6 +17,28 @@
         summary: TestResultSummary;
         elapsedMs: number;
     } = $props();
+
+    let cells = $derived<ProblemGridCell[]>(
+        history.map((entry) => {
+            const mcq = (entry.problem.choices?.length ?? 0) > 1;
+            const skipped =
+                entry.skipped ??
+                (mcq ? entry.selectedChoice == null : !entry.answer.trim());
+            const state: ProblemGridCell["state"] = skipped
+                ? "skipped"
+                : entry.correct
+                  ? "correct"
+                  : "incorrect";
+            return { label: entry.problem.n + 1, state, flagged: entry.flagged };
+        }),
+    );
+
+    // Jump from the overview grid to a problem's review card.
+    function scrollToProblem(index: number) {
+        document
+            .getElementById(`test-review-${index}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
 </script>
 
 {#snippet statChip(value: number, color: string)}
@@ -47,10 +70,13 @@
                     { value: summary.skipped, color: "var(--color-unsure)", label: "Skipped" },
                 ]}
             />
+            <ProblemGrid class="mt-1" {cells} onSelect={scrollToProblem} />
         </div>
         <div class="flex flex-col gap-3">
-            {#each history as entry (entry.problem.id)}
-                <ProblemReview {entry} />
+            {#each history as entry, index (entry.problem.id)}
+                <div id={`test-review-${index}`} class="scroll-mt-4">
+                    <ProblemReview {entry} elapsedMs={entry.elapsedMs} />
+                </div>
             {/each}
         </div>
         <div class="flex justify-center pt-2">

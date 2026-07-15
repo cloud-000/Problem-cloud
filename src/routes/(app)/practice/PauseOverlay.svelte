@@ -15,6 +15,8 @@
         skippedAttempts: number;
         canEndSession: boolean;
         endingSession: boolean;
+        /** Tests defer all grading, so the running outcome stats are hidden. */
+        isTest?: boolean;
         onResume: () => void;
         onOpenSettings: () => void;
         onEndSession: () => void;
@@ -30,6 +32,7 @@
         skippedAttempts,
         canEndSession,
         endingSession,
+        isTest = false,
         onResume,
         onOpenSettings,
         onEndSession,
@@ -72,36 +75,38 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div
-                class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
-            >
+        {#if !isTest}
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div
-                    class="font-mono text-lg tabular-nums text-correct"
+                    class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
                 >
-                    {correctAttempts}
+                    <div
+                        class="font-mono text-lg tabular-nums text-correct"
+                    >
+                        {correctAttempts}
+                    </div>
+                    <div class="text-xs text-muted-foreground">Correct</div>
                 </div>
-                <div class="text-xs text-muted-foreground">Correct</div>
-            </div>
-            <div
-                class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
-            >
                 <div
-                    class="font-mono text-lg tabular-nums text-destructive"
+                    class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
                 >
-                    {incorrectAttempts}
+                    <div
+                        class="font-mono text-lg tabular-nums text-destructive"
+                    >
+                        {incorrectAttempts}
+                    </div>
+                    <div class="text-xs text-muted-foreground">Incorrect</div>
                 </div>
-                <div class="text-xs text-muted-foreground">Incorrect</div>
-            </div>
-            <div
-                class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
-            >
-                <div class="font-mono text-lg tabular-nums text-unsure">
-                    {skippedAttempts}
+                <div
+                    class="rounded-lg bg-surface-container-low px-4 py-4 text-center"
+                >
+                    <div class="font-mono text-lg tabular-nums text-unsure">
+                        {skippedAttempts}
+                    </div>
+                    <div class="text-xs text-muted-foreground">Skipped</div>
                 </div>
-                <div class="text-xs text-muted-foreground">Skipped</div>
             </div>
-        </div>
+        {/if}
 
         <Button onclick={onResume} class="h-11 gap-2 text-sm font-semibold">
             <Icon name="play_arrow" />
