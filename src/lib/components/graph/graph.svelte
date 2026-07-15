@@ -28,6 +28,7 @@
         padding = { t: 16, r: 16, b: 28, l: 44 },
         hover = $bindable(null),
         active = $bindable(0),
+        formatY = null,
         class: className,
         children,
         ...restProps
@@ -50,6 +51,8 @@
         hover?: number | null;
         /** Two-way bindable active index (defaults to latest point). */
         active?: number;
+        /** Optional formatter for Y axis labels */
+        formatY?: ((v: number) => string) | null;
         /** Custom Svelte 5 snippet drawing content inside the SVG canvas. */
         children: Snippet<[GraphGeometry]>;
     } & Omit<HTMLAttributes<HTMLDivElement>, "children"> = $props();
@@ -161,7 +164,7 @@
                     font-size="10"
                     font-family="var(--font-mono, monospace)"
                 >
-                    {t}
+                    {formatY ? formatY(t) : t}
                 </text>
             {/each}
 

@@ -5,6 +5,7 @@
     import { ProblemReview } from "$lib/components/problem";
     import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
     import { SegmentBar } from "$lib/components/segment-bar";
+    import { Graph } from "$lib/components/graph";
     import { formatElapsed } from "$lib/utils";
     import type { PracticeHistoryEntry } from "./practice-state";
     import type { TestResultSummary } from "./test-state";
@@ -37,6 +38,42 @@
     let focusedIndex = $state(0);
     let reviewOpen = $state(false);
     let focusedEntry = $derived(history[focusedIndex]);
+
+    // Graph states
+    let graphHoverIndex = $state<number | null>(null);
+
+    let processedHistory = $derived(
+        history.map((entry) => {
+            const mcq = (entry.problem.choices?.length ?? 0) > 1;
+            const skipped =
+                entry.skipped ??
+                (mcq ? entry.selectedChoice == null : !entry.answer.trim());
+            const state = skipped ? "skipped" : entry.correct ? "correct" : "incorrect";
+            const seconds = entry.elapsedMs / 1000;
+            return {
+                entry,
+                skipped,
+                correct: entry.correct,
+                state,
+                seconds,
+            };
+        }),
+    );
+
+    let yMax = $derived(
+        Math.max(...processedHistory.map((h) => h.seconds), 30),
+    );
+
+    let activeEntry = $derived(
+        graphHoverIndex !== null ? processedHistory[graphHoverIndex] : null,
+    );
+
+    let labelInterval = $derived.by(() => {
+        const n = history.length;
+        if (n <= 15) return 1;
+        if (n <= 30) return 2;
+        return 5;
+    });
 
     function scrollToProblem(index: number) {
         const target = document.getElementById(`test-review-${index}`);
@@ -102,6 +139,112 @@
             />
             <ProblemGrid class="mt-1" {cells} onSelect={scrollToProblem} />
         </div>
+        
+        <!-- Time per Problem Graph Card -->
+        {#if history.length > 0}
+            <div class="rounded-xl border border-border/60 bg-surface-container-lowest p-5 shadow-sm flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-3">
+                    <div class="flex items-center gap-2">
+                        <Icon name="bar_chart" class="text-primary-foreground" fontsize={20} />
+                        <h3 class="font-semibold text-foreground text-sm">Time per Problem</h3>
+                    </div>
+                    <div class="text-xs font-mono text-muted-foreground min-h-5 flex items-center">
+                        {#if activeEntry}
+                            <span class="font-semibold text-foreground mr-1.5">Problem {activeEntry.entry.problem.n + 1}</span>
+                            <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold mr-1.5 uppercase tracking-wide" 
+                                  class:bg-correct-container={activeEntry.state === 'correct'}
+                                  class:text-on-correct-container={activeEntry.state === 'correct'}
+                                  class:bg-error-container={activeEntry.state === 'incorrect'}
+                                  class:text-on-error-container={activeEntry.state === 'incorrect'}
+                                  class:bg-unsure-container={activeEntry.state === 'skipped'}
+                                  class:text-on-unsure-container={activeEntry.state === 'skipped'}>
+                                {activeEntry.state}
+                            </span>
+                            <span class="font-semibold text-foreground flex items-center gap-0.5">
+                                <Icon name="timer" fontsize={14} class="text-muted-foreground" />
+                                {formatElapsed(activeEntry.entry.elapsedMs)}
+                            </span>
+                        {:else}
+                            <span class="text-muted-foreground/85 italic flex items-center gap-1">
+                                <Icon name="info" fontsize={14} />
+                                Hover to inspect · Click to scroll
+                            </span>
+                        {/if}
+                    </div>
+                </div>
+
+                <div class="bg-surface-container-low/40 border border-border/40 rounded-lg p-3 sm:p-4">
+                    <Graph
+                        xCount={processedHistory.length}
+                        yMin={0}
+                        yMax={yMax}
+                        height={160}
+                        padding={{ t: 10, r: 16, b: 20, l: 44 }}
+                        bind:hover={graphHoverIndex}
+                        formatY={(v) => formatElapsed(v * 1000)}
+                        class="cursor-pointer"
+                        onclick={() => {
+                            if (graphHoverIndex !== null) scrollToProblem(graphHoverIndex);
+                        }}
+                    >
+                        {#snippet children(geo)}
+                            {#each processedHistory as item, i (item.entry.problem.id)}
+                                {@const colWidth = geo.n === 1 ? geo.plotW : geo.plotW / (geo.n - 1)}
+                                {@const barWidth = Math.min(28, Math.max(6, colWidth * 0.55))}
+                                {@const cx = geo.x(i)}
+                                {@const x = cx - barWidth / 2}
+                                {@const y = geo.y(item.seconds)}
+                                {@const h = geo.y(0) - y}
+                                {@const color = item.state === "correct"
+                                    ? "var(--color-correct)"
+                                    : item.state === "incorrect"
+                                      ? "var(--color-destructive)"
+                                      : "var(--color-unsure)"}
+                                
+                                <!-- Highlight column background on hover -->
+                                {#if graphHoverIndex === i}
+                                    <rect
+                                        x={cx - colWidth / 2}
+                                        y={geo.y(yMax)}
+                                        width={colWidth}
+                                        height={geo.y(0) - geo.y(yMax)}
+                                        fill="var(--color-primary-foreground)"
+                                        opacity="0.05"
+                                        class="pointer-events-none"
+                                    />
+                                {/if}
+                                
+                                <!-- Draw bar -->
+                                <rect
+                                    {x}
+                                    {y}
+                                    width={barWidth}
+                                    height={Math.max(h, 2)}
+                                    rx="3"
+                                    fill={color}
+                                    class="transition-opacity duration-150 cursor-pointer"
+                                    opacity={graphHoverIndex === null || graphHoverIndex === i ? 1.0 : 0.45}
+                                />
+                                
+                                <!-- X Axis label -->
+                                {#if i % labelInterval === 0}
+                                    <text
+                                        x={cx}
+                                        y={geo.height - 4}
+                                        text-anchor="middle"
+                                        fill="var(--color-muted-foreground)"
+                                        class="font-mono text-[9px] sm:text-[10px]"
+                                    >
+                                        {item.entry.problem.n + 1}
+                                    </text>
+                                {/if}
+                            {/each}
+                        {/snippet}
+                    </Graph>
+                </div>
+            </div>
+        {/if}
+
         <div class="flex flex-col gap-3">
             {#each history as entry, index (entry.problem.id)}
                 <div id={`test-review-${index}`} class="scroll-mt-4">
