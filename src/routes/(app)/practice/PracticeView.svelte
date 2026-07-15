@@ -848,6 +848,20 @@
          icon: "share",
          onclick: () => {},
       },
+      ...(loading || isTest || !isLatest || answerState.submitted || !problem || !settingsForm.focusMode
+         ? []
+         : [
+              {
+                 type: "divider" as const,
+              },
+              {
+                 label: "Skip Problem",
+                 icon: "skip_next",
+                 color: "text-unsure",
+                 disabled: paused,
+                 onclick: () => goForward(),
+              },
+           ]),
       {
          type: "divider",
       },
@@ -1460,6 +1474,12 @@
       }
    }
 
+   function handleSkip() {
+      if (window.confirm("Are you sure you want to skip this problem?")) {
+         goForward();
+      }
+   }
+
    function jumpToLatest() {
       if (loading || isLatest) return;
       commitCurrent();
@@ -2068,6 +2088,7 @@
                   {ratingDelta}
                   onBack={goBack}
                   onForward={goForward}
+                  onSkip={handleSkip}
                   onJumpToLatest={jumpToLatest}
                   onLoadProblem={() => loadProblem()}
                   onSubmitAnswer={() => submitAnswer()}

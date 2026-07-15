@@ -1,6 +1,9 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
-    import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu";
+    import {
+        DropdownMenu,
+        type DropdownOption,
+    } from "$lib/components/dropdown-menu";
     import { Icon } from "$lib/components/icon";
     import type { PlayerRating } from "$lib/library";
     import { cn } from "$lib/utils";
@@ -32,6 +35,7 @@
         ratingDelta,
         onBack,
         onForward,
+        onSkip,
         onJumpToLatest,
         onLoadProblem,
         onSubmitAnswer,
@@ -66,6 +70,7 @@
         ratingDelta: number | null;
         onBack: () => void;
         onForward: () => void;
+        onSkip: () => void;
         onJumpToLatest: () => void;
         onLoadProblem: () => void;
         onSubmitAnswer: () => void;
@@ -84,8 +89,12 @@
     );
 </script>
 
-<footer class="sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1">
-    <div class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"></div>
+<footer
+    class="sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1"
+>
+    <div
+        class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
+    ></div>
     <div class="flex items-center gap-1">
         {#if view.showBack}
             <Button
@@ -104,7 +113,9 @@
                 aria-label="More options"
                 class={cn(
                     "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
-                    flagged ? "text-unsure hover:text-unsure/80" : "text-muted-foreground hover:text-foreground",
+                    flagged
+                        ? "text-unsure hover:text-unsure/80"
+                        : "text-muted-foreground hover:text-foreground",
                 )}
             >
                 <Icon name="more_horiz" />
@@ -114,12 +125,11 @@
             <Button
                 variant="ghost"
                 disabled={view.forwardDisabled}
-                onclick={onForward}
-                aria-label={isLatest ? "Skip problem" : "Next problem"}
-                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
+                onclick={isLatest ? onSkip : onForward}
+                aria-label={isLatest ? "Skip Problem" : "Next Problem"}
+                class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
             >
                 <Icon name={isLatest ? "skip_next" : "arrow_forward"} />
-                {isLatest ? "Skip" : ""}
             </Button>
         {/if}
     </div>
@@ -224,7 +234,11 @@
                     title="Your skill rating (change from this problem)"
                 >
                     {Math.round(playerRating.rating)}
-                    <span class="font-normal">({ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)})</span>
+                    <span class="font-normal"
+                        >({ratingDelta >= 0 ? "+" : ""}{Math.round(
+                            ratingDelta,
+                        )})</span
+                    >
                 </span>
             {/if}
             <Button
@@ -237,21 +251,15 @@
             </Button>
         {:else}
             {#if isLatest && hasAnswer && triesUsed > 0 && triesPerProblem > 1}
-                <span class="text-[11px] text-muted-foreground tabular-nums" title="Attempts remaining on this problem">
-                    {triesRemaining} {triesRemaining === 1 ? "try" : "tries"} left
+                <span
+                    class="text-[11px] text-muted-foreground tabular-nums"
+                    title="Attempts remaining on this problem"
+                >
+                    {triesRemaining}
+                    {triesRemaining === 1 ? "try" : "tries"} left
                 </span>
             {/if}
-            {#if view.compact}
-                <Button
-                    variant="ghost"
-                    disabled={paused}
-                    onclick={onForward}
-                    class="text-muted-foreground hover:text-foreground text-xs font-semibold px-3 py-2 h-9 gap-1.5 rounded-lg disabled:opacity-30"
-                >
-                    <Icon name="skip_next" />
-                    Skip
-                </Button>
-            {/if}
+
             <Button
                 variant="primary"
                 disabled={cannotSubmit}
