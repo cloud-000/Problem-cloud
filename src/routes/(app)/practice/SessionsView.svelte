@@ -182,7 +182,7 @@
         if (!user || busy || !canCreate) return;
         busy = true;
         try {
-            const name = dialogName.trim() || null;
+            let name = dialogName.trim() || null;
             let settings = defaultPracticeSettings();
             if (dialogFormat === "test") {
                 const testId = Number(selectedTestId);
@@ -207,6 +207,11 @@
                         ? revealPerSegment
                         : false,
                 );
+                if (!name && selectedTest) {
+                    name = selectedTest.year
+                        ? `${selectedTest.name} (${selectedTest.year})`
+                        : selectedTest.name;
+                }
             }
             const row = await startSession(supabase, user.id, {
                 name,
