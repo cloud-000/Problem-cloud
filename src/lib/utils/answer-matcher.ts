@@ -153,22 +153,34 @@ function convertFracToSlash(s: string): string {
 function stripUnitsAndLabels(s: string): string {
     let val = s.trim();
 
-    // 1. Strip leading currency symbols
-    val = val.replace(/^[$£€¥]\s*/g, "");
+    // 1. Strip leading currency symbols. A leading `$` is only currency when
+    //    it's unpaired; if a second `$` follows it's a `$…$` math delimiter
+    //    (e.g. "$\frac{1}{4}$"), which must be left for normalizeAnswer.
+    val = val.replace(/^[£€¥]\s*/g, "");
+    if (val.startsWith("$") && !val.slice(1).includes("$")) {
+        val = val.replace(/^\$\s*/, "");
+    }
 
     // 2. Strip leading approximation words
     val = val.replace(/^(?:approx\.?|about|around)\s+/gi, "");
 
-    // 3. Strip trailing word labels.
+    // 3. Strip a trailing parenthesized word-label: "900 (pieces)", "48(cm)",
+    //    "$\frac{1}{4}$ (square meters)". The parens must contain only letters,
+    //    spaces, and dots (a label/unit, never a math expression like "(n+1)"
+    //    or an ordered pair like "(a,b)"), and must follow an actual value (a
+    //    non-space char) so a fully-parenthesized answer like "(x)" is left be.
+    val = val.replace(/(\S)\s*\(\s*[a-zA-Z][a-zA-Z.\s]*\)\s*$/, "$1");
+
+    // 4. Strip trailing word labels.
     // Units of 2+ characters can have optional space (e.g. 5cm, 5 cm).
     // Single character units (m, s, g, etc.) require at least one space (e.g. 5 m) to distinguish from variables.
     const unitRegex = /([\d})\]]|\\pi|\\theta|\\infty)(?:\s*[a-zA-Z]{2,}\.?|\s+[msglLhd]\.?)(?:\s+[a-zA-Z]+\.?)*$/;
     val = val.replace(unitRegex, "$1");
 
-    // 4. Strip trailing percent or degree symbol/words
+    // 5. Strip trailing percent or degree symbol/words
     val = val.replace(/\s*(?:%|°|percent|degrees?)\s*$/gi, "");
 
-    // 5. Clean up any trailing period
+    // 6. Clean up any trailing period
     val = val.replace(/\.$/, "");
 
     return val.trim();
