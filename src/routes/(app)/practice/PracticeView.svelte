@@ -10,6 +10,7 @@
    import { ProblemOrganization } from "$lib/components/problem-organization";
    import { Modal } from "$lib/components/modal";
    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
+   import { UtilityPanelRegister } from "$lib/components/utility-panel";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       topicLabel,
@@ -63,6 +64,7 @@
    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
+   import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import AnswerSubmissionModal from "./AnswerSubmissionModal.svelte";
    import { onMount } from "svelte";
    import { fade } from "svelte/transition";
@@ -114,7 +116,7 @@
    // the settings panel can show a per-series division/format row (unclassified
    // series contribute none). Populated by the effect below.
    let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
-   let showSettings = $state(false);
+   let showSettings = $derived(utilityPanel.activeView === "practice-settings");
    let paused = $state(false);
 
    // Session format. Resolved from the session's settings snapshot on mount and
@@ -1732,7 +1734,7 @@
       bind:timerMode
       {elapsedMs}
       {problemRemainingMs}
-      onToggleSettings={() => (showSettings = !showSettings)}
+      onToggleSettings={() => utilityPanel.toggle("practice-settings")}
       onTogglePause={togglePause}
    />
 
@@ -2012,7 +2014,7 @@
                         canEndSession={!!activeSession && !isRoot}
                         endingSession={sessionBusy}
                         onResume={togglePause}
-                        onOpenSettings={() => (showSettings = true)}
+                        onOpenSettings={() => utilityPanel.open("practice-settings")}
                         onEndSession={finishSession}
                         onToggleTimerMode={() =>
                            (timerMode =
@@ -2098,29 +2100,37 @@
          {/if}
       </main>
 
-      <!-- Sidebar settings panel -->
-      {#if showSettings}
-         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-         <div
-            class="fixed inset-0 z-40 bg-black/40 backdrop-blur-(--backdrop-blur) lg:hidden"
-            onclick={() => (showSettings = false)}
-            transition:fade={{ duration: 200 }}
-         ></div>
-      {/if}
-      <SettingsPanel
-         bind:form={settingsForm}
-         {seriesOptions}
-         {seriesScopeConfigs}
-         canReview={!!user}
-         {isTest}
-         {testName}
-         timeLimitSeconds={settingsForm.timeLimitSeconds}
-         pacing={settingsForm.pacing}
-         strictTiming={settingsForm.strictTiming ?? true}
-         onFocusModeChange={setFocusMode}
-         onClose={() => (showSettings = false)}
-         open={showSettings}
-      />
+      <UtilityPanelRegister
+         view="practice-settings"
+         ownerId={`practice:${sessionParam}`}
+         label="Settings"
+         sizing={{
+            width: {
+               default: 320,
+               min: 280,
+               max: Number.POSITIVE_INFINITY,
+            },
+            mobileHeight: {
+               defaultRatio: 0.5,
+               minRatio: 0.35,
+               maxRatio: 0.9,
+            },
+         }}
+      >
+         <SettingsPanel
+            bind:form={settingsForm}
+            {seriesOptions}
+            {seriesScopeConfigs}
+            canReview={!!user}
+            {isTest}
+            {testName}
+            timeLimitSeconds={settingsForm.timeLimitSeconds}
+            pacing={settingsForm.pacing}
+            strictTiming={settingsForm.strictTiming ?? true}
+            onFocusModeChange={setFocusMode}
+            onClose={() => utilityPanel.close()}
+         />
+      </UtilityPanelRegister>
 
       {#if isTest}
          <Modal

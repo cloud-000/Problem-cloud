@@ -21,9 +21,27 @@
    import { goto } from "$app/navigation";
    import { topbar } from "$lib/state/topbar.svelte";
    import { settings } from "$lib/state/settings.svelte";
+   import {
+      CoachContextRegister,
+      CoachLauncher,
+      CoachPanel,
+   } from "$lib/components/coach";
+   import {
+      UtilityPanel,
+      UtilityPanelRegister,
+   } from "$lib/components/utility-panel";
+   import { coach } from "$lib/state/coach.svelte";
+   import { utilityPanel } from "$lib/state/utility-panel.svelte";
+   import { resolve } from "$app/paths";
+   import { MediaQuery } from "svelte/reactivity";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
+   let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled && session));
+
+   $effect(() => {
+      coach.configure(aiCoachEnabled);
+   });
 
    // Surface notifications as toasts for authenticated users: replay unread ones on
    // load, then stream new inserts in real time. Auto-dismiss leaves them unread; only
@@ -108,24 +126,17 @@
    // Sidebar state
    let expanded = $state(true);
 
-   // Track mobile portrait mode dynamically in Svelte
-   let isPortrait = $state(false);
-
-   $effect(() => {
-      if (typeof window === "undefined") return;
-      const media = window.matchMedia("(orientation: portrait)");
-      isPortrait = media.matches;
-      const handler = (e: MediaQueryListEvent) => {
-         isPortrait = e.matches;
-      };
-      media.addEventListener("change", handler);
-      return () => media.removeEventListener("change", handler);
-   });
+   const portraitQuery = new MediaQuery("(orientation: portrait)", false);
+   let isPortrait = $derived(portraitQuery.current);
 
    const isMobilePortrait = $derived(deviceDetails.isMobile && isPortrait);
 
-   // Separate tabs into important and extra for mobile portrait dropdown layout
-   let importantTabs = $derived(visibleTabs.filter((t) => t.important));
+   // Mobile portrait has five stable items; everything else belongs in More.
+   let mobilePrimaryTabs = $derived(
+      ["/", "/practice", "/library"].flatMap((href) =>
+         visibleTabs.filter((tab) => tab.href === href),
+      ),
+   );
 
    // Reference to the logout form so we can programmatically submit it on mobile portrait dropdown clicks
    let logoutForm = $state<HTMLFormElement | null>(null);
@@ -134,18 +145,30 @@
    let moreOptions = $derived.by<DropdownOption[]>(() => {
       const list: DropdownOption[] = [];
 
-      // Add non-important tabs that are currently visible
-      const extraTabs = visibleTabs.filter((t) => !t.important);
+      if (profile) {
+         list.push({
+            label: profile.username || "User",
+            type: "header",
+         });
+      }
+      if (session?.user?.email) {
+         list.push({ label: session.user.email, type: "header" });
+      }
+      if (list.length > 0) list.push({ type: "divider" });
+
+      // Add every route not represented by Home, Train, or Explore.
+      const primaryHrefs = new Set(mobilePrimaryTabs.map((tab) => tab.href));
+      const extraTabs = visibleTabs.filter((tab) => !primaryHrefs.has(tab.href));
       for (const tab of extraTabs) {
          list.push({
             label: tab.label,
             icon: tab.icon,
-            onclick: () => goto(tab.href),
+            onclick: () => goto(resolve(tab.href as "/")),
          });
       }
 
-      // Add divider if there are extra tabs
-      if (list.length > 0) {
+      // Separate route options from Settings when at least one route was added.
+      if (extraTabs.length > 0) {
          list.push({ type: "divider" });
       }
 
@@ -153,7 +176,7 @@
       list.push({
          label: "Settings",
          icon: "settings",
-         onclick: () => goto("/settings"),
+         onclick: () => goto(resolve("/settings")),
       });
 
       // Add Logout (if session exists)
@@ -175,12 +198,13 @@
    // Check if any item in the dropdown is active
    let isAnyDropdownItemActive = $derived.by(() => {
       // Check non-important tabs
-      const extraTabs = visibleTabs.filter((t) => !t.important);
+      const primaryHrefs = new Set(mobilePrimaryTabs.map((tab) => tab.href));
+      const extraTabs = visibleTabs.filter((tab) => !primaryHrefs.has(tab.href));
       if (extraTabs.some((t) => page.url.pathname === t.href)) {
          return true;
       }
       // Check Settings
-      if (page.url.pathname === "/settings") {
+      if (page.url.pathname.startsWith("/settings")) {
          return true;
       }
       // Check Test
@@ -217,14 +241,14 @@
       list.push({
          label: "Settings",
          icon: "settings",
-         onclick: () => goto("/settings"),
+         onclick: () => goto(resolve("/settings")),
       });
 
       if (settings.showBetaFeatures) {
          list.push({
             label: "Test",
             icon: "labs",
-            onclick: () => goto("/testing-features"),
+            onclick: () => goto(resolve("/testing-features")),
          });
       }
 
@@ -253,7 +277,7 @@
    <Sidebar.Item active={isActive} activeClass="" {label}>
       {#snippet child({ props })}
          <a
-            {href}
+            href={resolve(href as "/")}
             {...props}
             class={cn(
                "flex items-center gap-3 w-full rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 outline-none select-none",
@@ -295,7 +319,22 @@
 
       <Sidebar.Group heading="Navigation">
          {#if isMobilePortrait}
-            {#each importantTabs as tab}
+            {#each mobilePrimaryTabs.slice(0, 2) as tab (tab.href)}
+               {@const isActive = page.url.pathname === tab.href}
+               {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
+            {/each}
+            {#if aiCoachEnabled}
+               <Sidebar.Item active={false} activeClass="" label="Coach">
+                  {#snippet child({ props })}
+                     <CoachLauncher
+                        {...props}
+                        variant="mobile"
+                        class="justify-center px-0"
+                     />
+                  {/snippet}
+               </Sidebar.Item>
+            {/if}
+            {#each mobilePrimaryTabs.slice(2) as tab (tab.href)}
                {@const isActive = page.url.pathname === tab.href}
                {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
             {/each}
@@ -333,7 +372,7 @@
                {/snippet}
             </Sidebar.Item>
          {:else}
-            {#each visibleTabs as tab}
+            {#each visibleTabs as tab (tab.href)}
                {@const isActive = page.url.pathname === tab.href}
                {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
             {/each}
@@ -342,20 +381,7 @@
 
       <Sidebar.Footer>
          {#if session}
-            {#if isMobilePortrait}
-               <div class="flex items-center justify-center w-11 h-11 shrink-0">
-                  <DropdownMenu options={profileOptions}>
-                     <button
-                        type="button"
-                        class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:ring-2 hover:ring-primary/20 transition-all outline-none cursor-pointer"
-                        title={profile?.username || session.user?.email}
-                        aria-label="Profile menu"
-                     >
-                        {profile?.username?.charAt(0).toUpperCase() || "U"}
-                     </button>
-                  </DropdownMenu>
-               </div>
-            {:else}
+            {#if !isMobilePortrait}
                {@render sidebarLink(
                   "/settings",
                   "settings",
@@ -398,7 +424,7 @@
                <div class="flex items-center gap-2">
                   {#if topbar.backHref}
                      <a
-                        href={topbar.backHref}
+                        href={resolve(topbar.backHref as "/")}
                         class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                         aria-label={topbar.backLabel || "Back"}
                      >
@@ -416,6 +442,10 @@
             <div class="flex items-center gap-3">
                {#if topbar.rightSnippet}
                   {@render topbar.rightSnippet()}
+               {/if}
+
+               {#if !isMobilePortrait && aiCoachEnabled}
+                  <CoachLauncher />
                {/if}
 
                {#if !isMobilePortrait && session}
@@ -437,11 +467,68 @@
       </div>
    </div>
 
-   <ToastContainer onDismiss={onToastClose} />
+   {#if aiCoachEnabled}
+      <UtilityPanelRegister
+         view="coach"
+         ownerId="app-shell:coach"
+         label="Coach"
+         sizing={{
+            width: {
+               default: 400,
+               min: 320,
+               max: Number.POSITIVE_INFINITY,
+            },
+            mobileHeight: {
+               defaultRatio: 0.5,
+               minRatio: 0.35,
+               maxRatio: 0.9,
+            },
+         }}
+      >
+         <CoachPanel />
+      </UtilityPanelRegister>
+      {#key page.url.pathname}
+         <CoachContextRegister
+            ownerId={`route:${page.url.pathname}`}
+            source="route"
+            priority={10}
+            mode="general"
+            descriptors={[
+               {
+                  id: `route:${page.url.pathname}`,
+                  kind: "route",
+                  label: page.url.pathname === "/" ? "Home" : page.url.pathname,
+               },
+            ]}
+            quickActions={[]}
+         />
+      {/key}
+   {/if}
+   <UtilityPanel />
+
+   <ToastContainer
+      onDismiss={onToastClose}
+      class={utilityPanel.activeView
+         ? "utility-panel-toast-offset z-70"
+         : ""}
+      style={`--utility-panel-width: ${utilityPanel.renderedWidth}px; --utility-panel-height: ${utilityPanel.renderedHeight}px`}
+   />
    <ModalContainer />
 </div>
 
 <style>
+   @media (min-width: 1280px) {
+      :global(.utility-panel-toast-offset) {
+         right: calc(var(--utility-panel-width) + 1rem);
+      }
+   }
+
+   @media (max-width: 767px) and (orientation: portrait) {
+      :global(.utility-panel-toast-offset) {
+         bottom: calc(var(--utility-panel-height) + 1rem);
+      }
+   }
+
    @media (orientation: portrait) {
       @scope (.is-mobile) {
          .app-container {

@@ -64,6 +64,7 @@ enabled = true
 schema_paths = [
     "./schemas/profiles.sql",
     "./schemas/notifications.sql",
+    "./schemas/ai_coach.sql",
     "./schemas/problems.sql",
     "./schemas/practice_sessions.sql",
     "./schemas/submissions.sql",

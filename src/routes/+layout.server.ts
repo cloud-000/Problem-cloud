@@ -1,4 +1,5 @@
 import type { LayoutServerLoad } from "./$types";
+import { aiCoachEnabled } from "$lib/server/ai/config";
 
 export const load: LayoutServerLoad = async ({
     locals: { safeGetSession, supabase },
@@ -37,5 +38,6 @@ export const load: LayoutServerLoad = async ({
         user,
         profile,
         cookies: cookies.getAll(),
+        aiCoachEnabled: Boolean(user && aiCoachEnabled()),
     };
 };

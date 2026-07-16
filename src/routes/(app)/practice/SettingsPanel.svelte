@@ -51,7 +51,6 @@
 </script>
 
 <script lang="ts">
-    import { onMount } from "svelte";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
@@ -88,9 +87,6 @@
         strictTiming = true,
         onFocusModeChange,
         onClose,
-        maxWidth = 900,
-        minWidth = 280,
-        open = false,
     }: {
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
@@ -111,9 +107,6 @@
         strictTiming?: boolean;
         onFocusModeChange?: (value: boolean) => void;
         onClose?: () => void;
-        maxWidth?: number;
-        minWidth?: number;
-        open?: boolean;
     } = $props();
 
     let advancedOpen = $state(false);
@@ -121,84 +114,6 @@
     // when it's the only one or already carries a selection; `expandedScopes`
     // holds explicit user overrides thereafter.
     let expandedScopes = $state<Record<string, boolean>>({});
-
-    let windowWidth = $state(1024);
-    let resolvedMaxWidth = $derived(Math.max(windowWidth * 0.5, maxWidth));
-
-    let width = $state(320);
-    let displayWidth = $derived(
-        Math.max(minWidth, Math.min(resolvedMaxWidth, width)),
-    );
-    let isLg = $state(false);
-    let isDragging = $state(false);
-
-    onMount(() => {
-        try {
-            const savedWidth = localStorage.getItem("settings_panel_width");
-            if (savedWidth !== null) {
-                const parsed = parseInt(savedWidth, 10);
-                if (!isNaN(parsed)) {
-                    width = Math.max(
-                        minWidth,
-                        Math.min(resolvedMaxWidth, parsed),
-                    );
-                }
-            }
-        } catch (_) {}
-
-        const mediaQuery = window.matchMedia("(min-width: 1024px)");
-        isLg = mediaQuery.matches;
-        const handler = (e: MediaQueryListEvent) => {
-            isLg = e.matches;
-        };
-        mediaQuery.addEventListener("change", handler);
-        return () => {
-            mediaQuery.removeEventListener("change", handler);
-            document.body.classList.remove("select-none", "cursor-col-resize");
-        };
-    });
-
-    let startX = 0;
-    let startWidth = 0;
-
-    function onPointerDown(e: PointerEvent) {
-        if (e.button !== 0) return; // only left click
-        e.preventDefault();
-        e.stopPropagation();
-        isDragging = true;
-        startX = e.clientX;
-        startWidth = displayWidth;
-        const target = e.currentTarget as HTMLElement;
-        try {
-            target.setPointerCapture(e.pointerId);
-        } catch (_) {}
-        document.body.classList.add("select-none", "cursor-col-resize");
-    }
-
-    function onPointerMove(e: PointerEvent) {
-        if (!isDragging) return;
-        const deltaX = e.clientX - startX;
-        // Panel is on the right, dragging left increases width
-        width = Math.max(
-            minWidth,
-            Math.min(resolvedMaxWidth, startWidth - deltaX),
-        );
-    }
-
-    function onPointerUp(e: PointerEvent) {
-        if (!isDragging) return;
-        isDragging = false;
-        const target = e.currentTarget as HTMLElement;
-        try {
-            target.releasePointerCapture(e.pointerId);
-        } catch (_) {}
-        width = displayWidth;
-        try {
-            localStorage.setItem("settings_panel_width", String(width));
-        } catch (_) {}
-        window.dispatchEvent(new Event("resize"));
-        document.body.classList.remove("select-none", "cursor-col-resize");
-    }
 
     function scopeOpen(cfg: SeriesScopeConfig): boolean {
         const scope = form.seriesScopes[cfg.id];
@@ -254,45 +169,9 @@
     }
 </script>
 
-<svelte:window bind:innerWidth={windowWidth} />
-
-<aside
-    class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 shrink-0 flex flex-col bg-surface-container-lowest h-full shadow-2xl border-l border-border/50 overflow-hidden lg:relative lg:h-full lg:bg-transparent lg:shadow-none lg:border-y-0 lg:border-r-0 lg:rounded-none"
-    style:width={isLg ? (open ? `${displayWidth}px` : "0px") : undefined}
-    style:transform={isLg ? undefined : open ? "none" : "translateX(100%)"}
-    style:opacity={open ? "1" : "0"}
-    style:pointer-events={open ? "auto" : "none"}
-    style:border-left-width={isLg ? (open ? "1px" : "0px") : undefined}
-    style:transition={isDragging
-        ? "none"
-        : "width 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), border-left-width 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)"}
->
-    {#if isLg}
-        <!-- Drag Handle for Resizing (large screens only) -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-            class={cn(
-                "absolute top-0 bottom-0 left-0 w-2 -ml-1 cursor-col-resize z-50 group flex items-center justify-center select-none h-full",
-                isDragging && "bg-primary-foreground/5",
-            )}
-            onpointerdown={onPointerDown}
-            onpointermove={onPointerMove}
-            onpointerup={onPointerUp}
-            onpointercancel={onPointerUp}
-        >
-            <div
-                class={cn(
-                    "w-[2px] h-8 rounded-full bg-border transition-all duration-150",
-                    "group-hover:bg-primary-foreground group-hover:h-12",
-                    isDragging && "bg-primary-foreground h-16",
-                )}
-            ></div>
-        </div>
-    {/if}
-
+<div class="flex h-full min-h-0 flex-col bg-surface-container-lowest">
     <div
-        class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:pt-0 lg:pb-6 lg:px-6 w-full"
-        style:width={isLg ? `${displayWidth}px` : undefined}
+        class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-5 p-5 lg:pb-6 lg:px-6 w-full"
     >
         <div
             class="flex items-center justify-between gap-3 border-b border-border/50 pb-3"
@@ -308,7 +187,6 @@
                 {/if}
             </div>
             <Button
-                class="lg:hidden"
                 variant="ghost"
                 size="icon-xs"
                 aria-label="Close settings"
@@ -831,4 +709,4 @@
             </Button>
         {/if}
     </div>
-</aside>
+</div>

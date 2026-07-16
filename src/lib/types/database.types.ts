@@ -160,6 +160,126 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_conversations: {
+        Row: {
+          archived_at: string | null
+          context_summary: Json
+          created_at: string
+          id: string
+          mode: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          context_summary?: Json
+          created_at?: string
+          id?: string
+          mode?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          context_summary?: Json
+          created_at?: string
+          id?: string
+          mode?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_messages: {
+        Row: {
+          content_parts: Json
+          conversation_id: string
+          created_at: string
+          id: string
+          resolved_model: string | null
+          resolved_provider: string | null
+          role: string
+          status: string
+          usage_summary: Json | null
+        }
+        Insert: {
+          content_parts?: Json
+          conversation_id: string
+          created_at?: string
+          id?: string
+          resolved_model?: string | null
+          resolved_provider?: string | null
+          role: string
+          status: string
+          usage_summary?: Json | null
+        }
+        Update: {
+          content_parts?: Json
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          resolved_model?: string | null
+          resolved_provider?: string | null
+          role?: string
+          status?: string
+          usage_summary?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_preferences: {
+        Row: {
+          created_at: string
+          default_model: string
+          history_enabled: boolean
+          retention_days: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_model?: string
+          history_enabled?: boolean
+          retention_days?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_model?: string
+          history_enabled?: boolean
+          retention_days?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_reads: {
         Row: {
           notification_id: number

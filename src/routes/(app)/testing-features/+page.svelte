@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { resolve } from "$app/paths";
     import { Icon } from "$lib/components/icon";
 
     const cards = [
@@ -13,6 +14,13 @@
             name: "Combobox",
             description: "Multi-select hybrid combobox variants.",
             href: "/testing-features/combobox",
+        },
+        {
+            icon: "chat",
+            name: "AI Chat",
+            description:
+                "Provider-neutral transcript, composer, streaming, and error states.",
+            href: "/testing-features/ai-chat",
         },
         {
             icon: "functions",
@@ -116,9 +124,9 @@
 
     <!-- Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {#each cards as card}
+        {#each cards as card (card.href)}
             <a
-                href={card.href}
+                href={resolve(card.href as "/")}
                 class="border border-border/80 rounded-xl p-5 bg-surface-container-lowest shadow-xs hover:bg-surface-container transition-colors flex flex-col gap-2 outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
                 <Icon

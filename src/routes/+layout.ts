@@ -30,7 +30,7 @@ export const load: LayoutLoad = async ({ data, depends, fetch }) => {
               },
           );
 
-    const { session, user, profile } = data;
+    const { session, user, profile, aiCoachEnabled } = data;
 
-    return { supabase, session, user, profile };
+    return { supabase, session, user, profile, aiCoachEnabled };
 };
