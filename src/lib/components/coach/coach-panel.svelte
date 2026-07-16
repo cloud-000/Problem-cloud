@@ -5,6 +5,7 @@
     import CoachHeader from "./coach-header.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
+    import CoachConversationList from "./coach-conversation-list.svelte";
 
     const fallbackActions = [
         {
@@ -34,7 +35,6 @@
 
 <div class="flex h-full min-h-0 flex-col bg-background">
     <CoachHeader />
-    <CoachContextTray />
     {#if coach.loading && !coach.initialized}
         <div
             class="flex flex-1 items-center justify-center text-xs text-muted-foreground"
@@ -42,9 +42,14 @@
         >
             Loading Coach…
         </div>
+    {:else if coach.historyViewOpen}
+        <!-- Replaces the transcript and composer; history stays readable even if the provider is down. -->
+        <CoachConversationList />
     {:else if !coach.bootstrap || coach.connectionBlocked}
+        <CoachContextTray />
         <CoachConnectionGate />
     {:else}
+        <CoachContextTray />
         <AIChat
             controller={coach}
             assistantLabel="Coach"

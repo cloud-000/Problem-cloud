@@ -52,10 +52,23 @@ function responseFor(request: NormalizedAIRequest, scenario: AIMockScenario): st
     if (scenario === "refusal") {
         return "I can’t help with that request, but I can help with a safe learning question instead.";
     }
+    // Deterministic acknowledgement of prior turns, so multi-turn continuity is
+    // observable in the preview and assertable in tests.
+    const continuity =
+        request.history.length > 0
+            ? `Picking up from ${request.history.length} earlier ${request.history.length === 1 ? "message" : "messages"}. `
+            : "";
     if (request.contexts.length > 0) {
-        return `I can use the attached context “${request.contexts[0].label}”. For this deterministic preview, try separating what is given from what must be shown. A useful identity is $a^2-b^2=(a-b)(a+b)$.`;
+        return `${continuity}I can use the attached context “${request.contexts[0].label}”. For this deterministic preview, try separating what is given from what must be shown. A useful identity is $a^2-b^2=(a-b)(a+b)$.`;
     }
-    return "I’m Coach. This deterministic preview is streaming through the same provider-neutral path real models will use. Ask a math or study-planning question to continue.";
+    return `${continuity}I’m Coach. This deterministic preview is streaming through the same provider-neutral path real models will use. Ask a math or study-planning question to continue.`;
+}
+
+/** Flattened text of the prior turns, counted toward the preview's input usage. */
+function historyText(request: NormalizedAIRequest): string {
+    return request.history
+        .flatMap((message) => message.parts.filter((part) => part.type === "text").map((part) => part.text))
+        .join("\n");
 }
 
 function chunks(text: string): string[] {
@@ -204,7 +217,7 @@ export class MockProviderAdapter implements AIProviderAdapter {
                         type: "usage",
                         messageId,
                         usage: {
-                            inputTokens: tokenEstimate(request.message),
+                            inputTokens: tokenEstimate(historyText(request) + request.message),
                             outputTokens: tokenEstimate(output),
                         },
                     });

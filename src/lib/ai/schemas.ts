@@ -4,17 +4,26 @@ import type {
     AIChatRequestBody,
     AIContextMode,
     AIContextSource,
+    AIEphemeralMessage,
     AIMessagePart,
     AIModelReference,
     AIProviderSummary,
     AITaskType,
     AIToolDefinition,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationSummary,
     CoachContextDescriptor,
     CoachContextLayer,
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIModel,
 } from "./types";
+
+/** Bounds applied to client-supplied history for history-disabled chats. */
+export const EPHEMERAL_HISTORY_MAX_MESSAGES = 20;
+export const EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS = 8_000;
+export const EPHEMERAL_HISTORY_MAX_TOTAL_CHARS = 24_000;
 
 export class AISchemaError extends Error {
     constructor(message: string) {
@@ -124,6 +133,36 @@ export function parseContextLayer(value: unknown): CoachContextLayer {
     };
 }
 
+export function parseEphemeralHistory(value: unknown): AIEphemeralMessage[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new AISchemaError("ephemeral history must be an array");
+    if (value.length > EPHEMERAL_HISTORY_MAX_MESSAGES) {
+        throw new AISchemaError(
+            `ephemeral history cannot exceed ${EPHEMERAL_HISTORY_MAX_MESSAGES} messages`,
+        );
+    }
+    let total = 0;
+    return value.map((item) => {
+        const entry = record(item, "ephemeral history message");
+        const text = string(
+            entry.text,
+            "ephemeral history text",
+            EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS,
+        ).trim();
+        if (!text) throw new AISchemaError("ephemeral history text cannot be blank");
+        total += text.length;
+        if (total > EPHEMERAL_HISTORY_MAX_TOTAL_CHARS) {
+            throw new AISchemaError(
+                `ephemeral history cannot exceed ${EPHEMERAL_HISTORY_MAX_TOTAL_CHARS} characters`,
+            );
+        }
+        return {
+            role: oneOf(entry.role, "ephemeral history role", ["user", "assistant"] as const),
+            text,
+        };
+    });
+}
+
 export function parseChatRequest(value: unknown): AIChatRequestBody {
     const input = record(value, "chat request");
     const contexts = Array.isArray(input.contexts)
@@ -132,6 +171,7 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
     if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
     const message = string(input.message, "message", 8_000).trim();
     if (!message) throw new AISchemaError("message cannot be blank");
+    const ephemeralHistory = parseEphemeralHistory(input.ephemeralHistory);
     return {
         conversationId: optionalString(input.conversationId, "conversation id", 80),
         model: parseModelReference(input.model ?? "auto"),
@@ -143,6 +183,47 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
             "agentic",
             "vision",
         ]),
+        ephemeralHistory: ephemeralHistory.length > 0 ? ephemeralHistory : undefined,
+    };
+}
+
+export function parseConversationSummary(value: unknown): ConversationSummary {
+    const input = record(value, "conversation summary");
+    return {
+        id: string(input.id, "conversation id", 80),
+        title: string(input.title, "conversation title", 200),
+        preview: typeof input.preview === "string" ? input.preview : "",
+        messageCount: number(input.messageCount, "message count"),
+        createdAt: string(input.createdAt, "created at", 80),
+        updatedAt: string(input.updatedAt, "updated at", 80),
+    };
+}
+
+export function parseConversationList(value: unknown): ConversationListResponse {
+    const input = record(value, "conversation list");
+    if (!Array.isArray(input.conversations)) {
+        throw new AISchemaError("conversations must be an array");
+    }
+    return {
+        conversations: input.conversations.map(parseConversationSummary),
+        nextCursor: optionalString(input.nextCursor, "next cursor", 400),
+    };
+}
+
+export function parseConversationDetail(value: unknown): ConversationDetailResponse {
+    const input = record(value, "conversation detail");
+    const conversation = record(input.conversation, "conversation");
+    if (!Array.isArray(conversation.messages)) {
+        throw new AISchemaError("conversation messages must be an array");
+    }
+    return {
+        conversation: {
+            id: string(conversation.id, "conversation id", 80),
+            title: string(conversation.title, "conversation title", 200),
+            createdAt: string(conversation.createdAt, "created at", 80),
+            updatedAt: string(conversation.updatedAt, "updated at", 80),
+            messages: conversation.messages.map(parseNormalizedMessage),
+        },
     };
 }
 

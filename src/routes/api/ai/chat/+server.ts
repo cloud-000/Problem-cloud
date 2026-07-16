@@ -1,10 +1,11 @@
 import type { RequestHandler } from "./$types";
 import { AISchemaError, parseChatRequest } from "$lib/ai/schemas";
-import type { AIUsage, NormalizedAIEvent } from "$lib/ai/types";
+import type { AIEphemeralMessage, AIUsage, NormalizedAIEvent, NormalizedAIMessage } from "$lib/ai/types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import { buildModelCatalog } from "$lib/server/ai/models/catalog";
 import { AIModelRoutingError, resolveModel } from "$lib/server/ai/models/router";
 import {
+    conversationHistory,
     createConversation,
     ensureOwnedConversation,
     preferencesFor,
@@ -14,6 +15,17 @@ import {
 import { providerById } from "$lib/server/ai/providers/registry";
 import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 import { encodeEventStream } from "$lib/server/ai/stream";
+
+/** Converts already-validated ephemeral turns into the normalized provider shape. */
+function ephemeralMessages(history: AIEphemeralMessage[] = []): NormalizedAIMessage[] {
+    return history.map((entry) => ({
+        id: crypto.randomUUID(),
+        role: entry.role,
+        parts: [{ type: "text", text: entry.text }],
+        status: "complete",
+        createdAt: new Date(0).toISOString(),
+    }));
+}
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
     const user = await requireAIUser(locals);
@@ -42,12 +54,21 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 
         const shouldPersist = preferences.history_enabled;
         let conversationId = body.conversationId;
+        let history: NormalizedAIMessage[] = [];
         if (shouldPersist) {
-            if (conversationId) await ensureOwnedConversation(user.id, conversationId);
-            else conversationId = await createConversation(user.id, body.contexts, body.message);
+            if (conversationId) {
+                await ensureOwnedConversation(user.id, conversationId);
+                // Load before saving the new prompt so history holds only prior turns.
+                history = await conversationHistory(user.id, conversationId);
+            } else {
+                conversationId = await createConversation(user.id, body.contexts, body.message);
+            }
             await saveUserMessage(conversationId, body.message);
         } else {
             conversationId = crypto.randomUUID();
+            // Persisted conversations never trust a client transcript; history-disabled
+            // chats have no server copy, so bounded validated turns are the only source.
+            history = ephemeralMessages(body.ephemeralHistory);
         }
 
         const providerStream = await provider.stream({
@@ -57,6 +78,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             task: body.task,
             message: body.message,
             contexts: body.contexts,
+            history,
             signal: request.signal,
         });
 

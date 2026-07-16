@@ -6,9 +6,29 @@ import type {
     AIMessageStatus,
     AIUsage,
     CoachContextDescriptor,
+    ConversationSummary,
     NormalizedAIMessage,
 } from "$lib/ai/types";
 import type { Database, Json } from "$lib/types/database.types";
+import { messageText, partsText, PREVIEW_MAX_CHARS } from "$lib/ai/conversations";
+import {
+    encodeCursor,
+    type ConversationCursor,
+    CONVERSATION_PAGE_DEFAULT,
+} from "./conversation-cursor";
+
+/**
+ * Default bound on history handed to a provider: the most recent messages, oldest
+ * first, capped by both turn count and total characters. Applied from the newest
+ * message backwards so the most relevant turns always survive truncation.
+ */
+export const HISTORY_MAX_MESSAGES = 20;
+export const HISTORY_MAX_CHARS = 24_000;
+
+export interface HistoryBudget {
+    maxMessages?: number;
+    maxChars?: number;
+}
 
 export class AIPersistenceError extends Error {
     constructor(readonly code: "persistence_unavailable" | "conversation_not_found", message: string) {
@@ -80,9 +100,40 @@ function normalizedMessageStatus(value: string): AIMessageStatus {
         : "complete";
 }
 
+interface MessageRow {
+    id: string;
+    role: string;
+    content_parts: Json;
+    status: string;
+    created_at: string;
+    resolved_model: string | null;
+}
+
+const MESSAGE_COLUMNS = "id, role, content_parts, status, created_at, resolved_model";
+
+function normalizedMessage(message: MessageRow): NormalizedAIMessage {
+    return {
+        id: message.id,
+        role: message.role === "user" ? "user" : "assistant",
+        parts: normalizedParts(message.content_parts),
+        status: normalizedMessageStatus(message.status),
+        createdAt: message.created_at,
+        resolvedModel: message.resolved_model ?? undefined,
+    };
+}
+
+async function messagesFor(conversationId: string): Promise<NormalizedAIMessage[]> {
+    const { data, error } = await admin()
+        .from("ai_messages")
+        .select(MESSAGE_COLUMNS)
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(normalizedMessage);
+}
+
 export async function latestConversation(userId: string) {
-    const client = admin();
-    const { data: conversation, error } = await client
+    const { data: conversation, error } = await admin()
         .from("ai_conversations")
         .select("id")
         .eq("user_id", userId)
@@ -92,25 +143,145 @@ export async function latestConversation(userId: string) {
         .maybeSingle();
     if (error) throw error;
     if (!conversation) return undefined;
-    const { data: messages, error: messageError } = await client
-        .from("ai_messages")
-        .select("id, role, content_parts, status, created_at, resolved_model")
-        .eq("conversation_id", conversation.id)
-        .order("created_at", { ascending: true });
-    if (messageError) throw messageError;
+    return { id: conversation.id, messages: await messagesFor(conversation.id) };
+}
+
+/**
+ * One page of the user's non-archived conversations, newest first. Fetches one row
+ * beyond `limit` to decide whether a `nextCursor` exists without a second count query.
+ */
+export async function listConversations(
+    userId: string,
+    cursor: ConversationCursor | undefined,
+    limit = CONVERSATION_PAGE_DEFAULT,
+): Promise<{ conversations: ConversationSummary[]; nextCursor?: string }> {
+    let query = admin()
+        .from("ai_conversations")
+        .select("id, title, created_at, updated_at")
+        .eq("user_id", userId)
+        .is("archived_at", null)
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(limit + 1);
+
+    if (cursor) {
+        // Keyset on the full (updated_at, id) sort key so ties page deterministically.
+        query = query.or(
+            `updated_at.lt."${cursor.updatedAt}",and(updated_at.eq."${cursor.updatedAt}",id.lt."${cursor.id}")`,
+        );
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const rows = data ?? [];
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor =
+        rows.length > limit && last
+            ? encodeCursor({ updatedAt: last.updated_at, id: last.id })
+            : undefined;
+
+    const previews = await previewsFor(page.map((row) => row.id));
     return {
-        id: conversation.id,
-        messages: (messages ?? []).map(
-            (message): NormalizedAIMessage => ({
-                id: message.id,
-                role: message.role === "user" ? "user" : "assistant",
-                parts: normalizedParts(message.content_parts),
-                status: normalizedMessageStatus(message.status),
-                createdAt: message.created_at,
-                resolvedModel: message.resolved_model ?? undefined,
-            }),
-        ),
+        conversations: page.map((row) => ({
+            id: row.id,
+            title: row.title,
+            preview: previews.get(row.id)?.preview ?? "",
+            messageCount: previews.get(row.id)?.messageCount ?? 0,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+        })),
+        nextCursor,
     };
+}
+
+/** Message count and newest non-empty text preview for each conversation in a page. */
+async function previewsFor(
+    conversationIds: string[],
+): Promise<Map<string, { preview: string; messageCount: number }>> {
+    const result = new Map<string, { preview: string; messageCount: number }>();
+    if (conversationIds.length === 0) return result;
+
+    const { data, error } = await admin()
+        .from("ai_messages")
+        .select("conversation_id, content_parts, created_at")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+        const entry = result.get(row.conversation_id) ?? { preview: "", messageCount: 0 };
+        entry.messageCount += 1;
+        if (!entry.preview) {
+            const text = partsText(normalizedParts(row.content_parts));
+            if (text) entry.preview = text.slice(0, PREVIEW_MAX_CHARS);
+        }
+        result.set(row.conversation_id, entry);
+    }
+    return result;
+}
+
+/** A single owned, non-archived conversation with its full transcript. */
+export async function conversationById(userId: string, conversationId: string) {
+    const { data, error } = await admin()
+        .from("ai_conversations")
+        .select("id, title, created_at, updated_at")
+        .eq("id", conversationId)
+        .eq("user_id", userId)
+        .is("archived_at", null)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AIPersistenceError("conversation_not_found", "Conversation not found");
+    return {
+        id: data.id,
+        title: data.title,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        messages: await messagesFor(data.id),
+    };
+}
+
+/**
+ * Bounded prior turns for a persisted conversation, oldest first. Ownership is
+ * verified here rather than trusted from the caller.
+ */
+export async function conversationHistory(
+    userId: string,
+    conversationId: string,
+    budget: HistoryBudget = {},
+): Promise<NormalizedAIMessage[]> {
+    await ensureOwnedConversation(userId, conversationId);
+    const maxMessages = budget.maxMessages ?? HISTORY_MAX_MESSAGES;
+    const maxChars = budget.maxChars ?? HISTORY_MAX_CHARS;
+    const messages = await messagesFor(conversationId);
+
+    const selected: NormalizedAIMessage[] = [];
+    let chars = 0;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        const text = messageText(message);
+        if (!text) continue;
+        if (selected.length >= maxMessages) break;
+        if (chars + text.length > maxChars && selected.length > 0) break;
+        chars += text.length;
+        selected.push(message);
+    }
+    return selected.reverse();
+}
+
+/** Soft-archives an owned conversation; messages are retained for a future restore. */
+export async function archiveConversation(userId: string, conversationId: string): Promise<void> {
+    const { data, error } = await admin()
+        .from("ai_conversations")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("user_id", userId)
+        .is("archived_at", null)
+        .select("id")
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AIPersistenceError("conversation_not_found", "Conversation not found");
 }
 
 export async function createConversation(

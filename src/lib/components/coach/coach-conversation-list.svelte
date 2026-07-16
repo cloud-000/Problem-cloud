@@ -1,0 +1,109 @@
+<script lang="ts">
+    import { Button } from "$lib/components/button";
+    import { Icon } from "$lib/components/icon";
+    import { groupConversations } from "$lib/ai/conversations";
+    import { coach } from "$lib/state/coach.svelte";
+    import CoachConversationRow from "./coach-conversation-row.svelte";
+
+    const STREAMING_HINT = "Stop the response before switching conversations.";
+
+    const groups = $derived(groupConversations(coach.conversations));
+
+    const showEmpty = $derived(
+        coach.conversationsLoaded &&
+            coach.conversations.length === 0 &&
+            !coach.conversationListLoading &&
+            !coach.conversationListError,
+    );
+    const showInitialLoading = $derived(coach.conversationListLoading && !coach.conversationsLoaded);
+</script>
+
+<div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex items-center gap-1 border-b border-border/30 px-2.5 py-2">
+        <Button variant="ghost" size="icon-sm" onclick={() => coach.closeConversationList()} aria-label="Back to conversation">
+            <Icon name="arrow_back" />
+        </Button>
+        <h3 class="mr-auto text-sm font-semibold tracking-tight">History</h3>
+    </div>
+
+    <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <Button
+            variant="ghost"
+            size="sm"
+            class="mb-1 w-full justify-start gap-2 text-xs"
+            onclick={() => coach.newConversation()}
+        >
+            <Icon name="add_comment" fontsize={16} />
+            New conversation
+        </Button>
+
+        {#if !coach.historyEnabled}
+            <p class="px-2.5 py-6 text-center text-xs leading-5 text-muted-foreground">
+                Saved conversations are off. Turn on “Save conversations” to browse your history.
+            </p>
+        {:else if showInitialLoading}
+            <p class="px-2.5 py-6 text-center text-xs text-muted-foreground" aria-live="polite">
+                Loading conversations…
+            </p>
+        {:else if coach.conversationListError && coach.conversations.length === 0}
+            <div class="px-2.5 py-6 text-center">
+                <p class="text-xs leading-5 text-muted-foreground">
+                    {coach.conversationListError.message}
+                </p>
+                <Button size="sm" variant="outline" class="mt-3" onclick={() => coach.retryConversationList()}>
+                    Try again
+                </Button>
+            </div>
+        {:else if showEmpty}
+            <p class="px-2.5 py-6 text-center text-xs leading-5 text-muted-foreground">
+                No saved conversations yet. Your chats will appear here once you send a message.
+            </p>
+        {:else}
+            {#if coach.streaming}
+                <p class="mx-1 mb-1 rounded-md bg-surface-container px-2.5 py-1.5 text-[0.6875rem] leading-4 text-muted-foreground">
+                    {STREAMING_HINT}
+                </p>
+            {/if}
+            {#each groups as group (group.label)}
+                <section class="mb-2">
+                    <h4 class="px-2.5 py-1 text-[0.6875rem] font-medium tracking-wide text-muted-foreground">
+                        {group.label}
+                    </h4>
+                    <ul class="flex flex-col gap-0.5">
+                        {#each group.conversations as conversation (conversation.id)}
+                            <li>
+                                <CoachConversationRow
+                                    {conversation}
+                                    active={conversation.id === coach.conversationId}
+                                    loading={coach.loadingConversationId === conversation.id}
+                                    disabled={coach.streaming}
+                                    disabledReason={STREAMING_HINT}
+                                    onselect={(id) => coach.selectConversation(id)}
+                                    onarchive={(id) => coach.archiveConversation(id)}
+                                />
+                            </li>
+                        {/each}
+                    </ul>
+                </section>
+            {/each}
+
+            {#if coach.conversationListError}
+                <p class="px-2.5 py-2 text-center text-[0.6875rem] leading-4 text-muted-foreground" role="status">
+                    {coach.conversationListError.message}
+                </p>
+            {/if}
+
+            {#if coach.conversationsCursor}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="w-full text-xs"
+                    disabled={coach.conversationListLoading}
+                    onclick={() => coach.loadMoreConversations()}
+                >
+                    {coach.conversationListLoading ? "Loading…" : "Load more"}
+                </Button>
+            {/if}
+        {/if}
+    </div>
+</div>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { NormalizedAIEvent, NormalizedAIRequest } from "$lib/ai/types";
+import type { NormalizedAIEvent, NormalizedAIMessage, NormalizedAIRequest } from "$lib/ai/types";
 import { MockProviderAdapter } from "./mock";
 import type { AIProviderAdapter } from "./types";
 
@@ -10,6 +10,7 @@ const request = (overrides: Partial<NormalizedAIRequest> = {}): NormalizedAIRequ
     task: "general",
     message: "Explain factoring",
     contexts: [],
+    history: [],
     ...overrides,
 });
 
@@ -59,3 +60,50 @@ function providerContract(name: string, create: () => AIProviderAdapter) {
 }
 
 providerContract("mock", () => new MockProviderAdapter({ chunkDelayMs: 0 }));
+
+function historyMessage(role: "user" | "assistant", text: string): NormalizedAIMessage {
+    return {
+        id: crypto.randomUUID(),
+        role,
+        parts: [{ type: "text", text }],
+        status: "complete",
+        createdAt: "2026-07-16T10:00:00Z",
+    };
+}
+
+function streamedText(events: NormalizedAIEvent[]): string {
+    return events
+        .filter((event) => event.type === "message.delta")
+        .map((event) => event.delta)
+        .join("");
+}
+
+describe("mock provider history contract", () => {
+    const provider = () => new MockProviderAdapter({ chunkDelayMs: 0 });
+
+    test("receives prior turns and reflects them deterministically", async () => {
+        const history = [
+            historyMessage("user", "We were factoring"),
+            historyMessage("assistant", "Right, difference of squares"),
+        ];
+        const first = streamedText(await collect(await provider().stream(request({ history }))));
+        const second = streamedText(await collect(await provider().stream(request({ history }))));
+        expect(first).toContain("Picking up from 2 earlier messages.");
+        expect(second).toBe(first);
+    });
+
+    test("says nothing about history on the first turn", async () => {
+        const text = streamedText(await collect(await provider().stream(request({ history: [] }))));
+        expect(text).not.toContain("Picking up from");
+    });
+
+    test("counts history toward reported input usage", async () => {
+        const withoutHistory = await collect(await provider().stream(request({ history: [] })));
+        const withHistory = await collect(
+            await provider().stream(request({ history: [historyMessage("user", "x".repeat(400))] })),
+        );
+        const inputTokens = (events: NormalizedAIEvent[]) =>
+            events.find((event) => event.type === "usage")?.usage.inputTokens ?? 0;
+        expect(inputTokens(withHistory)).toBeGreaterThan(inputTokens(withoutHistory));
+    });
+});

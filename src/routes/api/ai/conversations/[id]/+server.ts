@@ -1,0 +1,55 @@
+import { json } from "@sveltejs/kit";
+import type { RequestHandler } from "./$types";
+import { aiCoachEnabled } from "$lib/server/ai/config";
+import {
+    AIPersistenceError,
+    archiveConversation,
+    conversationById,
+    preferencesFor,
+} from "$lib/server/ai/persistence";
+import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+
+export const GET: RequestHandler = async ({ locals, params }) => {
+    const user = await requireAIUser(locals);
+    assertRateLimit(user.id, "ai.conversations.detail", 60);
+    if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
+    try {
+        const preferences = await preferencesFor(user.id);
+        if (!preferences.history_enabled) {
+            return stableError("conversation_not_found", "Conversation not found", 404);
+        }
+        return json({ conversation: await conversationById(user.id, params.id) });
+    } catch (error) {
+        if (error instanceof AIPersistenceError && error.code === "conversation_not_found") {
+            return stableError(error.code, error.message, 404);
+        }
+        return stableError("conversation_unavailable", "Conversation history is unavailable", 503);
+    }
+};
+
+export const PATCH: RequestHandler = async ({ locals, params, request, url }) => {
+    const user = await requireAIUser(locals);
+    assertSameOrigin(request, url);
+    assertRateLimit(user.id, "ai.conversations.archive", 30);
+    if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
+
+    let archived: unknown;
+    try {
+        archived = (await request.json())?.archived;
+    } catch {
+        return stableError("invalid_request", "Invalid JSON request", 400);
+    }
+    if (archived !== true) {
+        return stableError("invalid_request", "Only { archived: true } is supported", 400);
+    }
+
+    try {
+        await archiveConversation(user.id, params.id);
+        return json({ archived: true });
+    } catch (error) {
+        if (error instanceof AIPersistenceError && error.code === "conversation_not_found") {
+            return stableError(error.code, error.message, 404);
+        }
+        return stableError("archive_failed", "The conversation could not be archived", 503);
+    }
+};

@@ -38,6 +38,28 @@
     <Button variant="ghost" size="icon-sm" onclick={() => coach.newConversation()} aria-label="New conversation">
         <Icon name="add_comment" />
     </Button>
+    {#if coach.historyEnabled}
+        <Button
+            variant="ghost"
+            size="icon-sm"
+            onclick={() => (coach.historyViewOpen ? coach.closeConversationList() : coach.openConversationList())}
+            aria-label="Conversation history"
+            aria-expanded={coach.historyViewOpen}
+            class={coach.historyViewOpen ? "bg-surface-container" : undefined}
+        >
+            <Icon name="history" />
+        </Button>
+    {:else}
+        <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled
+            aria-label="Conversation history unavailable"
+            title="Turn on “Save conversations” to browse your history."
+        >
+            <Icon name="history" />
+        </Button>
+    {/if}
     <Button variant="ghost" size="icon-sm" onclick={() => (moreOpen = !moreOpen)} aria-label="More Coach options" aria-expanded={moreOpen}>
         <Icon name="more_horiz" />
     </Button>

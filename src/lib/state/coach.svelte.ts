@@ -1,4 +1,15 @@
-import { parseAIEvent, parseBootstrap } from "$lib/ai/schemas";
+import {
+    parseAIEvent,
+    parseBootstrap,
+    parseConversationDetail,
+    parseConversationList,
+} from "$lib/ai/schemas";
+import {
+    boundEphemeralHistory,
+    dedupeById,
+    latestPreview,
+    PREVIEW_MAX_CHARS,
+} from "$lib/ai/conversations";
 import {
     activeContextDescriptors,
     activeQuickActions,
@@ -8,12 +19,16 @@ import {
 import type {
     AIBootstrap,
     AIChatRequestBody,
+    AIEphemeralMessage,
     AIErrorPart,
     AIModelReference,
     CoachContextLayer,
+    ConversationSummary,
     NormalizedAIEvent,
     NormalizedAIMessage,
 } from "$lib/ai/types";
+
+const CONVERSATION_PAGE_SIZE = 20;
 
 class CoachStore {
     enabled = $state(false);
@@ -29,8 +44,22 @@ class CoachStore {
     contextLayers = $state<CoachContextLayer[]>([]);
     detachedContextIds = $state<string[]>([]);
     liveAnnouncement = $state("");
+    conversations = $state<ConversationSummary[]>([]);
+    conversationsLoaded = $state(false);
+    conversationsCursor = $state<string | undefined>(undefined);
+    conversationListLoading = $state(false);
+    conversationListError = $state<AIErrorPart | null>(null);
+    loadingConversationId = $state<string | undefined>(undefined);
+    historyViewOpen = $state(false);
     #abortController: AbortController | null = null;
     #lastPrompt = "";
+    /**
+     * Bumped whenever the active conversation changes identity. Every in-flight
+     * request captures the value at start and drops its results if it no longer
+     * matches, so an abandoned stream or detail response cannot mutate a newer
+     * selection.
+     */
+    #generation = 0;
 
     get activeContexts() {
         return activeContextDescriptors(this.contextLayers, new Set(this.detachedContextIds));
@@ -46,6 +75,11 @@ class CoachStore {
 
     get connectionBlocked(): boolean {
         return this.bootstrap?.connection?.connectionState !== "connected";
+    }
+
+    /** Saved history is unavailable when the user has turned conversation saving off. */
+    get historyEnabled(): boolean {
+        return this.bootstrap?.historyEnabled ?? false;
     }
 
     configure(enabled: boolean): void {
@@ -109,6 +143,9 @@ class CoachStore {
         this.error = null;
         this.streaming = true;
         this.liveAnnouncement = "Coach started responding";
+
+        // Built before the new prompt joins the transcript so it carries prior turns only.
+        const ephemeralHistory = this.ephemeralHistory();
         this.messages.push({
             id: crypto.randomUUID(),
             role: "user",
@@ -117,13 +154,16 @@ class CoachStore {
             createdAt: new Date().toISOString(),
         });
 
-        this.#abortController = new AbortController();
+        const generation = this.#generation;
+        const controller = new AbortController();
+        this.#abortController = controller;
         const body: AIChatRequestBody = {
             conversationId: this.conversationId,
             model: this.selectedModel,
             message,
             contexts: this.activeContexts,
             task: "general",
+            ephemeralHistory,
         };
 
         try {
@@ -131,11 +171,13 @@ class CoachStore {
                 method: "POST",
                 headers: { "content-type": "application/json", accept: "application/x-ndjson" },
                 body: JSON.stringify(body),
-                signal: this.#abortController.signal,
+                signal: controller.signal,
             });
             if (!response.ok || !response.body) throw await this.responseError(response);
-            await this.consume(response.body);
+            await this.consume(response.body, generation);
+            if (generation === this.#generation) this.upsertActiveSummary(message);
         } catch (error) {
+            if (generation !== this.#generation) return;
             if (error instanceof DOMException && error.name === "AbortError") {
                 const current = this.messages.findLast((item) => item.status === "streaming");
                 if (current) current.status = "cancelled";
@@ -150,8 +192,8 @@ class CoachStore {
                 this.liveAnnouncement = "Coach response failed";
             }
         } finally {
-            this.streaming = false;
-            this.#abortController = null;
+            if (generation === this.#generation) this.streaming = false;
+            if (this.#abortController === controller) this.#abortController = null;
         }
     }
 
@@ -159,16 +201,153 @@ class CoachStore {
         this.#abortController?.abort();
     }
 
+    /**
+     * Aborts any in-flight request and invalidates its results, so callers can
+     * safely replace the active conversation's ID and transcript.
+     */
+    #invalidateActiveRequest(): number {
+        this.#abortController?.abort();
+        this.#abortController = null;
+        this.streaming = false;
+        this.#generation += 1;
+        return this.#generation;
+    }
+
+    /**
+     * Prior turns for a history-disabled chat. Only sent when saving is off;
+     * persisted conversations use server-loaded history instead.
+     */
+    private ephemeralHistory(): AIEphemeralMessage[] | undefined {
+        if (this.historyEnabled) return undefined;
+        const history = boundEphemeralHistory(this.messages);
+        return history.length > 0 ? history : undefined;
+    }
+
     async retry(): Promise<void> {
         if (this.#lastPrompt) await this.send(this.#lastPrompt);
     }
 
+    /** Clears the active chat. Creation stays lazy — the first send inserts the row. */
     newConversation(): void {
-        if (this.streaming) this.stop();
+        this.#invalidateActiveRequest();
         this.conversationId = undefined;
         this.messages = [];
         this.error = null;
         this.detachedContextIds = [];
+        this.historyViewOpen = false;
+    }
+
+    async openConversationList(): Promise<void> {
+        this.historyViewOpen = true;
+        if (!this.historyEnabled) return;
+        // Only the first open pays for a fetch; bootstrap stays as small as it was.
+        if (!this.conversationsLoaded && !this.conversationListLoading) {
+            await this.fetchConversations();
+        }
+    }
+
+    closeConversationList(): void {
+        this.historyViewOpen = false;
+    }
+
+    async loadMoreConversations(): Promise<void> {
+        if (!this.conversationsCursor || this.conversationListLoading) return;
+        await this.fetchConversations(this.conversationsCursor);
+    }
+
+    async retryConversationList(): Promise<void> {
+        if (this.conversationListLoading) return;
+        await this.fetchConversations(this.conversationsCursor);
+    }
+
+    private async fetchConversations(cursor?: string): Promise<void> {
+        this.conversationListLoading = true;
+        this.conversationListError = null;
+        try {
+            const params = new URLSearchParams({ limit: String(CONVERSATION_PAGE_SIZE) });
+            if (cursor) params.set("cursor", cursor);
+            const response = await fetch(`/api/ai/conversations?${params}`, {
+                headers: { accept: "application/json" },
+            });
+            if (!response.ok) throw await this.responseError(response);
+            const payload = parseConversationList(await response.json());
+            this.conversations = cursor
+                ? dedupeById([...this.conversations, ...payload.conversations])
+                : payload.conversations;
+            this.conversationsCursor = payload.nextCursor;
+            this.conversationsLoaded = true;
+        } catch (error) {
+            this.conversationListError = this.normalizeError(error, "conversation_unavailable");
+        } finally {
+            this.conversationListLoading = false;
+        }
+    }
+
+    /**
+     * Loads another conversation's transcript. The active chat is left untouched
+     * until the detail request succeeds, and a superseded response is discarded.
+     */
+    async selectConversation(id: string): Promise<void> {
+        if (this.streaming) return;
+        if (id === this.conversationId) {
+            this.historyViewOpen = false;
+            return;
+        }
+        this.loadingConversationId = id;
+        this.conversationListError = null;
+        const generation = this.#invalidateActiveRequest();
+        try {
+            const response = await fetch(`/api/ai/conversations/${id}`, {
+                headers: { accept: "application/json" },
+            });
+            if (!response.ok) throw await this.responseError(response);
+            const { conversation } = parseConversationDetail(await response.json());
+            if (generation !== this.#generation) return;
+            this.conversationId = conversation.id;
+            this.messages = conversation.messages;
+            this.error = null;
+            this.detachedContextIds = [];
+            this.historyViewOpen = false;
+        } catch (error) {
+            if (generation !== this.#generation) return;
+            this.conversationListError = this.normalizeError(error, "conversation_not_found");
+        } finally {
+            if (this.loadingConversationId === id) this.loadingConversationId = undefined;
+        }
+    }
+
+    async archiveConversation(id: string): Promise<void> {
+        if (this.streaming) return;
+        this.conversationListError = null;
+        try {
+            const response = await fetch(`/api/ai/conversations/${id}`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json", accept: "application/json" },
+                body: JSON.stringify({ archived: true }),
+            });
+            if (!response.ok) throw await this.responseError(response);
+            this.conversations = this.conversations.filter((item) => item.id !== id);
+            if (this.conversationId === id) this.newConversation();
+        } catch (error) {
+            this.conversationListError = this.normalizeError(error, "archive_failed");
+        }
+    }
+
+    /** Keeps the list in sync after a send without refetching the page. */
+    private upsertActiveSummary(prompt: string): void {
+        if (!this.conversationsLoaded || !this.conversationId || !this.historyEnabled) return;
+        const id = this.conversationId;
+        const now = new Date().toISOString();
+        const existing = this.conversations.find((item) => item.id === id);
+        const summary: ConversationSummary = {
+            id,
+            title: existing?.title ?? prompt.slice(0, 80),
+            preview: latestPreview(this.messages) || prompt.slice(0, PREVIEW_MAX_CHARS),
+            messageCount: this.messages.length,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+        };
+        this.conversations = [summary, ...this.conversations.filter((item) => item.id !== id)];
     }
 
     async setHistoryEnabled(enabled: boolean): Promise<void> {
@@ -181,28 +360,36 @@ class CoachStore {
         if (this.bootstrap) this.bootstrap.historyEnabled = enabled;
     }
 
-    private async consume(stream: ReadableStream<Uint8Array>): Promise<void> {
+    private async consume(stream: ReadableStream<Uint8Array>, generation: number): Promise<void> {
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
         while (true) {
             const { value, done } = await reader.read();
+            // The conversation was switched or cleared; stop feeding its transcript.
+            if (generation !== this.#generation) {
+                await reader.cancel().catch(() => {});
+                return;
+            }
             buffer += decoder.decode(value, { stream: !done });
             const lines = buffer.split("\n");
             buffer = lines.pop() ?? "";
             for (const line of lines) {
-                if (line.trim()) this.applyEvent(parseAIEvent(JSON.parse(line)));
+                if (line.trim()) this.applyEvent(parseAIEvent(JSON.parse(line)), generation);
             }
             if (done) {
-                if (buffer.trim()) this.applyEvent(parseAIEvent(JSON.parse(buffer)));
+                if (buffer.trim()) this.applyEvent(parseAIEvent(JSON.parse(buffer)), generation);
                 break;
             }
         }
     }
 
-    private applyEvent(event: NormalizedAIEvent): void {
+    private applyEvent(event: NormalizedAIEvent, generation: number): void {
+        if (generation !== this.#generation) return;
         if (event.type === "message.start") {
-            this.conversationId = event.conversationId;
+            // History-disabled replies carry a throwaway id that was never persisted;
+            // adopting it would make the next send reference a non-existent row.
+            if (this.historyEnabled) this.conversationId = event.conversationId;
             this.messages.push({
                 id: event.messageId,
                 role: "assistant",

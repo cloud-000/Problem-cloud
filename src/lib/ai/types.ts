@@ -150,6 +150,8 @@ export interface NormalizedAIRequest {
     task: AITaskType;
     message: string;
     contexts: CoachContextDescriptor[];
+    /** Prior turns supplied to the provider, oldest first, excluding the new prompt. */
+    history: NormalizedAIMessage[];
     signal?: AbortSignal;
     scenario?: AIMockScenario;
 }
@@ -191,12 +193,46 @@ export type NormalizedAIEvent =
           status: Exclude<AIMessageStatus, "streaming">;
       };
 
+export interface AIEphemeralMessage {
+    role: "user" | "assistant";
+    text: string;
+}
+
 export interface AIChatRequestBody {
     conversationId?: string;
     model: AIModelReference;
     message: string;
     contexts: CoachContextDescriptor[];
     task: AITaskType;
+    /**
+     * Client-supplied prior turns, accepted only when history is disabled and never
+     * persisted. Ignored for persisted conversations, whose history is server-loaded.
+     */
+    ephemeralHistory?: AIEphemeralMessage[];
+}
+
+export interface ConversationSummary {
+    id: string;
+    title: string;
+    preview: string;
+    messageCount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ConversationListResponse {
+    conversations: ConversationSummary[];
+    nextCursor?: string;
+}
+
+export interface ConversationDetailResponse {
+    conversation: {
+        id: string;
+        title: string;
+        createdAt: string;
+        updatedAt: string;
+        messages: NormalizedAIMessage[];
+    };
 }
 
 export interface AIBootstrap {
