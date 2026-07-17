@@ -43,6 +43,58 @@ type Token = TagToken | TextToken;
 // global copy each call (stateful `lastIndex`).
 const TAG_REGEX = /\[(\/?)(b|i|u|s|code|url|asy|img)(?:=([^\]]+))?\]/gi;
 
+// --- Markdown images → Math-Images CDN ------------------------------------
+//
+// Statements author images with markdown syntax `![alt](path)` where `path` is
+// a file in the cloud-000/Math-Images GitHub repo (e.g.
+// `hmmt/2024_feb_guts/problem_36_image_1.png`). We serve them from jsDelivr's
+// GitHub CDN. `@main` (not a pinned commit) is deliberate: the content-sync
+// pipeline adds new images continuously, and a pinned SHA would 404 every image
+// added after the app was last built. Change only this constant to re-pin.
+const IMAGE_CDN_BASE = "https://cdn.jsdelivr.net/gh/cloud-000/Math-Images@main";
+
+// `![alt](url)` — alt is optional; the url is a single non-space token.
+const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\(\s*([^\s)]+)\s*\)/g;
+
+// Resolve a markdown image target to a real URL. An already-absolute reference
+// (has a scheme, or protocol-relative `//host`) is left untouched; anything
+// else is treated as a repo-relative path into Math-Images.
+function resolveImageSrc(target: string): string {
+    const trimmed = target.trim();
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) {
+        return trimmed;
+    }
+    return `${IMAGE_CDN_BASE}/${trimmed.replace(/^\/+/, "")}`;
+}
+
+// Split a run of plain text into text/img nodes, extracting markdown images and
+// rewriting their target through `resolveImageSrc`. Text with no image is
+// returned as a single text node.
+function splitMarkdownImages(text: string): ASTNode[] {
+    const regex = new RegExp(MARKDOWN_IMAGE_REGEX.source, "g");
+    const nodes: ASTNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            nodes.push({ type: "text", content: text.slice(lastIndex, match.index) });
+        }
+        nodes.push({
+            type: "img",
+            label: match[1],
+            src: resolveImageSrc(match[2]),
+        });
+        lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+        nodes.push({ type: "text", content: text.slice(lastIndex) });
+    }
+    // Preserve the "empty run → nothing" invariant callers rely on.
+    return nodes;
+}
+
 // Inline tags that wrap children and map directly to a node type.
 function makeInlineNode(
     tagName: string,
@@ -144,7 +196,7 @@ function parseBBCode(text: string): ASTNode[] {
             const token = tokens[index];
 
             if (token.type === "text") {
-                nodes.push({ type: "text", content: token.content });
+                nodes.push(...splitMarkdownImages(token.content));
                 index++;
                 continue;
             }
