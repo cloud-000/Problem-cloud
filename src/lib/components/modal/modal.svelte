@@ -30,6 +30,7 @@
 
 <script lang="ts">
     import { cn } from "$lib/utils.js";
+    import type { Attachment } from "svelte/attachments";
     import { fade, scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
     import { Icon } from "$lib/components/icon";
@@ -69,6 +70,13 @@
         }
     }
 
+    // Render overlays at the document root so transformed, clipped, or
+    // hover-composited ancestors can never trap them below app chrome.
+    const portal: Attachment<HTMLDivElement> = (node) => {
+        document.body.appendChild(node);
+        return () => node.remove();
+    };
+
     // Lock background scroll when open
     $effect(() => {
         if (open) {
@@ -92,11 +100,11 @@
 <svelte:window onkeydown={handleKeyDown} />
 
 {#if open}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
+        {@attach portal}
         bind:this={ref}
         class={cn(
-            "fixed inset-0 z-50 flex items-center justify-center",
+            "fixed inset-0 z-80 flex items-center justify-center",
             variant === "bare"
                 ? "bg-black/70 backdrop-blur-(--backdrop-blur) p-6"
                 : "bg-black/40 backdrop-blur-xs p-md",
