@@ -13,7 +13,12 @@
         type ProblemRating,
     } from "$lib/library";
     import { statusFor } from "$lib/progress";
-    import { reviewScheduleFor, type Engagement, type Mastery } from "$lib/progress";
+    import {
+        reviewScheduleFor,
+        type Engagement,
+        type Mastery,
+        type PersonalProblemState,
+    } from "$lib/progress";
     import { ProblemOrganization } from "$lib/components/problem-organization";
     import { cn } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
@@ -24,6 +29,9 @@
         problem: ProblemRow;
         answer?: string;
         selectedChoice?: number | null;
+        eliminated?: number[];
+        mastery?: Mastery | null;
+        engagement?: Engagement | null;
         mode?: ProblemMode;
         showAnswerState?: boolean;
         disabled?: boolean;
@@ -34,12 +42,16 @@
         class?: string;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
+        onOrganizationChange?: (state: PersonalProblemState) => void;
     };
 
     let {
         problem,
         answer = $bindable(""),
         selectedChoice = $bindable<number | null>(null),
+        eliminated = $bindable<number[]>([]),
+        mastery: masteryValue,
+        engagement: engagementValue,
         mode = "practice",
         showAnswerState = false,
         disabled = false,
@@ -48,16 +60,26 @@
         promptMastery = false,
         class: className,
         onEnter,
+        onOrganizationChange,
     }: Props = $props();
 
     // Show the raw statement string instead of the rendered math. Debug-only.
     let showRaw = $state(false);
+    let showDetails = $state(false);
 
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
-    let mastery = $derived<Mastery | null>(problem.progress?.mastery ?? null);
-    let engagement = $derived<Engagement | null>(problem.progress?.engagement ?? null);
+    let mastery = $derived<Mastery | null>(
+        masteryValue === undefined
+            ? (problem.progress?.mastery ?? null)
+            : masteryValue,
+    );
+    let engagement = $derived<Engagement | null>(
+        engagementValue === undefined
+            ? (problem.progress?.engagement ?? null)
+            : engagementValue,
+    );
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
@@ -72,6 +94,13 @@
 
     export function trigger(useAnimation: boolean): boolean | null {
         return problemAnswer?.trigger(useAnimation) ?? null;
+    }
+
+    function handleDetailsFocusOut(event: FocusEvent) {
+        const wrapper = event.currentTarget as HTMLElement;
+        if (!wrapper.contains(event.relatedTarget as Node | null)) {
+            showDetails = false;
+        }
     }
 </script>
 
@@ -163,7 +192,15 @@
             {#if problem.answer_index === null || problem.answer_index < 0}
                 <Icon name="question_mark" class="text-unsure" fontsize="1em" />
             {/if}
-            <div class="group/details relative">
+            <div
+                class="group/details relative"
+                role="group"
+                aria-label="Problem details"
+                onpointerenter={() => (showDetails = true)}
+                onpointerleave={() => (showDetails = false)}
+                onfocusin={() => (showDetails = true)}
+                onfocusout={handleDetailsFocusOut}
+            >
                 <Button
                     variant="ghost"
                     size="icon-xs"
@@ -173,39 +210,44 @@
                     <Icon name="info" />
                 </Button>
 
-                <div
-                    role="tooltip"
-                    class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
-                >
-                    <div class="mb-2 flex items-center gap-1.5 font-medium">
-                        <Icon name="bug_report" />
-                        <span>Problem details</span>
+                {#if showDetails}
+                    <div
+                        role="tooltip"
+                        class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
+                    >
+                        <div class="mb-2 flex items-center gap-1.5 font-medium">
+                            <Icon name="bug_report" />
+                            <span>Problem details</span>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            {@render detail("id", problem.id)}
+                            {@render detail("test id", problem.test_id)}
+                            {@render detail("number", problem.n)}
+                            {@render detail("answer", problem.answer_index)}
+                            {@render detail("verified", problem.verified)}
+                            {@render detail(
+                                "rating",
+                                problem.rating
+                                    ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
+                                    : null,
+                            )}
+                            {@render detail("difficulty", problem.difficulty)}
+                            {@render detail("quality", problem.quality)}
+                            {@render detail(
+                                "computational",
+                                problem.is_computational,
+                            )}
+                            {@render detail("topic", problem.topic)}
+                            {@render detail("tags", problem.tags?.join(", "))}
+                            {@render detail(
+                                "solutions",
+                                officialSolutionCount,
+                            )}
+                            {@render detail("built", problem.built_at)}
+                            {@render detail("notes", problem.notes)}
+                        </div>
                     </div>
-                    <div class="flex flex-col gap-1.5">
-                        {@render detail("id", problem.id)}
-                        {@render detail("test id", problem.test_id)}
-                        {@render detail("number", problem.n)}
-                        {@render detail("answer", problem.answer_index)}
-                        {@render detail("verified", problem.verified)}
-                        {@render detail(
-                            "rating",
-                            problem.rating
-                                ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
-                                : null,
-                        )}
-                        {@render detail("difficulty", problem.difficulty)}
-                        {@render detail("quality", problem.quality)}
-                        {@render detail(
-                            "computational",
-                            problem.is_computational,
-                        )}
-                        {@render detail("topic", problem.topic)}
-                        {@render detail("tags", problem.tags?.join(", "))}
-                        {@render detail("solutions", officialSolutionCount)}
-                        {@render detail("built", problem.built_at)}
-                        {@render detail("notes", problem.notes)}
-                    </div>
-                </div>
+                {/if}
             </div>
         </div>
     </header>
@@ -218,6 +260,7 @@
         onchange={(state) => {
             mastery = state.mastery;
             engagement = state.engagement;
+            onOrganizationChange?.(state);
         }}
     />
 
@@ -238,6 +281,7 @@
         answerIndex={problem.answer_index}
         bind:answer
         bind:selectedChoice
+        bind:eliminated
         {showAnswerState}
         {disabled}
         {isInstantFeedback}

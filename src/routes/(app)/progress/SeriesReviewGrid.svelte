@@ -21,6 +21,12 @@
     } from "$lib/series-review";
     import { cn } from "$lib/utils";
     import { SvelteMap } from "svelte/reactivity";
+    import { createVirtualizer } from "@tanstack/svelte-virtual";
+    import { get } from "svelte/store";
+    import {
+        getAppScrollViewport,
+        observeScrollOffset,
+    } from "$lib/components/virtual-list/context";
     import SeriesReviewDetailCard from "./SeriesReviewDetailCard.svelte";
 
     let {
@@ -116,6 +122,91 @@
         return [...groups.entries()];
     });
     let showTestColumn = $derived(yearGroups.some(([, rows]) => rows.length > 1));
+    let yearGroupRowStarts = $derived.by(() => {
+        let next = 2;
+        return yearGroups.map(([, rows]) => {
+            const start = next;
+            next += rows.length;
+            return start;
+        });
+    });
+
+    const scrollViewport = getAppScrollViewport();
+    let tableHead = $state<HTMLTableSectionElement | null>(null);
+    let tableScrollMargin = $state(0);
+
+    const yearGroupVirtualizer = createVirtualizer<HTMLElement, HTMLElement>({
+        count: 0,
+        getScrollElement: scrollViewport.getElement,
+        estimateSize: () => 36,
+        overscan: 2,
+        useAnimationFrameWithResizeObserver: true,
+    });
+
+    $effect(() => {
+        const groups = yearGroups;
+        const instance = get(yearGroupVirtualizer);
+        instance.setOptions({
+            count: groups.length,
+            estimateSize: (index) => (groups[index]?.[1].length ?? 1) * 36,
+            getItemKey: (index) => groups[index]?.[0] ?? "other",
+            overscan: 2,
+            scrollMargin: tableScrollMargin,
+            useAnimationFrameWithResizeObserver: true,
+        });
+        instance.measure();
+    });
+
+    $effect(() => {
+        const head = tableHead;
+        const viewport = scrollViewport.getElement();
+        if (!head || !viewport) return;
+        return observeScrollOffset(
+            head,
+            viewport,
+            (offset) => {
+                tableScrollMargin = offset;
+            },
+            "bottom",
+        );
+    });
+
+    $effect(() => {
+        if (
+            selected &&
+            !visibleTests.some((test) =>
+                test.problems.some((problem) => problem.id === selected?.problem.id),
+            )
+        ) {
+            selected = null;
+        }
+    });
+
+    let virtualYearGroups = $derived($yearGroupVirtualizer.getVirtualItems());
+    let topSpacerHeight = $derived(
+        Math.max(
+            0,
+            (virtualYearGroups[0]?.start ?? tableScrollMargin) - tableScrollMargin,
+        ),
+    );
+    let bottomSpacerHeight = $derived.by(() => {
+        const last = virtualYearGroups.at(-1);
+        if (!last) return 0;
+        const renderedEnd = last.end - tableScrollMargin;
+        return Math.max(0, $yearGroupVirtualizer.getTotalSize() - renderedEnd);
+    });
+    let matrixColumnCount = $derived(
+        columns.length + (showTestColumn ? 4 : 3),
+    );
+
+    function measureYearGroup(node: HTMLElement) {
+        get(yearGroupVirtualizer).measureElement(node);
+        return {
+            destroy() {
+                get(yearGroupVirtualizer).measureElement(null);
+            },
+        };
+    }
 
     function masteryKey(problem: SeriesReviewProblem): Mastery | "unassessed" {
         return problem.progress?.mastery ?? "unassessed";
@@ -238,19 +329,39 @@
             </div>
         {:else}
             <div class="overflow-x-auto px-3 py-4 sm:px-5">
-            <table class="w-max min-w-full border-separate border-spacing-1" aria-label="Series problem review matrix">
-                <thead><tr>
+            <table
+                class="w-max min-w-full border-separate border-spacing-1"
+                aria-label="Series problem review matrix"
+                aria-rowcount={visibleTests.length + 1}
+                aria-colcount={matrixColumnCount}
+            >
+                <thead bind:this={tableHead}><tr>
                     <th scope="col" class="sticky left-0 z-30 w-16 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Year</th>
                     {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 w-32 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Test</th>{/if}
                     <th scope="col" class="w-auto p-0 border-none"></th>
                     {#each columns as column (column)}<th scope="col" class="size-8 min-w-8 text-center font-mono text-[0.7rem] font-normal text-muted-foreground">{column + 1}</th>{/each}
                     <th scope="col" class="w-auto p-0 border-none"></th>
                 </tr></thead>
-                {#each yearGroups as [year, yearTests] (year)}
-                    <tbody>
+                {#if topSpacerHeight > 0}
+                    <tbody aria-hidden="true">
+                        <tr>
+                            <td
+                                colspan={matrixColumnCount}
+                                class="border-none p-0"
+                                style:height={`${topSpacerHeight}px`}
+                            ></td>
+                        </tr>
+                    </tbody>
+                {/if}
+                {#each virtualYearGroups as virtualGroup (virtualGroup.key)}
+                    {@const [year, yearTests] = yearGroups[virtualGroup.index]}
+                    <tbody
+                        data-index={virtualGroup.index}
+                        use:measureYearGroup
+                    >
                         {#each yearTests as test, rowIndex (test.id)}
                             {@const byNumber = new Map(test.problems.map((problem) => [problem.n, problem]))}
-                            <tr>
+                            <tr aria-rowindex={yearGroupRowStarts[virtualGroup.index] + rowIndex}>
                                 {#if rowIndex === 0}<th scope="rowgroup" rowspan={yearTests.length} class="sticky left-0 z-20 w-16 bg-surface-container-low px-2 text-left align-top text-xs font-semibold">{year ?? "Other"}</th>{/if}
                                 {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-32 bg-surface-container-low px-2 text-left text-xs font-medium" title={test.name}><span class="block max-w-28 truncate">{reviewRowLabel(test)}</span></th>{/if}
                                 <td class="p-0 border-none"></td>
@@ -279,6 +390,17 @@
                         {/each}
                     </tbody>
                 {/each}
+                {#if bottomSpacerHeight > 0}
+                    <tbody aria-hidden="true">
+                        <tr>
+                            <td
+                                colspan={matrixColumnCount}
+                                class="border-none p-0"
+                                style:height={`${bottomSpacerHeight}px`}
+                            ></td>
+                        </tr>
+                    </tbody>
+                {/if}
             </table>
             </div>
         {/if}

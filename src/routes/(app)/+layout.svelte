@@ -34,10 +34,13 @@
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { resolve } from "$app/paths";
    import { MediaQuery } from "svelte/reactivity";
+   import { setAppScrollViewport } from "$lib/components/virtual-list";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
    let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled && session));
+   let appScrollViewport = $state<HTMLElement | null>(null);
+   setAppScrollViewport({ getElement: () => appScrollViewport });
 
    $effect(() => {
       coach.configure(aiCoachEnabled);
@@ -462,7 +465,10 @@
             </div>
          </div>
       {/if}
-      <div class="flex-1 overflow-y-auto overscroll-contain p-0">
+      <div
+         bind:this={appScrollViewport}
+         class="flex-1 overflow-y-auto overscroll-contain p-0"
+      >
          {@render children()}
       </div>
    </div>

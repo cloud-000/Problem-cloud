@@ -49,10 +49,12 @@
     });
 
     let results = $state<(SeriesRow | TestRow | ProblemRow)[]>([]);
+    let resultsLevel = $state<Level | null>(null);
     let loading = $state(false); // first page (initial / filter change)
     let loadingMore = $state(false); // appending a subsequent page
     let hasMore = $state(false); // last page came back full → maybe more
     let errorMsg = $state<string | null>(null);
+    let queryKey = $state(0);
 
     // Latest-loaded page index for the current query, and a token so out-of-order or
     // stale (post-filter-change) responses are discarded.
@@ -75,11 +77,18 @@
         const snapshot = $state.snapshot(frame.filters);
 
         const myToken = ++token;
+        queryKey = myToken;
+        results = [];
+        resultsLevel = null;
+        page = 0;
+        hasMore = false;
+        loadingMore = false;
         loading = true;
         const timer = setTimeout(async () => {
             try {
                 const data = await fetchPage(level, snapshot, 0);
                 if (myToken === token) {
+                    resultsLevel = level;
                     results = data;
                     page = 0;
                     hasMore = data.length === PAGE_SIZE;
@@ -117,21 +126,6 @@
         }
     }
 
-    // Observe a sentinel at the end of the list; when it nears the viewport, page in
-    // more. `rootMargin` prefetches before the user hits the very bottom.
-    let sentinel = $state<HTMLElement | null>(null);
-    $effect(() => {
-        const el = sentinel;
-        if (!el) return;
-        const io = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting) loadMore();
-            },
-            { rootMargin: "400px" },
-        );
-        io.observe(el);
-        return () => io.disconnect();
-    });
 </script>
 
 <div class="flex flex-col gap-4 p-6">
@@ -193,27 +187,29 @@
             <ResultList
                 {store}
                 {results}
+                {resultsLevel}
                 {loading}
                 error={errorMsg}
                 isInstantFeedback
+                onEndReached={!loading && hasMore ? loadMore : undefined}
+                resetKey={queryKey}
             />
 
-            <!-- Infinite-scroll sentinel while more pages exist; an end marker
-                 once the feed is exhausted (but not for an empty result set,
-                 which ResultList already labels "No results"). -->
-            {#if hasMore}
+            <!-- Loading/end status remains outside the virtualized result geometry. -->
+            {#if loadingMore}
                 <div
-                    bind:this={sentinel}
                     class="flex h-12 items-center justify-center text-sm text-muted-foreground"
                 >
-                    {#if loadingMore}Loading more…{/if}
+                    Loading more…
                 </div>
             {:else if !loading && results.length > 0}
-                <div
-                    class="flex h-12 items-center justify-center text-sm text-muted-foreground"
-                >
-                    No more results
-                </div>
+                {#if !hasMore}
+                    <div
+                        class="flex h-12 items-center justify-center text-sm text-muted-foreground"
+                    >
+                        No more results
+                    </div>
+                {/if}
             {/if}
         </main>
     </div>
