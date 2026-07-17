@@ -2,13 +2,13 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { StatusTag } from "$lib/components/status-tag";
-    import { LinkMenu } from "$lib/components/link-menu";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
     import {
         topicLabel,
         ratingIsProvisional,
         aopsProblemUrl,
+        aopsCommunityUrl,
         type ProblemRow,
         type ProblemRating,
     } from "$lib/library";
@@ -65,8 +65,6 @@
 
     // Show the raw statement string instead of the rendered math. Debug-only.
     let showRaw = $state(false);
-    let showDetails = $state(false);
-
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
@@ -83,30 +81,22 @@
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
+    let isMultipleChoice = $derived((problem.choices?.length ?? 0) > 1);
     let problemAnswer = $state<ProblemAnswer | null>(null);
 
     let aopsProblemHref = $derived(aopsProblemUrl(problem.aops_id));
-    let aopsLinks = $derived(
-        aopsProblemHref != null
-            ? [{ label: "Art of Problem Solving", href: aopsProblemHref }]
-            : [],
+    let aopsTestHref = $derived(
+        aopsCommunityUrl(problem.tests?.aops_category_id),
     );
 
     export function trigger(useAnimation: boolean): boolean | null {
         return problemAnswer?.trigger(useAnimation) ?? null;
     }
-
-    function handleDetailsFocusOut(event: FocusEvent) {
-        const wrapper = event.currentTarget as HTMLElement;
-        if (!wrapper.contains(event.relatedTarget as Node | null)) {
-            showDetails = false;
-        }
-    }
 </script>
 
 {#snippet badge(text: string)}
     <span
-        class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground"
+        class="inline-flex items-center rounded-full border border-border/60 bg-surface-container-lowest px-2 py-0.5 text-xs text-muted-foreground"
     >
         {text}
     </span>
@@ -119,10 +109,10 @@
             ? "Provisional rating — few attempts / high uncertainty"
             : `Skill rating from ${r.attempts} rated attempt${r.attempts === 1 ? "" : "s"}`}
         class={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums",
             provisional
-                ? "bg-surface-container text-muted-foreground"
-                : "bg-primary/10 text-primary-foreground",
+                ? "border-border/60 bg-surface-container-lowest text-muted-foreground"
+                : "border-primary/20 bg-primary/10 text-primary-foreground",
         )}
     >
         <Icon name="speed" fontsize="0.9rem" />
@@ -146,37 +136,76 @@
 
 <article
     class={cn(
-        "relative flex flex-col gap-3 rounded-lg border border-border bg-surface-container-low p-3",
+        "relative rounded-xl border border-border/70 bg-surface-container-lowest shadow-xs",
         className,
     )}
 >
-    <header class="flex min-w-0 items-start justify-between gap-3">
-        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span class="font-medium text-muted-foreground">
-                #{problem.n + 1}
-            </span>
-            {#if problem.tests?.name}{@render badge(problem.tests.name)}{/if}
-            {#if topicName}{@render badge(topicName)}{/if}
-            {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
-            {#if problem.verified}{@render badge("verified")}{/if}
-            {#if status === "solved"}
-                <StatusTag status="solved" size="sm" />
-            {:else if status === "attempted"}
-                <StatusTag status="attempted" size="sm" />
-            {:else if status === "skipped_only"}
-                <StatusTag status="skipped" label="Skipped only" size="sm" />
-            {/if}
-            {#if reviewScheduleFor(problem.progress) === "due"}
-                <StatusTag status="review" label="Review due" size="sm" />
-            {/if}
+    <header
+        class="flex min-w-0 items-start justify-between gap-3 rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4"
+    >
+        <div class="flex min-w-0 items-start gap-3">
+            <div
+                class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
+                aria-label={`Problem ${problem.n + 1}`}
+            >
+                <span class="text-[0.625rem] font-semibold tracking-widest text-muted-foreground uppercase">No.</span>
+                <span class="-mt-0.5 text-base font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
+            </div>
+
+            <div class="flex min-w-0 flex-col gap-1.5">
+                {#if problem.tests?.name}
+                    <div class="flex min-w-0 items-center gap-1.5">
+                        {#if aopsTestHref}
+                            <Button
+                                href={aopsTestHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                variant="link"
+                                size="xs"
+                                class="h-auto min-w-0 justify-start p-0 text-sm font-semibold text-foreground"
+                                title={`Open ${problem.tests.name} on Art of Problem Solving`}
+                            >
+                                <span class="truncate">{problem.tests.name}</span>
+                            </Button>
+                        {:else}
+                            <span class="min-w-0 truncate text-sm font-semibold text-foreground">{problem.tests.name}</span>
+                        {/if}
+                        {#if problem.verified}
+                            <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
+                        {/if}
+                    </div>
+                {:else}
+                    <span class="text-sm font-semibold text-foreground">Problem {problem.n + 1}</span>
+                {/if}
+
+                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {#if topicName}{@render badge(topicName)}{/if}
+                    {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
+                    {#if status === "solved"}
+                        <StatusTag status="solved" size="sm" />
+                    {:else if status === "attempted"}
+                        <StatusTag status="attempted" size="sm" />
+                    {:else if status === "skipped_only"}
+                        <StatusTag status="skipped" label="Skipped only" size="sm" />
+                    {/if}
+                    {#if reviewScheduleFor(problem.progress) === "due"}
+                        <StatusTag status="review" label="Review due" size="sm" />
+                    {/if}
+                    {#if problem.answer_index === null || problem.answer_index < 0}
+                        <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 text-xs font-medium text-unsure">
+                            <Icon name="warning" fontsize="0.85rem" /> Answer unavailable
+                        </span>
+                    {/if}
+                </div>
+            </div>
         </div>
 
-        <div class="flex shrink-0 items-center justify-center gap-1">
+        <nav class="flex shrink-0 items-center gap-1" aria-label="Problem actions">
             {#if debug}
                 <Toggle
                     variant="ghost"
                     size="sm"
-                    class="px-1.5"
+                    class="size-8 px-0"
                     bind:pressed={showRaw}
                     aria-label="Toggle raw statement text"
                     title="Toggle raw statement text"
@@ -185,113 +214,127 @@
                 </Toggle>
             {/if}
 
-            <LinkMenu
-                links={aopsLinks}
-                label="Open in Art of Problem Solving"
-            />
-            {#if problem.answer_index === null || problem.answer_index < 0}
-                <Icon name="question_mark" class="text-unsure" fontsize="1em" />
-            {/if}
-            <div
-                class="group/details relative"
-                role="group"
-                aria-label="Problem details"
-                onpointerenter={() => (showDetails = true)}
-                onpointerleave={() => (showDetails = false)}
-                onfocusin={() => (showDetails = true)}
-                onfocusout={handleDetailsFocusOut}
-            >
+            {#if aopsProblemHref}
                 <Button
+                    href={aopsProblemHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     variant="ghost"
-                    size="icon-xs"
+                    size="sm"
+                    class="px-2 text-muted-foreground"
+                    aria-label="Open problem discussion on Art of Problem Solving"
+                    title="Open problem discussion on Art of Problem Solving"
+                >
+                    <Icon name="forum" class="size-3.5" />
+                    <span class="hidden lg:inline">Discuss</span>
+                </Button>
+            {/if}
+
+            <details class="group/details relative">
+                <summary
+                    class="flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
                     aria-label="Problem details"
-                    class="peer text-muted-foreground opacity-50 transition-opacity group-hover/details:opacity-100 hover:opacity-100 focus-visible:opacity-100"
+                    title="Problem details"
                 >
                     <Icon name="info" />
-                </Button>
-
-                {#if showDetails}
-                    <div
-                        role="tooltip"
-                        class="pointer-events-none absolute top-7 right-0 z-20 w-80 -translate-y-1 rounded-lg border border-border bg-surface-container-highest p-3 text-xs opacity-0 shadow-lg transition-[opacity,transform] duration-150 ease-out group-hover/details:pointer-events-auto group-hover/details:translate-y-0 group-hover/details:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100"
-                    >
-                        <div class="mb-2 flex items-center gap-1.5 font-medium">
-                            <Icon name="bug_report" />
-                            <span>Problem details</span>
-                        </div>
-                        <div class="flex flex-col gap-1.5">
-                            {@render detail("id", problem.id)}
-                            {@render detail("test id", problem.test_id)}
-                            {@render detail("number", problem.n)}
-                            {@render detail("answer", problem.answer_index)}
-                            {@render detail("verified", problem.verified)}
-                            {@render detail(
-                                "rating",
-                                problem.rating
-                                    ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
-                                    : null,
-                            )}
-                            {@render detail("difficulty", problem.difficulty)}
-                            {@render detail("quality", problem.quality)}
-                            {@render detail(
-                                "computational",
-                                problem.is_computational,
-                            )}
-                            {@render detail("topic", problem.topic)}
-                            {@render detail("tags", problem.tags?.join(", "))}
-                            {@render detail(
-                                "solutions",
-                                officialSolutionCount,
-                            )}
-                            {@render detail("built", problem.built_at)}
-                            {@render detail("notes", problem.notes)}
-                        </div>
+                </summary>
+                <div
+                    class="absolute top-10 right-0 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-container-highest p-3 text-xs shadow-lg"
+                >
+                    <div class="mb-2 flex items-center gap-1.5 font-semibold text-foreground">
+                        <Icon name="database" />
+                        <span>Problem details</span>
                     </div>
-                {/if}
-            </div>
-        </div>
+                    <div class="flex flex-col gap-1.5">
+                        {@render detail("id", problem.id)}
+                        {@render detail("test id", problem.test_id)}
+                        {@render detail("number", problem.n)}
+                        {@render detail("answer", problem.answer_index)}
+                        {@render detail("verified", problem.verified)}
+                        {@render detail(
+                            "rating",
+                            problem.rating
+                                ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
+                                : null,
+                        )}
+                        {@render detail("difficulty", problem.difficulty)}
+                        {@render detail("quality", problem.quality)}
+                        {@render detail("computational", problem.is_computational)}
+                        {@render detail("topic", problem.topic)}
+                        {@render detail("tags", problem.tags?.join(", "))}
+                        {@render detail("solutions", officialSolutionCount)}
+                        {@render detail("built", problem.built_at)}
+                        {@render detail("notes", problem.notes)}
+                    </div>
+                </div>
+            </details>
+        </nav>
     </header>
 
-    <ProblemOrganization
-        problemId={problem.id}
-        {mastery}
-        {engagement}
-        prompt={promptMastery}
-        onchange={(state) => {
-            mastery = state.mastery;
-            engagement = state.engagement;
-            onOrganizationChange?.(state);
-        }}
-    />
+    <div class="px-3 py-4 sm:px-5 sm:py-5">
+        <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
+            <ProblemOrganization
+                problemId={problem.id}
+                {mastery}
+                {engagement}
+                prompt={promptMastery}
+                onchange={(state) => {
+                    mastery = state.mastery;
+                    engagement = state.engagement;
+                    onOrganizationChange?.(state);
+                }}
+            />
 
-    {#if debug && showRaw}
-        <pre
-            class="min-w-0 overflow-x-auto rounded-md bg-surface-container p-2 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-foreground">{problem.statement ??
-                ""}</pre>
-    {:else}
-        <MathStatement
-            text={problem.statement ?? ""}
-            class="min-w-0 text-sm leading-6"
-        />
-    {/if}
+            <section aria-label={`Problem ${problem.n + 1} statement`}>
+                {#if debug && showRaw}
+                    <pre
+                        class="min-w-0 overflow-x-auto rounded-lg border border-border/60 bg-surface-container-low p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-foreground">{problem.statement ??
+                            ""}</pre>
+                {:else}
+                    <MathStatement
+                        text={problem.statement ?? ""}
+                        class="min-w-0 text-base leading-7 text-foreground md:text-lg md:leading-8"
+                    />
+                {/if}
+            </section>
 
-    <ProblemAnswer
-        bind:this={problemAnswer}
-        choices={problem.choices}
-        answerIndex={problem.answer_index}
-        bind:answer
-        bind:selectedChoice
-        bind:eliminated
-        {showAnswerState}
-        {disabled}
-        {isInstantFeedback}
-        {onEnter}
-    />
+            <section class="flex flex-col gap-2.5" aria-label="Your response">
+                <div class="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 border-t border-border/60 pt-4">
+                    <div>
+                        <h3 class="text-sm font-semibold text-foreground">Your answer</h3>
+                        <p class="text-xs text-muted-foreground">
+                            {isMultipleChoice ? "Choose the best option." : "Enter your response below."}
+                        </p>
+                    </div>
+                    {#if isMultipleChoice && !disabled}
+                        <span class="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+                            <Icon name="ink_eraser" fontsize="0.9rem" />
+                            Right-click or use × to eliminate
+                        </span>
+                    {/if}
+                </div>
 
-    {#if mode !== "preview"}
-        <footer class="flex flex-wrap items-center gap-1.5">
+                <ProblemAnswer
+                    bind:this={problemAnswer}
+                    choices={problem.choices}
+                    answerIndex={problem.answer_index}
+                    bind:answer
+                    bind:selectedChoice
+                    bind:eliminated
+                    {showAnswerState}
+                    {disabled}
+                    {isInstantFeedback}
+                    {onEnter}
+                />
+            </section>
+        </div>
+    </div>
+
+    {#if mode !== "preview" && ((problem.tags?.length ?? 0) > 0 || problem.is_computational)}
+        <footer
+            class="flex flex-wrap items-center gap-1.5 rounded-b-xl border-t border-border/60 bg-surface-container-low px-3 py-2.5 sm:px-5"
+        >
             {#each problem.tags ?? [] as tag (tag)}{@render badge(`#${tag}`)}{/each}
-            {@render badge(`quality ${problem.quality ?? 0}`)}
             {#if problem.is_computational}{@render badge("computational")}{/if}
         </footer>
     {/if}
