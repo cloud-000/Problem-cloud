@@ -82,6 +82,12 @@
         problem.official_solutions?.length ?? 0,
     );
     let isMultipleChoice = $derived((problem.choices?.length ?? 0) > 1);
+    let detailsAnswer = $derived.by<string | number | null>(() => {
+        const answerIndex = problem.answer_index;
+        if (answerIndex == null || answerIndex < 0) return null;
+        if (isMultipleChoice) return answerIndex;
+        return problem.choices?.[answerIndex] ?? null;
+    });
     let problemAnswer = $state<ProblemAnswer | null>(null);
 
     let aopsProblemHref = $derived(aopsProblemUrl(problem.aops_id));
@@ -225,8 +231,10 @@
                     aria-label="Open problem discussion on Art of Problem Solving"
                     title="Open problem discussion on Art of Problem Solving"
                 >
-                    <Icon name="forum" class="size-3.5" />
-                    <span class="hidden lg:inline">Discuss</span>
+                    <Icon name="forum" class="size-4" fontsize="1rem" />
+                    <span class="hidden h-4 items-center leading-none lg:inline-flex"
+                        >Discuss</span
+                    >
                 </Button>
             {/if}
 
@@ -249,7 +257,10 @@
                         {@render detail("id", problem.id)}
                         {@render detail("test id", problem.test_id)}
                         {@render detail("number", problem.n)}
-                        {@render detail("answer", problem.answer_index)}
+                        {@render detail(
+                            isMultipleChoice ? "answer index" : "answer",
+                            detailsAnswer,
+                        )}
                         {@render detail("verified", problem.verified)}
                         {@render detail(
                             "rating",
@@ -298,21 +309,16 @@
                 {/if}
             </section>
 
-            <section class="flex flex-col gap-2.5" aria-label="Your response">
-                <div class="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 border-t border-border/60 pt-4">
-                    <div>
-                        <h3 class="text-sm font-semibold text-foreground">Your answer</h3>
-                        <p class="text-xs text-muted-foreground">
-                            {isMultipleChoice ? "Choose the best option." : "Enter your response below."}
-                        </p>
-                    </div>
-                    {#if isMultipleChoice && !disabled}
-                        <span class="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
-                            <Icon name="ink_eraser" fontsize="0.9rem" />
-                            Right-click or use × to eliminate
-                        </span>
-                    {/if}
-                </div>
+            <section
+                class="flex flex-col gap-2.5 border-t border-border/60 pt-4"
+                aria-label="Your response"
+            >
+                {#if isMultipleChoice && !disabled}
+                    <span class="hidden items-center justify-end gap-1 text-xs text-muted-foreground sm:inline-flex">
+                        <Icon name="ink_eraser" fontsize="0.9rem" />
+                        Right-click or use × to eliminate
+                    </span>
+                {/if}
 
                 <ProblemAnswer
                     bind:this={problemAnswer}

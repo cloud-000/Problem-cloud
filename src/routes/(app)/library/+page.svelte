@@ -132,7 +132,7 @@
     <!-- Top bar: history nav + level selector. Sticks to the top of the shell's
          scroll area so the controls stay reachable while results scroll. -->
     <div
-        class="sticky top-0 z-10 -mx-6 -mt-6 flex items-center gap-2 px-6 pt-6 pb-2"
+        class="sticky top-0 z-10 -mx-6 -mt-6 flex items-center gap-2 bg-background px-6 pt-6 pb-2"
     >
         <Button
             variant="outline"

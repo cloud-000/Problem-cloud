@@ -30,7 +30,10 @@
 
     let progress = $derived(selected.problem.progress);
 
-    const activityMeta: Record<SeriesReviewStatus, { label: string; icon: string }> = {
+    const activityMeta: Record<
+        SeriesReviewStatus,
+        { label: string; icon: string }
+    > = {
         unseen: { label: "Unseen", icon: "" },
         skipped_only: { label: "Skipped only", icon: "remove" },
         attempted: { label: "Attempted", icon: "close" },
@@ -51,7 +54,12 @@
     let isDragging = $state(false);
     let dragStart = { x: 0, y: 0 };
     let initialPosition = { x: 0, y: 0 };
-    let limits = { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity };
+    let limits = {
+        minX: -Infinity,
+        maxX: Infinity,
+        minY: -Infinity,
+        maxY: Infinity,
+    };
 
     function startDrag(e: MouseEvent | TouchEvent) {
         const target = e.target as HTMLElement;
@@ -144,8 +152,14 @@
 
     <!-- Header -->
     <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Icon name="ads_click" fontsize="1rem" class="text-primary-foreground" />
+        <div
+            class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+            <Icon
+                name="ads_click"
+                fontsize="1rem"
+                class="text-primary-foreground"
+            />
             <span>Selected problem</span>
         </div>
         <Button
@@ -160,33 +174,57 @@
     </div>
 
     <div class="mt-3 min-w-0">
-        <h4 class="truncate font-semibold text-base text-foreground leading-snug">
+        <h4
+            class="truncate font-semibold text-base text-foreground leading-snug"
+        >
             {selected.test.name}
         </h4>
         <p class="text-xs text-muted-foreground mt-0.5">
-            Problem {selected.problem.n + 1} · {activityMeta[statusForReview(progress)].label}
+            Problem {selected.problem.n + 1} · {activityMeta[
+                statusForReview(progress)
+            ].label}
             {#if reviewIsDue(progress)}
-                · <span class="text-primary-foreground font-semibold">Review due</span>
+                · <span class="text-primary-foreground font-semibold"
+                    >Review due</span
+                >
             {/if}
         </p>
     </div>
 
     <!-- Stats Grid -->
-    <div class="grid grid-cols-3 gap-3 text-center my-4 bg-surface-container-low/50 rounded-xl p-3 border border-border/40">
+    <div
+        class="grid grid-cols-3 gap-3 text-center my-4 bg-surface-container-low/50 rounded-xl p-3 border border-border/40"
+    >
         <div>
-            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Correct</div>
+            <div
+                class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+                Correct
+            </div>
             <div class="mt-1 font-mono text-sm font-semibold text-foreground">
                 {progress?.times_correct ?? 0}/{progress?.times_reviewed ?? 0}
             </div>
         </div>
         <div>
-            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Last result</div>
+            <div
+                class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+                Last result
+            </div>
             <div class="mt-1 text-sm font-semibold text-foreground">
-                {progress?.last_correct == null ? "—" : progress.last_correct ? "Correct" : "Incorrect"}
+                {progress?.last_correct == null
+                    ? "—"
+                    : progress.last_correct
+                      ? "Correct"
+                      : "Incorrect"}
             </div>
         </div>
         <div>
-            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next review</div>
+            <div
+                class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+                Next review
+            </div>
             <div class="mt-1 text-sm font-semibold text-foreground">
                 {detailDate(progress?.next_review_at)}
             </div>
@@ -194,9 +232,14 @@
     </div>
 
     <!-- Actions Footer -->
-    <div class="flex items-center justify-between gap-3 mt-4 pt-2 border-t border-border/40">
+    <div
+        class="flex items-center justify-between gap-3 mt-4 pt-2 border-t border-border/40"
+    >
         <div class="flex items-center gap-2">
-            <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Set plan</span>
+            <span
+                class="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                >Set plan</span
+            >
             <ProblemOrganization
                 problemId={selected.problem.id}
                 mastery={progress?.mastery ?? null}
@@ -216,11 +259,14 @@
             onclick={() => onOpenProblem(selected!.problem.id)}
         >
             <Icon
-                name={openingProblemId === selected.problem.id ? "progress_activity" : "open_in_new"}
-                class={openingProblemId === selected.problem.id ? "animate-spin" : undefined}
+                name={openingProblemId === selected.problem.id
+                    ? "progress_activity"
+                    : "open_in_new"}
+                class={openingProblemId === selected.problem.id
+                    ? "animate-spin"
+                    : undefined}
                 fontsize="1rem"
             />
-            Open problem
         </Button>
     </div>
 </div>

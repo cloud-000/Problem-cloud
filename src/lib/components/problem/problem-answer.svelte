@@ -190,7 +190,7 @@
 {#if isMcq}
     <div
         class={cn(
-            "grid gap-2.5 rounded-lg",
+            "grid gap-2 rounded-md",
             feedback?.result === null &&
                 feedback.target == null &&
                 "bg-unsure/10 ring-2 ring-unsure/40",
@@ -209,9 +209,9 @@
                     {disabled}
                     aria-pressed={selected}
                     class={cn(
-                        "flex min-h-12 w-full items-start gap-3 rounded-lg border border-border/80 bg-background py-3 pr-11 pl-3 text-left text-base shadow-xs transition-[border-color,background-color,box-shadow] duration-150 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60 hover:border-muted-foreground/40 hover:bg-surface-container-low",
+                        "flex min-h-10 w-full items-start gap-2.5 rounded-md border border-border bg-background py-2.5 pr-10 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
                         selected &&
-                            "border-primary-foreground/60 bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary-foreground)] hover:border-primary-foreground/70 hover:bg-primary/15",
+                            "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
                         correct && "border-correct bg-correct/10",
                         incorrect && "border-destructive bg-destructive/10",
                         feedbackActive &&
@@ -231,10 +231,10 @@
                 >
                     <span
                         class={cn(
-                            "flex size-7 shrink-0 items-center justify-center rounded-md border text-xs font-semibold select-none transition-all duration-150",
+                            "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold select-none transition-all duration-200",
                             selected
-                                ? "border-primary-foreground bg-primary-foreground text-background"
-                                : "border-border/70 bg-surface-container text-muted-foreground",
+                                ? "bg-primary-foreground text-background"
+                                : "bg-surface-container text-muted-foreground/80",
                             correct && "bg-correct text-on-correct",
                             incorrect && "bg-destructive text-destructive-foreground",
                             feedbackActive &&
@@ -243,7 +243,7 @@
                             feedbackActive &&
                                 feedback?.result === false &&
                                 "bg-destructive text-destructive-foreground",
-                            struck && "border-border/50 bg-muted/80 text-muted-foreground/60 opacity-40"
+                            struck && "opacity-30 bg-muted/80 text-muted-foreground/60 scale-95"
                         )}
                     >
                         {CHOICE_LABELS[i] ?? String(i + 1)}
@@ -253,7 +253,7 @@
                     <!-- Interactive strike-through line that animates from left to right -->
                     <div
                         class={cn(
-                            "pointer-events-none absolute top-[calc(50%-1px)] right-[44px] left-[50px] z-5 h-[1.5px] origin-left -translate-y-1/2 scale-x-0 bg-muted-foreground/35 transition-transform duration-300 ease-out",
+                            "absolute left-[46px] right-[44px] top-[calc(50%-1px)] z-5 h-[1.5px] bg-muted-foreground/35 -translate-y-1/2 pointer-events-none transition-transform duration-300 ease-out origin-left scale-x-0",
                             struck && "scale-x-100 bg-muted-foreground/30"
                         )}
                     ></div>
@@ -265,7 +265,7 @@
                     aria-label={struck ? "Restore choice" : "Eliminate choice"}
                     title={struck ? "Restore choice" : "Eliminate choice"}
                     class={cn(
-                        "absolute top-1/2 right-2 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md transition-all focus-visible:opacity-100 disabled:pointer-events-none [@media(hover:none)]:opacity-100",
+                        "absolute top-1/2 right-1.5 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md transition-all focus-visible:opacity-100 disabled:pointer-events-none [@media(hover:none)]:opacity-100",
                         struck
                             ? "text-muted-foreground/60 opacity-80 group-hover/choice:opacity-100 group-hover/choice:text-primary-foreground hover:scale-110 hover:bg-primary/20!"
                             : "text-muted-foreground opacity-0 group-hover/choice:opacity-100 hover:bg-muted hover:text-foreground"
@@ -283,7 +283,7 @@
 {:else}
     <div
         class={cn(
-            "relative w-full rounded-lg",
+            "w-full rounded-md relative",
             feedback?.target === "input" &&
                 feedback.result === true &&
                 "ring-3 ring-correct/40",
@@ -304,7 +304,7 @@
                 onclick={startEditing}
                 onfocus={startEditing}
                 class={cn(
-                    "flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg border border-input bg-transparent px-3 py-2 text-center text-base text-foreground shadow-xs transition-all hover:bg-muted/10 dark:bg-input/30",
+                    "dark:bg-input/30 border-input h-9 rounded-md border bg-transparent px-2.5 py-1 text-base shadow-xs w-full min-w-0 text-center flex items-center justify-center cursor-pointer transition-all hover:bg-muted/10 md:text-sm text-foreground",
                     canShowAnswerState && isCorrect && "border-correct bg-correct/10",
                     canShowAnswerState && !isCorrect && "border-destructive bg-destructive/10",
                 )}
@@ -337,7 +337,7 @@
                 onchange={triggerOnChange}
                 onkeydown={handleKeydown}
                 class={cn(
-                    "h-11 rounded-lg text-center text-base",
+                    "text-center",
                     canShowAnswerState &&
                         isCorrect &&
                         "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
