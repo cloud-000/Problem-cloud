@@ -525,16 +525,17 @@ function tableToHtml(node: Extract<ASTNode, { type: "table" }>): string {
 
 // --- Segmentation ---------------------------------------------------------
 //
-// An asy diagram with a valid image is rendered as a real interactive Svelte
+// An asy diagram or plain image is rendered as a real interactive Svelte
 // component (toggle code/image, expand, invert), which cannot live inside the
 // KaTeX clone in LaTeX.svelte. So the top-level statement is split into an
 // ordered list of segments: runs of inline markup become a single `html`
-// segment (rendered via one <LaTeX>), and each image-bearing asy node becomes
-// its own `asy` segment (rendered as <AsyImage>) sitting between them.
+// segment (rendered via one <LaTeX>), and each image-bearing asy/img node
+// becomes its own `asy`/`img` segment (rendered as <Figure>) between them.
 
 export type StatementSegment =
     | { kind: "html"; html: string }
-    | { kind: "asy"; imageSrc: string; code: string };
+    | { kind: "asy"; imageSrc: string; code: string }
+    | { kind: "img"; src: string; alt: string };
 
 export function segmentStatement(nodes: ASTNode[]): StatementSegment[] {
     const segments: StatementSegment[] = [];
@@ -560,6 +561,19 @@ export function segmentStatement(nodes: ASTNode[]): StatementSegment[] {
             if (src) {
                 flush();
                 segments.push({ kind: "asy", imageSrc: src, code: node.code });
+                continue;
+            }
+        }
+
+        // Plain images become their own interactive segment too, so they get
+        // the same toolbar/invert/lightbox treatment as asy diagrams. Image
+        // nodes are always top-level (from markdown text runs or the [img]
+        // tag), so pulling them out of the buffer here is complete.
+        if (node.type === "img") {
+            const src = sanitizeUrl(node.src, ["http", "https", "data"], "");
+            if (src) {
+                flush();
+                segments.push({ kind: "img", src, alt: node.label || "Image" });
                 continue;
             }
         }

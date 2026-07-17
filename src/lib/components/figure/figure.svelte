@@ -9,11 +9,15 @@
 
     let {
         imageSrc,
+        alt = "Image",
         code = "",
+        autoInvert = true,
         class: className,
     }: {
         imageSrc: string;
+        alt?: string;
         code?: string;
+        autoInvert?: boolean;
         class?: string;
     } = $props();
 
@@ -21,9 +25,11 @@
     let expanded = $state(false);
 
     // State to track user's manual override of the theme's default inversion.
-    // If null, it defaults to the active theme's isDark value.
+    // If null, it defaults to auto-inverting in dark mode — right for line-art
+    // diagrams on white, but callers pass autoInvert={false} for real photos
+    // that should never invert unless the user asks.
     let userInverted = $state<boolean | null>(null);
-    let inverted = $derived(userInverted ?? Theme.isDark);
+    let inverted = $derived(userInverted ?? (autoInvert && Theme.isDark));
 
     // Luminance-only inversion: flips black<->white backgrounds while keeping
     // colored strokes roughly true. Applied to the <img> only.
@@ -40,7 +46,7 @@
         >
             <img
                 src={imageSrc}
-                alt="Asymptote diagram"
+                {alt}
                 style={inverted ? INVERT_STYLE : ""}
                 class="block max-h-[300px] max-w-full object-contain mx-auto rounded-lg select-none"
             />
@@ -89,10 +95,10 @@
 
 <!-- Fullscreen lightbox: a chromeless (bare) Modal that owns the backdrop,
      Escape handling, scroll-lock, and backdrop-click close. -->
-<Modal bind:open={expanded} variant="bare" aria-label="Expanded diagram">
+<Modal bind:open={expanded} variant="bare" aria-label="Expanded image">
     <img
         src={imageSrc}
-        alt="Asymptote diagram"
+        {alt}
         style={inverted ? INVERT_STYLE : ""}
         class="max-h-full max-w-full object-contain rounded-lg select-none"
         transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
