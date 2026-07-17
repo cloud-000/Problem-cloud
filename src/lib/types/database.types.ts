@@ -1314,6 +1314,7 @@ export type Database = {
           next_review_at: string | null
           problem_id: number | null
           quality: number | null
+          rating: number | null
           series_id: number | null
           solved: boolean | null
           tags: string[] | null

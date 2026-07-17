@@ -72,7 +72,9 @@ schema_paths = [
     "./schemas/roadmap.sql",
     "./schemas/progress_analytics.sql",
     "./schemas/content_sync.sql",
-    "./schemas/ratings.sql"
+    "./schemas/ratings.sql",
+    # Loaded last: joins both problem_progress (submissions.sql) and problem_ratings (ratings.sql).
+    "./schemas/user_problem_index.sql"
 ]
 
 [db.seed]

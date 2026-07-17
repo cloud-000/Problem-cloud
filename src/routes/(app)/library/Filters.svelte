@@ -293,13 +293,15 @@
             />
         </div>
         <div class="flex flex-col gap-1.5">
-            {@render field(`Difficulty (${difficulty[0]}–${difficulty[1]})`)}
+            {@render field(
+                `Difficulty — problem rating (${difficulty[0]}–${difficulty[1]})`,
+            )}
             <RangeSlider
                 bind:value={difficulty}
                 min={DIFFICULTY_RANGE[0]}
                 max={DIFFICULTY_RANGE[1]}
-                step={1}
-                label="Difficulty"
+                step={50}
+                label="Difficulty (problem rating)"
             />
         </div>
         <div class="flex flex-col gap-1.5">

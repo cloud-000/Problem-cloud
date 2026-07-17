@@ -333,7 +333,11 @@ export function topicLabel(code: string | null | undefined): string | null {
     return TOPIC_LABELS[code] ?? code;
 }
 
-export const DIFFICULTY_RANGE: [number, number] = [0, 100];
+// The Difficulty slider is a band on the problem's live Glicko rating (the
+// `problem_ratings` overall scope, surfaced as `rating` on user_problem_index),
+// not the dead authored `problems.difficulty` column. Wide enough to cover the
+// corpus with headroom up to 3000.
+export const DIFFICULTY_RANGE: [number, number] = [0, 3000];
 export const QUALITY_RANGE: [number, number] = [0, 100];
 export const YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()];
 
@@ -435,10 +439,13 @@ export async function fetchProblems(
     else if (f.seriesId != null) index = index.eq("series_id", f.seriesId);
     if (f.topic?.length) index = index.in("topic", f.topic);
     if (f.tags?.length) index = index.contains("tags", f.tags);
+    // Difficulty targets the live Glicko rating, not the dead authored column.
+    // Narrowing the band therefore drops still-unrated problems (NULL rating);
+    // full range applies no filter (see rangeOrUndef) so they stay visible.
     if (f.difficulty)
         index = index
-            .gte("difficulty", f.difficulty[0])
-            .lte("difficulty", f.difficulty[1]);
+            .gte("rating", f.difficulty[0])
+            .lte("rating", f.difficulty[1]);
     if (f.quality)
         index = index.gte("quality", f.quality[0]).lte("quality", f.quality[1]);
     if (f.isComputational != null)
