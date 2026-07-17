@@ -47,3 +47,6 @@ src/lib/components/DOCS.md
 
 # Cloudflare
 wrangler.jsonc
+
+# External DOCS
+library-docs/

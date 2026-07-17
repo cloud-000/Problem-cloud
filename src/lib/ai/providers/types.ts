@@ -5,7 +5,7 @@ import type {
     NormalizedAIEvent,
     NormalizedAIModel,
     NormalizedAIRequest,
-} from "$lib/ai/types";
+} from "../types";
 
 export interface AIProviderAdapter {
     readonly id: string;

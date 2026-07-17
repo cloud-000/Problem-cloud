@@ -2,8 +2,8 @@ import type { RequestHandler } from "./$types";
 import { AISchemaError, parseChatRequest } from "$lib/ai/schemas";
 import type { AIEphemeralMessage, AIUsage, NormalizedAIEvent, NormalizedAIMessage } from "$lib/ai/types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
-import { buildModelCatalog } from "$lib/server/ai/models/catalog";
-import { AIModelRoutingError, resolveModel } from "$lib/server/ai/models/router";
+import { catalogFor } from "$lib/ai/catalog";
+import { AIModelRoutingError, resolveModel } from "$lib/ai/router";
 import {
     conversationHistory,
     createConversation,
@@ -12,7 +12,7 @@ import {
     saveAssistantMessage,
     saveUserMessage,
 } from "$lib/server/ai/persistence";
-import { providerById } from "$lib/server/ai/providers/registry";
+import { providerRegistry } from "$lib/server/ai/providers/registry";
 import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 import { encodeEventStream } from "$lib/server/ai/stream";
 
@@ -42,12 +42,15 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     }
 
     try {
+        // Server-owned connections only. BYOK models are streamed by the browser straight
+        // from the provider and never reach this endpoint.
+        const providers = providerRegistry();
         const [{ models }, preferences] = await Promise.all([
-            buildModelCatalog(),
+            catalogFor(providers),
             preferencesFor(user.id),
         ]);
         const model = resolveModel(body.model, body.task, models);
-        const provider = providerById(model.providerId);
+        const provider = providers.find((candidate) => candidate.id === model.providerId);
         if (!provider || (await provider.validateConnection()) !== "connected") {
             return stableError("connection_unavailable", "The selected AI connection is unavailable", 409);
         }

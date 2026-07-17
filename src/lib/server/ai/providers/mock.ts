@@ -6,7 +6,8 @@ import type {
     NormalizedAIModel,
     NormalizedAIRequest,
 } from "$lib/ai/types";
-import type { AIProviderAdapter } from "./types";
+import { MOCK_PROVIDER_ID } from "$lib/ai/types";
+import type { AIProviderAdapter } from "$lib/ai/providers/types";
 
 const MOCK_PROVIDER_CAPABILITIES: AIProviderCapabilities = {
     chat: true,
@@ -81,7 +82,7 @@ function chunks(text: string): string[] {
 }
 
 export class MockProviderAdapter implements AIProviderAdapter {
-    readonly id = "mock";
+    readonly id = MOCK_PROVIDER_ID;
     readonly label = "Mock";
     readonly authMethods = ["hosted"] as const;
     readonly #connectionState: AICoachConnectionState;
@@ -122,6 +123,7 @@ export class MockProviderAdapter implements AIProviderAdapter {
             {
                 reference: "mock:coach-standard",
                 providerId: this.id,
+                providerLabel: "Development preview",
                 id: "coach-standard",
                 label: "Coach Standard",
                 description: "Deterministic development model",
@@ -133,6 +135,7 @@ export class MockProviderAdapter implements AIProviderAdapter {
             {
                 reference: "mock:coach-tools",
                 providerId: this.id,
+                providerLabel: "Development preview",
                 id: "coach-tools",
                 label: "Coach Tools",
                 description: "Deterministic tool-event development model",

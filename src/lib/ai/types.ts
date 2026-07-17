@@ -21,6 +21,36 @@ export interface AIProviderCapabilities {
     structuredOutput: boolean;
 }
 
+export type AIPresetId = "openai" | "groq" | "deepseek" | "together" | "openrouter" | "custom";
+
+/**
+ * The development mock's provider id. Reserved: a user connection may never claim it,
+ * and the client uses it to stand the mock down once real connections exist.
+ */
+export const MOCK_PROVIDER_ID = "mock";
+
+/**
+ * A user-supplied connection, sent from the browser on every AI request and used
+ * in memory for the lifetime of that request only. Keys are held in the browser
+ * (see `$lib/state/ai-credentials.svelte`); the server never persists, logs, or
+ * echoes one back.
+ */
+export interface AIConnectionCredential {
+    /** Provider half of `provider:model`. Matches /^[a-z0-9_-]{1,40}$/ and is never "mock". */
+    id: string;
+    preset: AIPresetId;
+    label: string;
+    baseURL: string;
+    apiKey: string;
+    /** Model ids pinned by the user beyond the preset's curated set. */
+    models?: string[];
+}
+
+/** The browser-local record. Identical to the wire shape plus local bookkeeping. */
+export interface StoredAIConnection extends AIConnectionCredential {
+    createdAt: string;
+}
+
 export interface AIProviderSummary {
     id: string;
     label: string;
@@ -34,6 +64,8 @@ export interface AIProviderSummary {
 export interface NormalizedAIModel {
     reference: `${string}:${string}`;
     providerId: string;
+    /** The connection's display name, used to group models by provider in pickers. */
+    providerLabel?: string;
     id: string;
     label: string;
     description?: string;
@@ -211,6 +243,21 @@ export interface AIChatRequestBody {
     ephemeralHistory?: AIEphemeralMessage[];
 }
 
+/** A finished BYOK turn, handed to the server purely to be saved. */
+export interface AIPersistTurnRequest {
+    conversationId?: string;
+    contexts: CoachContextDescriptor[];
+    message: string;
+    assistant: {
+        text: string;
+        model: string;
+        providerId: string;
+        status: Exclude<AIMessageStatus, "streaming">;
+        usage?: AIUsage;
+        error?: { code: string; message: string; retryable: boolean };
+    };
+}
+
 export interface ConversationSummary {
     id: string;
     title: string;
@@ -237,7 +284,8 @@ export interface ConversationDetailResponse {
 
 export interface AIBootstrap {
     enabled: boolean;
-    connection: AIProviderSummary | null;
+    /** Every connection the caller supplied, each with its own probed state. */
+    connections: AIProviderSummary[];
     models: NormalizedAIModel[];
     defaultModel: AIModelReference;
     historyEnabled: boolean;

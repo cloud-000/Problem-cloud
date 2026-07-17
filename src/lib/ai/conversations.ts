@@ -70,6 +70,28 @@ export function boundEphemeralHistory(messages: NormalizedAIMessage[]): AIEpheme
     return selected.reverse();
 }
 
+/**
+ * Prior turns for a BYOK request the browser sends straight to the provider. Same bounds
+ * as the ephemeral path, but the normalized messages are kept whole rather than
+ * flattened: the adapter reads `status` to decide which turns to replay, and a failed
+ * turn must not come back as a complete one.
+ */
+export function boundCoachHistory(messages: NormalizedAIMessage[]): NormalizedAIMessage[] {
+    const selected: NormalizedAIMessage[] = [];
+    let chars = 0;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.role !== "user" && message.role !== "assistant") continue;
+        const text = messageText(message);
+        if (!text) continue;
+        if (selected.length >= EPHEMERAL_HISTORY_MAX_MESSAGES) break;
+        if (chars + text.length > EPHEMERAL_HISTORY_MAX_TOTAL_CHARS) break;
+        chars += text.length;
+        selected.push(message);
+    }
+    return selected.reverse();
+}
+
 export interface ConversationGroup {
     label: string;
     conversations: ConversationSummary[];

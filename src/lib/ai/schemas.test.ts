@@ -4,14 +4,17 @@ import {
     EPHEMERAL_HISTORY_MAX_MESSAGES,
     EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS,
     EPHEMERAL_HISTORY_MAX_TOTAL_CHARS,
+    MAX_CONNECTIONS,
     parseAgentPermissions,
     parseAIEvent,
     parseBootstrap,
     parseChatRequest,
     parseContextLayer,
+    parseCredentialEnvelope,
     parseConversationDetail,
     parseConversationList,
     parseEphemeralHistory,
+    parseModelReference,
     parseToolDefinition,
 } from "./schemas";
 
@@ -30,6 +33,96 @@ describe("AI runtime schemas", () => {
             AISchemaError,
         );
         expect(() => parseChatRequest({ model: "auto", message: "   " })).toThrow(AISchemaError);
+    });
+
+    test("accepts vendor-namespaced model references", () => {
+        for (const reference of [
+            "openai:gpt-4o",
+            "openrouter:openai/gpt-4o",
+            "together:meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "custom-lab:ns/model:v2",
+        ]) {
+            expect(parseModelReference(reference)).toBe(reference);
+        }
+        expect(parseModelReference("auto")).toBe("auto");
+    });
+
+    test("rejects malformed model references", () => {
+        for (const reference of ["gpt-4o", "openai:", ":gpt-4o", "open ai:gpt-4o"]) {
+            expect(() => parseModelReference(reference)).toThrow(AISchemaError);
+        }
+    });
+
+    test("accepts a well-formed connection envelope", () => {
+        const connections = parseCredentialEnvelope([
+            {
+                id: "openai",
+                preset: "openai",
+                label: "My OpenAI",
+                baseURL: "https://api.openai.com/v1",
+                apiKey: "sk-secret",
+            },
+        ]);
+        expect(connections).toHaveLength(1);
+        expect(connections[0]?.baseURL).toBe("https://api.openai.com/v1");
+        expect(parseCredentialEnvelope(undefined)).toEqual([]);
+    });
+
+    test("allows a keyless custom endpoint but requires keys for presets", () => {
+        const base = {
+            id: "local",
+            preset: "custom",
+            label: "Local",
+            baseURL: "https://llm.example.com/v1",
+        };
+        expect(parseCredentialEnvelope([base])[0]?.apiKey).toBe("");
+        expect(() =>
+            parseCredentialEnvelope([{ ...base, id: "openai", preset: "openai" }]),
+        ).toThrow(AISchemaError);
+    });
+
+    test("allows local endpoints, which the user's own browser reaches", () => {
+        // The browser makes these requests, not the server, so a loopback URL is a
+        // supported setup (local Ollama/vLLM) rather than an SSRF risk.
+        for (const baseURL of [
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:8000/v1",
+            "https://192.168.1.10/v1",
+        ]) {
+            expect(
+                parseCredentialEnvelope([
+                    { id: "local", preset: "custom", label: "Local", baseURL },
+                ]),
+            ).toHaveLength(1);
+        }
+    });
+
+    test("rejects unsafe or malformed connections", () => {
+        const valid = {
+            id: "openai",
+            preset: "openai",
+            label: "My OpenAI",
+            baseURL: "https://api.openai.com/v1",
+            apiKey: "sk-secret",
+        };
+        // "mock" is reserved for the built-in mock adapter.
+        expect(() => parseCredentialEnvelope([{ ...valid, id: "mock" }])).toThrow(AISchemaError);
+        expect(() => parseCredentialEnvelope([{ ...valid, id: "Not Valid" }])).toThrow(
+            AISchemaError,
+        );
+        for (const baseURL of ["not a url", "ftp://example.com/v1", "file:///etc/passwd"]) {
+            expect(() => parseCredentialEnvelope([{ ...valid, baseURL }])).toThrow(AISchemaError);
+        }
+        // Duplicate ids would collide in the provider registry.
+        expect(() => parseCredentialEnvelope([valid, valid])).toThrow(AISchemaError);
+        expect(() =>
+            parseCredentialEnvelope(
+                Array.from({ length: MAX_CONNECTIONS + 1 }, (_, index) => ({
+                    ...valid,
+                    id: `openai-${index}`,
+                })),
+            ),
+        ).toThrow(AISchemaError);
     });
 
     test("validates owner-scoped context layers", () => {
@@ -62,13 +155,15 @@ describe("AI runtime schemas", () => {
         expect(
             parseBootstrap({
                 enabled: true,
-                connection: {
-                    id: "preview",
-                    label: "Preview",
-                    authMethods: ["hosted"],
-                    capabilities,
-                    connectionState: "connected",
-                },
+                connections: [
+                    {
+                        id: "preview",
+                        label: "Preview",
+                        authMethods: ["hosted"],
+                        capabilities,
+                        connectionState: "connected",
+                    },
+                ],
                 models: [
                     {
                         reference: "preview:model",

@@ -24,6 +24,10 @@ export function aiCoachEnabled(): boolean {
     return env.AI_COACH_ENABLED === "true";
 }
 
+/**
+ * Offers the deterministic mock as a server-owned connection. Users' own connections
+ * need no server flag — their keys stay in the browser and the requests never reach us.
+ */
 export function mockProviderEnabled(): boolean {
     return aiCoachEnabled() && env.AI_COACH_MOCK_ENABLED === "true";
 }

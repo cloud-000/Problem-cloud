@@ -1,7 +1,13 @@
--- Phase 1 AI Coach persistence. Provider credentials, usage, and action runs are
--- intentionally deferred. Authenticated clients may read only their own safe
+-- Phase 1 AI Coach persistence. Authenticated clients may read only their own safe
 -- records; all writes are made by authenticated server endpoints using the
 -- service role so roles, provider metadata, and completion status cannot be spoofed.
+--
+-- Provider credentials are deliberately absent and no table for them will be added:
+-- users bring their own keys, which stay in the browser (localStorage) and are sent
+-- directly to their provider — the server never receives one. Turns streamed that way
+-- are saved afterwards via POST /api/ai/messages, which is why ai_messages stays
+-- service-role-only. See src/lib/state/ai-credentials.svelte.ts.
+-- Usage and action runs remain deferred.
 
 create table public.ai_preferences (
   user_id          uuid primary key references public.profiles(id) on delete cascade,

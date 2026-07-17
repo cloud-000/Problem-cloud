@@ -11,12 +11,15 @@
     import { Icon } from "$lib/components/icon";
 
     let { controller }: AIChatModelPickerProps = $props();
+    // Auto stays ungrouped and first; every real model sits under the connection it came
+    // from, so two connections serving the same model id stay tellable apart.
     let options = $derived([
         { value: "auto", label: "Auto · Recommended" },
         ...controller.models.map((model) => ({
             value: model.reference,
             label: model.label,
             disabled: !model.available,
+            group: model.providerLabel ?? model.providerId,
         })),
     ]);
 </script>
@@ -24,6 +27,8 @@
 <Select
     bind:value={controller.selectedModel}
     {options}
+    searchable
+    searchPlaceholder="Search models..."
     aria-label="Conversation model"
     data-slot="ai-chat-model-picker"
     class="w-auto max-w-40"
@@ -69,12 +74,13 @@
         padding-right: 0;
     }
 
-    :global([data-slot="ai-chat-model-picker"] + ul[role="listbox"]) {
+    /* Opens upward: the picker sits at the bottom of the chat composer. */
+    :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"]) {
         top: auto;
         right: auto;
         bottom: 100%;
         left: 0;
-        width: min(15rem, calc(100vw - 3rem));
+        width: min(17rem, calc(100vw - 3rem));
         margin-top: 0;
         margin-bottom: 0.375rem;
     }

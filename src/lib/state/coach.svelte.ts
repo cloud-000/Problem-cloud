@@ -5,23 +5,32 @@ import {
     parseConversationList,
 } from "$lib/ai/schemas";
 import {
+    boundCoachHistory,
     boundEphemeralHistory,
     dedupeById,
     latestPreview,
     PREVIEW_MAX_CHARS,
 } from "$lib/ai/conversations";
+import { catalogFor, type AIModelCatalog } from "$lib/ai/catalog";
+import { resolveModel } from "$lib/ai/router";
+import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/client-registry";
 import {
     activeContextDescriptors,
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
 } from "$lib/ai/context-stack";
+import { aiCredentials } from "./ai-credentials.svelte";
+import { MOCK_PROVIDER_ID } from "$lib/ai/types";
 import type {
     AIBootstrap,
     AIChatRequestBody,
+    AIConnectionCredential,
     AIEphemeralMessage,
     AIErrorPart,
+    AIMessageStatus,
     AIModelReference,
+    AIUsage,
     CoachContextLayer,
     ConversationSummary,
     NormalizedAIEvent,
@@ -73,8 +82,18 @@ class CoachStore {
         return this.bootstrap?.models ?? [];
     }
 
+    /** Any one healthy connection is enough to send. */
     get connectionBlocked(): boolean {
-        return this.bootstrap?.connection?.connectionState !== "connected";
+        return !this.bootstrap?.connections.some(
+            (connection) => connection.connectionState === "connected",
+        );
+    }
+
+    /** Why sending is blocked: the first unhealthy connection explains itself. */
+    get blockingMessage(): string | undefined {
+        return this.bootstrap?.connections.find(
+            (connection) => connection.connectionState !== "connected",
+        )?.blockingMessage;
     }
 
     /** Saved history is unavailable when the user has turned conversation saving off. */
@@ -99,19 +118,48 @@ class CoachStore {
         }
     }
 
+    /**
+     * The user's own connections, probed here in the browser. Their keys never reach our
+     * server, so their catalog cannot come from bootstrap — it is built client-side and
+     * merged with whatever connections the server owns.
+     */
+    async #clientCatalog(): Promise<AIModelCatalog> {
+        const credentials = aiCredentials.wireConnections;
+        if (credentials.length === 0) return { providers: [], models: [] };
+        return catalogFor(clientProviderRegistry(credentials));
+    }
+
     async initialize(force = false): Promise<void> {
         if (!this.enabled || (this.initialized && !force) || this.loading) return;
         this.loading = true;
         this.error = null;
         try {
-            const response = await fetch("/api/ai/bootstrap", { headers: { accept: "application/json" } });
-            if (!response.ok) throw await this.responseError(response);
-            const bootstrap = parseBootstrap(await response.json());
-            this.bootstrap = bootstrap;
-            this.selectedModel = bootstrap.defaultModel;
-            if (bootstrap.conversation) {
-                this.conversationId = bootstrap.conversation.id;
-                this.messages = bootstrap.conversation.messages;
+            const [serverResponse, clientCatalog] = await Promise.all([
+                fetch("/api/ai/bootstrap", { headers: { accept: "application/json" } }),
+                this.#clientCatalog(),
+            ]);
+            if (!serverResponse.ok) throw await this.responseError(serverResponse);
+            const server = parseBootstrap(await serverResponse.json());
+            // The dev mock exists so the Coach works with zero configuration, and it
+            // advertises tool support no real model has. Left in the catalog alongside a
+            // real connection, `auto` routing would always prefer it — so it stands down
+            // as soon as the user has a connection of their own.
+            const standDownMock = clientCatalog.providers.length > 0;
+            const serverConnections = standDownMock
+                ? server.connections.filter((connection) => connection.id !== MOCK_PROVIDER_ID)
+                : server.connections;
+            const serverModels = standDownMock
+                ? server.models.filter((model) => model.providerId !== MOCK_PROVIDER_ID)
+                : server.models;
+            this.bootstrap = {
+                ...server,
+                connections: [...serverConnections, ...clientCatalog.providers],
+                models: [...serverModels, ...clientCatalog.models],
+            };
+            this.selectedModel = server.defaultModel;
+            if (server.conversation) {
+                this.conversationId = server.conversation.id;
+                this.messages = server.conversation.messages;
             }
             this.initialized = true;
         } catch (error) {
@@ -131,8 +179,8 @@ class CoachStore {
                 type: "error",
                 code: "connection_unavailable",
                 message:
-                    this.bootstrap?.connection?.blockingMessage ??
-                    "Coach is not connected. Retry after the connection is restored.",
+                    this.blockingMessage ??
+                    "No AI connection is configured. Add one in Settings to get started.",
                 retryable: true,
             };
             return;
@@ -157,24 +205,31 @@ class CoachStore {
         const generation = this.#generation;
         const controller = new AbortController();
         this.#abortController = controller;
-        const body: AIChatRequestBody = {
-            conversationId: this.conversationId,
-            model: this.selectedModel,
-            message,
-            contexts: this.activeContexts,
-            task: "general",
-            ephemeralHistory,
-        };
 
         try {
-            const response = await fetch("/api/ai/chat", {
-                method: "POST",
-                headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-                body: JSON.stringify(body),
-                signal: controller.signal,
-            });
-            if (!response.ok || !response.body) throw await this.responseError(response);
-            await this.consume(response.body, generation);
+            // A connection the user owns is served straight from this browser; anything
+            // the server owns still goes through /api/ai/chat.
+            const credential = this.#credentialForSelection();
+            if (credential) {
+                await this.#sendDirect(message, credential, controller, generation);
+            } else {
+                const body: AIChatRequestBody = {
+                    conversationId: this.conversationId,
+                    model: this.selectedModel,
+                    message,
+                    contexts: this.activeContexts,
+                    task: "general",
+                    ephemeralHistory,
+                };
+                const response = await fetch("/api/ai/chat", {
+                    method: "POST",
+                    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+                    body: JSON.stringify(body),
+                    signal: controller.signal,
+                });
+                if (!response.ok || !response.body) throw await this.responseError(response);
+                await this.consume(response.body, generation);
+            }
             if (generation === this.#generation) this.upsertActiveSummary(message);
         } catch (error) {
             if (generation !== this.#generation) return;
@@ -194,6 +249,135 @@ class CoachStore {
         } finally {
             if (generation === this.#generation) this.streaming = false;
             if (this.#abortController === controller) this.#abortController = null;
+        }
+    }
+
+    /** The user's connection backing the selected model, or undefined if the server owns it. */
+    #credentialForSelection(): AIConnectionCredential | undefined {
+        const credentials = aiCredentials.wireConnections;
+        if (credentials.length === 0) return undefined;
+        const providerId =
+            this.selectedModel === "auto"
+                ? resolveModel("auto", "general", this.models).providerId
+                : this.selectedModel.slice(0, this.selectedModel.indexOf(":"));
+        return credentials.find((credential) => credential.id === providerId);
+    }
+
+    /**
+     * Streams from the user's provider without touching our server. `applyEvent` is the
+     * same handler the proxied path feeds, so the transcript behaves identically either
+     * way; only the transport differs.
+     */
+    async #sendDirect(
+        message: string,
+        credential: AIConnectionCredential,
+        controller: AbortController,
+        generation: number,
+    ): Promise<void> {
+        const model = resolveModel(this.selectedModel, "general", this.models);
+        const adapter = clientProviderById(credential.id, [credential]);
+        if (!adapter) throw new Error("The selected AI connection is unavailable");
+
+        // History comes from the transcript already in memory: the server has no copy for
+        // BYOK turns, and re-fetching one would reintroduce the round trip we removed.
+        const history = boundCoachHistory(this.messages.slice(0, -1));
+
+        const stream = await adapter.stream({
+            requestId: crypto.randomUUID(),
+            conversationId: this.conversationId,
+            model: model.reference,
+            task: "general",
+            message,
+            contexts: this.activeContexts,
+            history,
+            signal: controller.signal,
+        });
+
+        let assistantText = "";
+        let status: AIMessageStatus = "streaming";
+        let usage: AIUsage | undefined;
+        let streamError: { code: string; message: string; retryable: boolean } | undefined;
+
+        // Read through a reader rather than `for await`: Safari does not implement
+        // Symbol.asyncIterator on ReadableStream, so iterating one throws outright.
+        const reader = stream.getReader();
+        try {
+            for (;;) {
+                const { done, value: event } = await reader.read();
+                if (done) break;
+                if (generation !== this.#generation) {
+                    await reader.cancel();
+                    return;
+                }
+                if (event.type === "message.delta") assistantText += event.delta;
+                else if (event.type === "usage") usage = event.usage;
+                else if (event.type === "error") {
+                    streamError = { code: event.code, message: event.message, retryable: event.retryable };
+                } else if (event.type === "message.done") status = event.status;
+                this.applyEvent(event, generation, false);
+            }
+        } catch (error) {
+            // The turn still happened: record what streamed before persisting upward.
+            if (error instanceof DOMException && error.name === "AbortError") {
+                await this.#persistTurn(message, {
+                    text: assistantText,
+                    model: model.reference,
+                    providerId: credential.id,
+                    status: "cancelled",
+                    usage,
+                });
+            }
+            throw error;
+        } finally {
+            reader.releaseLock();
+        }
+
+        await this.#persistTurn(message, {
+            text: assistantText,
+            model: model.reference,
+            providerId: credential.id,
+            status: status === "streaming" ? "cancelled" : status,
+            usage,
+            error: streamError,
+        });
+    }
+
+    /**
+     * Saves a finished BYOK turn. Deliberately after streaming rather than during it:
+     * the answer is already on screen, so a slow or failed write costs the user nothing.
+     * Writes go through the server because ai_messages is service-role-only, which is
+     * what keeps role, model, and status unspoofable.
+     */
+    async #persistTurn(
+        message: string,
+        assistant: {
+            text: string;
+            model: string;
+            providerId: string;
+            status: Exclude<AIMessageStatus, "streaming">;
+            usage?: AIUsage;
+            error?: { code: string; message: string; retryable: boolean };
+        },
+    ): Promise<void> {
+        if (!this.historyEnabled) return;
+        try {
+            const response = await fetch("/api/ai/messages", {
+                method: "POST",
+                headers: { "content-type": "application/json", accept: "application/json" },
+                body: JSON.stringify({
+                    conversationId: this.conversationId,
+                    contexts: this.activeContexts,
+                    message,
+                    assistant,
+                }),
+            });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (typeof payload?.conversationId === "string") {
+                this.conversationId = payload.conversationId;
+            }
+        } catch {
+            // History is best-effort; a failed write must never surface as a failed answer.
         }
     }
 
@@ -384,12 +568,22 @@ class CoachStore {
         }
     }
 
-    private applyEvent(event: NormalizedAIEvent, generation: number): void {
+    /**
+     * @param adoptConversationId Only the server mints conversation rows. A proxied reply
+     * carries the real id; a BYOK reply carries one the adapter invented locally, and the
+     * persisted id arrives later from /api/ai/messages — adopting the invented one would
+     * make the next send reference a row that does not exist.
+     */
+    private applyEvent(
+        event: NormalizedAIEvent,
+        generation: number,
+        adoptConversationId = true,
+    ): void {
         if (generation !== this.#generation) return;
         if (event.type === "message.start") {
             // History-disabled replies carry a throwaway id that was never persisted;
             // adopting it would make the next send reference a non-existent row.
-            if (this.historyEnabled) this.conversationId = event.conversationId;
+            if (this.historyEnabled && adoptConversationId) this.conversationId = event.conversationId;
             this.messages.push({
                 id: event.messageId,
                 role: "assistant",

@@ -1,14 +1,21 @@
+import { AI_PRESET_IDS, presetFor } from "./presets";
+import { MOCK_PROVIDER_ID } from "./types";
 import type {
     AIAgentPermissions,
     AIBootstrap,
     AIChatRequestBody,
+    AIConnectionCredential,
     AIContextMode,
     AIContextSource,
     AIEphemeralMessage,
     AIMessagePart,
+    AIMessageStatus,
     AIModelReference,
+    AIPersistTurnRequest,
+    AIPresetId,
     AIProviderSummary,
     AITaskType,
+    AIUsage,
     AIToolDefinition,
     ConversationDetailResponse,
     ConversationListResponse,
@@ -63,10 +70,27 @@ function boolean(value: unknown, label: string): boolean {
     return value;
 }
 
+/**
+ * The provider half doubles as a connection id, so it stays narrow. The model half
+ * admits "/", ":", "~" and "@" because vendors namespace ids that way (openai/gpt-4o,
+ * meta-llama/Llama-3.3-70B-Instruct-Turbo, OpenRouter's ~vendor/model-latest aliases);
+ * any-model splits on the first ":" only.
+ */
+const MODEL_REFERENCE_PATTERN = /^[a-z0-9_-]+:[a-z0-9._\-/:~@]+$/i;
+
+/**
+ * Whether a reference is representable, without throwing. Catalog builders use this to
+ * skip ids they cannot express — a provider serving one exotic id must not be able to
+ * take down the whole catalog.
+ */
+export function isModelReference(value: string): boolean {
+    return value.length <= 200 && MODEL_REFERENCE_PATTERN.test(value);
+}
+
 export function parseModelReference(value: unknown): AIModelReference {
     const reference = string(value, "model", 200);
     if (reference === "auto") return reference;
-    if (!/^[a-z0-9_-]+:[a-z0-9._-]+$/i.test(reference)) {
+    if (!MODEL_REFERENCE_PATTERN.test(reference)) {
         throw new AISchemaError("model must be auto or provider:model-id");
     }
     return reference as AIModelReference;
@@ -163,6 +187,76 @@ export function parseEphemeralHistory(value: unknown): AIEphemeralMessage[] {
     });
 }
 
+/** Each connection costs at least one outbound fetch per bootstrap, so the list is bounded. */
+export const MAX_CONNECTIONS = 8;
+const CONNECTION_ID_PATTERN = /^[a-z0-9_-]{1,40}$/;
+
+/**
+ * Only http(s) endpoints are addressable. There is deliberately no private-address
+ * blocklist: the user's own browser makes these requests, not our server, so a private
+ * or loopback URL reaches only the user's own machine — which is what makes a local
+ * Ollama or vLLM endpoint work. Nothing here protects the server, because the server
+ * never fetches a user-supplied URL.
+ */
+function assertAddressableEndpoint(url: URL): void {
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new AISchemaError("base URL must be http or https");
+    }
+}
+
+export function parseConnectionCredential(value: unknown): AIConnectionCredential {
+    const input = record(value, "connection");
+    const id = string(input.id, "connection id", 40);
+    if (!CONNECTION_ID_PATTERN.test(id)) {
+        throw new AISchemaError("connection id must be lowercase letters, digits, _ or -");
+    }
+    // Reserved for the server-owned development mock.
+    if (id === MOCK_PROVIDER_ID) throw new AISchemaError("connection id is reserved");
+
+    const preset = oneOf<AIPresetId>(input.preset, "connection preset", AI_PRESET_IDS);
+
+    let baseURL: URL;
+    try {
+        baseURL = new URL(string(input.baseURL, "base URL", 400));
+    } catch (cause) {
+        if (cause instanceof AISchemaError) throw cause;
+        throw new AISchemaError("base URL must be a valid URL");
+    }
+    assertAddressableEndpoint(baseURL);
+
+    const apiKey = typeof input.apiKey === "string" ? input.apiKey : "";
+    if (apiKey.length > 400) throw new AISchemaError("api key is too long");
+    if (!apiKey && presetFor(preset).requiresKey) {
+        throw new AISchemaError("api key is required for this provider");
+    }
+
+    let models: string[] | undefined;
+    if (input.models !== undefined && input.models !== null) {
+        if (!Array.isArray(input.models)) throw new AISchemaError("models must be an array");
+        if (input.models.length > 100) throw new AISchemaError("too many pinned models");
+        models = input.models.map((model) => string(model, "model id", 160));
+    }
+
+    return {
+        id,
+        preset,
+        label: string(input.label, "connection label", 60),
+        baseURL: baseURL.toString().replace(/\/$/, ""),
+        apiKey,
+        models: models && models.length > 0 ? models : undefined,
+    };
+}
+
+export function parseCredentialEnvelope(value: unknown): AIConnectionCredential[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new AISchemaError("connections must be an array");
+    if (value.length > MAX_CONNECTIONS) throw new AISchemaError("too many connections");
+    const connections = value.map(parseConnectionCredential);
+    const ids = new Set(connections.map((connection) => connection.id));
+    if (ids.size !== connections.length) throw new AISchemaError("connection ids must be unique");
+    return connections;
+}
+
 export function parseChatRequest(value: unknown): AIChatRequestBody {
     const input = record(value, "chat request");
     const contexts = Array.isArray(input.contexts)
@@ -184,6 +278,54 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
             "vision",
         ]),
         ephemeralHistory: ephemeralHistory.length > 0 ? ephemeralHistory : undefined,
+    };
+}
+
+export function parseUsage(value: unknown): AIUsage {
+    const usage = record(value, "usage");
+    return {
+        inputTokens: number(usage.inputTokens, "input tokens"),
+        outputTokens: number(usage.outputTokens, "output tokens"),
+        cachedTokens:
+            usage.cachedTokens === undefined ? undefined : number(usage.cachedTokens, "cached tokens"),
+    };
+}
+
+export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
+    const input = record(value, "persist request");
+    const contexts = Array.isArray(input.contexts)
+        ? input.contexts.map(parseContextDescriptor)
+        : [];
+    if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
+    const message = string(input.message, "message", 8_000).trim();
+    if (!message) throw new AISchemaError("message cannot be blank");
+
+    const assistant = record(input.assistant, "assistant turn");
+    const rawError = assistant.error;
+    return {
+        conversationId: optionalString(input.conversationId, "conversation id", 80),
+        contexts,
+        message,
+        assistant: {
+            // A cancelled turn can legitimately carry no text at all.
+            text: typeof assistant.text === "string" ? assistant.text.slice(0, 200_000) : "",
+            model: parseModelReference(assistant.model),
+            providerId: string(assistant.providerId, "provider id", 100),
+            status: oneOf<Exclude<AIMessageStatus, "streaming">>(assistant.status, "status", [
+                "complete",
+                "failed",
+                "cancelled",
+            ]),
+            usage: assistant.usage === undefined ? undefined : parseUsage(assistant.usage),
+            error:
+                rawError === undefined || rawError === null
+                    ? undefined
+                    : {
+                          code: string(record(rawError, "error").code, "error code", 80),
+                          message: string(record(rawError, "error").message, "error message", 500),
+                          retryable: boolean(record(rawError, "error").retryable, "retryable"),
+                      },
+        },
     };
 }
 
@@ -268,6 +410,7 @@ export function parseNormalizedModel(value: unknown): NormalizedAIModel {
     return {
         reference,
         providerId: string(input.providerId, "provider id", 100),
+        providerLabel: optionalString(input.providerLabel, "provider label", 60),
         id: string(input.id, "model id", 160),
         label: string(input.label, "model label", 160),
         description: optionalString(input.description, "model description", 500),
@@ -372,9 +515,13 @@ export function parseBootstrap(value: unknown): AIBootstrap {
             messages: rawConversation.messages.map(parseNormalizedMessage),
         };
     }
+    if (!Array.isArray(input.connections)) throw new AISchemaError("connections must be an array");
+    if (input.connections.length > MAX_CONNECTIONS) {
+        throw new AISchemaError("too many connections");
+    }
     return {
         enabled: boolean(input.enabled, "feature enabled"),
-        connection: input.connection === null ? null : parseProviderSummary(input.connection),
+        connections: input.connections.map(parseProviderSummary),
         models: input.models.map(parseNormalizedModel),
         defaultModel: parseModelReference(input.defaultModel),
         historyEnabled: boolean(input.historyEnabled, "history enabled"),
@@ -426,21 +573,12 @@ export function parseAIEvent(value: unknown): NormalizedAIEvent {
                 runId: string(input.runId, "run id", 80),
                 summary: string(input.summary, "tool result", 1_000),
             };
-        case "usage": {
-            const usage = record(input.usage, "usage");
+        case "usage":
             return {
                 type,
                 messageId: string(input.messageId, "message id", 80),
-                usage: {
-                    inputTokens: number(usage.inputTokens, "input tokens"),
-                    outputTokens: number(usage.outputTokens, "output tokens"),
-                    cachedTokens:
-                        usage.cachedTokens === undefined
-                            ? undefined
-                            : number(usage.cachedTokens, "cached tokens"),
-                },
+                usage: parseUsage(input.usage),
             };
-        }
         case "error":
             return {
                 type,

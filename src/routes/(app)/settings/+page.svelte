@@ -5,6 +5,7 @@
     import { Theme } from "$lib/utils/Theme.svelte";
     import { modal } from "$lib/state/modal.svelte";
     import FeedbackModal from "./FeedbackModal.svelte";
+    import AIConnectionsSection from "./AIConnectionsSection.svelte";
     import type { PageData } from "./$types";
     import { Switch } from "$lib/components/toggle";
     import { settings } from "$lib/state/settings.svelte";
@@ -204,6 +205,11 @@
             </div>
         {/if}
     </div>
+
+    <!-- AI Connections -->
+    {#if session && user}
+        <AIConnectionsSection />
+    {/if}
 
     <!-- Feedback & Support -->
     {#if session && user}

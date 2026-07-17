@@ -13,9 +13,7 @@
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
 
     let { variant = "topbar", class: className }: CoachLauncherProps = $props();
-    let blocked = $derived(
-        coach.initialized && coach.bootstrap?.connection?.connectionState !== "connected",
-    );
+    let blocked = $derived(coach.initialized && coach.connectionBlocked);
 
     function open(event: MouseEvent) {
         utilityPanel.toggle("coach", event.currentTarget as HTMLElement);

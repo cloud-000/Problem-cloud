@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { NormalizedAIModel } from "$lib/ai/types";
+import type { NormalizedAIModel } from "./types";
 import { AIModelRoutingError, resolveModel } from "./router";
 
 const model = (reference: `mock:${string}`, tools: boolean): NormalizedAIModel => ({

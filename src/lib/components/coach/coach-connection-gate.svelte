@@ -10,7 +10,9 @@
     </div>
     <h3 class="mt-4 text-lg font-semibold tracking-tight">Connect AI</h3>
     <p class="mt-1.5 max-w-sm text-sm leading-5 text-muted-foreground">
-        {coach.bootstrap?.connection?.blockingMessage ?? coach.error?.message ?? "Coach is not connected in this environment."}
+        {coach.blockingMessage ??
+            coach.error?.message ??
+            "Add your own API key in Settings to start using the coach."}
     </p>
     <div class="mt-4 flex gap-2">
         <Button size="sm" onclick={() => coach.initialize(true)}>Retry connection</Button>

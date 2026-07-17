@@ -1,4 +1,4 @@
-import type { AIModelReference, AITaskType, NormalizedAIModel } from "$lib/ai/types";
+import type { AIModelReference, AITaskType, NormalizedAIModel } from "./types";
 
 export class AIModelRoutingError extends Error {
     constructor(
