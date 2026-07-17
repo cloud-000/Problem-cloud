@@ -114,7 +114,11 @@
     // --- mode derivation ---
     const hasList = $derived(options.length > 0);
     const mode2 = $derived(hasList && !strict); // predefined + non-strict
-    const atMax = $derived(max !== undefined && value.length >= max);
+    // `max={1}` is single-select: picking a new option *replaces* the current one
+    // rather than freezing the control. So it never counts as "at max" (which would
+    // gate the dropdown shut) — the replace happens at commit time instead.
+    const single = $derived(max === 1);
+    const atMax = $derived(!single && max !== undefined && value.length >= max);
 
     // --- option model ---
     const allOptions = $derived(coerceOptions(options));
@@ -221,8 +225,9 @@
     // --- commit / remove primitives ---
     function commitOption(o: NormalizedOption) {
         if (o.disabled || atMax || duplicateExists(o.value)) return;
-        value = [...value, o.value];
+        value = single ? [o.value] : [...value, o.value];
         query = "";
+        if (single) open = false; // single-select: close after picking
         onchange?.(value);
         inputEl?.focus();
     }
@@ -246,8 +251,9 @@
         }
         if (atMax) return;
         const text = raw.trim();
-        value = [...value, text];
+        value = single ? [text] : [...value, text];
         query = "";
+        if (single) open = false; // single-select: close after picking
         oncreate?.(text);
         onchange?.(value);
         inputEl?.focus();
