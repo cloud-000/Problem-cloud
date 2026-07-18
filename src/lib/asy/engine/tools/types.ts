@@ -18,6 +18,15 @@ import type { Pair, Pen, Scene } from "../../scene/types";
 
 export type SelectionTransformGesture =
     | {
+          kind: "vertex";
+          /** The path whose endpoint is being edited. */
+          elementId: string;
+          /** Index of the endpoint in the path's node array. */
+          nodeIndex: number;
+          /** Vertex position represented by the dragged UI handle. */
+          handle: Pair;
+      }
+    | {
           kind: "resize";
           /** Opposite corner, fixed for the duration of the resize. */
           anchor: Pair;

@@ -136,12 +136,13 @@ describe("Canvas 2D rendering", () => {
             selectionRect: { x: 3, y: 3, width: 10, height: 10 },
             rotationControl: { stemStart: [8, 3], screen: [8, 0] },
             resizeHandles: [{ screen: [3, 3] }],
+            vertexHandles: [{ screen: [13, 13] }],
         }, 2);
 
         expect(context.calls[0]).toBe("setTransform:2");
         expect(context.calls.indexOf("fillRect")).toBeLessThan(context.calls.indexOf("bezierCurveTo"));
         expect(context.calls).toContain("closePath");
-        expect(context.calls.filter((call) => call === "arc").length).toBeGreaterThanOrEqual(3);
+        expect(context.calls.filter((call) => call === "arc").length).toBeGreaterThanOrEqual(4);
         expect(context.calls).toContain("fillText:A");
         expect(context.calls).toContain("roundRect");
         expect(context.calls.at(-1)).toBe("setTransform:1");

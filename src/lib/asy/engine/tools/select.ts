@@ -34,7 +34,10 @@ export class SelectTool implements Tool {
             this.movingIds = [...ctx.selection];
             this.transform = ctx.selectionTransform;
             this.base = scene;
-            if (ctx.selectionTransform.kind === "resize") {
+            if (
+                ctx.selectionTransform.kind === "resize" ||
+                ctx.selectionTransform.kind === "vertex"
+            ) {
                 this.transformPointerOffset = [
                     p[0] - ctx.selectionTransform.handle[0],
                     p[1] - ctx.selectionTransform.handle[1],
@@ -133,6 +136,32 @@ export class SelectTool implements Tool {
     ): { scene: Scene; changed: boolean } {
         if (!this.transform || !this.dragStart) return { scene, changed: false };
         const selected = new Set(ids);
+        if (this.transform.kind === "vertex") {
+            const { elementId, nodeIndex, handle } = this.transform;
+            const element = scene.elements.find(({ id }) => id === elementId);
+            if (
+                !selected.has(elementId) ||
+                element?.kind !== "path" ||
+                nodeIndex < 0 ||
+                nodeIndex >= element.path.nodes.length
+            ) return { scene, changed: false };
+            const next: Pair = [
+                pointer[0] - this.transformPointerOffset[0],
+                pointer[1] - this.transformPointerOffset[1],
+            ];
+            const changed = Math.hypot(next[0] - handle[0], next[1] - handle[1]) > 1e-9;
+            if (!changed) return { scene, changed: false };
+            return {
+                scene: mapElements(scene, (element) => {
+                    if (element.id !== elementId || element.kind !== "path") return element;
+                    const nodes = element.path.nodes.map((node, index) =>
+                        index === nodeIndex ? next : node,
+                    );
+                    return { ...element, path: { ...element.path, nodes } };
+                }),
+                changed: true,
+            };
+        }
         if (this.transform.kind === "resize") {
             const { anchor, handle, minimumScale } = this.transform;
             const startX = handle[0] - anchor[0];

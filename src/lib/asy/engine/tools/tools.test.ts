@@ -289,6 +289,31 @@ describe("SelectTool", () => {
         expect(result.commit?.elements).toMatchObject([{ kind: "path", path: { nodes: [[0, 0], [0.5, 0]] } }]);
     });
 
+    test("dragging a line vertex moves only that endpoint and keeps the pointer offset", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]))] };
+        const line = scene.elements[0];
+        const selection = [line.id];
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: {
+                kind: "vertex",
+                elementId: line.id,
+                nodeIndex: 1,
+                handle: [2, 1],
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [2.1, 1.2], transformCtx);
+        const result = tool.onPointerUp(scene, [4.1, 3.2], transformCtx);
+        const nodes = result.commit?.elements[0].kind === "path"
+            ? result.commit.elements[0].path.nodes
+            : [];
+        expect(nodes[0]).toEqual([0, 0]);
+        expect(nodes[1][0]).toBeCloseTo(4);
+        expect(nodes[1][1]).toBeCloseTo(3);
+    });
+
     test("a transform handle wins over move hit-testing and transforms the whole selection", () => {
         let scene = createTool("point").onPointerDown(emptyScene(), [0, 0], ctx).commit!;
         scene = createTool("point").onPointerDown(scene, [2, 2], ctx).commit!;

@@ -52,7 +52,9 @@
     let panY = $state(0);
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
-    let transformCursor = $state<"nwse-resize" | "nesw-resize" | "grab" | "grabbing" | null>(null);
+    let transformCursor = $state<
+        "nwse-resize" | "nesw-resize" | "grab" | "grabbing" | "move" | null
+    >(null);
     let spacePressed = $state(false);
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
@@ -74,6 +76,14 @@
         handle: Pair;
         anchor: Pair;
         cursor: "nwse-resize" | "nesw-resize";
+    }
+
+    interface VertexHandle extends RenderResizeHandle {
+        screen: Pair;
+        handle: Pair;
+        elementId: string;
+        nodeIndex: number;
+        cursor: "move";
     }
 
     function screenRect(bounds: Bounds, padding = 0): ScreenRect {
@@ -120,6 +130,18 @@
         return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
     });
 
+    const selectedLine = $derived.by(() => {
+        if (activeSelection.length !== 1) return null;
+        const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
+        return element?.kind === "path" &&
+            !element.path.cyclic &&
+            element.path.nodes.length === 2 &&
+            element.path.joins.length === 1 &&
+            element.path.joins[0] === "--"
+            ? element
+            : null;
+    });
+
     const hasTransformExtent = $derived.by(() => {
         if (!selectionGeometryBounds) return false;
         const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
@@ -129,6 +151,7 @@
 
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
+        if (selectedLine && store.selectionPreview === null) return null;
         if (selectionGeometryBounds && hasTransformExtent) {
             return screenRect(selectionGeometryBounds, 6);
         }
@@ -161,6 +184,7 @@
 
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
+            selectedLine ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -201,8 +225,20 @@
         ];
     });
 
+    const vertexHandles = $derived.by<VertexHandle[]>(() => {
+        if (!selectedLine || selectionIsPreview || store.toolKind !== "select") return [];
+        return selectedLine.path.nodes.map((handle, nodeIndex) => ({
+            screen: project(handle),
+            handle,
+            elementId: selectedLine.id,
+            nodeIndex,
+            cursor: "move",
+        }));
+    });
+
     const rotationControl = $derived.by(() => {
         if (
+            selectedLine ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -315,8 +351,21 @@
         }
 
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+        const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
         const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
+        if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
+            interaction = "transform";
+            transformCursor = vertexHandle.cursor;
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
+                kind: "vertex",
+                elementId: vertexHandle.elementId,
+                nodeIndex: vertexHandle.nodeIndex,
+                handle: vertexHandle.handle,
+            });
+            return;
+        }
         if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
             const handle = resizeHandle;
             if (handle && selectionGeometryBounds) {
@@ -362,9 +411,10 @@
         }
         if (interaction === "idle") {
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+            const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
-            transformCursor = resizeHandle?.cursor ?? (overRotation ? "grab" : null);
+            transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ?? (overRotation ? "grab" : null);
             return;
         }
         if (e.pointerId !== pointerId) return;
@@ -532,6 +582,7 @@
                 ? { stemStart: rotationControl.stemStart, screen: rotationControl.screen }
                 : null,
             resizeHandles: resizeHandles.map((handle) => ({ screen: handle.screen })),
+            vertexHandles: vertexHandles.map((handle) => ({ screen: handle.screen })),
         };
 
         const backingWidth = Math.max(1, Math.round(width * pixelRatio));

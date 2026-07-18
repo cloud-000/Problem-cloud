@@ -38,6 +38,10 @@ export interface RenderResizeHandle {
     screen: Pair;
 }
 
+export interface RenderVertexHandle {
+    screen: Pair;
+}
+
 export interface RenderRotationControl {
     stemStart: Pair;
     screen: Pair;
@@ -73,6 +77,7 @@ export interface WhiteboardRenderOverlay {
     selectionRect: ScreenRect | null;
     rotationControl: RenderRotationControl | null;
     resizeHandles: RenderResizeHandle[];
+    vertexHandles: RenderVertexHandle[];
 }
 
 export type ProjectedPathCommand =
@@ -382,6 +387,14 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.strokeStyle = palette.primary;
         context.beginPath();
         context.roundRect(handle.screen[0] - 4, handle.screen[1] - 4, 8, 8, 1);
+        context.fill();
+        context.stroke();
+    }
+    for (const handle of overlay.vertexHandles) {
+        context.fillStyle = palette.background;
+        context.strokeStyle = palette.primary;
+        context.beginPath();
+        context.arc(handle.screen[0], handle.screen[1], 5, 0, Math.PI * 2);
         context.fill();
         context.stroke();
     }
