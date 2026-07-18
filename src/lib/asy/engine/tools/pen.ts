@@ -1,12 +1,11 @@
 import type { Pair, Scene } from "../../scene/types";
 import { createPath, makePath } from "../../scene/factory";
-import { dedupePoints, simplifyRDP } from "../simplify";
+import { processStroke } from "../simplify";
 import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
 
 /**
- * Freehand pen. Captures raw pointer samples during a drag (rendered live as a
- * preview polyline), then on release simplifies them (RDP) into a small,
- * editable, cleanly-serializable straight-join path.
+ * Freehand pen. Raw pointer samples pass through one shared cleanup pipeline,
+ * so the live spline and committed spline have identical geometry.
  */
 export class PenTool implements Tool {
     readonly kind = "pen" as const;
@@ -22,17 +21,17 @@ export class PenTool implements Tool {
     onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
         if (!this.drawing) return NO_RESULT;
         this.samples.push(p);
-        return { preview: addElement(scene, this.draftPath(ctx.pen)) };
+        return { preview: addElement(scene, this.strokePath(ctx)) };
     }
 
     onPointerUp(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
         if (!this.drawing) return NO_RESULT;
         this.drawing = false;
         this.samples.push(p);
-        const nodes = simplifyRDP(dedupePoints(this.samples), ctx.simplifyEpsilon);
+        const nodes = processStroke(this.samples, ctx.simplifyEpsilon);
         this.samples = [];
         if (nodes.length < 2) return { preview: null };
-        const path = createPath(makePath(nodes), ctx.pen);
+        const path = createPath(makePath(nodes, { join: ".." }), ctx.pen);
         // Freehand is a continuous drawing tool: keep it active and leave the
         // finished stroke unselected so the next stroke can begin cleanly.
         return { commit: addElement(scene, path), selection: [], preview: null };
@@ -44,7 +43,8 @@ export class PenTool implements Tool {
         return { preview: null };
     }
 
-    private draftPath(pen: ToolContext["pen"]) {
-        return createPath(makePath(this.samples), pen);
+    private strokePath(ctx: ToolContext) {
+        const nodes = processStroke(this.samples, ctx.simplifyEpsilon);
+        return createPath(makePath(nodes, { join: ".." }), ctx.pen);
     }
 }

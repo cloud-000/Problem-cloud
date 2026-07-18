@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dedupePoints, simplifyRDP } from "./simplify";
+import { dedupePoints, processStroke, resamplePoints, simplifyRDP, smoothPointsAdaptive } from "./simplify";
 import type { Pair } from "../scene/types";
 
 describe("simplifyRDP", () => {
@@ -36,5 +36,30 @@ describe("dedupePoints", () => {
             [1, 1],
             [2, 2],
         ]);
+    });
+});
+
+describe("freehand cleanup", () => {
+    test("resamples uneven input at regular arc-length intervals", () => {
+        expect(resamplePoints([[0, 0], [0.25, 0], [3, 0]], 1)).toEqual([
+            [0, 0],
+            [1, 0],
+            [2, 0],
+            [3, 0],
+        ]);
+    });
+
+    test("adaptive smoothing reduces jitter without rounding a right-angle corner", () => {
+        const jitter = smoothPointsAdaptive([[0, 0], [1, 0.4], [2, 0]]);
+        expect(jitter[1][1]).toBeLessThan(0.4);
+
+        const corner = smoothPointsAdaptive([[0, 0], [1, 0], [1, 1]]);
+        expect(corner[1]).toEqual([1, 0]);
+    });
+
+    test("the combined pipeline preserves the exact endpoints", () => {
+        const processed = processStroke([[0, 0], [0.7, 0.2], [2.3, 1]], 0.1);
+        expect(processed[0]).toEqual([0, 0]);
+        expect(processed.at(-1)).toEqual([2.3, 1]);
     });
 });

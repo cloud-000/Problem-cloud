@@ -291,7 +291,7 @@
 
     function syncToolScale() {
         store.tolerance = 8 / scale;
-        store.simplifyEpsilon = 2.5 / scale;
+        store.simplifyEpsilon = 0.75 / scale;
     }
 
     const attachSurface: Attachment<HTMLCanvasElement> = (node) => {

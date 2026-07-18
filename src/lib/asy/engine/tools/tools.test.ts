@@ -120,6 +120,24 @@ describe("PenTool", () => {
         // A near-straight stroke collapses to 2 nodes.
         expect(el.kind === "path" && el.path.nodes.length).toBe(2);
     });
+
+    test("live and committed strokes use the same smoothed spline geometry", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        tool.onPointerDown(scene, [0, 0], ctx);
+        tool.onPointerMove(scene, [1, 0.25], ctx);
+        tool.onPointerMove(scene, [2, 0], ctx);
+        const preview = tool.onPointerMove(scene, [3, 1], ctx);
+        const commit = tool.onPointerUp(scene, [3, 1], ctx);
+        const previewElement = preview.preview?.elements[0];
+        const commitElement = commit.commit?.elements[0];
+
+        expect(previewElement?.kind).toBe("path");
+        expect(commitElement?.kind).toBe("path");
+        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(commitElement.path).toEqual(previewElement.path);
+        expect(commitElement.path.joins.every((join) => join === "..")).toBe(true);
+    });
 });
 
 describe("ArcTool", () => {

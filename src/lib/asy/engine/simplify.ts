@@ -1,9 +1,4 @@
-/**
- * Ramer–Douglas–Peucker polyline simplification. Turns a dense freehand pointer
- * sample into a handful of nodes, so a hand-drawn stroke becomes a normal,
- * editable, cleanly-serializable path. (Bezier/Hobby fitting is the v2 upgrade;
- * v1 keeps `--` joins.)
- */
+/** Geometry cleanup for dense freehand pointer samples. */
 
 import type { Pair } from "../scene/types";
 import { pointToSegment } from "./geometry";
@@ -45,4 +40,87 @@ export function dedupePoints(points: Pair[], epsilon = 1e-9): Pair[] {
         if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) > epsilon) out.push(p);
     }
     return out;
+}
+
+/**
+ * Sample a polyline at a regular arc-length interval. The exact first and last
+ * points are preserved so a stroke still begins and ends under the pointer.
+ */
+export function resamplePoints(points: Pair[], spacing: number): Pair[] {
+    const clean = dedupePoints(points);
+    if (clean.length <= 1 || spacing <= 0) return clean;
+
+    const out: Pair[] = [clean[0]];
+    let traversed = 0;
+    let nextDistance = spacing;
+
+    for (let index = 1; index < clean.length; index++) {
+        const start = clean[index - 1];
+        const end = clean[index];
+        const segmentLength = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        if (segmentLength === 0) continue;
+
+        while (nextDistance <= traversed + segmentLength) {
+            const t = (nextDistance - traversed) / segmentLength;
+            out.push([
+                start[0] + (end[0] - start[0]) * t,
+                start[1] + (end[1] - start[1]) * t,
+            ]);
+            nextDistance += spacing;
+        }
+        traversed += segmentLength;
+    }
+
+    const last = clean[clean.length - 1];
+    const previous = out[out.length - 1];
+    if (Math.hypot(last[0] - previous[0], last[1] - previous[1]) <= 1e-9) {
+        out[out.length - 1] = last;
+    } else {
+        out.push(last);
+    }
+    return out;
+}
+
+/**
+ * Lightly pull interior samples toward their neighbours. Smoothing fades out
+ * as the local turn gets sharper, retaining intentional corners while removing
+ * the small side-to-side jitter most visible on otherwise straight strokes.
+ */
+export function smoothPointsAdaptive(points: Pair[], strength = 0.35): Pair[] {
+    if (points.length <= 2) return points.slice();
+    const amount = Math.max(0, Math.min(1, strength));
+
+    return points.map((point, index) => {
+        if (index === 0 || index === points.length - 1) return point;
+        const previous = points[index - 1];
+        const next = points[index + 1];
+        const incoming: Pair = [point[0] - previous[0], point[1] - previous[1]];
+        const outgoing: Pair = [next[0] - point[0], next[1] - point[1]];
+        const incomingLength = Math.hypot(incoming[0], incoming[1]);
+        const outgoingLength = Math.hypot(outgoing[0], outgoing[1]);
+        if (incomingLength === 0 || outgoingLength === 0) return point;
+
+        const cosine = Math.max(
+            0,
+            Math.min(
+                1,
+                (incoming[0] * outgoing[0] + incoming[1] * outgoing[1]) /
+                    (incomingLength * outgoingLength),
+            ),
+        );
+        const blend = amount * cosine * cosine;
+        const midpoint: Pair = [(previous[0] + next[0]) / 2, (previous[1] + next[1]) / 2];
+        return [
+            point[0] + (midpoint[0] - point[0]) * blend,
+            point[1] + (midpoint[1] - point[1]) * blend,
+        ];
+    });
+}
+
+/** Apply the same freehand cleanup pipeline to live and committed geometry. */
+export function processStroke(points: Pair[], simplifyEpsilon: number): Pair[] {
+    const epsilon = Math.max(0, simplifyEpsilon);
+    const resampled = epsilon > 0 ? resamplePoints(points, epsilon * 2) : dedupePoints(points);
+    const smoothed = smoothPointsAdaptive(resampled);
+    return simplifyRDP(smoothed, epsilon);
 }
