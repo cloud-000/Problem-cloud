@@ -56,19 +56,18 @@
         </div>
     </div>
 
-    <WhiteboardToolbar {store} class="self-start">
-        {#snippet actions()}
-            <div class="mx-1 h-6 w-px bg-border/60"></div>
-            <Button variant="ghost" size="icon-sm" title="Download SVG" onclick={downloadSvg}>
-                <Icon name="download" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" title="Download PNG" onclick={downloadPng}>
-                <Icon name="image" />
-            </Button>
-        {/snippet}
-    </WhiteboardToolbar>
-
-    <div class="min-h-0 flex-1 overflow-hidden rounded-xl border border-border/60">
+    <div class="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border/60">
         <Whiteboard {store} bind:surface />
+        <WhiteboardToolbar {store} class="absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)]">
+            {#snippet actions()}
+                <div class="mx-1 h-6 w-px bg-border/60"></div>
+                <Button variant="ghost" size="icon-sm" title="Download SVG" onclick={downloadSvg}>
+                    <Icon name="download" />
+                </Button>
+                <Button variant="ghost" size="icon-sm" title="Download PNG" onclick={downloadPng}>
+                    <Icon name="image" />
+                </Button>
+            {/snippet}
+        </WhiteboardToolbar>
     </div>
 </div>

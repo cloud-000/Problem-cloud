@@ -11,6 +11,7 @@
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import type { Project } from "./svg";
     import SceneElement from "./scene-element.svelte";
+    import ZoomControls from "./zoom-controls.svelte";
 
     let {
         store,
@@ -435,6 +436,18 @@
         panY = py - height / 2 + world[1] * scale;
     }
 
+    function zoomBy(factor: number) {
+        const rect = surface?.getBoundingClientRect();
+        if (rect) zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+    }
+
+    function zoomTo(percentage: number) {
+        const targetScale = Math.max(8, Math.min(400, (percentage / 100) * 40));
+        zoomBy(targetScale / scale);
+    }
+
+    const zoomPercentage = $derived(Math.round((scale / 40) * 100));
+
     function onWheel(e: WheelEvent) {
         e.preventDefault();
         if (!navigation) return;
@@ -495,6 +508,17 @@
     bind:clientWidth={width}
     bind:clientHeight={height}
 >
+    {#if navigation}
+        <div class="absolute bottom-3 right-3 z-10">
+            <ZoomControls
+                percentage={zoomPercentage}
+                onZoomOut={() => zoomBy(1 / 1.2)}
+                onZoomIn={() => zoomBy(1.2)}
+                onZoomTo={zoomTo}
+            />
+        </div>
+    {/if}
+
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
