@@ -5,6 +5,8 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Modal } from "$lib/components/modal";
+    import { WhiteboardModal } from "$lib/components/whiteboard";
+    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
 
     let {
@@ -23,6 +25,18 @@
 
     let view = $state<"image" | "code">("image");
     let expanded = $state(false);
+
+    // Whiteboard: opened from a diagram to trace/edit its Asymptote source.
+    let editing = $state(false);
+    let board = $state<WhiteboardStore | null>(null);
+
+    function openWhiteboard() {
+        // Seed an editable scene from the asy source; the PNG serves as a trace
+        // backdrop for anything the parser couldn't model (raw elements).
+        board = code ? WhiteboardStore.fromAsy(code) : new WhiteboardStore();
+        expanded = false; // v1: the board replaces the lightbox rather than stacking
+        editing = true;
+    }
 
     // State to track user's manual override of the theme's default inversion.
     // If null, it defaults to auto-inverting in dark mode — right for line-art
@@ -71,6 +85,14 @@
             >
                 <Icon name={view === "image" ? "code" : "image"} />
             </Button>
+            <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Edit in whiteboard"
+                onclick={openWhiteboard}
+            >
+                <Icon name="draw" />
+            </Button>
         {/if}
         {#if view === "image"}
             <Button
@@ -113,3 +135,13 @@
         <Icon name="close" />
     </Button>
 </Modal>
+
+<!-- Trace / edit this diagram's Asymptote source on the whiteboard. -->
+{#if editing && board}
+    <WhiteboardModal
+        bind:open={editing}
+        store={board}
+        backgroundSrc={imageSrc}
+        title="Edit diagram"
+    />
+{/if}

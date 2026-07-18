@@ -11,6 +11,7 @@
    import { Modal } from "$lib/components/modal";
    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
    import { UtilityPanelRegister } from "$lib/components/utility-panel";
+   import { WhiteboardLauncher } from "$lib/components/whiteboard";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       topicLabel,
@@ -2223,6 +2224,9 @@
       {/if}
    </div>
 </div>
+
+<!-- Scratch paper: a sketch overlay for working problems, with Asymptote export. -->
+<WhiteboardLauncher />
 
 {#snippet swatch(cls: string, label: string)}
    <span class="inline-flex items-center gap-1.5">
