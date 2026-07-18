@@ -8,11 +8,15 @@
         onZoomIn,
         onZoomOut,
         onZoomTo,
+        onFitScene,
+        canFitScene = true,
     }: {
         percentage: number;
         onZoomIn: () => void;
         onZoomOut: () => void;
         onZoomTo: (percentage: number) => void;
+        onFitScene: () => void;
+        canFitScene?: boolean;
     } = $props();
 
     function commitZoom(event: Event) {
@@ -57,5 +61,16 @@
     </div>
     <Button variant="ghost" size="icon-sm" title="Zoom in" aria-label="Zoom in" onclick={onZoomIn}>
         <Icon name="add" />
+    </Button>
+    <div class="mx-0.5 h-5 w-px bg-border/60"></div>
+    <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Fit scene"
+        aria-label="Fit scene"
+        disabled={!canFitScene}
+        onclick={onFitScene}
+    >
+        <Icon name="fit_screen" />
     </Button>
 </div>

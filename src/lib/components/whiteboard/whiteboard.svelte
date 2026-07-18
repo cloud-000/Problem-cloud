@@ -5,6 +5,7 @@
     import {
         elementBounds,
         isStraightPathVertexEditable,
+        sceneBounds,
         type Bounds,
         type Pair,
         type Scene,
@@ -865,7 +866,29 @@
         zoomBy(targetScale / scale);
     }
 
+    function fitScene() {
+        const bounds = sceneBounds(store.scene);
+        if (!bounds || width <= 0 || height <= 0) return;
+
+        const sceneWidth = bounds.max[0] - bounds.min[0];
+        const sceneHeight = bounds.max[1] - bounds.min[1];
+        const availableWidth = Math.max(1, width - 64);
+        const availableHeight = Math.max(1, height - 64);
+        const widthScale = sceneWidth > 1e-9 ? availableWidth / sceneWidth : Infinity;
+        const heightScale = sceneHeight > 1e-9 ? availableHeight / sceneHeight : Infinity;
+        const fittedScale = Math.min(widthScale, heightScale);
+
+        scale = Number.isFinite(fittedScale)
+            ? Math.max(8, Math.min(400, fittedScale))
+            : 40;
+        const centerX = (bounds.min[0] + bounds.max[0]) / 2;
+        const centerY = (bounds.min[1] + bounds.max[1]) / 2;
+        panX = -centerX * scale;
+        panY = centerY * scale;
+    }
+
     const zoomPercentage = $derived(Math.round((scale / 40) * 100));
+    const canFitScene = $derived(sceneBounds(store.scene) !== null);
 
     function onWheel(e: WheelEvent) {
         e.preventDefault();
@@ -990,6 +1013,8 @@
                 onZoomOut={() => zoomBy(1 / 1.2)}
                 onZoomIn={() => zoomBy(1.2)}
                 onZoomTo={zoomTo}
+                onFitScene={fitScene}
+                {canFitScene}
             />
         </div>
     {/if}
