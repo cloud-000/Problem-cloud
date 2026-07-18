@@ -91,6 +91,12 @@
       },
       { href: "/roadmap", icon: "map", label: "Roadmap", important: false },
       {
+         href: "/whiteboard",
+         icon: "draw",
+         label: "Whiteboard",
+         important: false,
+      },
+      {
          href: "/leaderboard",
          icon: "leaderboard",
          label: "Leaderboard",
