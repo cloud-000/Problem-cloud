@@ -14,7 +14,7 @@
 
 import { browser } from "$app/environment";
 import type { Pen, Scene } from "$lib/asy/scene/types";
-import { emptyScene } from "$lib/asy/scene";
+import { emptyScene, isStraightPathVertexEditable } from "$lib/asy/scene";
 import { parse, serialize } from "$lib/asy/codec";
 import {
     createTool,
@@ -191,6 +191,7 @@ export class WhiteboardStore {
         const element = this.scene.elements.find(({ id }) => id === elementId);
         if (
             element?.kind !== "path" ||
+            !isStraightPathVertexEditable(element.path) ||
             nodeIndex < 0 ||
             nodeIndex >= element.path.nodes.length
         ) return;

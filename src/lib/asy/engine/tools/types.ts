@@ -26,7 +26,7 @@ export interface LineContinuation {
 export type SelectionTransformGesture =
     | {
           kind: "vertex";
-          /** The path whose endpoint is being edited. */
+          /** The all-straight path whose endpoint is being edited. */
           elementId: string;
           /** Index of the endpoint in the path's node array. */
           nodeIndex: number;

@@ -9,6 +9,18 @@ export type PathCommand =
     | { kind: "close" };
 
 /**
+ * Whether a path supports the v1 vertex editor. Curved and mixed-join paths are
+ * intentionally whole-object-only because moving/deleting their implicit
+ * spline nodes cannot yet preserve explicit curve tangents.
+ */
+export function isStraightPathVertexEditable(path: Path): boolean {
+    const expectedJoins = path.cyclic ? path.nodes.length : Math.max(0, path.nodes.length - 1);
+    return path.nodes.length >= 2 &&
+        path.joins.length === expectedJoins &&
+        path.joins.every((join) => join === "--");
+}
+
+/**
  * Lower a scene path into the cubic interpretation used by the in-app Canvas
  * and SVG renderers. `..` remains a Catmull-Rom-style approximation of Asy's
  * Hobby spline; serialization continues to preserve the authored join.

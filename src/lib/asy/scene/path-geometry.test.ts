@@ -1,8 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { makePath } from "./factory";
-import { flattenPath, pathCommands, pathExtrema } from "./path-geometry";
+import {
+    flattenPath,
+    isStraightPathVertexEditable,
+    pathCommands,
+    pathExtrema,
+} from "./path-geometry";
 
 describe("shared path geometry", () => {
+    test("only valid all-straight paths qualify for vertex editing", () => {
+        expect(isStraightPathVertexEditable(makePath([[0, 0], [1, 1], [2, 0]]))).toBe(true);
+        expect(isStraightPathVertexEditable(makePath(
+            [[0, 0], [1, 1], [2, 0]],
+            { join: ".." },
+        ))).toBe(false);
+        expect(isStraightPathVertexEditable(makePath(
+            [[0, 0], [1, 1], [2, 0]],
+            { joins: ["..", "--"] },
+        ))).toBe(false);
+        expect(isStraightPathVertexEditable({
+            nodes: [[0, 0], [1, 1]],
+            joins: [],
+            cyclic: false,
+        })).toBe(false);
+    });
+
     test("straight joins remain exact while curved joins are adaptively flattened", () => {
         const straight = flattenPath(makePath([[0, 0], [2, 0], [2, 2]]), 0.001);
         expect(straight).toEqual([[0, 0], [2, 0], [2, 2]]);

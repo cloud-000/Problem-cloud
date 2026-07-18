@@ -1,5 +1,6 @@
 import type { Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
+import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { hitTest } from "../hit-test";
 import { distance, rotateElement, scaleElement, translateElement } from "../geometry";
 import {
@@ -220,6 +221,7 @@ export class SelectTool implements Tool {
             if (
                 !selected.has(elementId) ||
                 element?.kind !== "path" ||
+                !isStraightPathVertexEditable(element.path) ||
                 nodeIndex < 0 ||
                 nodeIndex >= element.path.nodes.length
             ) return { scene, changed: false };

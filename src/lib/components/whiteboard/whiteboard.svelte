@@ -4,6 +4,7 @@
     import type { Attachment } from "svelte/attachments";
     import {
         elementBounds,
+        isStraightPathVertexEditable,
         type Bounds,
         type Pair,
         type Scene,
@@ -146,27 +147,24 @@
         return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
     });
 
-    const selectedEditablePath = $derived.by(() => {
+    /** Only all-straight paths expose per-node handles; ink stays whole-object-only. */
+    const selectedStraightVertexEditablePath = $derived.by(() => {
         if (activeSelection.length !== 1) return null;
         const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        return element?.kind === "path" &&
-            element.path.nodes.length >= 2 &&
-            element.path.joins.length ===
-                (element.path.cyclic ? element.path.nodes.length : element.path.nodes.length - 1) &&
-            element.path.joins.every((join) => join === "--")
+        return element?.kind === "path" && isStraightPathVertexEditable(element.path)
             ? element
             : null;
     });
 
-    const selectedPathHasMultipleSegments = $derived(
-        (selectedEditablePath?.path.joins.length ?? 0) > 1,
+    const selectedStraightPathHasMultipleSegments = $derived(
+        (selectedStraightVertexEditablePath?.path.joins.length ?? 0) > 1,
     );
 
     const activeSelectedVertex = $derived.by(() =>
         selectedVertex &&
-        selectedEditablePath?.id === selectedVertex.elementId &&
+        selectedStraightVertexEditablePath?.id === selectedVertex.elementId &&
         selectedVertex.nodeIndex >= 0 &&
-        selectedVertex.nodeIndex < selectedEditablePath.path.nodes.length
+        selectedVertex.nodeIndex < selectedStraightVertexEditablePath.path.nodes.length
             ? selectedVertex
             : null,
     );
@@ -185,8 +183,8 @@
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
         if (
-            selectedEditablePath &&
-            !selectedPathHasMultipleSegments &&
+            selectedStraightVertexEditablePath &&
+            !selectedStraightPathHasMultipleSegments &&
             store.selectionPreview === null
         ) return null;
         if (selectionGeometryBounds && hasTransformExtent) {
@@ -221,7 +219,7 @@
 
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
-            (selectedEditablePath && !selectedPathHasMultipleSegments) ||
+            (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -263,16 +261,20 @@
     });
 
     const vertexHandles = $derived.by<VertexHandle[]>(() => {
-        if (!selectedEditablePath || selectionIsPreview || store.toolKind !== "select") return [];
-        return selectedEditablePath.path.nodes.map((handle, nodeIndex) => ({
+        if (
+            !selectedStraightVertexEditablePath ||
+            selectionIsPreview ||
+            store.toolKind !== "select"
+        ) return [];
+        return selectedStraightVertexEditablePath.path.nodes.map((handle, nodeIndex) => ({
             screen: project(handle),
             handle,
-            elementId: selectedEditablePath.id,
+            elementId: selectedStraightVertexEditablePath.id,
             nodeIndex,
             cursor: "move",
-            state: isVertex(activeSelectedVertex, selectedEditablePath.id, nodeIndex)
+            state: isVertex(activeSelectedVertex, selectedStraightVertexEditablePath.id, nodeIndex)
                 ? "selected"
-                : isVertex(hoveredVertex, selectedEditablePath.id, nodeIndex)
+                : isVertex(hoveredVertex, selectedStraightVertexEditablePath.id, nodeIndex)
                   ? "hovered"
                   : "default",
         }));
@@ -280,7 +282,7 @@
 
     const rotationControl = $derived.by(() => {
         if (
-            (selectedEditablePath && !selectedPathHasMultipleSegments) ||
+            (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||

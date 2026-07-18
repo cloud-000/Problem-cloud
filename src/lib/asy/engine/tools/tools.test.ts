@@ -272,6 +272,14 @@ describe("SelectTool", () => {
         return createTool("point").onPointerDown(emptyScene(), at, ctx).commit!;
     }
 
+    function sceneWithMixedPath() {
+        const path = createPath(makePath(
+            [[0, 0], [1, 1], [2, 1], [3, 0]],
+            { joins: ["..", "--", ".."] },
+        ));
+        return { scene: { elements: [path] } as Scene, path };
+    }
+
     test("click selects the element under the pointer", () => {
         const scene = sceneWithDot([1, 1]);
         const tool = createTool("select");
@@ -366,6 +374,54 @@ describe("SelectTool", () => {
         tool.onPointerMove(scene, [4, 5], ctx);
         const up = tool.onPointerUp(scene, [4, 5], ctx);
         expect(up.commit?.elements).toMatchObject([{ kind: "dot", at: [4, 5] }]);
+    });
+
+    test("whole-object move, resize, and rotation preserve mixed joins", () => {
+        const originalJoins = ["..", "--", ".."];
+
+        const movedSource = sceneWithMixedPath();
+        const move = createTool("select");
+        move.onPointerDown(movedSource.scene, [0, 0], {
+            ...ctx,
+            selection: [movedSource.path.id],
+        });
+        move.onPointerMove(movedSource.scene, [2, 3], ctx);
+        const moved = move.onPointerUp(movedSource.scene, [2, 3], ctx).commit?.elements[0];
+        expect(moved?.kind === "path" ? moved.path.joins : []).toEqual(originalJoins);
+        expect(moved?.kind === "path" ? moved.path.nodes[0] : null).toEqual([2, 3]);
+
+        const resizedSource = sceneWithMixedPath();
+        const resize = createTool("select");
+        const resizeCtx: ToolContext = {
+            ...ctx,
+            selection: [resizedSource.path.id],
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [3, 1],
+                minimumScale: 0.1,
+            },
+        };
+        resize.onPointerDown(resizedSource.scene, [3, 1], resizeCtx);
+        const resized = resize.onPointerUp(resizedSource.scene, [6, 2], resizeCtx)
+            .commit?.elements[0];
+        expect(resized?.kind === "path" ? resized.path.joins : []).toEqual(originalJoins);
+        expect(resized?.kind === "path" ? resized.path.nodes.at(-1) : null).toEqual([6, 0]);
+
+        const rotatedSource = sceneWithMixedPath();
+        const rotate = createTool("select");
+        const rotateCtx: ToolContext = {
+            ...ctx,
+            selection: [rotatedSource.path.id],
+            selectionTransform: { kind: "rotate", pivot: [0, 0] },
+        };
+        rotate.onPointerDown(rotatedSource.scene, [1, 0], rotateCtx);
+        const rotated = rotate.onPointerUp(rotatedSource.scene, [0, 1], rotateCtx)
+            .commit?.elements[0];
+        expect(rotated?.kind === "path" ? rotated.path.joins : []).toEqual(originalJoins);
+        if (rotated?.kind !== "path") return;
+        expect(rotated.path.nodes[1][0]).toBeCloseTo(-1);
+        expect(rotated.path.nodes[1][1]).toBeCloseTo(1);
     });
 
     test("dragging empty space marquee-selects fully enclosed elements", () => {
@@ -491,6 +547,26 @@ describe("SelectTool", () => {
         expect(nodes[0]).toEqual([0, 0]);
         expect(nodes[1][0]).toBeCloseTo(4);
         expect(nodes[1][1]).toBeCloseTo(3);
+    });
+
+    test("a forged vertex transform cannot edit a mixed-join path", () => {
+        const { scene, path } = sceneWithMixedPath();
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [path.id],
+            selectionTransform: {
+                kind: "vertex",
+                elementId: path.id,
+                nodeIndex: 1,
+                handle: path.path.nodes[1],
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, path.path.nodes[1], transformCtx);
+        const result = tool.onPointerUp(scene, [5, 5], transformCtx);
+        expect(result.commit).toBeUndefined();
+        expect(result.preview).toBeNull();
+        expect(scene.elements[0]).toEqual(path);
     });
 
     test("a transform handle wins over move hit-testing and transforms the whole selection", () => {
