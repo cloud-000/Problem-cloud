@@ -1,7 +1,10 @@
 /** Geometry cleanup for dense freehand pointer samples. */
 
-import type { Pair } from "../scene/types";
+import type { Join, Pair } from "../scene/types";
 import { pointToSegment } from "./geometry";
+
+/** Direction change at or above this angle becomes a deliberate cusp. */
+export const FREEHAND_CORNER_THRESHOLD_DEGREES = 60;
 
 /**
  * Simplify `points` with tolerance `epsilon` (asy-space). Endpoints are always
@@ -123,4 +126,44 @@ export function processStroke(points: Pair[], simplifyEpsilon: number): Pair[] {
     const resampled = epsilon > 0 ? resamplePoints(points, epsilon * 2) : dedupePoints(points);
     const smoothed = smoothPointsAdaptive(resampled);
     return simplifyRDP(smoothed, epsilon);
+}
+
+/**
+ * Classify an already-processed open stroke into smooth and cusp segments.
+ * A cusp needs straight joins on both sides because the v1 scene model stores
+ * join kinds per segment rather than an explicit tangent break at a node.
+ */
+export function classifyStrokeJoins(
+    nodes: readonly Pair[],
+    cornerThresholdDegrees = FREEHAND_CORNER_THRESHOLD_DEGREES,
+): Join[] {
+    const joins: Join[] = Array.from(
+        { length: Math.max(0, nodes.length - 1) },
+        () => "..",
+    );
+    if (nodes.length < 3) return joins;
+
+    const threshold = Math.max(0, Math.min(180, cornerThresholdDegrees));
+    for (let index = 1; index < nodes.length - 1; index++) {
+        const previous = nodes[index - 1];
+        const point = nodes[index];
+        const next = nodes[index + 1];
+        const incomingX = point[0] - previous[0];
+        const incomingY = point[1] - previous[1];
+        const outgoingX = next[0] - point[0];
+        const outgoingY = next[1] - point[1];
+        const incomingLength = Math.hypot(incomingX, incomingY);
+        const outgoingLength = Math.hypot(outgoingX, outgoingY);
+        if (incomingLength <= 1e-12 || outgoingLength <= 1e-12) continue;
+
+        const cosine = Math.max(-1, Math.min(1,
+            (incomingX * outgoingX + incomingY * outgoingY) /
+                (incomingLength * outgoingLength),
+        ));
+        const turnDegrees = (Math.acos(cosine) * 180) / Math.PI;
+        if (turnDegrees + 1e-9 < threshold) continue;
+        joins[index - 1] = "--";
+        joins[index] = "--";
+    }
+    return joins;
 }

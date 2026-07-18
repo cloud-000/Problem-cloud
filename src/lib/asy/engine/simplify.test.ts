@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { dedupePoints, processStroke, resamplePoints, simplifyRDP, smoothPointsAdaptive } from "./simplify";
+import {
+    classifyStrokeJoins,
+    dedupePoints,
+    processStroke,
+    resamplePoints,
+    simplifyRDP,
+    smoothPointsAdaptive,
+} from "./simplify";
 import type { Pair } from "../scene/types";
 
 describe("simplifyRDP", () => {
@@ -61,5 +68,24 @@ describe("freehand cleanup", () => {
         const processed = processStroke([[0, 0], [0.7, 0.2], [2.3, 1]], 0.1);
         expect(processed[0]).toEqual([0, 0]);
         expect(processed.at(-1)).toEqual([2.3, 1]);
+    });
+});
+
+describe("classifyStrokeJoins", () => {
+    test("keeps shallow turns smooth", () => {
+        const nodes: Pair[] = [[0, 0], [1, 0], [2, 0.5], [3, 1.25]];
+        expect(classifyStrokeJoins(nodes)).toEqual(["..", "..", ".."]);
+    });
+
+    test("makes both sides of a sharp turn straight while preserving unrelated curves", () => {
+        const nodes: Pair[] = [[0, 0], [1, 0], [2, 0], [2, 1], [2.5, 2]];
+        const joins = classifyStrokeJoins(nodes);
+        expect(joins).toEqual(["..", "--", "--", ".."]);
+    });
+
+    test("honors the threshold boundary and tolerates duplicate nodes", () => {
+        const sixtyDegrees: Pair[] = [[0, 0], [1, 0], [1.5, Math.sqrt(3) / 2]];
+        expect(classifyStrokeJoins(sixtyDegrees)).toEqual(["--", "--"]);
+        expect(classifyStrokeJoins([[0, 0], [0, 0], [1, 0]])).toEqual(["..", ".."]);
     });
 });

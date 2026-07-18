@@ -1,6 +1,6 @@
 import type { Pair, Scene } from "../../scene/types";
 import { makePath, newId } from "../../scene/factory";
-import { processStroke } from "../simplify";
+import { classifyStrokeJoins, processStroke } from "../simplify";
 import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
 
 /**
@@ -69,7 +69,7 @@ export class PenTool implements Tool {
         return {
             id: this.draftId ?? newId(),
             kind: "path" as const,
-            path: makePath(nodes, { join: ".." }),
+            path: makePath(nodes, { joins: classifyStrokeJoins(nodes) }),
             pen: ctx.pen,
         };
     }

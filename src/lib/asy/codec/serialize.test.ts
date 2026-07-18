@@ -39,6 +39,13 @@ describe("serialize", () => {
         ).toBe("draw((0,0)..(1,2)..(3,1));");
     });
 
+    test("mixed joins preserve an intentional cusp", () => {
+        expect(serialize(scene(createPath(makePath(
+            [[0, 0], [1, 1], [2, 1], [3, 2]],
+            { joins: ["..", "--", ".."] },
+        ))))).toBe("draw((0,0)..(1,1)--(2,1)..(3,2));");
+    });
+
     test("circle and arc stay first-class", () => {
         expect(serialize(scene(createCircle([0, 0], 5)))).toBe("draw(circle((0,0), 5));");
         expect(serialize(scene(createArc([0, 0], 2, 0, 90)))).toBe("draw(arc((0,0), 2, 0, 90));");

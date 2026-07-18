@@ -3,6 +3,7 @@ import { createTool, type ToolContext } from "./index";
 import { emptyScene } from "../../scene/factory";
 import { createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
+import { pathCommands } from "../../scene/path-geometry";
 import type { Pair, Scene } from "../../scene/types";
 
 const ctx: ToolContext = {
@@ -166,7 +167,7 @@ describe("PenTool", () => {
         expect(tool.onPointerUp(scene, [3, 1], ctx, [[2.5, 1]])).toEqual({});
     });
 
-    test("live and committed strokes use the same smoothed spline geometry", () => {
+    test("live and committed strokes use the same processed mixed-join geometry", () => {
         const tool = createTool("pen");
         const scene = emptyScene();
         tool.onPointerDown(scene, [0, 0], ctx);
@@ -181,7 +182,28 @@ describe("PenTool", () => {
         expect(commitElement?.kind).toBe("path");
         if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
         expect(commitElement.path).toEqual(previewElement.path);
-        expect(commitElement.path.joins.every((join) => join === "..")).toBe(true);
+    });
+
+    test("a deliberate corner becomes a cusp while gentle segments remain curved", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        const exact = { ...ctx, simplifyEpsilon: 0 };
+        tool.onPointerDown(scene, [0, 0], exact);
+        tool.onPointerMoves?.(scene, [[1, 0], [2, 0], [2, 1], [2, 2], [3, 2.5]], exact);
+        const preview = tool.onPointerMove(scene, [4, 2.7], exact);
+        const commit = tool.onPointerUp(scene, [4, 2.7], exact);
+        const previewElement = preview.preview?.elements[0];
+        const commitElement = commit.commit?.elements[0];
+
+        expect(previewElement?.kind).toBe("path");
+        expect(commitElement?.kind).toBe("path");
+        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(commitElement.path).toEqual(previewElement.path);
+        expect(commitElement.path.joins).toContain("--");
+        expect(commitElement.path.joins).toContain("..");
+        const commands = pathCommands(commitElement.path);
+        expect(commands.some(({ kind }) => kind === "line")).toBe(true);
+        expect(commands.some(({ kind }) => kind === "curve")).toBe(true);
     });
 });
 
