@@ -36,6 +36,8 @@ export class WhiteboardStore {
     toolKind = $state<WhiteboardToolKind>("select");
     pen = $state<Pen>({ namedColor: "black", lineWidth: 1 });
     selection = $state<string[]>([]);
+    /** Candidate selection while a marquee drag is in progress. */
+    selectionPreview = $state<string[] | null>(null);
     /** Transient render override during a drag (rubber-band / live move). */
     preview = $state<Scene | null>(null);
     marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
@@ -65,6 +67,7 @@ export class WhiteboardStore {
     setTool(kind: WhiteboardToolKind): void {
         this.#tool.onCancel();
         this.preview = null;
+        this.selectionPreview = null;
         this.marquee = null;
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
@@ -97,10 +100,12 @@ export class WhiteboardStore {
 
     #dispatch(result: ToolResult): void {
         if (result.selection !== undefined) this.selection = result.selection;
+        if (result.selectionPreview !== undefined) this.selectionPreview = result.selectionPreview;
         if (result.marquee !== undefined) this.marquee = result.marquee;
         if (result.commit !== undefined) {
             this.apply(result.commit);
             this.preview = null;
+            this.selectionPreview = null;
             this.marquee = null;
         } else if (result.preview !== undefined) {
             this.preview = result.preview;
@@ -122,6 +127,7 @@ export class WhiteboardStore {
             this.scene = prev;
             this.selection = [];
             this.preview = null;
+            this.selectionPreview = null;
         }
         this.#syncFlags();
     }
@@ -132,6 +138,7 @@ export class WhiteboardStore {
             this.scene = next;
             this.selection = [];
             this.preview = null;
+            this.selectionPreview = null;
         }
         this.#syncFlags();
     }
@@ -145,15 +152,19 @@ export class WhiteboardStore {
 
     deleteSelected(): void {
         if (this.selection.length === 0) return;
-        const remove = new Set(this.selection);
-        this.apply({ ...this.scene, elements: this.scene.elements.filter((e) => !remove.has(e.id)) });
+        this.apply({
+            ...this.scene,
+            elements: this.scene.elements.filter((element) => !this.selection.includes(element.id)),
+        });
         this.selection = [];
+        this.selectionPreview = null;
         this.marquee = null;
     }
 
     clearAll(): void {
         this.apply(emptyScene());
         this.selection = [];
+        this.selectionPreview = null;
         this.marquee = null;
     }
 
@@ -167,6 +178,7 @@ export class WhiteboardStore {
     loadAsy(asy: string): void {
         this.apply(parse(asy).scene);
         this.selection = [];
+        this.selectionPreview = null;
     }
 
     static fromAsy(asy: string): WhiteboardStore {

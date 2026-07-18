@@ -23,13 +23,13 @@ export class SelectTool implements Tool {
             this.reset();
             this.marqueeStart = p;
             this.base = scene;
-            return { selection: [], marquee: { start: p, end: p } };
+            return { selection: [], selectionPreview: [], marquee: { start: p, end: p } };
         }
         this.dragStart = p;
         this.movingIds = ctx.selection.includes(hit.id) ? [...ctx.selection] : [hit.id];
         this.base = scene;
         this.moved = false;
-        return { selection: this.movingIds, preview: scene, marquee: null };
+        return { selection: this.movingIds, selectionPreview: null, preview: scene, marquee: null };
     }
 
     onPointerMove(_scene: Scene, p: Pair): ToolResult {
@@ -39,9 +39,12 @@ export class SelectTool implements Tool {
             if (dx !== 0 || dy !== 0) this.moved = true;
             return { preview: this.translate(this.base, this.movingIds, dx, dy) };
         }
-        if (this.marqueeStart) {
+        if (this.marqueeStart && this.base) {
             this.moved = this.moved || p[0] !== this.marqueeStart[0] || p[1] !== this.marqueeStart[1];
-            return { marquee: { start: this.marqueeStart, end: p } };
+            return {
+                selectionPreview: this.enclosedIds(this.base, this.marqueeStart, p),
+                marquee: { start: this.marqueeStart, end: p },
+            };
         }
         return NO_RESULT;
     }
@@ -62,32 +65,39 @@ export class SelectTool implements Tool {
             const base = this.base;
             const moved = this.moved;
             this.reset();
-            if (!moved) return { selection: [], marquee: null };
-            const minX = Math.min(start[0], p[0]);
-            const maxX = Math.max(start[0], p[0]);
-            const minY = Math.min(start[1], p[1]);
-            const maxY = Math.max(start[1], p[1]);
-            const selection = base.elements.flatMap((element) => {
-                const bounds = elementBounds(element);
-                return bounds &&
-                    bounds.min[0] >= minX && bounds.max[0] <= maxX &&
-                    bounds.min[1] >= minY && bounds.max[1] <= maxY
-                    ? [element.id]
-                    : [];
-            });
-            return { selection, marquee: null };
+            if (!moved) return { selection: [], selectionPreview: null, marquee: null };
+            return {
+                selection: this.enclosedIds(base, start, p),
+                selectionPreview: null,
+                marquee: null,
+            };
         }
         return NO_RESULT;
     }
 
     onCancel(): ToolResult {
         this.reset();
-        return { preview: null, marquee: null };
+        return { preview: null, selectionPreview: null, marquee: null };
     }
 
     private translate(scene: Scene, ids: string[], dx: number, dy: number): Scene {
         const selected = new Set(ids);
         return mapElements(scene, (el) => selected.has(el.id) ? translateElement(el, dx, dy) : el);
+    }
+
+    private enclosedIds(scene: Scene, start: Pair, end: Pair): string[] {
+        const minX = Math.min(start[0], end[0]);
+        const maxX = Math.max(start[0], end[0]);
+        const minY = Math.min(start[1], end[1]);
+        const maxY = Math.max(start[1], end[1]);
+        return scene.elements.flatMap((element) => {
+            const bounds = elementBounds(element);
+            return bounds &&
+                bounds.min[0] >= minX && bounds.max[0] <= maxX &&
+                bounds.min[1] >= minY && bounds.max[1] <= maxY
+                ? [element.id]
+                : [];
+        });
     }
 
     private reset(): void {

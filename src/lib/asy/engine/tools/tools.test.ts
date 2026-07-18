@@ -192,8 +192,12 @@ describe("SelectTool", () => {
         scene = createTool("point").onPointerDown(scene, [6, 6], ctx).commit!;
         const tool = createTool("select");
         tool.onPointerDown(scene, [0, 0], ctx);
-        expect(tool.onPointerMove(scene, [3, 3], ctx).marquee).toEqual({ start: [0, 0], end: [3, 3] });
-        expect(tool.onPointerUp(scene, [3, 3], ctx).selection).toEqual([scene.elements[0].id]);
+        const preview = tool.onPointerMove(scene, [3, 3], ctx);
+        expect(preview.marquee).toEqual({ start: [0, 0], end: [3, 3] });
+        expect(preview.selectionPreview).toEqual([scene.elements[0].id]);
+        const result = tool.onPointerUp(scene, [3, 3], ctx);
+        expect(result.selection).toEqual([scene.elements[0].id]);
+        expect(result.selectionPreview).toBeNull();
     });
 
     test("dragging one member of a selection moves the whole group", () => {

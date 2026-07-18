@@ -1,7 +1,13 @@
 <script lang="ts">
     import { cn } from "$lib/utils.js";
-    import { SvelteMap } from "svelte/reactivity";
-    import type { Pair } from "$lib/asy/scene";
+    import { SvelteMap, SvelteSet } from "svelte/reactivity";
+    import type { Attachment } from "svelte/attachments";
+    import {
+        elementBounds,
+        type Bounds,
+        type Pair,
+        type SceneElement as SceneElementModel,
+    } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import type { Project } from "./svg";
     import SceneElement from "./scene-element.svelte";
@@ -42,22 +48,97 @@
     const project = $derived.by<Project>(
         () => (p: Pair) => [origin[0] + p[0] * scale, origin[1] - p[1] * scale],
     );
-    const selectedIds = $derived(new Set(store.selection));
+    const activeSelection = $derived(store.selectionPreview ?? store.selection);
+    const selectedIds = $derived(new SvelteSet(activeSelection));
+    const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
 
-    // Keep the engine's asy-space tolerances in sync with the current zoom.
-    $effect(() => {
-        store.tolerance = 8 / scale;
-        store.simplifyEpsilon = 2.5 / scale;
+    interface ScreenRect {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    }
+
+    function screenRect(bounds: Bounds, padding = 0): ScreenRect {
+        const a = project(bounds.min);
+        const b = project(bounds.max);
+        return {
+            x: Math.min(a[0], b[0]) - padding,
+            y: Math.min(a[1], b[1]) - padding,
+            width: Math.abs(a[0] - b[0]) + padding * 2,
+            height: Math.abs(a[1] - b[1]) + padding * 2,
+        };
+    }
+
+    function elementScreenRect(element: SceneElementModel, padding = 0): ScreenRect | null {
+        if (element.kind === "label") {
+            const [x, y] = project(element.at);
+            const labelWidth = Math.max(14, element.text.replaceAll("$", "").length * 7.5);
+            return {
+                x: x - labelWidth / 2 - padding,
+                y: y - 9 - padding,
+                width: labelWidth + padding * 2,
+                height: 18 + padding * 2,
+            };
+        }
+        const bounds = elementBounds(element);
+        return bounds ? screenRect(bounds, padding) : null;
+    }
+
+    const selectionRect = $derived.by(() => {
+        if (activeSelection.length === 0) return null;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const element of store.displayScene.elements) {
+            if (!selectedIds.has(element.id)) continue;
+            const rect = elementScreenRect(element, 6);
+            if (!rect) continue;
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        }
+        return Number.isFinite(minX)
+            ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+            : null;
     });
 
-    // Supply a text prompt for the label tool.
-    $effect(() => {
+    const previewElementRects = $derived.by(() => {
+        if (store.selectionPreview === null) return [];
+        return store.displayScene.elements.flatMap((element) => {
+            if (!selectedIds.has(element.id)) return [];
+            const rect = elementScreenRect(element, 4);
+            return rect ? [rect] : [];
+        });
+    });
+
+    const selectionHandles = $derived.by(() => {
+        if (!selectionRect || selectionIsPreview) return [];
+        const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
+        return [
+            [x, y],
+            [x + boxWidth, y],
+            [x + boxWidth, y + boxHeight],
+            [x, y + boxHeight],
+        ] satisfies Pair[];
+    });
+
+    function syncToolScale() {
+        store.tolerance = 8 / scale;
+        store.simplifyEpsilon = 2.5 / scale;
+    }
+
+    const attachSurface: Attachment<SVGSVGElement> = (node) => {
+        surface = node;
         store.promptLabel = () =>
             typeof window !== "undefined" ? window.prompt("Label (LaTeX, e.g. $A$):") : null;
         return () => {
+            if (surface === node) surface = null;
             store.promptLabel = undefined;
         };
-    });
+    };
 
     function localPoint(clientX: number, clientY: number): [number, number] {
         const rect = surface?.getBoundingClientRect();
@@ -138,6 +219,7 @@
         }
 
         interaction = "draw";
+        syncToolScale();
         store.pointerDown(toAsyAt(e.clientX, e.clientY));
     }
 
@@ -269,7 +351,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
-        bind:this={surface}
+        {@attach attachSurface}
         {width}
         {height}
         viewBox="0 0 {width} {height}"
@@ -323,6 +405,22 @@
                 <SceneElement {element} {project} {scale} selected={selectedIds.has(element.id)} />
             {/each}
 
+            {#each previewElementRects as rect, index (`${index}-${rect.x}-${rect.y}`)}
+                <rect
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
+                    rx="2"
+                    fill="var(--color-primary)"
+                    fill-opacity="0.06"
+                    stroke="var(--color-primary)"
+                    stroke-width="1"
+                    stroke-dasharray="3 3"
+                    pointer-events="none"
+                />
+            {/each}
+
             {#if marqueeRect}
                 <rect
                     x={marqueeRect.x}
@@ -334,7 +432,35 @@
                     stroke="var(--color-primary)"
                     stroke-width="1"
                     stroke-dasharray="5 4"
+                    pointer-events="none"
                 />
+            {/if}
+
+            {#if selectionRect}
+                <rect
+                    x={selectionRect.x}
+                    y={selectionRect.y}
+                    width={selectionRect.width}
+                    height={selectionRect.height}
+                    fill="none"
+                    stroke="var(--color-primary)"
+                    stroke-width="1.5"
+                    stroke-dasharray={selectionIsPreview ? "6 4" : undefined}
+                    pointer-events="none"
+                />
+                {#each selectionHandles as handle, index (`${index}-${handle[0]}-${handle[1]}`)}
+                    <rect
+                        x={handle[0] - 3.5}
+                        y={handle[1] - 3.5}
+                        width="7"
+                        height="7"
+                        rx="1"
+                        fill="var(--color-surface-container-lowest)"
+                        stroke="var(--color-primary)"
+                        stroke-width="1.5"
+                        pointer-events="none"
+                    />
+                {/each}
             {/if}
         {/if}
     </svg>
