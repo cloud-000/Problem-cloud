@@ -109,6 +109,7 @@ export class WhiteboardStore {
             this.preview = null;
             this.selectionPreview = null;
             this.marquee = null;
+            if (result.nextTool) this.setTool(result.nextTool);
         } else if (result.preview !== undefined) {
             this.preview = result.preview;
         }

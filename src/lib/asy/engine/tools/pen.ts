@@ -33,7 +33,9 @@ export class PenTool implements Tool {
         this.samples = [];
         if (nodes.length < 2) return { preview: null };
         const path = createPath(makePath(nodes), ctx.pen);
-        return { commit: addElement(scene, path), selection: [path.id], preview: null };
+        // Freehand is a continuous drawing tool: keep it active and leave the
+        // finished stroke unselected so the next stroke can begin cleanly.
+        return { commit: addElement(scene, path), selection: [], preview: null };
     }
 
     onCancel(): ToolResult {

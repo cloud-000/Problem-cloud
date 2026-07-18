@@ -31,6 +31,7 @@ export class RectangleTool implements Tool {
         return {
             commit: addElement(scene, rectangle),
             selection: [rectangle.id],
+            nextTool: "select",
             preview: null,
         };
     }

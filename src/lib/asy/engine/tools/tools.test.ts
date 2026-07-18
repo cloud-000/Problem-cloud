@@ -75,6 +75,7 @@ describe("RectangleTool", () => {
             },
         ]);
         expect(up.selection).toEqual([up.commit?.elements[0].id]);
+        expect(up.nextTool).toBe("select");
     });
 
     test("a drag with either dimension shorter than tolerance commits nothing", () => {

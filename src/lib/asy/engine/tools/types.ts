@@ -9,6 +9,7 @@
  *     `null` clears any active preview.
  *   - `commit`  — the new authoritative scene. The store pushes history + swaps.
  *   - `selection` — updated selected element ids.
+ *   - `nextTool` — optionally activate a different tool after a committed edit.
  *   - `selectionPreview` — transient marquee membership before pointer release.
  * Any subset may be present; an empty result means "no change".
  */
@@ -62,6 +63,9 @@ export interface ToolResult {
     commit?: Scene;
     preview?: Scene | null;
     selection?: string[];
+    /** Tool to activate after this result commits. Creation tools can use this
+     *  to hand the newly-created element straight to the normal Select tool. */
+    nextTool?: ToolKind;
     /** Candidate element ids while a marquee gesture is still in progress. */
     selectionPreview?: string[] | null;
     /** Transient select-tool marquee, rendered by the view rather than stored in the scene. */

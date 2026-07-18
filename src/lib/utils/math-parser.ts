@@ -78,7 +78,10 @@ function splitMarkdownImages(text: string): ASTNode[] {
 
     while ((match = regex.exec(text)) !== null) {
         if (match.index > lastIndex) {
-            nodes.push({ type: "text", content: text.slice(lastIndex, match.index) });
+            nodes.push({
+                type: "text",
+                content: text.slice(lastIndex, match.index),
+            });
         }
         nodes.push({
             type: "img",
@@ -270,7 +273,10 @@ function matchTable(
         if (match[1] === "/") {
             depth--;
             if (depth === 0) {
-                return { end: re.lastIndex, inner: text.slice(from, match.index) };
+                return {
+                    end: re.lastIndex,
+                    inner: text.slice(from, match.index),
+                };
             }
         } else {
             depth++;
