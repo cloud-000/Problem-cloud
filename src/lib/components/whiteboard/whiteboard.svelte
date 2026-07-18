@@ -130,17 +130,21 @@
         return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
     });
 
-    const selectedOpenPath = $derived.by(() => {
+    const selectedEditablePath = $derived.by(() => {
         if (activeSelection.length !== 1) return null;
         const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
         return element?.kind === "path" &&
-            !element.path.cyclic &&
             element.path.nodes.length >= 2 &&
-            element.path.joins.length === element.path.nodes.length - 1 &&
+            element.path.joins.length ===
+                (element.path.cyclic ? element.path.nodes.length : element.path.nodes.length - 1) &&
             element.path.joins.every((join) => join === "--")
             ? element
             : null;
     });
+
+    const selectedPathHasMultipleSegments = $derived(
+        (selectedEditablePath?.path.joins.length ?? 0) > 1,
+    );
 
     const hasTransformExtent = $derived.by(() => {
         if (!selectionGeometryBounds) return false;
@@ -151,7 +155,11 @@
 
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
-        if (selectedOpenPath && store.selectionPreview === null) return null;
+        if (
+            selectedEditablePath &&
+            !selectedPathHasMultipleSegments &&
+            store.selectionPreview === null
+        ) return null;
         if (selectionGeometryBounds && hasTransformExtent) {
             return screenRect(selectionGeometryBounds, 6);
         }
@@ -184,7 +192,7 @@
 
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
-            selectedOpenPath ||
+            (selectedEditablePath && !selectedPathHasMultipleSegments) ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -226,11 +234,11 @@
     });
 
     const vertexHandles = $derived.by<VertexHandle[]>(() => {
-        if (!selectedOpenPath || selectionIsPreview || store.toolKind !== "select") return [];
-        return selectedOpenPath.path.nodes.map((handle, nodeIndex) => ({
+        if (!selectedEditablePath || selectionIsPreview || store.toolKind !== "select") return [];
+        return selectedEditablePath.path.nodes.map((handle, nodeIndex) => ({
             screen: project(handle),
             handle,
-            elementId: selectedOpenPath.id,
+            elementId: selectedEditablePath.id,
             nodeIndex,
             cursor: "move",
         }));
@@ -238,7 +246,7 @@
 
     const rotationControl = $derived.by(() => {
         if (
-            selectedOpenPath ||
+            (selectedEditablePath && !selectedPathHasMultipleSegments) ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -358,7 +366,7 @@
         }
 
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
-        const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
+        const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
         const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
         if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
@@ -424,7 +432,7 @@
                 store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
                 return;
             }
-            const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
+            const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
             transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ?? (overRotation ? "grab" : null);
