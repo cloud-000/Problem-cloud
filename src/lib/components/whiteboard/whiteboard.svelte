@@ -301,7 +301,11 @@
 
     function syncToolScale() {
         store.tolerance = 8 / scale;
-        store.simplifyEpsilon = 0.75 / scale;
+        store.strokeProcessing = {
+            ...store.strokeProcessing,
+            sampleSpacing: 1.5 / scale,
+            simplifyTolerance: 0.75 / scale,
+        };
     }
 
     const attachSurface: Attachment<HTMLCanvasElement> = (node) => {

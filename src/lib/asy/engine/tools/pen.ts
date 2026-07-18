@@ -40,7 +40,7 @@ export class PenTool implements Tool {
         this.drawing = false;
         this.samples.push(...pendingMoves);
         this.samples.push(p);
-        const nodes = processStroke(this.samples, ctx.simplifyEpsilon);
+        const nodes = processStroke(this.samples, ctx.strokeProcessing);
         this.samples = [];
         if (nodes.length < 2) {
             this.draftId = null;
@@ -61,7 +61,7 @@ export class PenTool implements Tool {
     }
 
     private strokePath(ctx: ToolContext) {
-        const nodes = processStroke(this.samples, ctx.simplifyEpsilon);
+        const nodes = processStroke(this.samples, ctx.strokeProcessing);
         return this.strokePathFromNodes(nodes, ctx);
     }
 
@@ -69,7 +69,12 @@ export class PenTool implements Tool {
         return {
             id: this.draftId ?? newId(),
             kind: "path" as const,
-            path: makePath(nodes, { joins: classifyStrokeJoins(nodes) }),
+            path: makePath(nodes, {
+                joins: classifyStrokeJoins(
+                    nodes,
+                    ctx.strokeProcessing.cornerThresholdDegrees,
+                ),
+            }),
             pen: ctx.pen,
         };
     }

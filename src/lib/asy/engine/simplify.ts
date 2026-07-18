@@ -6,6 +6,26 @@ import { pointToSegment } from "./geometry";
 /** Direction change at or above this angle becomes a deliberate cusp. */
 export const FREEHAND_CORNER_THRESHOLD_DEGREES = 60;
 
+/** Independent controls for the pure freehand geometry pipeline. */
+export interface StrokeProcessingOptions {
+    /** Arc-length interval used to regularize raw pointer samples, in scene units. */
+    sampleSpacing: number;
+    /** Ramer-Douglas-Peucker tolerance, in scene units. */
+    simplifyTolerance: number;
+    /** Adaptive neighbour smoothing amount, clamped to 0..1. */
+    smoothing: number;
+    /** Direction change at or above this angle becomes a cusp, clamped to 0..180. */
+    cornerThresholdDegrees: number;
+}
+
+/** Scene-unit fallbacks matching the pre-options processing contract. */
+export const DEFAULT_STROKE_PROCESSING_OPTIONS: Readonly<StrokeProcessingOptions> = {
+    sampleSpacing: 0.2,
+    simplifyTolerance: 0.1,
+    smoothing: 0.35,
+    cornerThresholdDegrees: FREEHAND_CORNER_THRESHOLD_DEGREES,
+};
+
 /**
  * Simplify `points` with tolerance `epsilon` (asy-space). Endpoints are always
  * preserved. Returns a new array; input is not mutated.
@@ -121,11 +141,15 @@ export function smoothPointsAdaptive(points: Pair[], strength = 0.35): Pair[] {
 }
 
 /** Apply the same freehand cleanup pipeline to live and committed geometry. */
-export function processStroke(points: Pair[], simplifyEpsilon: number): Pair[] {
-    const epsilon = Math.max(0, simplifyEpsilon);
-    const resampled = epsilon > 0 ? resamplePoints(points, epsilon * 2) : dedupePoints(points);
-    const smoothed = smoothPointsAdaptive(resampled);
-    return simplifyRDP(smoothed, epsilon);
+export function processStroke(
+    points: Pair[],
+    options: StrokeProcessingOptions,
+): Pair[] {
+    const spacing = Math.max(0, options.sampleSpacing);
+    const tolerance = Math.max(0, options.simplifyTolerance);
+    const resampled = spacing > 0 ? resamplePoints(points, spacing) : dedupePoints(points);
+    const smoothed = smoothPointsAdaptive(resampled, options.smoothing);
+    return simplifyRDP(smoothed, tolerance);
 }
 
 /**

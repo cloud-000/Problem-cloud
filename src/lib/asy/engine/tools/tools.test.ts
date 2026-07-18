@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTool, type ToolContext } from "./index";
+import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
 import { createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
@@ -9,7 +10,7 @@ import type { Pair, Scene } from "../../scene/types";
 const ctx: ToolContext = {
     pen: { namedColor: "red" },
     tolerance: 0.5,
-    simplifyEpsilon: 0.1,
+    strokeProcessing: { ...DEFAULT_STROKE_PROCESSING_OPTIONS },
     selection: [],
     lineContinuation: null,
     promptLabel: () => "$P$",
@@ -184,10 +185,69 @@ describe("PenTool", () => {
         expect(commitElement.path).toEqual(previewElement.path);
     });
 
+    test("custom processing options remain identical across batched preview and commit", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        const custom: ToolContext = {
+            ...ctx,
+            strokeProcessing: {
+                sampleSpacing: 0.3,
+                simplifyTolerance: 0.05,
+                smoothing: 0.8,
+                cornerThresholdDegrees: 75,
+            },
+        };
+        tool.onPointerDown(scene, [0, 0], custom);
+        const preview = tool.onPointerMoves?.(
+            scene,
+            [[0.4, 0.2], [1, -0.1], [1.6, 0.8], [2, 1]],
+            custom,
+        );
+        const commit = tool.onPointerUp(scene, [2, 1], custom);
+        const previewElement = preview?.preview?.elements[0];
+        const commitElement = commit.commit?.elements[0];
+
+        expect(previewElement?.kind).toBe("path");
+        expect(commitElement?.kind).toBe("path");
+        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(commitElement.path).toEqual(previewElement.path);
+    });
+
+    test("passes the explicit corner threshold into join classification", () => {
+        const scene = emptyScene();
+        const draw = (cornerThresholdDegrees: number) => {
+            const tool = createTool("pen");
+            const options: ToolContext = {
+                ...ctx,
+                strokeProcessing: {
+                    sampleSpacing: 0,
+                    simplifyTolerance: 0,
+                    smoothing: 0,
+                    cornerThresholdDegrees,
+                },
+            };
+            tool.onPointerDown(scene, [0, 0], options);
+            tool.onPointerMoves?.(scene, [[1, 0], [1, 1]], options);
+            return tool.onPointerUp(scene, [1, 1], options).commit?.elements[0];
+        };
+
+        const smooth = draw(91);
+        const cusp = draw(90);
+        expect(smooth?.kind === "path" ? smooth.path.joins : null).toEqual(["..", ".."]);
+        expect(cusp?.kind === "path" ? cusp.path.joins : null).toEqual(["--", "--"]);
+    });
+
     test("a deliberate corner becomes a cusp while gentle segments remain curved", () => {
         const tool = createTool("pen");
         const scene = emptyScene();
-        const exact = { ...ctx, simplifyEpsilon: 0 };
+        const exact = {
+            ...ctx,
+            strokeProcessing: {
+                ...ctx.strokeProcessing,
+                sampleSpacing: 0,
+                simplifyTolerance: 0,
+            },
+        };
         tool.onPointerDown(scene, [0, 0], exact);
         tool.onPointerMoves?.(scene, [[1, 0], [2, 0], [2, 1], [2, 2], [3, 2.5]], exact);
         const preview = tool.onPointerMove(scene, [4, 2.7], exact);

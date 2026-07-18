@@ -15,6 +15,7 @@
  */
 
 import type { Pair, Pen, Scene } from "../../scene/types";
+import type { StrokeProcessingOptions } from "../simplify";
 
 export interface LineContinuation {
     /** Open path created by the line tool and still accepting nodes. */
@@ -63,8 +64,8 @@ export interface ToolContext {
     pen: Pen;
     /** Hit-test tolerance in asy-space (view derives from its px->asy scale). */
     tolerance: number;
-    /** RDP tolerance for freehand simplification, in asy-space. */
-    simplifyEpsilon: number;
+    /** Freehand cleanup controls; distance values are in scene units. */
+    strokeProcessing: StrokeProcessingOptions;
     /** Current selected element ids, used by tools that operate on a group. */
     selection: string[];
     /** Connected-path preview handed from the Line tool to Select. */

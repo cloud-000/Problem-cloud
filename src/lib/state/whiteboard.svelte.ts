@@ -24,6 +24,8 @@ import {
     type ToolResult,
     type SelectionTransformGesture,
     type LineContinuation,
+    DEFAULT_STROKE_PROCESSING_OPTIONS,
+    type StrokeProcessingOptions,
 } from "$lib/asy/engine";
 import { History } from "$lib/asy/engine";
 
@@ -51,8 +53,9 @@ export class WhiteboardStore {
     /** Hit-test / commit tolerance in asy-space; the view keeps this in sync
      *  with its current px->asy scale. */
     tolerance = 0.5;
-    /** RDP tolerance for freehand simplification, in asy-space. */
-    simplifyEpsilon = 0.1;
+    /** Freehand cleanup controls. The view keeps distance values in sync with
+     *  its current px->scene scale; scalar values remain framework defaults. */
+    strokeProcessing: StrokeProcessingOptions = { ...DEFAULT_STROKE_PROCESSING_OPTIONS };
     /** Supplied by the view so the label tool can prompt for text. */
     promptLabel?: (at: readonly [number, number]) => string | null;
 
@@ -114,7 +117,7 @@ export class WhiteboardStore {
         return {
             pen: $state.snapshot(this.pen) as Pen,
             tolerance: this.tolerance,
-            simplifyEpsilon: this.simplifyEpsilon,
+            strokeProcessing: { ...this.strokeProcessing },
             selection: $state.snapshot(this.selection) as string[],
             lineContinuation: this.lineContinuation
                 ? ($state.snapshot(this.lineContinuation) as LineContinuation)
