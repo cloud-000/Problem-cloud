@@ -4,6 +4,7 @@ import {
     gridLines,
     isRotationHandleAt,
     isArcGuideAt,
+    isScreenPointInRect,
     dotRadius,
     penStroke,
     projectedArc,
@@ -99,6 +100,8 @@ describe("projected geometry", () => {
         expect(isRotationHandleAt([50, 61], { stemStart: [50, 70], screen: [50, 50] })).toBe(false);
         expect(isArcGuideAt([80, 50], { center: [50, 50], radius: 30 })).toBe(true);
         expect(isArcGuideAt([70, 50], { center: [50, 50], radius: 30 })).toBe(false);
+        expect(isScreenPointInRect([30, 40], { x: 20, y: 30, width: 20, height: 20 })).toBe(true);
+        expect(isScreenPointInRect([41, 40], { x: 20, y: 30, width: 20, height: 20 })).toBe(false);
     });
 });
 

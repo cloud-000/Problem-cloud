@@ -20,6 +20,7 @@
         resizeHandleAt,
         isRotationHandleAt,
         isArcGuideAt,
+        isScreenPointInRect,
         type RenderResizeHandle,
         type RenderArcHandle,
         type ScreenRect,
@@ -700,6 +701,18 @@
             });
             return;
         }
+        if (
+            e.button === 0 &&
+            store.toolKind === "select" &&
+            !selectionIsPreview &&
+            isScreenPointInRect(pointerScreen, selectionRect)
+        ) {
+            interaction = "transform";
+            transformCursor = "move";
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" });
+            return;
+        }
 
         interaction = "draw";
         syncToolScale();
@@ -746,7 +759,10 @@
                 : null;
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
-            transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ?? (overRotation ? "grab" : null);
+            const overSelectionBody = !selectionIsPreview &&
+                isScreenPointInRect(pointerScreen, selectionRect);
+            transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ??
+                (overRotation ? "grab" : overSelectionBody ? "move" : null);
             return;
         }
         hoveredVertex = null;

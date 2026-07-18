@@ -56,6 +56,10 @@ export interface ArcGuide {
 
 export type SelectionTransformGesture =
     | {
+          /** Move the current selection from anywhere inside its visible bounds. */
+          kind: "move";
+      }
+    | {
           kind: "vertex";
           /** The all-straight path whose endpoint is being edited. */
           elementId: string;

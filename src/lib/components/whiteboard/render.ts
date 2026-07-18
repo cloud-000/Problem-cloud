@@ -43,6 +43,12 @@ export interface ScreenRect {
     height: number;
 }
 
+export function isScreenPointInRect(point: Pair, rect: ScreenRect | null): boolean {
+    return rect !== null &&
+        point[0] >= rect.x && point[0] <= rect.x + rect.width &&
+        point[1] >= rect.y && point[1] <= rect.y + rect.height;
+}
+
 export interface RenderResizeHandle {
     screen: Pair;
 }

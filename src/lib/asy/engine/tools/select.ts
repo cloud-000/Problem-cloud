@@ -14,6 +14,8 @@ import {
     type ToolResult,
 } from "./types";
 
+type ShapeTransformGesture = Exclude<SelectionTransformGesture, { kind: "move" }>;
+
 /**
  * Select + move + marquee + transform. Click an element to select it; drag
  * selected elements to move them. Drag empty space to rubber-band every
@@ -26,7 +28,7 @@ export class SelectTool implements Tool {
     private dragStart: Pair | null = null;
     private movingIds: string[] = [];
     private marqueeStart: Pair | null = null;
-    private transform: SelectionTransformGesture | null = null;
+    private transform: ShapeTransformGesture | null = null;
     private transformPointerOffset: Pair = [0, 0];
     private base: Scene | null = null;
     private moved = false;
@@ -67,21 +69,33 @@ export class SelectTool implements Tool {
                 preview: null,
             };
         }
-        if (ctx.selectionTransform && ctx.selection.length > 0) {
+        const selectionGesture = ctx.selectionTransform;
+        if (selectionGesture?.kind === "move" && ctx.selection.length > 0) {
             this.reset();
             this.dragStart = p;
             this.movingIds = [...ctx.selection];
-            this.transform = ctx.selectionTransform;
+            this.base = scene;
+            return {
+                selection: this.movingIds,
+                selectionPreview: null,
+                preview: scene,
+                marquee: null,
+            };
+        }
+        if (selectionGesture && selectionGesture.kind !== "move" && ctx.selection.length > 0) {
+            this.reset();
+            this.dragStart = p;
+            this.movingIds = [...ctx.selection];
+            this.transform = selectionGesture;
             this.base = scene;
             if (
-                ctx.selectionTransform.kind === "resize" ||
-                ctx.selectionTransform.kind === "vertex" ||
-                (ctx.selectionTransform.kind === "arc" &&
-                    ctx.selectionTransform.control === "center")
+                selectionGesture.kind === "resize" ||
+                selectionGesture.kind === "vertex" ||
+                (selectionGesture.kind === "arc" && selectionGesture.control === "center")
             ) {
                 this.transformPointerOffset = [
-                    p[0] - ctx.selectionTransform.handle[0],
-                    p[1] - ctx.selectionTransform.handle[1],
+                    p[0] - selectionGesture.handle[0],
+                    p[1] - selectionGesture.handle[1],
                 ];
             }
             return {

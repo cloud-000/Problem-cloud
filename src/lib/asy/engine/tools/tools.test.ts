@@ -673,6 +673,27 @@ describe("SelectTool", () => {
         ]);
     });
 
+    test("dragging from empty space inside the selection bounds moves the whole selection", () => {
+        let scene = createTool("point").onPointerDown(emptyScene(), [0, 0], ctx).commit!;
+        scene = createTool("point").onPointerDown(scene, [4, 4], ctx).commit!;
+        const selection = scene.elements.map((element) => element.id);
+        const tool = createTool("select");
+        const moveCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: { kind: "move" },
+        };
+
+        const down = tool.onPointerDown(scene, [2, 2], moveCtx);
+        expect(down.selection).toEqual(selection);
+        tool.onPointerMove(scene, [5, 6], moveCtx);
+        const up = tool.onPointerUp(scene, [5, 6], moveCtx);
+        expect(up.commit?.elements).toMatchObject([
+            { kind: "dot", at: [3, 4] },
+            { kind: "dot", at: [7, 8] },
+        ]);
+    });
+
     const resizeCornerCases: Array<{
         handle: Pair;
         anchor: Pair;
