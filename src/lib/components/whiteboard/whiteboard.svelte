@@ -130,14 +130,14 @@
         return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
     });
 
-    const selectedLine = $derived.by(() => {
+    const selectedOpenPath = $derived.by(() => {
         if (activeSelection.length !== 1) return null;
         const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
         return element?.kind === "path" &&
             !element.path.cyclic &&
-            element.path.nodes.length === 2 &&
-            element.path.joins.length === 1 &&
-            element.path.joins[0] === "--"
+            element.path.nodes.length >= 2 &&
+            element.path.joins.length === element.path.nodes.length - 1 &&
+            element.path.joins.every((join) => join === "--")
             ? element
             : null;
     });
@@ -151,7 +151,7 @@
 
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
-        if (selectedLine && store.selectionPreview === null) return null;
+        if (selectedOpenPath && store.selectionPreview === null) return null;
         if (selectionGeometryBounds && hasTransformExtent) {
             return screenRect(selectionGeometryBounds, 6);
         }
@@ -184,7 +184,7 @@
 
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
-            selectedLine ||
+            selectedOpenPath ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -226,11 +226,11 @@
     });
 
     const vertexHandles = $derived.by<VertexHandle[]>(() => {
-        if (!selectedLine || selectionIsPreview || store.toolKind !== "select") return [];
-        return selectedLine.path.nodes.map((handle, nodeIndex) => ({
+        if (!selectedOpenPath || selectionIsPreview || store.toolKind !== "select") return [];
+        return selectedOpenPath.path.nodes.map((handle, nodeIndex) => ({
             screen: project(handle),
             handle,
-            elementId: selectedLine.id,
+            elementId: selectedOpenPath.id,
             nodeIndex,
             cursor: "move",
         }));
@@ -238,7 +238,7 @@
 
     const rotationControl = $derived.by(() => {
         if (
-            selectedLine ||
+            selectedOpenPath ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||

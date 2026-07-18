@@ -1,10 +1,8 @@
 import type { Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
-import { createPath, makePath } from "../../scene/factory";
 import { hitTest } from "../hit-test";
 import { distance, rotateElement, scaleElement, translateElement } from "../geometry";
 import {
-    addElement,
     mapElements,
     NO_RESULT,
     type SelectionTransformGesture,
@@ -42,11 +40,11 @@ export class SelectTool implements Tool {
             if (!start || endpoints.some((endpoint) => distance(endpoint, p) <= ctx.tolerance)) {
                 return { lineContinuation: null, preview: null };
             }
-            const continuation = createPath(makePath([start, p]), source.pen ?? ctx.pen);
+            const nodeIndex = source.path.nodes.length;
             return {
-                commit: addElement(scene, continuation),
-                selection: [continuation.id],
-                lineContinuation: null,
+                commit: this.appendPathNode(scene, source.id, p),
+                selection: [source.id],
+                lineContinuation: { elementId: source.id, nodeIndex },
                 preview: null,
             };
         }
@@ -94,8 +92,7 @@ export class SelectTool implements Tool {
             }
             const start = source.path.nodes[ctx.lineContinuation.nodeIndex];
             if (!start) return { lineContinuation: null, preview: null };
-            const continuation = createPath(makePath([start, p]), source.pen ?? ctx.pen);
-            return { preview: addElement(scene, continuation) };
+            return { preview: this.appendPathNode(scene, source.id, p) };
         }
         if (this.transform && this.dragStart && this.base) {
             const transformed = this.transformScene(this.base, this.movingIds, p, ctx);
@@ -163,6 +160,21 @@ export class SelectTool implements Tool {
     private translate(scene: Scene, ids: string[], dx: number, dy: number): Scene {
         const selected = new Set(ids);
         return mapElements(scene, (el) => selected.has(el.id) ? translateElement(el, dx, dy) : el);
+    }
+
+    private appendPathNode(scene: Scene, elementId: string, node: Pair): Scene {
+        return mapElements(scene, (element) =>
+            element.id === elementId && element.kind === "path"
+                ? {
+                      ...element,
+                      path: {
+                          ...element.path,
+                          nodes: [...element.path.nodes, node],
+                          joins: [...element.path.joins, "--"],
+                      },
+                  }
+                : element,
+        );
     }
 
     private transformScene(

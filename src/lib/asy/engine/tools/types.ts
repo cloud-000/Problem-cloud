@@ -17,9 +17,9 @@
 import type { Pair, Pen, Scene } from "../../scene/types";
 
 export interface LineContinuation {
-    /** Line created by the immediately preceding line-tool gesture. */
+    /** Open path created by the line tool and still accepting nodes. */
     elementId: string;
-    /** Endpoint from which the one-shot continuation starts. */
+    /** Current last node, from which the next segment starts. */
     nodeIndex: number;
 }
 
@@ -67,7 +67,7 @@ export interface ToolContext {
     simplifyEpsilon: number;
     /** Current selected element ids, used by tools that operate on a group. */
     selection: string[];
-    /** One-shot connected-line preview handed from the Line tool to Select. */
+    /** Connected-path preview handed from the Line tool to Select. */
     lineContinuation: LineContinuation | null;
     /** Present on pointer-down when the view hit a selection transform handle. */
     selectionTransform?: SelectionTransformGesture;
@@ -84,7 +84,7 @@ export interface ToolResult {
     /** Tool to activate after this result commits. Creation tools can use this
      *  to hand the newly-created element straight to the normal Select tool. */
     nextTool?: ToolKind;
-    /** Start, preserve, or clear the one-shot connected-line preview. */
+    /** Start, advance, preserve, or clear the connected-path preview. */
     lineContinuation?: LineContinuation | null;
     /** Candidate element ids while a marquee gesture is still in progress. */
     selectionPreview?: string[] | null;

@@ -43,7 +43,7 @@ export class WhiteboardStore {
     /** Transient render override during a drag (rubber-band / live move). */
     preview = $state<Scene | null>(null);
     marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
-    /** One-shot line continuation offered immediately after a line is drawn. */
+    /** Active path continuation offered immediately after a line is drawn. */
     lineContinuation = $state<LineContinuation | null>(null);
     canUndo = $state(false);
     canRedo = $state(false);

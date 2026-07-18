@@ -180,7 +180,7 @@ describe("SelectTool", () => {
         expect(tool.onPointerUp(scene, [1, 1], ctx).commit).toBeUndefined();
     });
 
-    test("previews and commits a one-shot line continuation from the last endpoint", () => {
+    test("previews and appends repeated line continuations to the same path", () => {
         const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]), ctx.pen)] };
         const line = scene.elements[0];
         const continuationCtx: ToolContext = {
@@ -190,17 +190,28 @@ describe("SelectTool", () => {
         };
         const tool = createTool("select");
         const preview = tool.onPointerMove(scene, [4, 3], continuationCtx);
+        expect(preview.preview?.elements).toHaveLength(1);
         expect(preview.preview?.elements).toMatchObject([
-            { kind: "path", path: { nodes: [[0, 0], [2, 1]] } },
-            { kind: "path", path: { nodes: [[2, 1], [4, 3]] } },
+            { id: line.id, kind: "path", path: { nodes: [[0, 0], [2, 1], [4, 3]] } },
         ]);
 
         const result = tool.onPointerDown(scene, [4, 3], continuationCtx);
+        expect(result.commit?.elements).toHaveLength(1);
         expect(result.commit?.elements).toMatchObject([
-            { kind: "path", path: { nodes: [[0, 0], [2, 1]] } },
-            { kind: "path", path: { nodes: [[2, 1], [4, 3]] } },
+            { id: line.id, kind: "path", path: { nodes: [[0, 0], [2, 1], [4, 3]] } },
         ]);
-        expect(result.lineContinuation).toBeNull();
+        expect(result.selection).toEqual([line.id]);
+        expect(result.lineContinuation).toEqual({ elementId: line.id, nodeIndex: 2 });
+
+        const extended = tool.onPointerDown(result.commit!, [5, 4], {
+            ...continuationCtx,
+            lineContinuation: result.lineContinuation!,
+        });
+        expect(extended.commit?.elements).toHaveLength(1);
+        expect(extended.commit?.elements).toMatchObject([
+            { id: line.id, kind: "path", path: { nodes: [[0, 0], [2, 1], [4, 3], [5, 4]] } },
+        ]);
+        expect(extended.lineContinuation).toEqual({ elementId: line.id, nodeIndex: 3 });
     });
 
     test("clicking near either original endpoint cancels line continuation", () => {
