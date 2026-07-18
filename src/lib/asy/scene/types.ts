@@ -73,9 +73,10 @@ export type Join = "--" | "..";
  *   - open path:   joins.length === nodes.length - 1
  *   - cyclic path: joins.length === nodes.length   (last join closes the cycle)
  *
- * v1 stores only node points + join kind; the SVG view approximates `..`
- * curves. Exact Hobby control points are a v2 upgrade (the asy text is already
- * correct either way).
+ * v1 stores only node points + join kind; shared in-app geometry approximates
+ * `..` with cubic controls for Canvas, SVG, hit-testing, and bounds. Exact
+ * Hobby control points are a v2 upgrade (the asy text is already correct
+ * either way).
  */
 export interface Path {
     nodes: Pair[];

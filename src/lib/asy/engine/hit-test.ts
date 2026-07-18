@@ -14,20 +14,22 @@ import {
 } from "./geometry";
 
 /** Distance from `p` to a single element's geometry (Infinity for raw). */
-export function distanceToElement(p: Pair, el: SceneElement): number {
+export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 0.01): number {
     switch (el.kind) {
         case "dot":
         case "label":
             return distance(p, el.at);
         case "path":
-            return pointToPolyline(p, el.path);
+            return pointToPolyline(p, el.path, flattenTolerance);
         case "circle":
             return pointToRing(p, el.center, el.radius);
         case "arc":
             return pointToArc(p, el.center, el.radius, el.angle1, el.angle2);
         case "fill":
             // Inside the region counts as a direct hit; otherwise use the outline.
-            return pointInPolygon(p, el.path) ? 0 : pointToPolyline(p, el.path);
+            return pointInPolygon(p, el.path, flattenTolerance)
+                ? 0
+                : pointToPolyline(p, el.path, flattenTolerance);
         case "raw":
             return Infinity;
     }
@@ -44,7 +46,7 @@ export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement 
     // the topmost element; only a strictly closer element overrides it.
     for (let i = scene.elements.length - 1; i >= 0; i--) {
         const el = scene.elements[i];
-        const d = distanceToElement(p, el);
+        const d = distanceToElement(p, el, Math.max(tolerance / 4, 1e-4));
         if (d <= tolerance && d < bestDist) {
             best = el;
             bestDist = d;

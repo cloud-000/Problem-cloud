@@ -22,6 +22,15 @@ describe("hitTest", () => {
         expect(hitTest(scene(path), [2, 0.1], 0.5)?.id).toBe(path.id);
     });
 
+    test("hits the visible cubic away from its chord without hitting the chord gap", () => {
+        const path = createPath(makePath(
+            [[0, 0], [1, 1], [2, 1], [3, 0]],
+            { join: ".." },
+        ));
+        expect(hitTest(scene(path), [1.5, 1.125], 0.03)?.id).toBe(path.id);
+        expect(hitTest(scene(path), [1.5, 1], 0.03)).toBeNull();
+    });
+
     test("hits a circle on its ring but not far from it", () => {
         const c = createCircle([0, 0], 3);
         expect(hitTest(scene(c), [3.1, 0], 0.5)?.id).toBe(c.id);

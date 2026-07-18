@@ -121,6 +121,51 @@ describe("PenTool", () => {
         expect(el.kind === "path" && el.path.nodes.length).toBe(2);
     });
 
+    test("processes a sample batch into one preview with the same raw geometry", () => {
+        const scene = emptyScene();
+        const samples: Pair[] = [[1, 0.2], [2, 0.1], [3, 1]];
+        const batched = createTool("pen");
+        batched.onPointerDown(scene, [0, 0], ctx);
+        const preview = batched.onPointerMoves?.(scene, samples, ctx);
+
+        const individual = createTool("pen");
+        individual.onPointerDown(scene, [0, 0], ctx);
+        let last;
+        for (const sample of samples) last = individual.onPointerMove(scene, sample, ctx);
+
+        const batchedElement = preview?.preview?.elements[0];
+        const individualElement = last?.preview?.elements[0];
+        expect(batchedElement).toMatchObject({ kind: "path" });
+        expect(batchedElement?.kind === "path" ? batchedElement.path : null).toEqual(
+            individualElement?.kind === "path" ? individualElement.path : null,
+        );
+    });
+
+    test("pointer-up incorporates a pending frame batch before committing", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        tool.onPointerDown(scene, [0, 0], ctx);
+        const commit = tool.onPointerUp(scene, [3, 1], ctx, [[1, 0.2], [2, 0.1]]);
+        const committed = commit.commit?.elements[0];
+
+        const reference = createTool("pen");
+        reference.onPointerDown(scene, [0, 0], ctx);
+        reference.onPointerMoves?.(scene, [[1, 0.2], [2, 0.1]], ctx);
+        const expected = reference.onPointerUp(scene, [3, 1], ctx).commit?.elements[0];
+        expect(committed?.kind === "path" ? committed.path : null).toEqual(
+            expected?.kind === "path" ? expected.path : null,
+        );
+    });
+
+    test("cancel clears the active draft and ignores later buffered release", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        tool.onPointerDown(scene, [0, 0], ctx);
+        tool.onPointerMoves?.(scene, [[1, 1], [2, 1]], ctx);
+        expect(tool.onCancel().preview).toBeNull();
+        expect(tool.onPointerUp(scene, [3, 1], ctx, [[2.5, 1]])).toEqual({});
+    });
+
     test("live and committed strokes use the same smoothed spline geometry", () => {
         const tool = createTool("pen");
         const scene = emptyScene();

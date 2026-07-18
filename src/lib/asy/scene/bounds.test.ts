@@ -21,9 +21,19 @@ describe("sceneBounds", () => {
         expect(b).toEqual({ min: [-1, -4], max: [3, 2] });
     });
 
-    test("bounds a path by its nodes", () => {
+    test("bounds a straight path by its nodes", () => {
         const b = sceneBounds(scene(createPath(makePath([[0, 0], [10, 5], [2, 8]]))));
         expect(b).toEqual({ min: [0, 0], max: [10, 8] });
+    });
+
+    test("bounds a curved path by its cubic extrema", () => {
+        const b = sceneBounds(scene(createPath(makePath(
+            [[0, 0], [1, 1], [2, 1], [3, 0]],
+            { join: ".." },
+        ))));
+        expect(b?.min).toEqual([0, 0]);
+        expect(b?.max[0]).toBe(3);
+        expect(b?.max[1]).toBeCloseTo(1.125, 8);
     });
 
     test("bounds a circle by center +/- radius", () => {

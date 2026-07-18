@@ -98,7 +98,15 @@ export interface Tool {
     readonly kind: ToolKind;
     onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult;
     onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult;
-    onPointerUp(scene: Scene, p: Pair, ctx: ToolContext): ToolResult;
+    /** Process a coalesced/frame batch in one tool update when supported. */
+    onPointerMoves?(scene: Scene, points: readonly Pair[], ctx: ToolContext): ToolResult;
+    onPointerUp(
+        scene: Scene,
+        p: Pair,
+        ctx: ToolContext,
+        /** Samples buffered since the last preview, synchronously drained on release. */
+        pendingMoves?: readonly Pair[],
+    ): ToolResult;
     /** Abandon any in-progress interaction (e.g. Escape). */
     onCancel(): ToolResult;
 }

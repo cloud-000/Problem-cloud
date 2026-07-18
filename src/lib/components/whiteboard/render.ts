@@ -1,5 +1,14 @@
 import { normalizeDeg } from "$lib/asy/engine";
-import { resolvePenColor, type Pair, type Path, type Pen, type Scene, type SceneElement } from "$lib/asy/scene";
+import {
+    pathCommands,
+    resolvePenColor,
+    type Pair,
+    type Path,
+    type PathCommand,
+    type Pen,
+    type Scene,
+    type SceneElement,
+} from "$lib/asy/scene";
 
 export type Project = (point: Pair) => Pair;
 
@@ -81,11 +90,7 @@ export interface WhiteboardRenderOverlay {
     vertexHandles: RenderVertexHandle[];
 }
 
-export type ProjectedPathCommand =
-    | { kind: "move"; point: Pair }
-    | { kind: "line"; point: Pair }
-    | { kind: "curve"; c1: Pair; c2: Pair; point: Pair }
-    | { kind: "close" };
+export type ProjectedPathCommand = PathCommand;
 
 export interface StrokeStyle {
     color: string;
@@ -118,36 +123,18 @@ export function projectPoint(point: Pair, viewport: WhiteboardViewport): Pair {
 }
 
 export function projectedPath(path: Path, project: Project): ProjectedPathCommand[] {
-    const points = path.nodes.map(project);
-    const count = points.length;
-    if (count === 0) return [];
-
-    const commands: ProjectedPathCommand[] = [{ kind: "move", point: points[0] }];
-    if (count === 1) return commands;
-
-    const closed = path.cyclic;
-    const segmentCount = closed ? count : count - 1;
-    const at = (index: number): Pair => points[((index % count) + count) % count];
-
-    for (let index = 0; index < segmentCount; index++) {
-        const p1 = at(index);
-        const p2 = at(index + 1);
-        if ((path.joins[index] ?? "--") === "--") {
-            commands.push({ kind: "line", point: p2 });
-            continue;
+    return pathCommands(path).map((command) => {
+        if (command.kind === "close") return command;
+        if (command.kind === "curve") {
+            return {
+                ...command,
+                c1: project(command.c1),
+                c2: project(command.c2),
+                point: project(command.point),
+            };
         }
-
-        const p0 = closed ? at(index - 1) : points[Math.max(index - 1, 0)];
-        const p3 = closed ? at(index + 2) : points[Math.min(index + 2, count - 1)];
-        commands.push({
-            kind: "curve",
-            c1: [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6],
-            c2: [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6],
-            point: p2,
-        });
-    }
-    if (closed) commands.push({ kind: "close" });
-    return commands;
+        return { ...command, point: project(command.point) };
+    });
 }
 
 export function projectedArc(

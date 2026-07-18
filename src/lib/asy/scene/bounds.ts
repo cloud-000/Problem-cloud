@@ -5,6 +5,7 @@
  */
 
 import type { Pair, Path, Scene, SceneElement } from "./types";
+import { pathExtrema } from "./path-geometry";
 
 export interface Bounds {
     min: Pair;
@@ -26,7 +27,7 @@ interface MutableBox {
 }
 
 function growPath(box: MutableBox, path: Path): void {
-    for (const [x, y] of path.nodes) grow(box, x, y);
+    for (const [x, y] of pathExtrema(path)) grow(box, x, y);
 }
 
 function growElement(box: MutableBox, el: SceneElement): void {

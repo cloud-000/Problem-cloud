@@ -10,6 +10,7 @@
         type SceneElement as SceneElementModel,
     } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { PointerSampleBatcher } from "$lib/asy/engine";
     import { Theme } from "$lib/utils/Theme.svelte";
     import {
         registerCanvasSnapshot,
@@ -61,6 +62,13 @@
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
+    const penSamples = new PointerSampleBatcher(
+        (points) => {
+            if (interaction === "draw" && store.toolKind === "pen") store.pointerMoves(points);
+        },
+        (callback) => requestAnimationFrame(callback),
+        (handle) => cancelAnimationFrame(handle),
+    );
 
     const origin = $derived<[number, number]>([width / 2 + panX, height / 2 + panY]);
     const project = $derived.by<(point: Pair) => Pair>(
@@ -303,6 +311,7 @@
         pixelRatio = window.devicePixelRatio || 1;
         attachedStore.promptLabel = promptLabel;
         return () => {
+            penSamples.cancel();
             if (surface === node) surface = null;
             if (attachedStore.promptLabel === promptLabel) attachedStore.promptLabel = undefined;
         };
@@ -341,6 +350,7 @@
         const [a, b] = touches;
         const midX = (a.clientX + b.clientX) / 2;
         const midY = (a.clientY + b.clientY) / 2;
+        penSamples.cancel();
         store.cancel();
         interaction = "pinch";
         transformCursor = null;
@@ -381,6 +391,7 @@
         if (e.button === 1 && !navigation) return;
 
         pointerId = e.pointerId;
+        penSamples.cancel();
         if (navigation && (e.button === 1 || store.toolKind === "pan" || spacePressed)) {
             interaction = "pan";
             panStart = { clientX: e.clientX, clientY: e.clientY, x: panX, y: panY };
@@ -492,9 +503,11 @@
                 typeof e.getCoalescedEvents === "function"
                 ? e.getCoalescedEvents()
                 : [];
-            for (const sample of samples.length > 0 ? samples : [e]) {
-                store.pointerMove(toAsyAt(sample.clientX, sample.clientY), e.shiftKey);
-            }
+            const points = (samples.length > 0 ? samples : [e]).map((sample) =>
+                toAsyAt(sample.clientX, sample.clientY)
+            );
+            if (interaction === "draw" && store.toolKind === "pen") penSamples.add(points);
+            else store.pointerMoves(points, e.shiftKey);
         }
     }
 
@@ -511,7 +524,13 @@
         }
         if (e.pointerId !== pointerId) return;
         if (interaction === "draw" || interaction === "transform") {
-            store.pointerUp(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+            const point = toAsyAt(e.clientX, e.clientY);
+            if (interaction === "draw" && store.toolKind === "pen") {
+                const flushed = penSamples.flushWith((points) =>
+                    store.pointerUp(point, e.shiftKey, points)
+                );
+                if (!flushed) store.pointerUp(point, e.shiftKey);
+            } else store.pointerUp(point, e.shiftKey);
         }
         pointerId = null;
         panStart = null;
@@ -524,7 +543,10 @@
         activeTouches.delete(e.pointerId);
         release(e.pointerId);
         if (e.pointerId !== pointerId && interaction !== "pinch") return;
-        if (interaction === "draw" || interaction === "transform") store.cancel();
+        if (interaction === "draw" || interaction === "transform") {
+            penSamples.cancel();
+            store.cancel();
+        }
         pointerId = null;
         panStart = null;
         pinchStart = null;
@@ -538,6 +560,7 @@
             e.preventDefault();
             spacePressed = true;
         } else if (e.key === "Escape") {
+            penSamples.cancel();
             store.cancel();
             selectedVertex = null;
             hoveredVertex = null;

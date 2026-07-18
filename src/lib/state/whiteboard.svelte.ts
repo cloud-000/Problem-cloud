@@ -86,8 +86,25 @@ export class WhiteboardStore {
     pointerMove(p: readonly [number, number], snapRotation = false): void {
         this.#dispatch(this.#tool.onPointerMove(this.scene, p, this.#ctx({ snapRotation })));
     }
-    pointerUp(p: readonly [number, number], snapRotation = false): void {
-        this.#dispatch(this.#tool.onPointerUp(this.scene, p, this.#ctx({ snapRotation })));
+    pointerMoves(points: readonly (readonly [number, number])[], snapRotation = false): void {
+        if (points.length === 0) return;
+        const ctx = this.#ctx({ snapRotation });
+        const result = this.#tool.onPointerMoves
+            ? this.#tool.onPointerMoves(this.scene, points, ctx)
+            : this.#tool.onPointerMove(this.scene, points[points.length - 1], ctx);
+        this.#dispatch(result);
+    }
+    pointerUp(
+        p: readonly [number, number],
+        snapRotation = false,
+        pendingMoves: readonly (readonly [number, number])[] = [],
+    ): void {
+        this.#dispatch(this.#tool.onPointerUp(
+            this.scene,
+            p,
+            this.#ctx({ snapRotation }),
+            pendingMoves,
+        ));
     }
     cancel(): void {
         this.#dispatch(this.#tool.onCancel());

@@ -4,6 +4,7 @@
  */
 
 import type { Pair, Path, SceneElement } from "../scene/types";
+import { flattenPath } from "../scene/path-geometry";
 
 export function distance(a: Pair, b: Pair): number {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -21,20 +22,16 @@ export function pointToSegment(p: Pair, a: Pair, b: Pair): number {
 }
 
 /**
- * Shortest distance from `p` to a path's polyline (nodes connected in order,
- * closing the loop when cyclic). `..` spline joins are approximated by their
- * chord — good enough for hit-testing tolerance.
+ * Shortest distance from `p` to a path's rendered geometry. Curves are
+ * adaptively flattened using the shared in-app cubic interpretation.
  */
-export function pointToPolyline(p: Pair, path: Path): number {
-    const { nodes, cyclic } = path;
+export function pointToPolyline(p: Pair, path: Path, flattenTolerance = 0.01): number {
+    const nodes = flattenPath(path, flattenTolerance);
     if (nodes.length === 0) return Infinity;
     if (nodes.length === 1) return distance(p, nodes[0]);
     let best = Infinity;
     for (let i = 0; i < nodes.length - 1; i++) {
         best = Math.min(best, pointToSegment(p, nodes[i], nodes[i + 1]));
-    }
-    if (cyclic) {
-        best = Math.min(best, pointToSegment(p, nodes[nodes.length - 1], nodes[0]));
     }
     return best;
 }
@@ -73,9 +70,9 @@ export function pointToArc(
     return Math.min(distance(p, e1), distance(p, e2));
 }
 
-/** Even-odd point-in-polygon test against a path's node ring. */
-export function pointInPolygon(p: Pair, path: Path): boolean {
-    const n = path.nodes;
+/** Even-odd point-in-polygon test against a path's rendered boundary. */
+export function pointInPolygon(p: Pair, path: Path, flattenTolerance = 0.01): boolean {
+    const n = flattenPath(path, flattenTolerance);
     if (n.length < 3) return false;
     let inside = false;
     for (let i = 0, j = n.length - 1; i < n.length; j = i++) {
