@@ -7,6 +7,7 @@ const ctx: ToolContext = {
     pen: { namedColor: "red" },
     tolerance: 0.5,
     simplifyEpsilon: 0.1,
+    selection: [],
     promptLabel: () => "$P$",
 };
 
@@ -42,16 +43,6 @@ describe("LineTool", () => {
     });
 });
 
-describe("CircleTool", () => {
-    test("drag from center sets radius = distance", () => {
-        const tool = createTool("circle");
-        const s = emptyScene();
-        tool.onPointerDown(s, [0, 0], ctx);
-        const up = tool.onPointerUp(s, [3, 4], ctx);
-        expect(up.commit?.elements).toMatchObject([{ kind: "circle", center: [0, 0], radius: 5 }]);
-    });
-});
-
 describe("PenTool", () => {
     test("freehand simplifies a straight drag to endpoints", () => {
         const tool = createTool("pen");
@@ -75,6 +66,17 @@ describe("ArcTool", () => {
         const commit = tool.onPointerDown(s, [0, 2], ctx); // angle2 = 90
         expect(commit.commit?.elements).toMatchObject([
             { kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 90 },
+        ]);
+    });
+
+    test("clicking the start point again produces a full compass circle", () => {
+        const tool = createTool("arc");
+        const s = emptyScene();
+        tool.onPointerDown(s, [0, 0], ctx);
+        tool.onPointerDown(s, [2, 0], ctx);
+        const commit = tool.onPointerDown(s, [2, 0], ctx);
+        expect(commit.commit?.elements).toMatchObject([
+            { kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 360 },
         ]);
     });
 });
@@ -142,5 +144,29 @@ describe("SelectTool", () => {
         tool.onPointerMove(scene, [4, 5], ctx);
         const up = tool.onPointerUp(scene, [4, 5], ctx);
         expect(up.commit?.elements).toMatchObject([{ kind: "dot", at: [4, 5] }]);
+    });
+
+    test("dragging empty space marquee-selects fully enclosed elements", () => {
+        const point = createTool("point");
+        let scene = point.onPointerDown(emptyScene(), [1, 1], ctx).commit!;
+        scene = createTool("point").onPointerDown(scene, [6, 6], ctx).commit!;
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [0, 0], ctx);
+        expect(tool.onPointerMove(scene, [3, 3], ctx).marquee).toEqual({ start: [0, 0], end: [3, 3] });
+        expect(tool.onPointerUp(scene, [3, 3], ctx).selection).toEqual([scene.elements[0].id]);
+    });
+
+    test("dragging one member of a selection moves the whole group", () => {
+        let scene = createTool("point").onPointerDown(emptyScene(), [1, 1], ctx).commit!;
+        scene = createTool("point").onPointerDown(scene, [2, 2], ctx).commit!;
+        const selection = scene.elements.map((element) => element.id);
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [1, 1], { ...ctx, selection });
+        tool.onPointerMove(scene, [4, 5], { ...ctx, selection });
+        const up = tool.onPointerUp(scene, [4, 5], { ...ctx, selection });
+        expect(up.commit?.elements).toMatchObject([
+            { kind: "dot", at: [4, 5] },
+            { kind: "dot", at: [5, 6] },
+        ]);
     });
 });

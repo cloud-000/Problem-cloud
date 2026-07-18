@@ -1,6 +1,6 @@
 import type { Snippet } from "svelte";
 
-export type UtilityPanelView = "coach" | "practice-settings";
+export type UtilityPanelView = "coach" | "practice-settings" | "whiteboard";
 
 export interface UtilityPanelDimensionConfig {
     default: number;

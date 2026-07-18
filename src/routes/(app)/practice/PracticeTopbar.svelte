@@ -16,6 +16,7 @@
         sessionName,
         isTest,
         showSettings,
+        showWhiteboard,
         playerRating,
         ratingBar = $bindable<RatingBarHandle | undefined>(),
         showLiveFeedback,
@@ -41,11 +42,13 @@
         elapsedMs,
         problemRemainingMs = null,
         onToggleSettings,
+        onToggleWhiteboard,
         onTogglePause,
     }: {
         sessionName: string | null;
         isTest: boolean;
         showSettings: boolean;
+        showWhiteboard: boolean;
         playerRating: PlayerRating | null;
         ratingBar?: RatingBarHandle;
         showLiveFeedback: boolean;
@@ -75,6 +78,7 @@
         /** Timed practice: ms left on the current problem, or null when untimed. */
         problemRemainingMs?: number | null;
         onToggleSettings: () => void;
+        onToggleWhiteboard: () => void;
         onTogglePause: () => void;
     } = $props();
 
@@ -234,6 +238,20 @@
                 ]}
             />
         {/if}
+        <Button
+            variant="ghost"
+            size="sm"
+            class={cn(
+                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
+                showWhiteboard && "bg-muted text-foreground",
+            )}
+            onclick={onToggleWhiteboard}
+            aria-expanded={showWhiteboard}
+            aria-label="Toggle scratch paper"
+            title="Scratch paper"
+        >
+            <Icon name="draw" class={iconCls} fill={showWhiteboard} />
+        </Button>
         <Button
             variant="ghost"
             size="sm"

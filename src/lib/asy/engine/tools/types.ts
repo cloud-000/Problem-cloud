@@ -18,7 +18,6 @@ export type ToolKind =
     | "select"
     | "pen"
     | "line"
-    | "circle"
     | "arc"
     | "point"
     | "label"
@@ -31,6 +30,8 @@ export interface ToolContext {
     tolerance: number;
     /** RDP tolerance for freehand simplification, in asy-space. */
     simplifyEpsilon: number;
+    /** Current selected element ids, used by tools that operate on a group. */
+    selection: string[];
     /** Supplied by the view for the label tool; returns text or null if cancelled. */
     promptLabel?: (at: Pair) => string | null;
 }
@@ -39,6 +40,8 @@ export interface ToolResult {
     commit?: Scene;
     preview?: Scene | null;
     selection?: string[];
+    /** Transient select-tool marquee, rendered by the view rather than stored in the scene. */
+    marquee?: { start: Pair; end: Pair } | null;
 }
 
 export interface Tool {

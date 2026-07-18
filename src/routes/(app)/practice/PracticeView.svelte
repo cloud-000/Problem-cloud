@@ -11,7 +11,8 @@
    import { Modal } from "$lib/components/modal";
    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
    import { UtilityPanelRegister } from "$lib/components/utility-panel";
-   import { WhiteboardLauncher } from "$lib/components/whiteboard";
+   import { WhiteboardPanel } from "$lib/components/whiteboard";
+   import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       topicLabel,
@@ -118,6 +119,12 @@
    // series contribute none). Populated by the effect below.
    let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
    let showSettings = $derived(utilityPanel.activeView === "practice-settings");
+   let showWhiteboard = $derived(utilityPanel.activeView === "whiteboard");
+   const whiteboardPersistKey = "whiteboard:scratch";
+   const restoredWhiteboard = WhiteboardStore.restore(whiteboardPersistKey);
+   const whiteboardStore = restoredWhiteboard
+      ? new WhiteboardStore(restoredWhiteboard)
+      : new WhiteboardStore();
    let paused = $state(false);
 
    // Session format. Resolved from the session's settings snapshot on mount and
@@ -1711,6 +1718,7 @@
       sessionName={activeSession?.name ?? null}
       {isTest}
       {showSettings}
+      {showWhiteboard}
       {playerRating}
       bind:ratingBar
       showLiveFeedback={behavior.showLiveFeedback}
@@ -1736,6 +1744,7 @@
       {elapsedMs}
       {problemRemainingMs}
       onToggleSettings={() => utilityPanel.toggle("practice-settings")}
+      onToggleWhiteboard={() => utilityPanel.toggle("whiteboard")}
       onTogglePause={togglePause}
    />
 
@@ -2133,6 +2142,30 @@
          />
       </UtilityPanelRegister>
 
+      <UtilityPanelRegister
+         view="whiteboard"
+         ownerId={`practice-whiteboard:${sessionParam}`}
+         label="Scratch paper"
+         sizing={{
+            width: {
+               default: 480,
+               min: 320,
+               max: Number.POSITIVE_INFINITY,
+            },
+            mobileHeight: {
+               defaultRatio: 0.65,
+               minRatio: 0.4,
+               maxRatio: 0.95,
+            },
+         }}
+      >
+         <WhiteboardPanel
+            store={whiteboardStore}
+            persistKey={whiteboardPersistKey}
+            onClose={() => utilityPanel.close()}
+         />
+      </UtilityPanelRegister>
+
       {#if isTest}
          <Modal
             bind:open={overviewOpen}
@@ -2224,9 +2257,6 @@
       {/if}
    </div>
 </div>
-
-<!-- Scratch paper: a sketch overlay for working problems, with Asymptote export. -->
-<WhiteboardLauncher />
 
 {#snippet swatch(cls: string, label: string)}
    <span class="inline-flex items-center gap-1.5">

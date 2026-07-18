@@ -34,6 +34,12 @@ describe("arcD", () => {
         // start at angle 0 -> (1,0) -> screen (110,100)
         expect(d).toContain("110,100");
     });
+
+    test("preserves a full 360-degree compass arc", () => {
+        const d = arcD([0, 0], 1, 0, 360, project, 4);
+        expect(d).toContain("110,100");
+        expect(d).toContain("90,100");
+    });
 });
 
 describe("penStroke", () => {

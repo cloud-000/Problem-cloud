@@ -62,6 +62,22 @@ function growElement(box: MutableBox, el: SceneElement): void {
     }
 }
 
+/** Compute one element's conservative bounds, or null for non-geometric raw Asymptote. */
+export function elementBounds(el: SceneElement): Bounds | null {
+    const box: MutableBox = {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity,
+    };
+    growElement(box, el);
+    if (!Number.isFinite(box.minX)) return null;
+    return {
+        min: [box.minX, box.minY],
+        max: [box.maxX, box.maxY],
+    };
+}
+
 /**
  * Compute the bounding box of a scene. Returns `null` for a scene with no
  * positioned geometry (empty, or only `raw` elements) so callers can fall back

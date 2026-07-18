@@ -58,7 +58,8 @@ export function pointToArc(
 ): number {
     const ang = normalizeDeg((Math.atan2(p[1] - center[1], p[0] - center[0]) * 180) / Math.PI);
     const a1 = normalizeDeg(angle1);
-    const sweep = normalizeDeg(angle2 - angle1);
+    const rawSweep = angle2 - angle1;
+    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
     const rel = normalizeDeg(ang - a1);
     if (rel <= sweep) return pointToRing(p, center, radius);
     const e1: Pair = [

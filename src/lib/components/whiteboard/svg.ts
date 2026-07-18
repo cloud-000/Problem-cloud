@@ -65,7 +65,8 @@ export function arcD(
     project: Project,
     steps = 48
 ): string {
-    const sweep = normalizeDeg(angle2 - angle1);
+    const rawSweep = angle2 - angle1;
+    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
     const pts: [number, number][] = [];
     for (let i = 0; i <= steps; i++) {
         const deg = angle1 + (sweep * i) / steps;

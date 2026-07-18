@@ -29,13 +29,16 @@ function snapshot(scene: Scene): Scene {
     return $state.snapshot(scene) as Scene;
 }
 
+export type WhiteboardToolKind = ToolKind | "pan";
+
 export class WhiteboardStore {
     scene = $state<Scene>(emptyScene());
-    toolKind = $state<ToolKind>("select");
+    toolKind = $state<WhiteboardToolKind>("select");
     pen = $state<Pen>({ namedColor: "black", lineWidth: 1 });
     selection = $state<string[]>([]);
     /** Transient render override during a drag (rubber-band / live move). */
     preview = $state<Scene | null>(null);
+    marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
     canUndo = $state(false);
     canRedo = $state(false);
 
@@ -59,11 +62,12 @@ export class WhiteboardStore {
         return this.preview ?? this.scene;
     }
 
-    setTool(kind: ToolKind): void {
+    setTool(kind: WhiteboardToolKind): void {
         this.#tool.onCancel();
         this.preview = null;
+        this.marquee = null;
         this.toolKind = kind;
-        this.#tool = createTool(kind);
+        if (kind !== "pan") this.#tool = createTool(kind);
     }
 
     // --- pointer plumbing (the view maps screen->asy before calling these) ----
@@ -86,15 +90,18 @@ export class WhiteboardStore {
             pen: $state.snapshot(this.pen) as Pen,
             tolerance: this.tolerance,
             simplifyEpsilon: this.simplifyEpsilon,
+            selection: $state.snapshot(this.selection) as string[],
             promptLabel: this.promptLabel,
         };
     }
 
     #dispatch(result: ToolResult): void {
         if (result.selection !== undefined) this.selection = result.selection;
+        if (result.marquee !== undefined) this.marquee = result.marquee;
         if (result.commit !== undefined) {
             this.apply(result.commit);
             this.preview = null;
+            this.marquee = null;
         } else if (result.preview !== undefined) {
             this.preview = result.preview;
         }
@@ -141,11 +148,13 @@ export class WhiteboardStore {
         const remove = new Set(this.selection);
         this.apply({ ...this.scene, elements: this.scene.elements.filter((e) => !remove.has(e.id)) });
         this.selection = [];
+        this.marquee = null;
     }
 
     clearAll(): void {
         this.apply(emptyScene());
         this.selection = [];
+        this.marquee = null;
     }
 
     // --- asy codec ------------------------------------------------------------

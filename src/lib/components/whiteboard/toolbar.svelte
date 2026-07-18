@@ -1,12 +1,12 @@
 <script lang="ts" module>
-    import type { ToolKind } from "$lib/asy/engine";
+    import type { WhiteboardToolKind } from "$lib/state/whiteboard.svelte";
 
-    const TOOLS: { kind: ToolKind; icon: string; title: string }[] = [
-        { kind: "select", icon: "arrow_selector_tool", title: "Select / move" },
+    const TOOLS: { kind: WhiteboardToolKind; icon: string; title: string }[] = [
+        { kind: "select", icon: "arrow_selector_tool", title: "Select / marquee" },
+        { kind: "pan", icon: "pan_tool", title: "Pan canvas" },
         { kind: "pen", icon: "draw", title: "Freehand pen" },
         { kind: "line", icon: "timeline", title: "Line" },
-        { kind: "circle", icon: "radio_button_unchecked", title: "Circle" },
-        { kind: "arc", icon: "architecture", title: "Arc (3 clicks)" },
+        { kind: "arc", icon: "architecture", title: "Compass / arc (3 clicks)" },
         { kind: "point", icon: "fiber_manual_record", title: "Point" },
         { kind: "label", icon: "text_fields", title: "Label" },
         { kind: "eraser", icon: "ink_eraser", title: "Eraser" },
@@ -37,11 +37,17 @@
         store,
         class: className,
         actions,
+        compact = false,
+        showPan = true,
     }: {
         store: WhiteboardStore;
         class?: string;
         /** Host-provided extra actions (e.g. export SVG/PNG, close). */
         actions?: import("svelte").Snippet;
+        /** Tool-first chrome for overlays and narrow utility panels. */
+        compact?: boolean;
+        /** Hide navigation controls when an overlay must stay locked to its host image. */
+        showPan?: boolean;
     } = $props();
 
     let copied = $state(false);
@@ -69,7 +75,7 @@
 
 <div
     class={cn(
-        "flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-surface-container-lowest/95 p-1 shadow-xs backdrop-blur-(--backdrop-blur)",
+        "flex flex-wrap items-center gap-0.5 rounded-lg border border-border/60 bg-surface-container-lowest/95 p-1 shadow-xs backdrop-blur-(--backdrop-blur)",
         className
     )}
     role="toolbar"
@@ -77,57 +83,59 @@
 >
     <!-- Tools -->
     {#each TOOLS as tool (tool.kind)}
+        {#if showPan || tool.kind !== "pan"}
+            <Button
+                variant={store.toolKind === tool.kind ? "default" : "ghost"}
+                size="icon-sm"
+                title={tool.title}
+                aria-pressed={store.toolKind === tool.kind}
+                onclick={() => store.setTool(tool.kind)}
+            >
+                <Icon name={tool.icon} />
+            </Button>
+        {/if}
+    {/each}
+
+    {#if !compact}
+        <div class="mx-1 h-6 w-px bg-border/60"></div>
+
+        {#each COLORS as color (color.name)}
+            <button
+                type="button"
+                title={color.name}
+                aria-label={color.name}
+                aria-pressed={store.pen.namedColor === color.name}
+                class={cn(
+                    "size-5 rounded-full border transition-transform hover:scale-110",
+                    store.pen.namedColor === color.name ? "border-foreground ring-2 ring-primary" : "border-border/60"
+                )}
+                style="background-color: {color.css}"
+                onclick={() => setColor(color.name)}
+            ></button>
+        {/each}
+
+        <div class="mx-1 h-6 w-px bg-border/60"></div>
+
+        {#each WIDTHS as w (w.value)}
+            <Button
+                variant={(store.pen.lineWidth ?? 1) === w.value ? "default" : "ghost"}
+                size="icon-sm"
+                title={"Width " + w.label}
+                onclick={() => setWidth(w.value)}
+            >
+                <span class="text-xs font-semibold">{w.label}</span>
+            </Button>
+        {/each}
+
         <Button
-            variant={store.toolKind === tool.kind ? "default" : "ghost"}
+            variant={store.pen.dash === "dashed" ? "default" : "ghost"}
             size="icon-sm"
-            title={tool.title}
-            aria-pressed={store.toolKind === tool.kind}
-            onclick={() => store.setTool(tool.kind)}
+            title="Dashed"
+            onclick={toggleDash}
         >
-            <Icon name={tool.icon} />
+            <Icon name="more_horiz" />
         </Button>
-    {/each}
-
-    <div class="mx-1 h-6 w-px bg-border/60"></div>
-
-    <!-- Colors -->
-    {#each COLORS as color (color.name)}
-        <button
-            type="button"
-            title={color.name}
-            aria-label={color.name}
-            aria-pressed={store.pen.namedColor === color.name}
-            class={cn(
-                "size-5 rounded-full border transition-transform hover:scale-110",
-                store.pen.namedColor === color.name ? "border-foreground ring-2 ring-primary" : "border-border/60"
-            )}
-            style="background-color: {color.css}"
-            onclick={() => setColor(color.name)}
-        ></button>
-    {/each}
-
-    <div class="mx-1 h-6 w-px bg-border/60"></div>
-
-    <!-- Stroke width -->
-    {#each WIDTHS as w (w.value)}
-        <Button
-            variant={(store.pen.lineWidth ?? 1) === w.value ? "default" : "ghost"}
-            size="icon-sm"
-            title={"Width " + w.label}
-            onclick={() => setWidth(w.value)}
-        >
-            <span class="text-xs font-semibold">{w.label}</span>
-        </Button>
-    {/each}
-
-    <Button
-        variant={store.pen.dash === "dashed" ? "default" : "ghost"}
-        size="icon-sm"
-        title="Dashed"
-        onclick={toggleDash}
-    >
-        <Icon name="more_horiz" />
-    </Button>
+    {/if}
 
     <div class="mx-1 h-6 w-px bg-border/60"></div>
 
@@ -151,12 +159,15 @@
         <Icon name="delete_sweep" />
     </Button>
 
-    <div class="mx-1 h-6 w-px bg-border/60"></div>
+    {#if !compact || actions}
+        <div class="mx-1 h-6 w-px bg-border/60"></div>
+    {/if}
 
-    <!-- Export -->
-    <Button variant="ghost" size="icon-sm" title={copied ? "Copied!" : "Copy Asymptote"} onclick={copyAsy}>
-        <Icon name={copied ? "check" : "content_copy"} />
-    </Button>
+    {#if !compact}
+        <Button variant="ghost" size="icon-sm" title={copied ? "Copied!" : "Copy Asymptote"} onclick={copyAsy}>
+            <Icon name={copied ? "check" : "content_copy"} />
+        </Button>
+    {/if}
 
     {@render actions?.()}
 </div>

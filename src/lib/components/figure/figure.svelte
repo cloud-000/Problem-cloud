@@ -5,7 +5,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Modal } from "$lib/components/modal";
-    import { WhiteboardModal } from "$lib/components/whiteboard";
+    import { Whiteboard, WhiteboardToolbar } from "$lib/components/whiteboard";
     import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
 
@@ -26,16 +26,18 @@
     let view = $state<"image" | "code">("image");
     let expanded = $state(false);
 
-    // Whiteboard: opened from a diagram to trace/edit its Asymptote source.
-    let editing = $state(false);
+    // Lightbox annotations are deliberately throwaway per open in v1.
     let board = $state<WhiteboardStore | null>(null);
 
-    function openWhiteboard() {
-        // Seed an editable scene from the asy source; the PNG serves as a trace
-        // backdrop for anything the parser couldn't model (raw elements).
-        board = code ? WhiteboardStore.fromAsy(code) : new WhiteboardStore();
-        expanded = false; // v1: the board replaces the lightbox rather than stacking
-        editing = true;
+    function openLightbox() {
+        board = new WhiteboardStore();
+        board.setTool("pen");
+        expanded = true;
+    }
+
+    function closeLightbox() {
+        expanded = false;
+        board = null;
     }
 
     // State to track user's manual override of the theme's default inversion.
@@ -56,7 +58,7 @@
             type="button"
             class="block w-full cursor-zoom-in"
             title="Click to expand"
-            onclick={() => (expanded = true)}
+            onclick={openLightbox}
         >
             <img
                 src={imageSrc}
@@ -85,14 +87,6 @@
             >
                 <Icon name={view === "image" ? "code" : "image"} />
             </Button>
-            <Button
-                variant="ghost"
-                size="icon-xs"
-                title="Edit in whiteboard"
-                onclick={openWhiteboard}
-            >
-                <Icon name="draw" />
-            </Button>
         {/if}
         {#if view === "image"}
             <Button
@@ -107,7 +101,7 @@
                 variant="ghost"
                 size="icon-xs"
                 title="Expand"
-                onclick={() => (expanded = true)}
+                onclick={openLightbox}
             >
                 <Icon name="open_in_full" />
             </Button>
@@ -117,31 +111,50 @@
 
 <!-- Fullscreen lightbox: a chromeless (bare) Modal that owns the backdrop,
      Escape handling, scroll-lock, and backdrop-click close. -->
-<Modal bind:open={expanded} variant="bare" aria-label="Expanded image">
-    <img
-        src={imageSrc}
-        {alt}
-        style={inverted ? INVERT_STYLE : ""}
-        class="max-h-full max-w-full object-contain rounded-lg select-none"
-        transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
-    />
+<Modal
+    bind:open={expanded}
+    variant="bare"
+    class="p-0"
+    aria-label="Annotate expanded image"
+    onClose={() => (board = null)}
+>
+    {#if board}
+        <div class="relative h-full w-full overflow-hidden">
+            <div
+                class="pointer-events-none absolute inset-0 flex items-center justify-center p-3 pt-16 sm:p-6 sm:pt-20"
+                transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
+            >
+                <img
+                    src={imageSrc}
+                    {alt}
+                    style={inverted ? INVERT_STYLE : ""}
+                    class="block max-h-full max-w-full rounded-lg object-contain select-none"
+                />
+            </div>
+
+            <Whiteboard
+                store={board}
+                showGrid={false}
+                transparent
+                navigation={false}
+                class="absolute inset-0"
+            />
+
+            <WhiteboardToolbar
+                store={board}
+                compact
+                showPan={false}
+                class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
+            />
+        </div>
+    {/if}
     <Button
         variant="ghost"
         size="icon"
-        class="absolute right-4 top-4 bg-surface-container-lowest/90 text-foreground"
+        class="absolute right-3 top-3 z-20 bg-surface-container-lowest/90 text-foreground sm:right-4 sm:top-4"
         title="Close"
-        onclick={() => (expanded = false)}
+        onclick={closeLightbox}
     >
         <Icon name="close" />
     </Button>
 </Modal>
-
-<!-- Trace / edit this diagram's Asymptote source on the whiteboard. -->
-{#if editing && board}
-    <WhiteboardModal
-        bind:open={editing}
-        store={board}
-        backgroundSrc={imageSrc}
-        title="Edit diagram"
-    />
-{/if}

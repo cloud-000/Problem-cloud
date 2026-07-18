@@ -34,7 +34,12 @@ export class ArcTool implements Tool {
         }
         // phase 2 -> commit
         const center = this.center!;
-        const angle2 = angleOf(center, p);
+        const angle2 = distance(p, [
+            center[0] + this.radius * Math.cos((this.angle1 * Math.PI) / 180),
+            center[1] + this.radius * Math.sin((this.angle1 * Math.PI) / 180),
+        ]) <= ctx.tolerance
+            ? this.angle1 + 360
+            : angleOf(center, p);
         const arc = createArc(center, this.radius, this.angle1, angle2, ctx.pen);
         this.reset();
         return { commit: addElement(scene, arc), selection: [arc.id], preview: null };

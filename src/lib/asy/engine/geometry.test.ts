@@ -39,6 +39,10 @@ describe("geometry", () => {
         expect(d).toBeGreaterThan(1);
     });
 
+    test("pointToArc treats a 360-degree arc as a full ring", () => {
+        expect(pointToArc([-2, 0], [0, 0], 2, 0, 360)).toBeCloseTo(0);
+    });
+
     test("pointInPolygon (even-odd)", () => {
         const square = makePath([[0, 0], [4, 0], [4, 4], [0, 4]], { cyclic: true });
         expect(pointInPolygon([2, 2], square)).toBe(true);
