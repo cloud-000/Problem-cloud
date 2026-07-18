@@ -86,6 +86,8 @@ export interface ToolResult {
     nextTool?: ToolKind;
     /** Start, advance, preserve, or clear the connected-path preview. */
     lineContinuation?: LineContinuation | null;
+    /** Optional user-facing diagnostic emitted by the store after this result. */
+    consoleMessage?: string;
     /** Candidate element ids while a marquee gesture is still in progress. */
     selectionPreview?: string[] | null;
     /** Transient select-tool marquee, rendered by the view rather than stored in the scene. */

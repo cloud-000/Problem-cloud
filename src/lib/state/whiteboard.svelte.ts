@@ -108,6 +108,7 @@ export class WhiteboardStore {
     }
 
     #dispatch(result: ToolResult): void {
+        if (result.consoleMessage) console.info(result.consoleMessage);
         if (result.selection !== undefined) this.selection = result.selection;
         if (result.selectionPreview !== undefined) this.selectionPreview = result.selectionPreview;
         if (result.marquee !== undefined) this.marquee = result.marquee;

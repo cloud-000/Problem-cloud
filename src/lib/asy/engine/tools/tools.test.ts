@@ -214,7 +214,31 @@ describe("SelectTool", () => {
         expect(extended.lineContinuation).toEqual({ elementId: line.id, nodeIndex: 3 });
     });
 
-    test("clicking near either original endpoint cancels line continuation", () => {
+    test("clicking the start of a multi-segment path closes it without repeating the node", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 1], [4, 3]]))] };
+        const path = scene.elements[0];
+        const result = createTool("select").onPointerDown(scene, [0.2, 0.1], {
+            ...ctx,
+            selection: [path.id],
+            lineContinuation: { elementId: path.id, nodeIndex: 2 },
+        });
+        expect(result.commit?.elements).toHaveLength(1);
+        expect(result.commit?.elements).toMatchObject([
+            {
+                id: path.id,
+                kind: "path",
+                path: {
+                    nodes: [[0, 0], [2, 1], [4, 3]],
+                    joins: ["--", "--", "--"],
+                    cyclic: true,
+                },
+            },
+        ]);
+        expect(result.lineContinuation).toBeNull();
+        expect(result.consoleMessage).toBe("[Whiteboard] Closed path at its starting vertex.");
+    });
+
+    test("clicking near an endpoint of a single segment only cancels continuation", () => {
         const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]))] };
         const line = scene.elements[0];
         const tool = createTool("select");

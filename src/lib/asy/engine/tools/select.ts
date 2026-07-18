@@ -33,11 +33,25 @@ export class SelectTool implements Tool {
             if (source?.kind !== "path") {
                 return { lineContinuation: null, preview: null };
             }
-            const endpoints = [source.path.nodes[0], source.path.nodes.at(-1)].filter(
-                (point): point is Pair => point !== undefined,
-            );
+            const first = source.path.nodes[0];
+            const last = source.path.nodes.at(-1);
             const start = source.path.nodes[ctx.lineContinuation.nodeIndex];
-            if (!start || endpoints.some((endpoint) => distance(endpoint, p) <= ctx.tolerance)) {
+            if (!start || !first || !last) {
+                return { lineContinuation: null, preview: null };
+            }
+            if (distance(first, p) <= ctx.tolerance) {
+                if (source.path.nodes.length > 2) {
+                    return {
+                        commit: this.closePath(scene, source.id),
+                        selection: [source.id],
+                        lineContinuation: null,
+                        preview: null,
+                        consoleMessage: "[Whiteboard] Closed path at its starting vertex.",
+                    };
+                }
+                return { lineContinuation: null, preview: null };
+            }
+            if (distance(last, p) <= ctx.tolerance) {
                 return { lineContinuation: null, preview: null };
             }
             const nodeIndex = source.path.nodes.length;
@@ -170,6 +184,21 @@ export class SelectTool implements Tool {
                       path: {
                           ...element.path,
                           nodes: [...element.path.nodes, node],
+                          joins: [...element.path.joins, "--"],
+                      },
+                  }
+                : element,
+        );
+    }
+
+    private closePath(scene: Scene, elementId: string): Scene {
+        return mapElements(scene, (element) =>
+            element.id === elementId && element.kind === "path"
+                ? {
+                      ...element,
+                      path: {
+                          ...element.path,
+                          cyclic: true,
                           joins: [...element.path.joins, "--"],
                       },
                   }
