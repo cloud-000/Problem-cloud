@@ -107,8 +107,17 @@ export class SelectTool implements Tool {
                 return { lineContinuation: null, preview: null };
             }
             const start = source.path.nodes[ctx.lineContinuation.nodeIndex];
-            if (!start) return { lineContinuation: null, preview: null };
-            return { preview: this.appendPathNode(scene, source.id, p) };
+            const first = source.path.nodes[0];
+            const last = source.path.nodes.at(-1);
+            if (!start || !first || !last) return { lineContinuation: null, preview: null };
+
+            const target = distance(first, p) <= ctx.tolerance
+                ? first
+                : distance(last, p) <= ctx.tolerance
+                  ? last
+                  : p;
+            if (distance(start, target) === 0) return { preview: scene };
+            return { preview: this.appendPathNode(scene, source.id, target) };
         }
         if (this.transform && this.dragStart && this.base) {
             const transformed = this.transformScene(this.base, this.movingIds, p, ctx);

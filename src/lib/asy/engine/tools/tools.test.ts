@@ -455,11 +455,22 @@ describe("SelectTool", () => {
     test("clicking the start of a multi-segment path closes it without repeating the node", () => {
         const scene = { elements: [createPath(makePath([[0, 0], [2, 1], [4, 3]]))] };
         const path = scene.elements[0];
-        const result = createTool("select").onPointerDown(scene, [0.2, 0.1], {
+        const tool = createTool("select");
+        const continuationCtx: ToolContext = {
             ...ctx,
             selection: [path.id],
             lineContinuation: { elementId: path.id, nodeIndex: 2 },
-        });
+        };
+        const preview = tool.onPointerMove(scene, [0.2, 0.1], continuationCtx);
+        expect(preview.preview?.elements).toMatchObject([
+            {
+                id: path.id,
+                kind: "path",
+                path: { nodes: [[0, 0], [2, 1], [4, 3], [0, 0]], cyclic: false },
+            },
+        ]);
+
+        const result = tool.onPointerDown(scene, [0.2, 0.1], continuationCtx);
         expect(result.commit?.elements).toHaveLength(1);
         expect(result.commit?.elements).toMatchObject([
             {
@@ -480,14 +491,37 @@ describe("SelectTool", () => {
         const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]))] };
         const line = scene.elements[0];
         const tool = createTool("select");
-        const result = tool.onPointerDown(scene, [0.2, 0.1], {
+        const continuationCtx: ToolContext = {
             ...ctx,
             selection: [line.id],
             lineContinuation: { elementId: line.id, nodeIndex: 1 },
-        });
+        };
+        const preview = tool.onPointerMove(scene, [0.2, 0.1], continuationCtx);
+        expect(preview.preview?.elements).toMatchObject([
+            {
+                id: line.id,
+                kind: "path",
+                path: { nodes: [[0, 0], [2, 1], [0, 0]], cyclic: false },
+            },
+        ]);
+
+        const result = tool.onPointerDown(scene, [0.2, 0.1], continuationCtx);
         expect(result.commit).toBeUndefined();
         expect(result.lineContinuation).toBeNull();
         expect(result.preview).toBeNull();
+    });
+
+    test("previewing cancellation at the current endpoint draws no zero-length segment", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 1], [4, 3]]))] };
+        const path = scene.elements[0];
+        const preview = createTool("select").onPointerMove(scene, [4.2, 3.1], {
+            ...ctx,
+            selection: [path.id],
+            lineContinuation: { elementId: path.id, nodeIndex: 2 },
+        });
+
+        expect(preview.preview).toBe(scene);
+        expect(preview.preview?.elements[0]).toBe(path);
     });
 
     test("clicking empty space clears the selection", () => {
