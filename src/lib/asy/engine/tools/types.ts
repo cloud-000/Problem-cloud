@@ -15,6 +15,22 @@
 
 import type { Pair, Pen, Scene } from "../../scene/types";
 
+export type SelectionTransformGesture =
+    | {
+          kind: "resize";
+          /** Opposite corner, fixed for the duration of the resize. */
+          anchor: Pair;
+          /** Unpadded geometry corner represented by the dragged UI handle. */
+          handle: Pair;
+          /** Smallest allowed positive scale, preventing collapse/mirroring. */
+          minimumScale: number;
+      }
+    | {
+          kind: "rotate";
+          /** Center of the selection bounds. */
+          pivot: Pair;
+      };
+
 export type ToolKind =
     | "select"
     | "pen"
@@ -34,6 +50,10 @@ export interface ToolContext {
     simplifyEpsilon: number;
     /** Current selected element ids, used by tools that operate on a group. */
     selection: string[];
+    /** Present on pointer-down when the view hit a selection transform handle. */
+    selectionTransform?: SelectionTransformGesture;
+    /** Snap an active rotation gesture to 15-degree increments. */
+    snapRotation?: boolean;
     /** Supplied by the view for the label tool; returns text or null if cancelled. */
     promptLabel?: (at: Pair) => string | null;
 }

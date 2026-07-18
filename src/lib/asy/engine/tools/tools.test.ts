@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createTool, type ToolContext } from "./index";
 import { emptyScene } from "../../scene/factory";
+import { createPath, makePath } from "../../scene/factory";
+import { elementBounds } from "../../scene/bounds";
 import type { Pair, Scene } from "../../scene/types";
 
 const ctx: ToolContext = {
@@ -212,5 +214,170 @@ describe("SelectTool", () => {
             { kind: "dot", at: [4, 5] },
             { kind: "dot", at: [5, 6] },
         ]);
+    });
+
+    const resizeCornerCases: Array<{
+        handle: Pair;
+        anchor: Pair;
+        target: Pair;
+        expected: { min: Pair; max: Pair };
+    }> = [
+        {
+            handle: [0, 0] as Pair,
+            anchor: [2, 2] as Pair,
+            target: [-2, -2] as Pair,
+            expected: { min: [-2, -2], max: [2, 2] },
+        },
+        {
+            handle: [2, 0] as Pair,
+            anchor: [0, 2] as Pair,
+            target: [4, -2] as Pair,
+            expected: { min: [0, -2], max: [4, 2] },
+        },
+        {
+            handle: [2, 2] as Pair,
+            anchor: [0, 0] as Pair,
+            target: [4, 4] as Pair,
+            expected: { min: [0, 0], max: [4, 4] },
+        },
+        {
+            handle: [0, 2] as Pair,
+            anchor: [2, 0] as Pair,
+            target: [-2, 4] as Pair,
+            expected: { min: [-2, 0], max: [2, 4] },
+        },
+    ];
+
+    for (const [index, { handle, anchor, target, expected }] of resizeCornerCases.entries()) {
+        test(`proportionally resizes from corner ${index + 1} while fixing its opposite corner`, () => {
+            const scene = {
+                elements: [createPath(makePath([[0, 0], [2, 0], [2, 2], [0, 2]], { cyclic: true }))],
+            };
+            const selection = [scene.elements[0].id];
+            const tool = createTool("select");
+            const transformCtx: ToolContext = {
+                ...ctx,
+                selection,
+                selectionTransform: { kind: "resize", anchor, handle, minimumScale: 0.1 },
+            };
+            tool.onPointerDown(scene, handle, transformCtx);
+            expect(tool.onPointerMove(scene, target, transformCtx).commit).toBeUndefined();
+            const result = tool.onPointerUp(scene, target, transformCtx);
+            expect(elementBounds(result.commit!.elements[0])).toEqual(expected);
+        });
+    }
+
+    test("resize keeps the UI handle offset and clamps before mirroring", () => {
+        const scene = {
+            elements: [createPath(makePath([[0, 0], [2, 0]]))],
+        };
+        const selection = [scene.elements[0].id];
+        const tool = createTool("select");
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 0],
+                minimumScale: 0.25,
+            },
+        };
+        tool.onPointerDown(scene, [2.2, 0.1], transformCtx);
+        const result = tool.onPointerUp(scene, [-2 + 0.2, 0.1], transformCtx);
+        expect(result.commit?.elements).toMatchObject([{ kind: "path", path: { nodes: [[0, 0], [0.5, 0]] } }]);
+    });
+
+    test("a transform handle wins over move hit-testing and transforms the whole selection", () => {
+        let scene = createTool("point").onPointerDown(emptyScene(), [0, 0], ctx).commit!;
+        scene = createTool("point").onPointerDown(scene, [2, 2], ctx).commit!;
+        scene = createTool("point").onPointerDown(scene, [8, 8], ctx).commit!;
+        const selection = scene.elements.slice(0, 2).map((element) => element.id);
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 2],
+                minimumScale: 0.1,
+            },
+        };
+        const tool = createTool("select");
+        // The handle lies directly on a selected dot; transform routing must win.
+        tool.onPointerDown(scene, [2, 2], transformCtx);
+        const result = tool.onPointerUp(scene, [4, 4], transformCtx);
+        expect(result.commit?.elements).toMatchObject([
+            { kind: "dot", at: [0, 0] },
+            { kind: "dot", at: [4, 4] },
+            { kind: "dot", at: [8, 8] },
+        ]);
+    });
+
+    test("rotation previews continuously and commits once around the selection center", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 0]]))] };
+        const selection = [scene.elements[0].id];
+        const tool = createTool("select");
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: { kind: "rotate", pivot: [1, 0] },
+        };
+        tool.onPointerDown(scene, [1, 2], transformCtx);
+        const preview = tool.onPointerMove(scene, [-1, 0], transformCtx);
+        expect(preview.preview?.elements[0].kind).toBe("path");
+        expect(preview.commit).toBeUndefined();
+        const result = tool.onPointerUp(scene, [-1, 0], transformCtx);
+        const nodes = result.commit?.elements[0].kind === "path"
+            ? result.commit.elements[0].path.nodes
+            : [];
+        expect(nodes[0][0]).toBeCloseTo(1);
+        expect(nodes[0][1]).toBeCloseTo(-1);
+        expect(nodes[1][0]).toBeCloseTo(1);
+        expect(nodes[1][1]).toBeCloseTo(1);
+    });
+
+    test("Shift snaps rotation to 15-degree increments", () => {
+        const scene = { elements: [createPath(makePath([[1, 0], [2, 0]]))] };
+        const selection = [scene.elements[0].id];
+        const tool = createTool("select");
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: { kind: "rotate", pivot: [0, 0] },
+            snapRotation: true,
+        };
+        tool.onPointerDown(scene, [2, 0], transformCtx);
+        const angle = (20 * Math.PI) / 180;
+        const result = tool.onPointerUp(scene, [2 * Math.cos(angle), 2 * Math.sin(angle)], transformCtx);
+        const first = result.commit?.elements[0].kind === "path"
+            ? result.commit.elements[0].path.nodes[0]
+            : [0, 0];
+        expect(first[0]).toBeCloseTo(Math.cos(Math.PI / 12));
+        expect(first[1]).toBeCloseTo(Math.sin(Math.PI / 12));
+    });
+
+    test("no-op and cancelled transforms do not commit", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 0]]))] };
+        const selection = [scene.elements[0].id];
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection,
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 0],
+                minimumScale: 0.1,
+            },
+        };
+        const noOp = createTool("select");
+        noOp.onPointerDown(scene, [2, 0], transformCtx);
+        expect(noOp.onPointerUp(scene, [2, 0], transformCtx).commit).toBeUndefined();
+
+        const cancelled = createTool("select");
+        cancelled.onPointerDown(scene, [2, 0], transformCtx);
+        cancelled.onPointerMove(scene, [4, 0], transformCtx);
+        expect(cancelled.onCancel()).toMatchObject({ preview: null });
+        expect(cancelled.onPointerUp(scene, [4, 0], transformCtx).commit).toBeUndefined();
     });
 });

@@ -102,6 +102,32 @@ function translatePath(path: Path, dx: number, dy: number): Path {
     return { ...path, nodes: path.nodes.map((n) => translatePair(n, dx, dy)) };
 }
 
+/** Uniformly scale a point around `origin`. */
+export function scalePair(p: Pair, origin: Pair, factor: number): Pair {
+    return [
+        origin[0] + (p[0] - origin[0]) * factor,
+        origin[1] + (p[1] - origin[1]) * factor,
+    ];
+}
+
+/** Rotate a point around `origin` by `degrees` counter-clockwise in asy-space. */
+export function rotatePair(p: Pair, origin: Pair, degrees: number): Pair {
+    const radians = (degrees * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = p[0] - origin[0];
+    const dy = p[1] - origin[1];
+    return [origin[0] + dx * cos - dy * sin, origin[1] + dx * sin + dy * cos];
+}
+
+function scalePath(path: Path, origin: Pair, factor: number): Path {
+    return { ...path, nodes: path.nodes.map((node) => scalePair(node, origin, factor)) };
+}
+
+function rotatePath(path: Path, origin: Pair, degrees: number): Path {
+    return { ...path, nodes: path.nodes.map((node) => rotatePair(node, origin, degrees)) };
+}
+
 /** Return a copy of `el` translated by (dx, dy). `raw` elements are unchanged. */
 export function translateElement(el: SceneElement, dx: number, dy: number): SceneElement {
     switch (el.kind) {
@@ -115,6 +141,63 @@ export function translateElement(el: SceneElement, dx: number, dy: number): Scen
         case "circle":
         case "arc":
             return { ...el, center: translatePair(el.center, dx, dy) };
+        case "raw":
+            return el;
+    }
+}
+
+/**
+ * Return a uniformly scaled copy of `el`. Pens, dots, and label glyph sizes stay
+ * screen-sized; only their scene-space anchors/geometry are transformed.
+ */
+export function scaleElement(el: SceneElement, origin: Pair, factor: number): SceneElement {
+    switch (el.kind) {
+        case "dot":
+        case "label":
+            return { ...el, at: scalePair(el.at, origin, factor) };
+        case "path":
+            return { ...el, path: scalePath(el.path, origin, factor) };
+        case "fill":
+            return { ...el, path: scalePath(el.path, origin, factor) };
+        case "circle":
+        case "arc":
+            return {
+                ...el,
+                center: scalePair(el.center, origin, factor),
+                radius: el.radius * factor,
+            };
+        case "raw":
+            return el;
+    }
+}
+
+/**
+ * Return a rotated copy of `el`. Label glyphs remain upright, but their anchor
+ * and optional alignment direction rotate with the rest of the selection.
+ */
+export function rotateElement(el: SceneElement, origin: Pair, degrees: number): SceneElement {
+    switch (el.kind) {
+        case "dot":
+            return { ...el, at: rotatePair(el.at, origin, degrees) };
+        case "label":
+            return {
+                ...el,
+                at: rotatePair(el.at, origin, degrees),
+                ...(el.align ? { align: rotatePair(el.align, [0, 0], degrees) } : {}),
+            };
+        case "path":
+            return { ...el, path: rotatePath(el.path, origin, degrees) };
+        case "fill":
+            return { ...el, path: rotatePath(el.path, origin, degrees) };
+        case "circle":
+            return { ...el, center: rotatePair(el.center, origin, degrees) };
+        case "arc":
+            return {
+                ...el,
+                center: rotatePair(el.center, origin, degrees),
+                angle1: el.angle1 + degrees,
+                angle2: el.angle2 + degrees,
+            };
         case "raw":
             return el;
     }

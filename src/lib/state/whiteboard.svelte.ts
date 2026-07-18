@@ -22,6 +22,7 @@ import {
     type ToolContext,
     type ToolKind,
     type ToolResult,
+    type SelectionTransformGesture,
 } from "$lib/asy/engine";
 import { History } from "$lib/asy/engine";
 
@@ -75,26 +76,27 @@ export class WhiteboardStore {
 
     // --- pointer plumbing (the view maps screen->asy before calling these) ----
 
-    pointerDown(p: readonly [number, number]): void {
-        this.#dispatch(this.#tool.onPointerDown(this.scene, p, this.#ctx()));
+    pointerDown(p: readonly [number, number], selectionTransform?: SelectionTransformGesture): void {
+        this.#dispatch(this.#tool.onPointerDown(this.scene, p, this.#ctx({ selectionTransform })));
     }
-    pointerMove(p: readonly [number, number]): void {
-        this.#dispatch(this.#tool.onPointerMove(this.scene, p, this.#ctx()));
+    pointerMove(p: readonly [number, number], snapRotation = false): void {
+        this.#dispatch(this.#tool.onPointerMove(this.scene, p, this.#ctx({ snapRotation })));
     }
-    pointerUp(p: readonly [number, number]): void {
-        this.#dispatch(this.#tool.onPointerUp(this.scene, p, this.#ctx()));
+    pointerUp(p: readonly [number, number], snapRotation = false): void {
+        this.#dispatch(this.#tool.onPointerUp(this.scene, p, this.#ctx({ snapRotation })));
     }
     cancel(): void {
         this.#dispatch(this.#tool.onCancel());
     }
 
-    #ctx(): ToolContext {
+    #ctx(overrides: Pick<ToolContext, "selectionTransform" | "snapRotation"> = {}): ToolContext {
         return {
             pen: $state.snapshot(this.pen) as Pen,
             tolerance: this.tolerance,
             simplifyEpsilon: this.simplifyEpsilon,
             selection: $state.snapshot(this.selection) as string[],
             promptLabel: this.promptLabel,
+            ...overrides,
         };
     }
 

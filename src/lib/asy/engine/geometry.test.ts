@@ -6,9 +6,20 @@ import {
     pointToPolyline,
     pointToRing,
     pointToSegment,
+    rotateElement,
+    scaleElement,
     translateElement,
 } from "./geometry";
-import { createCircle, createDot, createPath, makePath, createRaw } from "../scene/factory";
+import {
+    createArc,
+    createCircle,
+    createDot,
+    createFill,
+    createLabel,
+    createPath,
+    makePath,
+    createRaw,
+} from "../scene/factory";
 
 describe("geometry", () => {
     test("distance", () => {
@@ -56,5 +67,69 @@ describe("geometry", () => {
         expect(path.kind === "path" && path.path.nodes).toEqual([[1, 0], [2, 1]]);
         const raw = createRaw("size(200);");
         expect(translateElement(raw, 5, 5)).toBe(raw);
+    });
+
+    test("scaleElement uniformly transforms every editable geometry kind", () => {
+        const origin: [number, number] = [1, 1];
+        expect(scaleElement(createDot([2, 1]), origin, 2)).toMatchObject({ at: [3, 1] });
+        expect(scaleElement(createPath(makePath([[1, 1], [2, 2]])), origin, 2)).toMatchObject({
+            path: { nodes: [[1, 1], [3, 3]] },
+        });
+        expect(scaleElement(createFill(makePath([[0, 0], [1, 0], [1, 1]])), origin, 2)).toMatchObject({
+            path: { nodes: [[-1, -1], [1, -1], [1, 1]] },
+        });
+        expect(scaleElement(createCircle([2, 1], 3), origin, 2)).toMatchObject({
+            kind: "circle",
+            center: [3, 1],
+            radius: 6,
+        });
+        expect(scaleElement(createArc([1, 2], 2, 10, 80), origin, 2)).toMatchObject({
+            kind: "arc",
+            center: [1, 3],
+            radius: 4,
+            angle1: 10,
+            angle2: 80,
+        });
+        expect(scaleElement(createLabel("$A$", [2, 2], [0, 1]), origin, 2)).toMatchObject({
+            at: [3, 3],
+            align: [0, 1],
+        });
+        const raw = createRaw("size(200);");
+        expect(scaleElement(raw, origin, 2)).toBe(raw);
+    });
+
+    test("rotateElement rotates geometry and label alignment while preserving primitive types", () => {
+        const origin: [number, number] = [1, 1];
+        const dot = rotateElement(createDot([2, 1]), origin, 90);
+        expect(dot.kind === "dot" && dot.at[0]).toBeCloseTo(1);
+        expect(dot.kind === "dot" && dot.at[1]).toBeCloseTo(2);
+
+        const path = rotateElement(createPath(makePath([[1, 1], [3, 1]])), origin, 90);
+        expect(path.kind === "path" && path.path.nodes[1][0]).toBeCloseTo(1);
+        expect(path.kind === "path" && path.path.nodes[1][1]).toBeCloseTo(3);
+
+        const fill = rotateElement(createFill(makePath([[2, 1], [1, 2], [0, 1]])), origin, 90);
+        expect(fill.kind === "fill" && fill.path.nodes[0][0]).toBeCloseTo(1);
+        expect(fill.kind === "fill" && fill.path.nodes[0][1]).toBeCloseTo(2);
+
+        const circle = rotateElement(createCircle([2, 1], 3), origin, 90);
+        expect(circle.kind).toBe("circle");
+        expect(circle.kind === "circle" && circle.center[0]).toBeCloseTo(1);
+        expect(circle.kind === "circle" && circle.center[1]).toBeCloseTo(2);
+        expect(circle.kind === "circle" && circle.radius).toBe(3);
+
+        const arc = rotateElement(createArc([2, 1], 2, 10, 80), origin, 90);
+        expect(arc.kind).toBe("arc");
+        expect(arc.kind === "arc" && arc.angle1).toBeCloseTo(100);
+        expect(arc.kind === "arc" && arc.angle2).toBeCloseTo(170);
+
+        const label = rotateElement(createLabel("$A$", [2, 1], [0, 1]), origin, 90);
+        expect(label.kind === "label" && label.at[0]).toBeCloseTo(1);
+        expect(label.kind === "label" && label.at[1]).toBeCloseTo(2);
+        expect(label.kind === "label" && label.align?.[0]).toBeCloseTo(-1);
+        expect(label.kind === "label" && label.align?.[1]).toBeCloseTo(0);
+
+        const raw = createRaw("size(200);");
+        expect(rotateElement(raw, origin, 90)).toBe(raw);
     });
 });

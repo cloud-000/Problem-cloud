@@ -38,7 +38,8 @@
     let panX = $state(0);
     let panY = $state(0);
     let pointerId = $state<number | null>(null);
-    let interaction = $state<"idle" | "draw" | "pan" | "pinch">("idle");
+    let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
+    let transformCursor = $state<"nwse-resize" | "nesw-resize" | "grabbing" | null>(null);
     let spacePressed = $state(false);
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
@@ -57,6 +58,16 @@
         y: number;
         width: number;
         height: number;
+    }
+
+    type ResizeCorner = "nw" | "ne" | "se" | "sw";
+
+    interface ResizeHandle {
+        corner: ResizeCorner;
+        screen: Pair;
+        handle: Pair;
+        anchor: Pair;
+        cursor: "nwse-resize" | "nesw-resize";
     }
 
     function screenRect(bounds: Bounds, padding = 0): ScreenRect {
@@ -85,8 +96,36 @@
         return bounds ? screenRect(bounds, padding) : null;
     }
 
+    const selectionGeometryBounds = $derived.by<Bounds | null>(() => {
+        if (activeSelection.length === 0) return null;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const element of store.displayScene.elements) {
+            if (!selectedIds.has(element.id)) continue;
+            const bounds = elementBounds(element);
+            if (!bounds) continue;
+            minX = Math.min(minX, bounds.min[0]);
+            minY = Math.min(minY, bounds.min[1]);
+            maxX = Math.max(maxX, bounds.max[0]);
+            maxY = Math.max(maxY, bounds.max[1]);
+        }
+        return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
+    });
+
+    const hasTransformExtent = $derived.by(() => {
+        if (!selectionGeometryBounds) return false;
+        const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
+        const dy = selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1];
+        return Math.hypot(dx, dy) > 1e-9;
+    });
+
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
+        if (selectionGeometryBounds && hasTransformExtent) {
+            return screenRect(selectionGeometryBounds, 6);
+        }
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
@@ -114,15 +153,64 @@
         });
     });
 
-    const selectionHandles = $derived.by(() => {
-        if (!selectionRect || selectionIsPreview) return [];
+    const resizeHandles = $derived.by<ResizeHandle[]>(() => {
+        if (
+            !selectionRect ||
+            !selectionGeometryBounds ||
+            !hasTransformExtent ||
+            selectionIsPreview ||
+            store.toolKind !== "select"
+        ) return [];
         const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
+        const { min, max } = selectionGeometryBounds;
         return [
-            [x, y],
-            [x + boxWidth, y],
-            [x + boxWidth, y + boxHeight],
-            [x, y + boxHeight],
-        ] satisfies Pair[];
+            {
+                corner: "nw",
+                screen: [x, y],
+                handle: [min[0], max[1]],
+                anchor: [max[0], min[1]],
+                cursor: "nwse-resize",
+            },
+            {
+                corner: "ne",
+                screen: [x + boxWidth, y],
+                handle: [max[0], max[1]],
+                anchor: [min[0], min[1]],
+                cursor: "nesw-resize",
+            },
+            {
+                corner: "se",
+                screen: [x + boxWidth, y + boxHeight],
+                handle: [max[0], min[1]],
+                anchor: [min[0], max[1]],
+                cursor: "nwse-resize",
+            },
+            {
+                corner: "sw",
+                screen: [x, y + boxHeight],
+                handle: [min[0], min[1]],
+                anchor: [max[0], max[1]],
+                cursor: "nesw-resize",
+            },
+        ];
+    });
+
+    const rotationControl = $derived.by(() => {
+        if (
+            !selectionRect ||
+            !selectionGeometryBounds ||
+            !hasTransformExtent ||
+            selectionIsPreview ||
+            store.toolKind !== "select"
+        ) return null;
+        return {
+            stemStart: [selectionRect.x + selectionRect.width / 2, selectionRect.y] as Pair,
+            screen: [selectionRect.x + selectionRect.width / 2, selectionRect.y - 24] as Pair,
+            pivot: [
+                (selectionGeometryBounds.min[0] + selectionGeometryBounds.max[0]) / 2,
+                (selectionGeometryBounds.min[1] + selectionGeometryBounds.max[1]) / 2,
+            ] as Pair,
+        };
     });
 
     function syncToolScale() {
@@ -175,6 +263,7 @@
         const midY = (a.clientY + b.clientY) / 2;
         store.cancel();
         interaction = "pinch";
+        transformCursor = null;
         pointerId = null;
         pinchStart = {
             distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
@@ -218,6 +307,40 @@
             return;
         }
 
+        const target = e.target instanceof Element ? e.target : null;
+        const resizeTarget = target?.closest<SVGElement>("[data-selection-resize]");
+        const rotationTarget = target?.closest<SVGElement>("[data-selection-rotate]");
+        if (e.button === 0 && store.toolKind === "select" && resizeTarget) {
+            const corner = resizeTarget.dataset.selectionResize as ResizeCorner | undefined;
+            const handle = resizeHandles.find((candidate) => candidate.corner === corner);
+            if (handle && selectionGeometryBounds) {
+                const extentPx = Math.max(
+                    (selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]) * scale,
+                    (selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]) * scale,
+                );
+                interaction = "transform";
+                transformCursor = handle.cursor;
+                syncToolScale();
+                store.pointerDown(toAsyAt(e.clientX, e.clientY), {
+                    kind: "resize",
+                    anchor: handle.anchor,
+                    handle: handle.handle,
+                    minimumScale: Math.min(1, 12 / Math.max(1, extentPx)),
+                });
+                return;
+            }
+        }
+        if (e.button === 0 && store.toolKind === "select" && rotationTarget && rotationControl) {
+            interaction = "transform";
+            transformCursor = "grabbing";
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
+                kind: "rotate",
+                pivot: rotationControl.pivot,
+            });
+            return;
+        }
+
         interaction = "draw";
         syncToolScale();
         store.pointerDown(toAsyAt(e.clientX, e.clientY));
@@ -235,8 +358,8 @@
         if (interaction === "pan" && panStart) {
             panX = panStart.x + e.clientX - panStart.clientX;
             panY = panStart.y + e.clientY - panStart.clientY;
-        } else if (interaction === "draw") {
-            store.pointerMove(toAsyAt(e.clientX, e.clientY));
+        } else if (interaction === "draw" || interaction === "transform") {
+            store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
         }
     }
 
@@ -252,9 +375,24 @@
             return;
         }
         if (e.pointerId !== pointerId) return;
-        if (interaction === "draw") store.pointerUp(toAsyAt(e.clientX, e.clientY));
+        if (interaction === "draw" || interaction === "transform") {
+            store.pointerUp(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+        }
         pointerId = null;
         panStart = null;
+        transformCursor = null;
+        interaction = "idle";
+    }
+
+    function onPointerCancel(e: PointerEvent) {
+        activeTouches.delete(e.pointerId);
+        release(e.pointerId);
+        if (e.pointerId !== pointerId && interaction !== "pinch") return;
+        if (interaction === "draw" || interaction === "transform") store.cancel();
+        pointerId = null;
+        panStart = null;
+        pinchStart = null;
+        transformCursor = null;
         interaction = "idle";
     }
 
@@ -264,6 +402,12 @@
             spacePressed = true;
         } else if (e.key === "Escape") {
             store.cancel();
+            if (interaction === "draw" || interaction === "transform") {
+                if (pointerId !== null) release(pointerId);
+                pointerId = null;
+                transformCursor = null;
+                interaction = "idle";
+            }
         } else if (e.key === "Delete" || e.key === "Backspace") {
             if (store.selection.length) {
                 e.preventDefault();
@@ -368,11 +512,12 @@
                     ? "cursor-default"
                     : "cursor-crosshair",
         )}
+        style:cursor={transformCursor}
         onkeydown={onKeyDown}
         onpointerdown={onPointerDown}
         onpointermove={onPointerMove}
         onpointerup={onPointerUp}
-        onpointercancel={onPointerUp}
+        onpointercancel={onPointerCancel}
         onwheel={onWheel}
     >
         {#if width > 0}
@@ -448,12 +593,51 @@
                     stroke-dasharray={selectionIsPreview ? "6 4" : undefined}
                     pointer-events="none"
                 />
-                {#each selectionHandles as handle, index (`${index}-${handle[0]}-${handle[1]}`)}
+                {#if rotationControl}
+                    <line
+                        x1={rotationControl.stemStart[0]}
+                        y1={rotationControl.stemStart[1]}
+                        x2={rotationControl.screen[0]}
+                        y2={rotationControl.screen[1]}
+                        stroke="var(--color-primary)"
+                        stroke-width="1.5"
+                        pointer-events="none"
+                    />
+                    <circle
+                        cx={rotationControl.screen[0]}
+                        cy={rotationControl.screen[1]}
+                        r="10"
+                        fill="transparent"
+                        pointer-events="all"
+                        data-selection-rotate
+                        style:cursor="grab"
+                    />
+                    <circle
+                        cx={rotationControl.screen[0]}
+                        cy={rotationControl.screen[1]}
+                        r="4.5"
+                        fill="var(--color-surface-container-lowest)"
+                        stroke="var(--color-primary)"
+                        stroke-width="1.5"
+                        pointer-events="none"
+                    />
+                {/if}
+                {#each resizeHandles as handle (handle.corner)}
                     <rect
-                        x={handle[0] - 3.5}
-                        y={handle[1] - 3.5}
-                        width="7"
-                        height="7"
+                        x={handle.screen[0] - 10}
+                        y={handle.screen[1] - 10}
+                        width="20"
+                        height="20"
+                        fill="transparent"
+                        pointer-events="all"
+                        data-selection-resize={handle.corner}
+                        style:cursor={handle.cursor}
+                    />
+                    <rect
+                        x={handle.screen[0] - 4}
+                        y={handle.screen[1] - 4}
+                        width="8"
+                        height="8"
                         rx="1"
                         fill="var(--color-surface-container-lowest)"
                         stroke="var(--color-primary)"
