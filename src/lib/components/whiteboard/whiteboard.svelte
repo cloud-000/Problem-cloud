@@ -544,7 +544,10 @@
         }
         if (interaction === "idle") {
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
-            if (store.lineContinuation) {
+            if (
+                store.lineContinuation ||
+                (store.toolKind === "line" && store.preview !== null)
+            ) {
                 hoveredVertex = null;
                 transformCursor = null;
                 syncToolScale();

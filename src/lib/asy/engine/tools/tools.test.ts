@@ -46,12 +46,28 @@ describe("LineTool", () => {
         });
     });
 
-    test("a click shorter than tolerance commits nothing", () => {
+    test("a click anchors the first point and previews the first segment before placement", () => {
         const tool = createTool("line");
         const s = emptyScene();
         tool.onPointerDown(s, [0, 0], ctx);
         const up = tool.onPointerUp(s, [0.1, 0], ctx);
         expect(up.commit).toBeUndefined();
+        expect(up.preview).toBe(s);
+
+        const preview = tool.onPointerMove(s, [3, 2], ctx);
+        expect(preview.preview?.elements).toMatchObject([
+            { kind: "path", path: { nodes: [[0, 0], [3, 2]], cyclic: false } },
+        ]);
+
+        const placed = tool.onPointerDown(s, [3, 2], ctx);
+        expect(placed.commit?.elements).toMatchObject([
+            { kind: "path", path: { nodes: [[0, 0], [3, 2]], cyclic: false } },
+        ]);
+        expect(placed.nextTool).toBe("select");
+        expect(placed.lineContinuation).toEqual({
+            elementId: placed.commit?.elements[0].id,
+            nodeIndex: 1,
+        });
     });
 });
 
