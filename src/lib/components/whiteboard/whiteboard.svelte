@@ -350,6 +350,13 @@
             return;
         }
 
+        if (e.button === 0 && store.toolKind === "select" && store.lineContinuation) {
+            interaction = "draw";
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY));
+            return;
+        }
+
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
         const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
@@ -411,6 +418,12 @@
         }
         if (interaction === "idle") {
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+            if (store.lineContinuation) {
+                transformCursor = null;
+                syncToolScale();
+                store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+                return;
+            }
             const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles);
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);

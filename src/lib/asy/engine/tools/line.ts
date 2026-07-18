@@ -24,7 +24,13 @@ export class LineTool implements Tool {
         this.start = null;
         if (distance(start, p) < ctx.tolerance) return { preview: null };
         const path = createPath(makePath([start, p]), ctx.pen);
-        return { commit: addElement(scene, path), selection: [path.id], preview: null };
+        return {
+            commit: addElement(scene, path),
+            selection: [path.id],
+            preview: null,
+            nextTool: "select",
+            lineContinuation: { elementId: path.id, nodeIndex: 1 },
+        };
     }
 
     onCancel(): ToolResult {

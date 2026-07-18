@@ -44,6 +44,7 @@ src/lib/components/DOCS.md
 .agents
 .claude
 .vscode
+.zed
 
 # Cloudflare
 wrangler.jsonc

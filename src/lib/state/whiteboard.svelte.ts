@@ -23,6 +23,7 @@ import {
     type ToolKind,
     type ToolResult,
     type SelectionTransformGesture,
+    type LineContinuation,
 } from "$lib/asy/engine";
 import { History } from "$lib/asy/engine";
 
@@ -42,6 +43,8 @@ export class WhiteboardStore {
     /** Transient render override during a drag (rubber-band / live move). */
     preview = $state<Scene | null>(null);
     marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
+    /** One-shot line continuation offered immediately after a line is drawn. */
+    lineContinuation = $state<LineContinuation | null>(null);
     canUndo = $state(false);
     canRedo = $state(false);
 
@@ -70,6 +73,7 @@ export class WhiteboardStore {
         this.preview = null;
         this.selectionPreview = null;
         this.marquee = null;
+        this.lineContinuation = null;
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
     }
@@ -95,6 +99,9 @@ export class WhiteboardStore {
             tolerance: this.tolerance,
             simplifyEpsilon: this.simplifyEpsilon,
             selection: $state.snapshot(this.selection) as string[],
+            lineContinuation: this.lineContinuation
+                ? ($state.snapshot(this.lineContinuation) as LineContinuation)
+                : null,
             promptLabel: this.promptLabel,
             ...overrides,
         };
@@ -104,12 +111,19 @@ export class WhiteboardStore {
         if (result.selection !== undefined) this.selection = result.selection;
         if (result.selectionPreview !== undefined) this.selectionPreview = result.selectionPreview;
         if (result.marquee !== undefined) this.marquee = result.marquee;
+        if (result.lineContinuation !== undefined) {
+            this.lineContinuation = result.lineContinuation;
+        }
         if (result.commit !== undefined) {
             this.apply(result.commit);
             this.preview = null;
             this.selectionPreview = null;
             this.marquee = null;
-            if (result.nextTool) this.setTool(result.nextTool);
+            if (result.nextTool) {
+                const continuation = result.lineContinuation;
+                this.setTool(result.nextTool);
+                if (continuation !== undefined) this.lineContinuation = continuation;
+            }
         } else if (result.preview !== undefined) {
             this.preview = result.preview;
         }
@@ -131,6 +145,7 @@ export class WhiteboardStore {
             this.selection = [];
             this.preview = null;
             this.selectionPreview = null;
+            this.lineContinuation = null;
         }
         this.#syncFlags();
     }
@@ -142,6 +157,7 @@ export class WhiteboardStore {
             this.selection = [];
             this.preview = null;
             this.selectionPreview = null;
+            this.lineContinuation = null;
         }
         this.#syncFlags();
     }
@@ -162,6 +178,7 @@ export class WhiteboardStore {
         this.selection = [];
         this.selectionPreview = null;
         this.marquee = null;
+        this.lineContinuation = null;
     }
 
     clearAll(): void {
@@ -169,6 +186,7 @@ export class WhiteboardStore {
         this.selection = [];
         this.selectionPreview = null;
         this.marquee = null;
+        this.lineContinuation = null;
     }
 
     // --- asy codec ------------------------------------------------------------
@@ -182,6 +200,7 @@ export class WhiteboardStore {
         this.apply(parse(asy).scene);
         this.selection = [];
         this.selectionPreview = null;
+        this.lineContinuation = null;
     }
 
     static fromAsy(asy: string): WhiteboardStore {

@@ -10,6 +10,7 @@ const ctx: ToolContext = {
     tolerance: 0.5,
     simplifyEpsilon: 0.1,
     selection: [],
+    lineContinuation: null,
     promptLabel: () => "$P$",
 };
 
@@ -34,6 +35,11 @@ describe("LineTool", () => {
         expect(up.commit?.elements).toMatchObject([
             { kind: "path", path: { nodes: [[0, 0], [3, 3]], cyclic: false } },
         ]);
+        expect(up.nextTool).toBe("select");
+        expect(up.lineContinuation).toEqual({
+            elementId: up.commit?.elements[0].id,
+            nodeIndex: 1,
+        });
     });
 
     test("a click shorter than tolerance commits nothing", () => {
@@ -172,6 +178,43 @@ describe("SelectTool", () => {
         expect(down.selection).toEqual([scene.elements[0].id]);
         // A pure click (no move) commits nothing.
         expect(tool.onPointerUp(scene, [1, 1], ctx).commit).toBeUndefined();
+    });
+
+    test("previews and commits a one-shot line continuation from the last endpoint", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]), ctx.pen)] };
+        const line = scene.elements[0];
+        const continuationCtx: ToolContext = {
+            ...ctx,
+            selection: [line.id],
+            lineContinuation: { elementId: line.id, nodeIndex: 1 },
+        };
+        const tool = createTool("select");
+        const preview = tool.onPointerMove(scene, [4, 3], continuationCtx);
+        expect(preview.preview?.elements).toMatchObject([
+            { kind: "path", path: { nodes: [[0, 0], [2, 1]] } },
+            { kind: "path", path: { nodes: [[2, 1], [4, 3]] } },
+        ]);
+
+        const result = tool.onPointerDown(scene, [4, 3], continuationCtx);
+        expect(result.commit?.elements).toMatchObject([
+            { kind: "path", path: { nodes: [[0, 0], [2, 1]] } },
+            { kind: "path", path: { nodes: [[2, 1], [4, 3]] } },
+        ]);
+        expect(result.lineContinuation).toBeNull();
+    });
+
+    test("clicking near either original endpoint cancels line continuation", () => {
+        const scene = { elements: [createPath(makePath([[0, 0], [2, 1]]))] };
+        const line = scene.elements[0];
+        const tool = createTool("select");
+        const result = tool.onPointerDown(scene, [0.2, 0.1], {
+            ...ctx,
+            selection: [line.id],
+            lineContinuation: { elementId: line.id, nodeIndex: 1 },
+        });
+        expect(result.commit).toBeUndefined();
+        expect(result.lineContinuation).toBeNull();
+        expect(result.preview).toBeNull();
     });
 
     test("clicking empty space clears the selection", () => {

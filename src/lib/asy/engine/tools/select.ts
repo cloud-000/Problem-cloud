@@ -1,8 +1,10 @@
 import type { Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
+import { createPath, makePath } from "../../scene/factory";
 import { hitTest } from "../hit-test";
-import { rotateElement, scaleElement, translateElement } from "../geometry";
+import { distance, rotateElement, scaleElement, translateElement } from "../geometry";
 import {
+    addElement,
     mapElements,
     NO_RESULT,
     type SelectionTransformGesture,
@@ -28,6 +30,26 @@ export class SelectTool implements Tool {
     private moved = false;
 
     onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+        if (ctx.lineContinuation) {
+            const source = scene.elements.find(({ id }) => id === ctx.lineContinuation?.elementId);
+            if (source?.kind !== "path") {
+                return { lineContinuation: null, preview: null };
+            }
+            const endpoints = [source.path.nodes[0], source.path.nodes.at(-1)].filter(
+                (point): point is Pair => point !== undefined,
+            );
+            const start = source.path.nodes[ctx.lineContinuation.nodeIndex];
+            if (!start || endpoints.some((endpoint) => distance(endpoint, p) <= ctx.tolerance)) {
+                return { lineContinuation: null, preview: null };
+            }
+            const continuation = createPath(makePath([start, p]), source.pen ?? ctx.pen);
+            return {
+                commit: addElement(scene, continuation),
+                selection: [continuation.id],
+                lineContinuation: null,
+                preview: null,
+            };
+        }
         if (ctx.selectionTransform && ctx.selection.length > 0) {
             this.reset();
             this.dragStart = p;
@@ -64,7 +86,17 @@ export class SelectTool implements Tool {
         return { selection: this.movingIds, selectionPreview: null, preview: scene, marquee: null };
     }
 
-    onPointerMove(_scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+        if (ctx.lineContinuation && !this.dragStart && !this.marqueeStart && !this.transform) {
+            const source = scene.elements.find(({ id }) => id === ctx.lineContinuation?.elementId);
+            if (source?.kind !== "path") {
+                return { lineContinuation: null, preview: null };
+            }
+            const start = source.path.nodes[ctx.lineContinuation.nodeIndex];
+            if (!start) return { lineContinuation: null, preview: null };
+            const continuation = createPath(makePath([start, p]), source.pen ?? ctx.pen);
+            return { preview: addElement(scene, continuation) };
+        }
         if (this.transform && this.dragStart && this.base) {
             const transformed = this.transformScene(this.base, this.movingIds, p, ctx);
             this.moved = transformed.changed;
@@ -120,7 +152,12 @@ export class SelectTool implements Tool {
 
     onCancel(): ToolResult {
         this.reset();
-        return { preview: null, selectionPreview: null, marquee: null };
+        return {
+            preview: null,
+            selectionPreview: null,
+            marquee: null,
+            lineContinuation: null,
+        };
     }
 
     private translate(scene: Scene, ids: string[], dx: number, dy: number): Scene {
