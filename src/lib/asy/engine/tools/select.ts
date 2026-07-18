@@ -2,7 +2,7 @@ import type { Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { hitTest } from "../hit-test";
-import { distance, rotateElement, scaleElementBy, translateElement } from "../geometry";
+import { distance, normalizeDeg, rotateElement, scaleElementBy, translateElement } from "../geometry";
 import {
     mapElements,
     NO_RESULT,
@@ -72,7 +72,9 @@ export class SelectTool implements Tool {
             this.base = scene;
             if (
                 ctx.selectionTransform.kind === "resize" ||
-                ctx.selectionTransform.kind === "vertex"
+                ctx.selectionTransform.kind === "vertex" ||
+                (ctx.selectionTransform.kind === "arc" &&
+                    ctx.selectionTransform.control === "center")
             ) {
                 this.transformPointerOffset = [
                     p[0] - ctx.selectionTransform.handle[0],
@@ -225,6 +227,79 @@ export class SelectTool implements Tool {
     ): { scene: Scene; changed: boolean } {
         if (!this.transform || !this.dragStart) return { scene, changed: false };
         const selected = new Set(ids);
+        if (this.transform.kind === "arc") {
+            const { elementId, control, handle, minimumRadius } = this.transform;
+            const element = scene.elements.find(({ id }) => id === elementId);
+            if (!selected.has(elementId) || element?.kind !== "arc") {
+                return { scene, changed: false };
+            }
+
+            if (control === "center") {
+                const nextCenter: Pair = [
+                    pointer[0] - this.transformPointerOffset[0],
+                    pointer[1] - this.transformPointerOffset[1],
+                ];
+                const changed = distance(nextCenter, handle) > 1e-9;
+                return {
+                    scene: changed
+                        ? mapElements(scene, (candidate) =>
+                              candidate.id === elementId && candidate.kind === "arc"
+                                  ? { ...candidate, center: nextCenter }
+                                  : candidate,
+                          )
+                        : scene,
+                    changed,
+                };
+            }
+
+            if (control === "radius") {
+                const radius = Math.max(minimumRadius, distance(element.center, pointer));
+                const changed = Math.abs(radius - element.radius) > 1e-9;
+                return {
+                    scene: changed
+                        ? mapElements(scene, (candidate) =>
+                              candidate.id === elementId && candidate.kind === "arc"
+                                  ? { ...candidate, radius }
+                                  : candidate,
+                          )
+                        : scene,
+                    changed,
+                };
+            }
+
+            const startPointerAngle = Math.atan2(
+                this.dragStart[1] - element.center[1],
+                this.dragStart[0] - element.center[0],
+            );
+            const pointerAngle = Math.atan2(
+                pointer[1] - element.center[1],
+                pointer[0] - element.center[0],
+            );
+            const delta = ((pointerAngle - startPointerAngle) * 180) / Math.PI;
+            if (Math.abs(delta) <= 1e-9) return { scene, changed: false };
+
+            const rawSweep = element.angle2 - element.angle1;
+            const baseSweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+            const fixedStart = element.angle1;
+            const fixedEnd = element.angle1 + baseSweep;
+            const nextStart = control === "start" ? element.angle1 + delta : fixedStart;
+            const nextEnd = control === "end" ? fixedEnd + delta : fixedEnd;
+            const normalizedSweep = normalizeDeg(nextEnd - nextStart);
+            const nextSweep = normalizedSweep <= 1e-9 ? 360 : normalizedSweep;
+
+            return {
+                scene: mapElements(scene, (candidate) =>
+                    candidate.id === elementId && candidate.kind === "arc"
+                        ? {
+                              ...candidate,
+                              angle1: nextStart,
+                              angle2: nextStart + nextSweep,
+                          }
+                        : candidate,
+                ),
+                changed: true,
+            };
+        }
         if (this.transform.kind === "vertex") {
             const { elementId, nodeIndex, handle } = this.transform;
             const element = scene.elements.find(({ id }) => id === elementId);

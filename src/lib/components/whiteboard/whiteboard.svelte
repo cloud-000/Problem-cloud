@@ -18,7 +18,9 @@
         renderWhiteboard,
         resizeHandleAt,
         isRotationHandleAt,
+        isArcGuideAt,
         type RenderResizeHandle,
+        type RenderArcHandle,
         type ScreenRect,
         type WhiteboardPalette,
         type WhiteboardRenderOverlay,
@@ -66,6 +68,8 @@
     let spacePressed = $state(false);
     let selectedVertex = $state<VertexRef | null>(null);
     let hoveredVertex = $state<VertexRef | null>(null);
+    let selectedArcControl = $state<ArcControlRef | null>(null);
+    let hoveredArcControl = $state<ArcControlRef | null>(null);
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
@@ -92,6 +96,13 @@
         nodeIndex: number;
     }
 
+    type ArcControl = "center" | "start" | "end" | "radius";
+
+    interface ArcControlRef {
+        elementId: string;
+        control: ArcControl;
+    }
+
     interface ResizeHandle extends RenderResizeHandle {
         position: ResizePosition;
         screen: Pair;
@@ -108,6 +119,11 @@
         nodeIndex: number;
         cursor: "move";
         state: "default" | "hovered" | "selected";
+    }
+
+    interface ArcHandle extends RenderArcHandle {
+        handle: Pair;
+        elementId: string;
     }
 
     function screenRect(bounds: Bounds, padding = 0): ScreenRect {
@@ -167,6 +183,16 @@
         (selectedStraightVertexEditablePath?.path.joins.length ?? 0) > 1,
     );
 
+    const selectedCircularArc = $derived.by(() => {
+        if (
+            activeSelection.length !== 1 ||
+            store.selectionPreview !== null ||
+            store.toolKind !== "select"
+        ) return null;
+        const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
+        return element?.kind === "arc" ? element : null;
+    });
+
     const activeSelectedVertex = $derived.by(() =>
         selectedVertex &&
         selectedStraightVertexEditablePath?.id === selectedVertex.elementId &&
@@ -180,6 +206,22 @@
         return ref?.elementId === elementId && ref.nodeIndex === nodeIndex;
     }
 
+    function isArcControl(
+        ref: ArcControlRef | null,
+        elementId: string,
+        control: ArcControl,
+    ): boolean {
+        return ref?.elementId === elementId && ref.control === control;
+    }
+
+    function arcPoint(center: Pair, radius: number, angle: number): Pair {
+        const radians = (angle * Math.PI) / 180;
+        return [
+            center[0] + radius * Math.cos(radians),
+            center[1] + radius * Math.sin(radians),
+        ];
+    }
+
     const hasTransformExtent = $derived.by(() => {
         if (!selectionGeometryBounds) return false;
         const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
@@ -189,6 +231,7 @@
 
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
+        if (selectedCircularArc) return null;
         if (
             selectedStraightVertexEditablePath &&
             !selectedStraightPathHasMultipleSegments &&
@@ -227,6 +270,7 @@
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
             (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
+            selectedCircularArc ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -336,9 +380,87 @@
         }));
     });
 
+    const arcGuide = $derived.by(() => {
+        const construction = store.arcGuide;
+        if (construction) {
+            const handles: RenderArcHandle[] = [
+                { control: "center", screen: project(construction.center) },
+            ];
+            if (construction.angle1 !== undefined) {
+                handles.push({
+                    control: "start",
+                    screen: project(arcPoint(
+                        construction.center,
+                        construction.radius,
+                        construction.angle1,
+                    )),
+                });
+            }
+            if (construction.angle2 !== undefined) {
+                handles.push({
+                    control: "end",
+                    screen: project(arcPoint(
+                        construction.center,
+                        construction.radius,
+                        construction.angle2,
+                    )),
+                });
+            }
+            return {
+                center: project(construction.center),
+                radius: Math.abs(construction.radius * scale),
+                handles,
+                editHandles: [] as ArcHandle[],
+                elementId: null,
+            };
+        }
+        if (!selectedCircularArc) return null;
+
+        const start = arcPoint(
+            selectedCircularArc.center,
+            selectedCircularArc.radius,
+            selectedCircularArc.angle1,
+        );
+        const end = arcPoint(
+            selectedCircularArc.center,
+            selectedCircularArc.radius,
+            selectedCircularArc.angle2,
+        );
+        let startScreen = project(start);
+        let endScreen = project(end);
+        if (Math.hypot(startScreen[0] - endScreen[0], startScreen[1] - endScreen[1]) < 2) {
+            const radians = (selectedCircularArc.angle1 * Math.PI) / 180;
+            const tangent: Pair = [-Math.sin(radians) * 7, -Math.cos(radians) * 7];
+            startScreen = [startScreen[0] - tangent[0], startScreen[1] - tangent[1]];
+            endScreen = [endScreen[0] + tangent[0], endScreen[1] + tangent[1]];
+        }
+
+        const editHandles: ArcHandle[] = ([
+            { control: "center", handle: selectedCircularArc.center, screen: project(selectedCircularArc.center) },
+            { control: "start", handle: start, screen: startScreen },
+            { control: "end", handle: end, screen: endScreen },
+        ] as const).map((handle) => ({
+            ...handle,
+            elementId: selectedCircularArc.id,
+            state: isArcControl(selectedArcControl, selectedCircularArc.id, handle.control)
+                ? "selected"
+                : isArcControl(hoveredArcControl, selectedCircularArc.id, handle.control)
+                  ? "hovered"
+                  : "default",
+        }));
+        return {
+            center: project(selectedCircularArc.center),
+            radius: Math.abs(selectedCircularArc.radius * scale),
+            handles: editHandles,
+            editHandles,
+            elementId: selectedCircularArc.id,
+        };
+    });
+
     const rotationControl = $derived.by(() => {
         if (
             (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
+            selectedCircularArc ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -417,6 +539,8 @@
         store.cancel();
         interaction = "pinch";
         transformCursor = null;
+        selectedArcControl = null;
+        hoveredArcControl = null;
         pointerId = null;
         pinchStart = {
             distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
@@ -464,6 +588,8 @@
         if (e.button === 0 && store.toolKind === "select" && store.lineContinuation) {
             selectedVertex = null;
             hoveredVertex = null;
+            selectedArcControl = null;
+            hoveredArcControl = null;
             interaction = "draw";
             syncToolScale();
             store.pointerDown(toAsyAt(e.clientX, e.clientY));
@@ -471,15 +597,45 @@
         }
 
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+        const pointerScreen: Pair = [pointerX, pointerY];
+        const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
+        const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
+            isArcGuideAt(pointerScreen, arcGuide);
         const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
         const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
+        if (
+            e.button === 0 &&
+            store.toolKind === "select" &&
+            arcGuide?.elementId &&
+            (arcHandle || overArcRadius)
+        ) {
+            const control = arcHandle?.control ?? "radius";
+            const handle = arcHandle?.handle ?? toAsyAt(e.clientX, e.clientY);
+            selectedVertex = null;
+            hoveredVertex = null;
+            selectedArcControl = { elementId: arcGuide.elementId, control };
+            hoveredArcControl = selectedArcControl;
+            interaction = "transform";
+            transformCursor = "move";
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
+                kind: "arc",
+                elementId: arcGuide.elementId,
+                control,
+                handle,
+                minimumRadius: 12 / scale,
+            });
+            return;
+        }
         if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
             selectedVertex = {
                 elementId: vertexHandle.elementId,
                 nodeIndex: vertexHandle.nodeIndex,
             };
             hoveredVertex = selectedVertex;
+            selectedArcControl = null;
+            hoveredArcControl = null;
             interaction = "transform";
             transformCursor = vertexHandle.cursor;
             syncToolScale();
@@ -494,6 +650,8 @@
         if (e.button === 0) {
             selectedVertex = null;
             hoveredVertex = null;
+            selectedArcControl = null;
+            hoveredArcControl = null;
         }
         if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
             const handle = resizeHandle;
@@ -546,12 +704,26 @@
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
             if (
                 store.lineContinuation ||
-                (store.toolKind === "line" && store.preview !== null)
+                (store.toolKind === "line" && store.preview !== null) ||
+                (store.toolKind === "arc" && store.arcGuide !== null)
             ) {
                 hoveredVertex = null;
+                hoveredArcControl = null;
                 transformCursor = null;
                 syncToolScale();
                 store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+                return;
+            }
+            const pointerScreen: Pair = [pointerX, pointerY];
+            const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
+            const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
+                isArcGuideAt(pointerScreen, arcGuide);
+            hoveredArcControl = arcHandle
+                ? { elementId: arcHandle.elementId, control: arcHandle.control }
+                : null;
+            if (arcHandle || overArcRadius) {
+                hoveredVertex = null;
+                transformCursor = "move";
                 return;
             }
             const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
@@ -564,6 +736,7 @@
             return;
         }
         hoveredVertex = null;
+        hoveredArcControl = null;
         if (e.pointerId !== pointerId) return;
         if (interaction === "pan" && panStart) {
             panX = panStart.x + e.clientX - panStart.clientX;
@@ -622,6 +795,8 @@
         pinchStart = null;
         transformCursor = null;
         hoveredVertex = null;
+        selectedArcControl = null;
+        hoveredArcControl = null;
         interaction = "idle";
     }
 
@@ -634,6 +809,8 @@
             store.cancel();
             selectedVertex = null;
             hoveredVertex = null;
+            selectedArcControl = null;
+            hoveredArcControl = null;
             if (interaction === "draw" || interaction === "transform") {
                 if (pointerId !== null) release(pointerId);
                 pointerId = null;
@@ -649,6 +826,8 @@
                 );
                 selectedVertex = null;
                 hoveredVertex = null;
+                selectedArcControl = null;
+                hoveredArcControl = null;
             } else if (store.selection.length) {
                 e.preventDefault();
                 store.deleteSelected();
@@ -763,6 +942,17 @@
                 screen: handle.screen,
                 state: handle.state,
             })),
+            arcGuide: arcGuide
+                ? {
+                      center: arcGuide.center,
+                      radius: arcGuide.radius,
+                      handles: arcGuide.handles.map((handle) => ({
+                          control: handle.control,
+                          screen: handle.screen,
+                          state: handle.state,
+                      })),
+                  }
+                : null,
         };
 
         const backingWidth = Math.max(1, Math.round(width * pixelRatio));
@@ -830,6 +1020,7 @@
             if (interaction === "idle") {
                 transformCursor = null;
                 hoveredVertex = null;
+                hoveredArcControl = null;
             }
         }}
         onwheel={onWheel}

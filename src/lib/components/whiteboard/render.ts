@@ -57,6 +57,27 @@ export interface RenderRotationControl {
     screen: Pair;
 }
 
+export interface RenderArcHandle extends RenderResizeHandle {
+    control: "center" | "start" | "end";
+    state?: "default" | "hovered" | "selected";
+}
+
+export interface RenderArcGuide {
+    center: Pair;
+    radius: number;
+    handles: RenderArcHandle[];
+}
+
+export function isArcGuideAt(
+    point: Pair,
+    guide: Pick<RenderArcGuide, "center" | "radius"> | null,
+    tolerance = 8,
+): boolean {
+    return guide !== null && Math.abs(
+        Math.hypot(point[0] - guide.center[0], point[1] - guide.center[1]) - guide.radius,
+    ) <= tolerance;
+}
+
 export function resizeHandleAt<T extends RenderResizeHandle>(
     point: Pair,
     handles: readonly T[],
@@ -88,6 +109,7 @@ export interface WhiteboardRenderOverlay {
     rotationControl: RenderRotationControl | null;
     resizeHandles: RenderResizeHandle[];
     vertexHandles: RenderVertexHandle[];
+    arcGuide: RenderArcGuide | null;
 }
 
 export type ProjectedPathCommand = PathCommand;
@@ -398,6 +420,22 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.setLineDash(overlay.selectionIsPreview ? [6, 4] : []);
         strokeRect(context, overlay.selectionRect);
     }
+    if (overlay.arcGuide) {
+        context.globalAlpha = 0.65;
+        context.lineWidth = 1.25;
+        context.setLineDash([5, 4]);
+        context.beginPath();
+        context.arc(
+            overlay.arcGuide.center[0],
+            overlay.arcGuide.center[1],
+            overlay.arcGuide.radius,
+            0,
+            Math.PI * 2,
+        );
+        context.stroke();
+        context.globalAlpha = 1;
+        context.setLineDash([]);
+    }
     if (overlay.rotationControl) {
         context.setLineDash([]);
         context.beginPath();
@@ -424,6 +462,20 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         const radius = state === "selected" ? 6 : state === "hovered" ? 5.5 : 5;
         context.globalAlpha = state === "hovered" ? 0.2 : 1;
         context.fillStyle = state === "default" ? palette.background : palette.primary;
+        context.strokeStyle = palette.primary;
+        context.beginPath();
+        context.arc(handle.screen[0], handle.screen[1], radius, 0, Math.PI * 2);
+        context.fill();
+        context.globalAlpha = 1;
+        context.stroke();
+    }
+    for (const handle of overlay.arcGuide?.handles ?? []) {
+        const state = handle.state ?? "default";
+        const radius = state === "selected" ? 6 : state === "hovered" ? 5.5 : 5;
+        context.globalAlpha = state === "hovered" ? 0.2 : 1;
+        context.fillStyle = handle.control === "center" || state !== "default"
+            ? palette.primary
+            : palette.background;
         context.strokeStyle = palette.primary;
         context.beginPath();
         context.arc(handle.screen[0], handle.screen[1], radius, 0, Math.PI * 2);

@@ -1,5 +1,5 @@
 import type { Pair, Scene } from "../../scene/types";
-import { createArc, createCircle } from "../../scene/factory";
+import { createArc } from "../../scene/factory";
 import { distance, normalizeDeg } from "../geometry";
 import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
 
@@ -8,55 +8,91 @@ function angleOf(center: Pair, p: Pair): number {
 }
 
 /**
- * Arc via three clicks: (1) center, (2) a point on the rim — fixes radius and
- * the start angle, (3) a point whose angle fixes the end angle. Moves between
- * clicks render a live preview.
+ * Arc via four clicks: (1) center, (2) radius, (3) start angle, and (4) end
+ * angle. The construction circle and semantic points are transient UI guides.
  */
 export class ArcTool implements Tool {
     readonly kind = "arc" as const;
     private center: Pair | null = null;
     private radius = 0;
     private angle1 = 0;
-    private phase: 0 | 1 | 2 = 0;
+    private phase: 0 | 1 | 2 | 3 = 0;
 
     onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
         if (this.phase === 0) {
             this.center = p;
             this.phase = 1;
-            return { preview: scene };
+            return { preview: scene, arcGuide: { center: p, radius: 0 } };
         }
         if (this.phase === 1) {
             this.radius = distance(this.center!, p);
-            this.angle1 = angleOf(this.center!, p);
-            this.phase = 2;
             if (this.radius < ctx.tolerance) return this.onCancel();
-            return { preview: scene };
+            this.phase = 2;
+            return {
+                preview: scene,
+                arcGuide: { center: this.center!, radius: this.radius },
+            };
         }
-        // phase 2 -> commit
+        if (this.phase === 2) {
+            this.angle1 = angleOf(this.center!, p);
+            this.phase = 3;
+            return {
+                preview: scene,
+                arcGuide: {
+                    center: this.center!,
+                    radius: this.radius,
+                    angle1: this.angle1,
+                },
+            };
+        }
+        // phase 3 -> commit
         const center = this.center!;
-        const angle2 = distance(p, [
+        const pointerAngle = angleOf(center, p);
+        const projectedEnd: Pair = [
+            center[0] + this.radius * Math.cos((pointerAngle * Math.PI) / 180),
+            center[1] + this.radius * Math.sin((pointerAngle * Math.PI) / 180),
+        ];
+        const angle2 = distance(projectedEnd, [
             center[0] + this.radius * Math.cos((this.angle1 * Math.PI) / 180),
             center[1] + this.radius * Math.sin((this.angle1 * Math.PI) / 180),
         ]) <= ctx.tolerance
             ? this.angle1 + 360
-            : angleOf(center, p);
+            : pointerAngle;
         const arc = createArc(center, this.radius, this.angle1, angle2, ctx.pen);
         this.reset();
-        return { commit: addElement(scene, arc), selection: [arc.id], preview: null };
+        return {
+            commit: addElement(scene, arc),
+            selection: [arc.id],
+            preview: null,
+            arcGuide: null,
+            nextTool: "select",
+        };
     }
 
     onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
         if (this.phase === 1) {
             const r = distance(this.center!, p);
-            return { preview: addElement(scene, createCircle(this.center!, r, ctx.pen)) };
+            return { preview: scene, arcGuide: { center: this.center!, radius: r } };
         }
         if (this.phase === 2) {
+            const angle1 = angleOf(this.center!, p);
+            return {
+                preview: scene,
+                arcGuide: { center: this.center!, radius: this.radius, angle1 },
+            };
+        }
+        if (this.phase === 3) {
             const angle2 = angleOf(this.center!, p);
             return {
-                preview: addElement(
-                    scene,
-                    createArc(this.center!, this.radius, this.angle1, angle2, ctx.pen)
-                ),
+                preview: addElement(scene, createArc(
+                    this.center!, this.radius, this.angle1, angle2, ctx.pen,
+                )),
+                arcGuide: {
+                    center: this.center!,
+                    radius: this.radius,
+                    angle1: this.angle1,
+                    angle2,
+                },
             };
         }
         return NO_RESULT;
@@ -69,7 +105,7 @@ export class ArcTool implements Tool {
 
     onCancel(): ToolResult {
         this.reset();
-        return { preview: null };
+        return { preview: null, arcGuide: null };
     }
 
     private reset(): void {

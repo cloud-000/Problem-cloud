@@ -24,6 +24,7 @@ import {
     type ToolResult,
     type SelectionTransformGesture,
     type LineContinuation,
+    type ArcGuide,
     DEFAULT_STROKE_PROCESSING_OPTIONS,
     type StrokeProcessingOptions,
 } from "$lib/asy/engine";
@@ -47,6 +48,8 @@ export class WhiteboardStore {
     marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
     /** Active path continuation offered immediately after a line is drawn. */
     lineContinuation = $state<LineContinuation | null>(null);
+    /** Transient construction guide for the active arc tool. */
+    arcGuide = $state<ArcGuide | null>(null);
     canUndo = $state(false);
     canRedo = $state(false);
 
@@ -79,6 +82,7 @@ export class WhiteboardStore {
         this.selectionPreview = null;
         this.marquee = null;
         this.lineContinuation = null;
+        this.arcGuide = null;
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
     }
@@ -147,6 +151,7 @@ export class WhiteboardStore {
         if (result.lineContinuation !== undefined) {
             this.lineContinuation = result.lineContinuation;
         }
+        if (result.arcGuide !== undefined) this.arcGuide = result.arcGuide;
         if (result.commit !== undefined) {
             this.apply(result.commit);
             this.preview = null;
@@ -179,6 +184,7 @@ export class WhiteboardStore {
             this.preview = null;
             this.selectionPreview = null;
             this.lineContinuation = null;
+            this.arcGuide = null;
         }
         this.#syncFlags();
     }
@@ -191,6 +197,7 @@ export class WhiteboardStore {
             this.preview = null;
             this.selectionPreview = null;
             this.lineContinuation = null;
+            this.arcGuide = null;
         }
         this.#syncFlags();
     }
@@ -242,6 +249,7 @@ export class WhiteboardStore {
         this.selectionPreview = null;
         this.marquee = null;
         this.lineContinuation = null;
+        this.arcGuide = null;
     }
 
     deleteSelected(): void {
@@ -254,6 +262,7 @@ export class WhiteboardStore {
         this.selectionPreview = null;
         this.marquee = null;
         this.lineContinuation = null;
+        this.arcGuide = null;
     }
 
     clearAll(): void {
@@ -262,6 +271,7 @@ export class WhiteboardStore {
         this.selectionPreview = null;
         this.marquee = null;
         this.lineContinuation = null;
+        this.arcGuide = null;
     }
 
     // --- asy codec ------------------------------------------------------------
@@ -276,6 +286,7 @@ export class WhiteboardStore {
         this.selection = [];
         this.selectionPreview = null;
         this.lineContinuation = null;
+        this.arcGuide = null;
     }
 
     static fromAsy(asy: string): WhiteboardStore {

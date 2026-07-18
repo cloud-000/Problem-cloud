@@ -24,6 +24,14 @@ export interface LineContinuation {
     nodeIndex: number;
 }
 
+/** Transient construction/editing guide for a circular arc. */
+export interface ArcGuide {
+    center: Pair;
+    radius: number;
+    angle1?: number;
+    angle2?: number;
+}
+
 export type SelectionTransformGesture =
     | {
           kind: "vertex";
@@ -49,6 +57,15 @@ export type SelectionTransformGesture =
           kind: "rotate";
           /** Center of the selection bounds. */
           pivot: Pair;
+      }
+    | {
+          kind: "arc";
+          elementId: string;
+          control: "center" | "start" | "end" | "radius";
+          /** Semantic geometry point, used to keep center drags from jumping. */
+          handle: Pair;
+          /** Smallest radius allowed by a radius drag. */
+          minimumRadius: number;
       };
 
 export type ToolKind =
@@ -99,6 +116,8 @@ export interface ToolResult {
     selectionPreview?: string[] | null;
     /** Transient select-tool marquee, rendered by the view rather than stored in the scene. */
     marquee?: { start: Pair; end: Pair } | null;
+    /** Transient circular guide and semantic points for arc construction. */
+    arcGuide?: ArcGuide | null;
 }
 
 export interface Tool {

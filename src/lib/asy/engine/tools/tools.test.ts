@@ -3,7 +3,7 @@ import { createTool, type ToolContext } from "./index";
 import { History } from "../history";
 import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
-import { createCircle, createPath, makePath } from "../../scene/factory";
+import { createArc, createCircle, createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
 import { pathCommands } from "../../scene/path-geometry";
 import type { Pair, Scene } from "../../scene/types";
@@ -337,15 +337,31 @@ describe("PenTool", () => {
 });
 
 describe("ArcTool", () => {
-    test("three clicks produce an arc", () => {
+    test("four clicks preview each construction phase and produce an arc", () => {
         const tool = createTool("arc");
         const s = emptyScene();
-        tool.onPointerDown(s, [0, 0], ctx); // center
-        tool.onPointerDown(s, [2, 0], ctx); // radius 2, angle1 = 0
-        const commit = tool.onPointerDown(s, [0, 2], ctx); // angle2 = 90
-        expect(commit.commit?.elements).toMatchObject([
-            { kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 90 },
+        const center = tool.onPointerDown(s, [0, 0], ctx);
+        expect(center.arcGuide).toEqual({ center: [0, 0], radius: 0 });
+
+        const radiusPreview = tool.onPointerMove(s, [2, 0], ctx);
+        expect(radiusPreview.arcGuide).toEqual({ center: [0, 0], radius: 2 });
+        expect(tool.onPointerDown(s, [2, 0], ctx).commit).toBeUndefined();
+
+        const startPreview = tool.onPointerMove(s, [0, 3], ctx);
+        expect(startPreview.arcGuide).toMatchObject({ radius: 2, angle1: 90 });
+        expect(tool.onPointerDown(s, [0, 3], ctx).commit).toBeUndefined();
+
+        const endPreview = tool.onPointerMove(s, [-4, 0], ctx);
+        expect(endPreview.preview?.elements).toMatchObject([
+            { kind: "arc", center: [0, 0], radius: 2, angle1: 90, angle2: 180 },
         ]);
+        const commit = tool.onPointerDown(s, [-4, 0], ctx);
+        expect(commit.commit?.elements).toMatchObject([
+            { kind: "arc", center: [0, 0], radius: 2, angle1: 90, angle2: 180 },
+        ]);
+        expect(commit.selection).toEqual([commit.commit?.elements[0].id]);
+        expect(commit.nextTool).toBe("select");
+        expect(commit.arcGuide).toBeNull();
     });
 
     test("clicking the start point again produces a full compass circle", () => {
@@ -353,10 +369,25 @@ describe("ArcTool", () => {
         const s = emptyScene();
         tool.onPointerDown(s, [0, 0], ctx);
         tool.onPointerDown(s, [2, 0], ctx);
+        tool.onPointerDown(s, [2, 0], ctx);
         const commit = tool.onPointerDown(s, [2, 0], ctx);
         expect(commit.commit?.elements).toMatchObject([
             { kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 360 },
         ]);
+    });
+
+    test("a tiny radius cancels construction and Escape clears its guide", () => {
+        const s = emptyScene();
+        const tiny = createTool("arc");
+        tiny.onPointerDown(s, [0, 0], ctx);
+        expect(tiny.onPointerDown(s, [0.1, 0], ctx)).toEqual({
+            preview: null,
+            arcGuide: null,
+        });
+
+        const cancelled = createTool("arc");
+        cancelled.onPointerDown(s, [0, 0], ctx);
+        expect(cancelled.onCancel()).toEqual({ preview: null, arcGuide: null });
     });
 });
 
@@ -904,6 +935,109 @@ describe("SelectTool", () => {
             : [0, 0];
         expect(first[0]).toBeCloseTo(Math.cos(Math.PI / 12));
         expect(first[1]).toBeCloseTo(Math.sin(Math.PI / 12));
+    });
+
+    test("arc center control translates the whole arc and keeps the pointer offset", () => {
+        const arc = createArc([1, 1], 2, 10, 100);
+        const scene = { elements: [arc] };
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "center",
+                handle: arc.center,
+                minimumRadius: 0.25,
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [1.2, 1.1], transformCtx);
+        expect(tool.onPointerMove(scene, [4.2, 5.1], transformCtx).commit).toBeUndefined();
+        expect(tool.onPointerUp(scene, [4.2, 5.1], transformCtx).commit?.elements[0]).toMatchObject({
+            kind: "arc",
+            center: [4, 5],
+            radius: 2,
+            angle1: 10,
+            angle2: 100,
+        });
+    });
+
+    test("arc endpoint controls preserve radius and use counterclockwise sweep semantics", () => {
+        const arc = createArc([0, 0], 2, 0, 90);
+        const scene = { elements: [arc] };
+        const startCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "start",
+                handle: [2, 0],
+                minimumRadius: 0.25,
+            },
+        };
+        const startTool = createTool("select");
+        startTool.onPointerDown(scene, [2, 0], startCtx);
+        const startResult = startTool.onPointerUp(scene, [Math.SQRT2, Math.SQRT2], startCtx);
+        expect(startResult.commit?.elements[0]).toMatchObject({
+            kind: "arc",
+            radius: 2,
+            angle1: 45,
+            angle2: 90,
+        });
+
+        const endCtx: ToolContext = {
+            ...startCtx,
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "end",
+                handle: [0, 2],
+                minimumRadius: 0.25,
+            },
+        };
+        const endTool = createTool("select");
+        endTool.onPointerDown(scene, [0, 2], endCtx);
+        const crossing = endTool.onPointerUp(scene, [Math.SQRT2, -Math.SQRT2], endCtx);
+        expect(crossing.commit?.elements[0]).toMatchObject({
+            kind: "arc",
+            radius: 2,
+            angle1: 0,
+            angle2: 315,
+        });
+    });
+
+    test("arc radius control preserves angles and clamps to its visible minimum", () => {
+        const arc = createArc([0, 0], 2, 20, 200);
+        const scene = { elements: [arc] };
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "radius",
+                handle: [2, 0],
+                minimumRadius: 0.5,
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [2, 0], transformCtx);
+        const preview = tool.onPointerMove(scene, [0.1, 0], transformCtx);
+        expect(preview.commit).toBeUndefined();
+        expect(preview.preview?.elements[0]).toMatchObject({
+            kind: "arc",
+            radius: 0.5,
+            angle1: 20,
+            angle2: 200,
+        });
+        expect(tool.onPointerUp(scene, [0.1, 0], transformCtx).commit?.elements[0]).toMatchObject({
+            kind: "arc",
+            radius: 0.5,
+            angle1: 20,
+            angle2: 200,
+        });
     });
 
     test("no-op and cancelled transforms do not commit", () => {

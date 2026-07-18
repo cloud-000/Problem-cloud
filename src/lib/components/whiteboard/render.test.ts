@@ -3,6 +3,7 @@ import { makePath, type Pair, type Scene } from "$lib/asy/scene";
 import {
     gridLines,
     isRotationHandleAt,
+    isArcGuideAt,
     dotRadius,
     penStroke,
     projectedArc,
@@ -96,6 +97,8 @@ describe("projected geometry", () => {
         expect(resizeHandleAt([31, 30], handles)).toBeUndefined();
         expect(isRotationHandleAt([50, 59], { stemStart: [50, 70], screen: [50, 50] })).toBe(true);
         expect(isRotationHandleAt([50, 61], { stemStart: [50, 70], screen: [50, 50] })).toBe(false);
+        expect(isArcGuideAt([80, 50], { center: [50, 50], radius: 30 })).toBe(true);
+        expect(isArcGuideAt([70, 50], { center: [50, 50], radius: 30 })).toBe(false);
     });
 });
 
@@ -163,6 +166,15 @@ describe("Canvas 2D rendering", () => {
             rotationControl: { stemStart: [8, 3], screen: [8, 0] },
             resizeHandles: [{ screen: [3, 3] }],
             vertexHandles: [{ screen: [13, 13], state: "selected" }],
+            arcGuide: {
+                center: [50, 50],
+                radius: 25,
+                handles: [
+                    { control: "center", screen: [50, 50] },
+                    { control: "start", screen: [75, 50] },
+                    { control: "end", screen: [50, 25], state: "selected" },
+                ],
+            },
         }, 2);
 
         expect(context.calls[0]).toBe("setTransform:2");
@@ -171,6 +183,8 @@ describe("Canvas 2D rendering", () => {
         expect(context.calls.filter((call) => call.startsWith("arc:")).length).toBeGreaterThanOrEqual(4);
         expect(context.calls).toContain("fillText:A");
         expect(context.calls).toContain("roundRect");
+        expect(context.calls).toContain("arc:25");
+        expect(context.calls).toContain("dash:5,4");
         expect(context.calls.at(-1)).toBe("setTransform:1");
     });
 
