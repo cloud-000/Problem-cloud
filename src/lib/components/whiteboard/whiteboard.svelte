@@ -295,13 +295,16 @@
     }
 
     const attachSurface: Attachment<HTMLCanvasElement> = (node) => {
+        const attachedStore = store;
+        const promptLabel = () =>
+            typeof window !== "undefined" ? window.prompt("Label (LaTeX, e.g. $A$):") : null;
+
         surface = node;
         pixelRatio = window.devicePixelRatio || 1;
-        store.promptLabel = () =>
-            typeof window !== "undefined" ? window.prompt("Label (LaTeX, e.g. $A$):") : null;
+        attachedStore.promptLabel = promptLabel;
         return () => {
             if (surface === node) surface = null;
-            store.promptLabel = undefined;
+            if (attachedStore.promptLabel === promptLabel) attachedStore.promptLabel = undefined;
         };
     };
 
