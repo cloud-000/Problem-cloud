@@ -10,4 +10,3 @@ export {
     WhiteboardPanel,
 };
 export { toSvgString, toPngBlob, downloadBlob } from "./export";
-export type { Project } from "./svg";

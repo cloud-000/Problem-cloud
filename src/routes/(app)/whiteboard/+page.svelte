@@ -16,7 +16,7 @@
     const restored = WhiteboardStore.restore(PERSIST_KEY);
     const store = restored ? new WhiteboardStore(restored) : new WhiteboardStore();
 
-    let surface = $state<SVGSVGElement | null>(null);
+    let surface = $state<HTMLCanvasElement | null>(null);
 
     // Debounced autosave, off the editing path (best-effort).
     let saveTimer: ReturnType<typeof setTimeout> | undefined;

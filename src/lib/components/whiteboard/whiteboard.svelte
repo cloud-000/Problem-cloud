@@ -6,11 +6,22 @@
         elementBounds,
         type Bounds,
         type Pair,
+        type Scene,
         type SceneElement as SceneElementModel,
     } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import type { Project } from "./svg";
-    import SceneElement from "./scene-element.svelte";
+    import { Theme } from "$lib/utils/Theme.svelte";
+    import {
+        registerCanvasSnapshot,
+        renderWhiteboard,
+        resizeHandleAt,
+        isRotationHandleAt,
+        type RenderResizeHandle,
+        type ScreenRect,
+        type WhiteboardPalette,
+        type WhiteboardRenderOverlay,
+        type WhiteboardRenderSnapshot,
+    } from "./render";
     import ZoomControls from "./zoom-controls.svelte";
 
     let {
@@ -24,49 +35,40 @@
         store: WhiteboardStore;
         /** Hide the navigation grid for in-context annotation overlays. */
         showGrid?: boolean;
-        /** Leave the host's image/surface visible beneath the SVG. */
+        /** Leave the host's image/surface visible beneath the canvas. */
         transparent?: boolean;
         /** Disable viewport gestures when the host image must remain registration-locked. */
         navigation?: boolean;
-        /** Bindable ref to the underlying <svg> (for SVG/PNG export). */
-        surface?: SVGSVGElement | null;
+        /** Bindable ref to the underlying canvas (for SVG/PNG export). */
+        surface?: HTMLCanvasElement | null;
         class?: string;
     } = $props();
 
     let width = $state(0);
     let height = $state(0);
+    let pixelRatio = $state(1);
     let scale = $state(40); // px per asy unit
     let panX = $state(0);
     let panY = $state(0);
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
-    let transformCursor = $state<"nwse-resize" | "nesw-resize" | "grabbing" | null>(null);
+    let transformCursor = $state<"nwse-resize" | "nesw-resize" | "grab" | "grabbing" | null>(null);
     let spacePressed = $state(false);
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
 
     const origin = $derived<[number, number]>([width / 2 + panX, height / 2 + panY]);
-    const project = $derived.by<Project>(
+    const project = $derived.by<(point: Pair) => Pair>(
         () => (p: Pair) => [origin[0] + p[0] * scale, origin[1] - p[1] * scale],
     );
-    // Scene geometry stays in asy/world space. The SVG group below applies the
-    // camera in one operation, avoiding a full path-string rebuild on pan/zoom.
-    const worldProject: Project = (p) => [p[0], p[1]];
     const activeSelection = $derived(store.selectionPreview ?? store.selection);
     const selectedIds = $derived(new SvelteSet(activeSelection));
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
 
-    interface ScreenRect {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-    }
-
     type ResizeCorner = "nw" | "ne" | "se" | "sw";
 
-    interface ResizeHandle {
+    interface ResizeHandle extends RenderResizeHandle {
         corner: ResizeCorner;
         screen: Pair;
         handle: Pair;
@@ -222,8 +224,9 @@
         store.simplifyEpsilon = 2.5 / scale;
     }
 
-    const attachSurface: Attachment<SVGSVGElement> = (node) => {
+    const attachSurface: Attachment<HTMLCanvasElement> = (node) => {
         surface = node;
+        pixelRatio = window.devicePixelRatio || 1;
         store.promptLabel = () =>
             typeof window !== "undefined" ? window.prompt("Label (LaTeX, e.g. $A$):") : null;
         return () => {
@@ -311,12 +314,11 @@
             return;
         }
 
-        const target = e.target instanceof Element ? e.target : null;
-        const resizeTarget = target?.closest<SVGElement>("[data-selection-resize]");
-        const rotationTarget = target?.closest<SVGElement>("[data-selection-rotate]");
-        if (e.button === 0 && store.toolKind === "select" && resizeTarget) {
-            const corner = resizeTarget.dataset.selectionResize as ResizeCorner | undefined;
-            const handle = resizeHandles.find((candidate) => candidate.corner === corner);
+        const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+        const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
+        const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
+        if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
+            const handle = resizeHandle;
             if (handle && selectionGeometryBounds) {
                 const extentPx = Math.max(
                     (selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]) * scale,
@@ -334,7 +336,7 @@
                 return;
             }
         }
-        if (e.button === 0 && store.toolKind === "select" && rotationTarget && rotationControl) {
+        if (e.button === 0 && store.toolKind === "select" && overRotation && rotationControl) {
             interaction = "transform";
             transformCursor = "grabbing";
             syncToolScale();
@@ -356,6 +358,13 @@
         }
         if (interaction === "pinch") {
             updatePinch();
+            return;
+        }
+        if (interaction === "idle") {
+            const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+            const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
+            const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
+            transformCursor = resizeHandle?.cursor ?? (overRotation ? "grab" : null);
             return;
         }
         if (e.pointerId !== pointerId) return;
@@ -428,6 +437,10 @@
         if (e.key === " ") spacePressed = false;
     }
 
+    function onWindowResize() {
+        pixelRatio = window.devicePixelRatio || 1;
+    }
+
     function zoomAt(clientX: number, clientY: number, factor: number) {
         const world = toAsyAt(clientX, clientY);
         const [px, py] = localPoint(clientX, clientY);
@@ -463,27 +476,6 @@
         }
     }
 
-    // A light adaptive grid: pick a "nice" unit step that renders near ~32px.
-    const gridStep = $derived.by(() => {
-        const target = 32 / scale;
-        const pow = Math.pow(10, Math.floor(Math.log10(target)));
-        for (const m of [1, 2, 5, 10]) if (pow * m >= target) return pow * m;
-        return pow * 10;
-    });
-
-    const gridLines = $derived.by(() => {
-        if (width === 0 || height === 0) return { v: [] as number[], h: [] as number[] };
-        const xMin = -origin[0] / scale;
-        const xMax = (width - origin[0]) / scale;
-        const yMin = (origin[1] - height) / scale;
-        const yMax = origin[1] / scale;
-        const v: number[] = [];
-        const h: number[] = [];
-        for (let x = Math.ceil(xMin / gridStep) * gridStep; x <= xMax; x += gridStep) v.push(x);
-        for (let y = Math.ceil(yMin / gridStep) * gridStep; y <= yMax; y += gridStep) h.push(y);
-        return { v, h };
-    });
-
     const marqueeRect = $derived.by(() => {
         if (!store.marquee) return null;
         const a = project(store.marquee.start);
@@ -495,9 +487,71 @@
             height: Math.abs(a[1] - b[1]),
         };
     });
+
+    function currentPalette(): WhiteboardPalette {
+        const current = Theme.currentTheme;
+        const light = Theme.themes.get("light");
+        return {
+            background: current?.theme["surface-container-lowest"] ?? "#ffffff",
+            foreground: current?.theme.foreground ?? "#191c1e",
+            inverseInk: light?.theme.foreground ?? "#191c1e",
+            border: current?.theme.border ?? "#e2e8f0",
+            primary: current?.theme["primary-foreground"] ?? "#326cec",
+            isDark: Theme.isDark,
+        };
+    }
+
+    $effect(() => {
+        const canvas = surface;
+        if (!canvas || width <= 0 || height <= 0) return;
+
+        void Theme.theme;
+        const displayScene = $state.snapshot(store.displayScene) as Scene;
+        const committedScene = $state.snapshot(store.scene) as Scene;
+        const viewport = {
+            width,
+            height,
+            scale,
+            origin: [origin[0], origin[1]] as Pair,
+        };
+        const palette = currentPalette();
+        const runtimeSnapshot: WhiteboardRenderSnapshot = {
+            scene: displayScene,
+            viewport,
+            showGrid,
+            transparent,
+            palette,
+        };
+        const overlay: WhiteboardRenderOverlay = {
+            selectedIds: new Set(activeSelection),
+            selectionIsPreview,
+            previewElementRects: previewElementRects.map((rect) => ({ ...rect })),
+            marqueeRect: marqueeRect ? { ...marqueeRect } : null,
+            selectionRect: selectionRect ? { ...selectionRect } : null,
+            rotationControl: rotationControl
+                ? { stemStart: rotationControl.stemStart, screen: rotationControl.screen }
+                : null,
+            resizeHandles: resizeHandles.map((handle) => ({ screen: handle.screen })),
+        };
+
+        const backingWidth = Math.max(1, Math.round(width * pixelRatio));
+        const backingHeight = Math.max(1, Math.round(height * pixelRatio));
+        if (canvas.width !== backingWidth) canvas.width = backingWidth;
+        if (canvas.height !== backingHeight) canvas.height = backingHeight;
+        registerCanvasSnapshot(canvas, { ...runtimeSnapshot, scene: committedScene });
+        const frame = requestAnimationFrame(() => {
+            const context = canvas.getContext("2d");
+            if (context) renderWhiteboard(context, runtimeSnapshot, overlay, pixelRatio);
+        });
+        return () => cancelAnimationFrame(frame);
+    });
 </script>
 
-<svelte:window onkeyup={onWindowKeyUp} onblur={() => (spacePressed = false)} />
+<svelte:window
+    onkeyup={onWindowKeyUp}
+    onresize={onWindowResize}
+    onblur={() => (spacePressed = false)}
+/>
 
 <div
     class={cn(
@@ -519,18 +573,14 @@
         </div>
     {/if}
 
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <svg
+    <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
+    <canvas
         {@attach attachSurface}
-        {width}
-        {height}
-        viewBox="0 0 {width} {height}"
         role="application"
         aria-label="Whiteboard canvas"
         tabindex="0"
         class={cn(
-            "block touch-none select-none outline-none",
+            "block h-full w-full touch-none select-none outline-none",
             interaction === "pan"
                 ? "cursor-grabbing"
                 : navigation && (store.toolKind === "pan" || spacePressed)
@@ -545,141 +595,7 @@
         onpointermove={onPointerMove}
         onpointerup={onPointerUp}
         onpointercancel={onPointerCancel}
+        onpointerleave={() => interaction === "idle" && (transformCursor = null)}
         onwheel={onWheel}
-    >
-        {#if width > 0}
-            {#if showGrid}
-                {#each gridLines.v as x (x)}
-                    <line
-                        x1={project([x, 0])[0]}
-                        x2={project([x, 0])[0]}
-                        y1="0"
-                        y2={height}
-                        stroke="var(--color-border)"
-                        stroke-width="1"
-                        opacity={x === 0 ? 0.5 : 0.12}
-                    />
-                {/each}
-                {#each gridLines.h as y (y)}
-                    <line
-                        x1="0"
-                        x2={width}
-                        y1={project([0, y])[1]}
-                        y2={project([0, y])[1]}
-                        stroke="var(--color-border)"
-                        stroke-width="1"
-                        opacity={y === 0 ? 0.5 : 0.12}
-                    />
-                {/each}
-            {/if}
-
-            <g transform={`translate(${origin[0]} ${origin[1]}) scale(${scale} ${-scale})`}>
-                {#each store.displayScene.elements as element (element.id)}
-                    <SceneElement
-                        {element}
-                        project={worldProject}
-                        {scale}
-                        selected={selectedIds.has(element.id)}
-                    />
-                {/each}
-            </g>
-
-            {#each previewElementRects as rect, index (`${index}-${rect.x}-${rect.y}`)}
-                <rect
-                    x={rect.x}
-                    y={rect.y}
-                    width={rect.width}
-                    height={rect.height}
-                    rx="2"
-                    fill="var(--color-primary)"
-                    fill-opacity="0.06"
-                    stroke="var(--color-primary)"
-                    stroke-width="1"
-                    stroke-dasharray="3 3"
-                    pointer-events="none"
-                />
-            {/each}
-
-            {#if marqueeRect}
-                <rect
-                    x={marqueeRect.x}
-                    y={marqueeRect.y}
-                    width={marqueeRect.width}
-                    height={marqueeRect.height}
-                    fill="var(--color-primary)"
-                    fill-opacity="0.08"
-                    stroke="var(--color-primary)"
-                    stroke-width="1"
-                    stroke-dasharray="5 4"
-                    pointer-events="none"
-                />
-            {/if}
-
-            {#if selectionRect}
-                <rect
-                    x={selectionRect.x}
-                    y={selectionRect.y}
-                    width={selectionRect.width}
-                    height={selectionRect.height}
-                    fill="none"
-                    stroke="var(--color-primary)"
-                    stroke-width="1.5"
-                    stroke-dasharray={selectionIsPreview ? "6 4" : undefined}
-                    pointer-events="none"
-                />
-                {#if rotationControl}
-                    <line
-                        x1={rotationControl.stemStart[0]}
-                        y1={rotationControl.stemStart[1]}
-                        x2={rotationControl.screen[0]}
-                        y2={rotationControl.screen[1]}
-                        stroke="var(--color-primary)"
-                        stroke-width="1.5"
-                        pointer-events="none"
-                    />
-                    <circle
-                        cx={rotationControl.screen[0]}
-                        cy={rotationControl.screen[1]}
-                        r="10"
-                        fill="transparent"
-                        pointer-events="all"
-                        data-selection-rotate
-                        style:cursor="grab"
-                    />
-                    <circle
-                        cx={rotationControl.screen[0]}
-                        cy={rotationControl.screen[1]}
-                        r="4.5"
-                        fill="var(--color-surface-container-lowest)"
-                        stroke="var(--color-primary)"
-                        stroke-width="1.5"
-                        pointer-events="none"
-                    />
-                {/if}
-                {#each resizeHandles as handle (handle.corner)}
-                    <rect
-                        x={handle.screen[0] - 10}
-                        y={handle.screen[1] - 10}
-                        width="20"
-                        height="20"
-                        fill="transparent"
-                        pointer-events="all"
-                        data-selection-resize={handle.corner}
-                        style:cursor={handle.cursor}
-                    />
-                    <rect
-                        x={handle.screen[0] - 4}
-                        y={handle.screen[1] - 4}
-                        width="8"
-                        height="8"
-                        rx="1"
-                        fill="var(--color-surface-container-lowest)"
-                        stroke="var(--color-primary)"
-                        stroke-width="1.5"
-                        pointer-events="none"
-                    />
-                {/each}
-            {/if}
-        {/if}
-    </svg>
+    ></canvas>
 </div>
