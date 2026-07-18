@@ -8,6 +8,7 @@ import {
     pointToSegment,
     rotateElement,
     scaleElement,
+    scaleElementBy,
     translateElement,
 } from "./geometry";
 import {
@@ -96,6 +97,27 @@ describe("geometry", () => {
         });
         const raw = createRaw("size(200);");
         expect(scaleElement(raw, origin, 2)).toBe(raw);
+    });
+
+    test("scaleElementBy preserves affine ellipse geometry across resize and rotation", () => {
+        const ellipse = scaleElementBy(createCircle([1, 1], 2), [0, 0], [2, 3]);
+        expect(ellipse).toMatchObject({
+            kind: "ellipse",
+            center: [2, 3],
+            axisX: [4, 0],
+            axisY: [0, 6],
+        });
+        expect("radius" in ellipse).toBe(false);
+        const rotated = rotateElement(ellipse, [0, 0], 90);
+        expect(rotated.kind).toBe("ellipse");
+        if (rotated.kind === "ellipse") {
+            expect(rotated.center[0]).toBeCloseTo(-3);
+            expect(rotated.center[1]).toBeCloseTo(2);
+            expect(rotated.axisX[0]).toBeCloseTo(0);
+            expect(rotated.axisX[1]).toBeCloseTo(4);
+            expect(rotated.axisY[0]).toBeCloseTo(-6);
+            expect(rotated.axisY[1]).toBeCloseTo(0);
+        }
     });
 
     test("rotateElement rotates geometry and label alignment while preserving primitive types", () => {

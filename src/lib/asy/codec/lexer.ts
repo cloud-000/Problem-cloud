@@ -114,6 +114,12 @@ export function tokenize(src: string): Token[] {
             continue;
         }
 
+        if (c === "*") {
+            push("star", i, i + 1);
+            i++;
+            continue;
+        }
+
         // Single-character tokens
         switch (c) {
             case "(":

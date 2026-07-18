@@ -125,6 +125,29 @@ export interface ArcElement extends ElementBase {
     angle2: number;
 }
 
+/**
+ * An affine image of the unit circle. `axisX` and `axisY` are the transformed
+ * unit-circle basis vectors, so a point at parameter t is
+ * `center + axisX*cos(t) + axisY*sin(t)`. Keeping the full basis makes repeated
+ * anisotropic resize + rotation exact, including sheared parameterizations.
+ */
+export interface EllipseElement extends ElementBase {
+    kind: "ellipse";
+    center: Pair;
+    axisX: Pair;
+    axisY: Pair;
+}
+
+/** An affine image of a circular arc, using the same basis convention as an ellipse. */
+export interface EllipticalArcElement extends ElementBase {
+    kind: "elliptical-arc";
+    center: Pair;
+    axisX: Pair;
+    axisY: Pair;
+    angle1: number;
+    angle2: number;
+}
+
 /** A text label: asy `label("$...$", position, align)`. */
 export interface LabelElement extends ElementBase {
     kind: "label";
@@ -160,6 +183,8 @@ export type SceneElement =
     | PathElement
     | CircleElement
     | ArcElement
+    | EllipseElement
+    | EllipticalArcElement
     | LabelElement
     | FillElement
     | RawElement;

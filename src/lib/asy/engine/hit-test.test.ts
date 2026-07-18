@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { hitTest } from "./hit-test";
-import { createCircle, createDot, createFill, createPath, createRaw, makePath } from "../scene/factory";
+import { createCircle, createDot, createEllipse, createFill, createPath, createRaw, makePath } from "../scene/factory";
 import type { Scene } from "../scene/types";
 
 function scene(...elements: Scene["elements"]): Scene {
@@ -35,6 +35,12 @@ describe("hitTest", () => {
         const c = createCircle([0, 0], 3);
         expect(hitTest(scene(c), [3.1, 0], 0.5)?.id).toBe(c.id);
         expect(hitTest(scene(c), [0, 0], 0.5)).toBeNull(); // center is not the ring
+    });
+
+    test("hits a rotated affine ellipse on its outline", () => {
+        const ellipse = createEllipse([0, 0], [2, 2], [-1, 1]);
+        expect(hitTest(scene(ellipse), [2, 2], 0.1)?.id).toBe(ellipse.id);
+        expect(hitTest(scene(ellipse), [0, 0], 0.1)).toBeNull();
     });
 
     test("hits inside a filled region", () => {

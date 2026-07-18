@@ -54,9 +54,15 @@
     let panY = $state(0);
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
-    let transformCursor = $state<
-        "nwse-resize" | "nesw-resize" | "grab" | "grabbing" | "move" | null
-    >(null);
+    type TransformCursor =
+        | "nwse-resize"
+        | "nesw-resize"
+        | "ew-resize"
+        | "ns-resize"
+        | "grab"
+        | "grabbing"
+        | "move";
+    let transformCursor = $state<TransformCursor | null>(null);
     let spacePressed = $state(false);
     let selectedVertex = $state<VertexRef | null>(null);
     let hoveredVertex = $state<VertexRef | null>(null);
@@ -79,7 +85,7 @@
     const selectedIds = $derived(new SvelteSet(activeSelection));
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
 
-    type ResizeCorner = "nw" | "ne" | "se" | "sw";
+    type ResizePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
     interface VertexRef {
         elementId: string;
@@ -87,11 +93,12 @@
     }
 
     interface ResizeHandle extends RenderResizeHandle {
-        corner: ResizeCorner;
+        position: ResizePosition;
         screen: Pair;
         handle: Pair;
         anchor: Pair;
-        cursor: "nwse-resize" | "nesw-resize";
+        axes: { x: boolean; y: boolean };
+        cursor: Extract<TransformCursor, `${string}-resize`>;
     }
 
     interface VertexHandle extends RenderResizeHandle {
@@ -228,36 +235,85 @@
         ) return [];
         const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
         const { min, max } = selectionGeometryBounds;
-        return [
+        const midX = (min[0] + max[0]) / 2;
+        const midY = (min[1] + max[1]) / 2;
+        const canResizeX = max[0] - min[0] > 1e-9;
+        const canResizeY = max[1] - min[1] > 1e-9;
+        const handles: ResizeHandle[] = [
             {
-                corner: "nw",
+                position: "nw",
                 screen: [x, y],
                 handle: [min[0], max[1]],
                 anchor: [max[0], min[1]],
+                axes: { x: canResizeX, y: canResizeY },
                 cursor: "nwse-resize",
             },
             {
-                corner: "ne",
+                position: "ne",
                 screen: [x + boxWidth, y],
                 handle: [max[0], max[1]],
                 anchor: [min[0], min[1]],
+                axes: { x: canResizeX, y: canResizeY },
                 cursor: "nesw-resize",
             },
             {
-                corner: "se",
+                position: "se",
                 screen: [x + boxWidth, y + boxHeight],
                 handle: [max[0], min[1]],
                 anchor: [min[0], max[1]],
+                axes: { x: canResizeX, y: canResizeY },
                 cursor: "nwse-resize",
             },
             {
-                corner: "sw",
+                position: "sw",
                 screen: [x, y + boxHeight],
                 handle: [min[0], min[1]],
                 anchor: [max[0], max[1]],
+                axes: { x: canResizeX, y: canResizeY },
                 cursor: "nesw-resize",
             },
         ];
+        if (canResizeY) {
+            handles.push(
+                {
+                    position: "n",
+                    screen: [x + boxWidth / 2, y],
+                    handle: [midX, max[1]],
+                    anchor: [midX, min[1]],
+                    axes: { x: false, y: true },
+                    cursor: "ns-resize",
+                },
+                {
+                    position: "s",
+                    screen: [x + boxWidth / 2, y + boxHeight],
+                    handle: [midX, min[1]],
+                    anchor: [midX, max[1]],
+                    axes: { x: false, y: true },
+                    cursor: "ns-resize",
+                },
+            );
+        }
+        if (canResizeX) {
+            handles.push(
+                {
+                    position: "e",
+                    screen: [x + boxWidth, y + boxHeight / 2],
+                    handle: [max[0], midY],
+                    anchor: [min[0], midY],
+                    axes: { x: true, y: false },
+                    cursor: "ew-resize",
+                },
+                {
+                    position: "w",
+                    screen: [x, y + boxHeight / 2],
+                    handle: [min[0], midY],
+                    anchor: [max[0], midY],
+                    axes: { x: true, y: false },
+                    cursor: "ew-resize",
+                },
+            );
+        }
+        return handles;
     });
 
     const vertexHandles = $derived.by<VertexHandle[]>(() => {
@@ -442,10 +498,10 @@
         if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
             const handle = resizeHandle;
             if (handle && selectionGeometryBounds) {
-                const extentPx = Math.max(
-                    (selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]) * scale,
-                    (selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]) * scale,
-                );
+                const extentXpx =
+                    (selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]) * scale;
+                const extentYpx =
+                    (selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]) * scale;
                 interaction = "transform";
                 transformCursor = handle.cursor;
                 syncToolScale();
@@ -453,7 +509,11 @@
                     kind: "resize",
                     anchor: handle.anchor,
                     handle: handle.handle,
-                    minimumScale: Math.min(1, 12 / Math.max(1, extentPx)),
+                    axes: handle.axes,
+                    minimumScale: [
+                        extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
+                        extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,
+                    ],
                 });
                 return;
             }

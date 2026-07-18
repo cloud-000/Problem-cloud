@@ -9,6 +9,7 @@ export type TokenKind =
     | "semi"
     | "equals"
     | "plus"
+    | "star"
     | "join" // `--` or `..`
     /** Any character the subset lexer doesn't specifically handle (e.g. `*`, `/`,
      *  `{`, `[`, a lone `-`). Lets the parser scan through unknown statements to

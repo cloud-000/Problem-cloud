@@ -45,6 +45,26 @@ describe("parse", () => {
         ]);
     });
 
+    test("canonical affine ellipses and arcs stay typed", () => {
+        expect(bare(parse(
+            "draw(shift((1,2))*transform(0,0,3,-2,4,1)*unitcircle);",
+        ).scene)).toEqual([
+            { kind: "ellipse", center: [1, 2], axisX: [3, 4], axisY: [-2, 1] },
+        ]);
+        expect(bare(parse(
+            "draw(shift((1,2))*transform(0,0,3,0,0,2)*arc((0,0), 1, 10, 80));",
+        ).scene)).toEqual([
+            {
+                kind: "elliptical-arc",
+                center: [1, 2],
+                axisX: [3, 0],
+                axisY: [0, 2],
+                angle1: 10,
+                angle2: 80,
+            },
+        ]);
+    });
+
     test("pens: named color, linewidth, dashed", () => {
         expect(bare(parse("draw((0,0)--(1,1), red+linewidth(1.5)+dashed);").scene)).toEqual([
             {

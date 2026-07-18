@@ -8,6 +8,8 @@ import type {
     ArcElement,
     CircleElement,
     DotElement,
+    EllipseElement,
+    EllipticalArcElement,
     FillElement,
     Join,
     LabelElement,
@@ -69,6 +71,35 @@ export function createArc(
     pen?: Pen
 ): ArcElement {
     return { id: newId(), kind: "arc", center, radius, angle1, angle2, ...(pen ? { pen } : {}) };
+}
+
+export function createEllipse(
+    center: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    pen?: Pen,
+): EllipseElement {
+    return { id: newId(), kind: "ellipse", center, axisX, axisY, ...(pen ? { pen } : {}) };
+}
+
+export function createEllipticalArc(
+    center: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    angle1: number,
+    angle2: number,
+    pen?: Pen,
+): EllipticalArcElement {
+    return {
+        id: newId(),
+        kind: "elliptical-arc",
+        center,
+        axisX,
+        axisY,
+        angle1,
+        angle2,
+        ...(pen ? { pen } : {}),
+    };
 }
 
 export function createLabel(text: string, at: Pair, align?: Pair, pen?: Pen): LabelElement {

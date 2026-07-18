@@ -88,12 +88,16 @@ export class WhiteboardStore {
     pointerDown(p: readonly [number, number], selectionTransform?: SelectionTransformGesture): void {
         this.#dispatch(this.#tool.onPointerDown(this.scene, p, this.#ctx({ selectionTransform })));
     }
-    pointerMove(p: readonly [number, number], snapRotation = false): void {
-        this.#dispatch(this.#tool.onPointerMove(this.scene, p, this.#ctx({ snapRotation })));
+    pointerMove(p: readonly [number, number], shiftKey = false): void {
+        this.#dispatch(this.#tool.onPointerMove(
+            this.scene,
+            p,
+            this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey }),
+        ));
     }
-    pointerMoves(points: readonly (readonly [number, number])[], snapRotation = false): void {
+    pointerMoves(points: readonly (readonly [number, number])[], shiftKey = false): void {
         if (points.length === 0) return;
-        const ctx = this.#ctx({ snapRotation });
+        const ctx = this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey });
         const result = this.#tool.onPointerMoves
             ? this.#tool.onPointerMoves(this.scene, points, ctx)
             : this.#tool.onPointerMove(this.scene, points[points.length - 1], ctx);
@@ -101,13 +105,13 @@ export class WhiteboardStore {
     }
     pointerUp(
         p: readonly [number, number],
-        snapRotation = false,
+        shiftKey = false,
         pendingMoves: readonly (readonly [number, number])[] = [],
     ): void {
         this.#dispatch(this.#tool.onPointerUp(
             this.scene,
             p,
-            this.#ctx({ snapRotation }),
+            this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey }),
             pendingMoves,
         ));
     }
@@ -115,7 +119,12 @@ export class WhiteboardStore {
         this.#dispatch(this.#tool.onCancel());
     }
 
-    #ctx(overrides: Pick<ToolContext, "selectionTransform" | "snapRotation"> = {}): ToolContext {
+    #ctx(
+        overrides: Pick<
+            ToolContext,
+            "selectionTransform" | "snapRotation" | "lockAspectRatio"
+        > = {},
+    ): ToolContext {
         return {
             pen: $state.snapshot(this.pen) as Pen,
             tolerance: this.tolerance,

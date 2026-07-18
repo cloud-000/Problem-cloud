@@ -13,6 +13,8 @@ import type { Token } from "./tokens";
 import { decodeString, tokenize } from "./lexer";
 import type {
     ArcExpr,
+    AffineArcExpr,
+    AffineEllipseExpr,
     AsyStmt,
     CircleExpr,
     DeclStmt,
@@ -221,6 +223,9 @@ class Parser {
 
     private parsePathExpr(): PathExpr {
         const t = this.peek();
+        if (t.kind === "ident" && t.value === "shift" && this.peek(1).kind === "lparen") {
+            return this.parseAffinePath();
+        }
         if (t.kind === "ident" && t.value === "circle" && this.peek(1).kind === "lparen") {
             return this.parseCircle();
         }
@@ -228,6 +233,53 @@ class Parser {
             return this.parseArc();
         }
         return this.parseGuide();
+    }
+
+    /** Parse only the canonical affine form produced by serialize.ts. */
+    private parseAffinePath(): AffineEllipseExpr | AffineArcExpr {
+        this.next(); // shift
+        this.expect("lparen");
+        const center = this.parsePairOrRef();
+        this.expect("rparen");
+        this.expect("star");
+        if (this.expect("ident").value !== "transform") throw new ParseError("expected transform");
+        this.expect("lparen");
+        const translateX = this.expectNumber();
+        this.expect("comma");
+        const translateY = this.expectNumber();
+        this.expect("comma");
+        const xx = this.expectNumber();
+        this.expect("comma");
+        const xy = this.expectNumber();
+        this.expect("comma");
+        const yx = this.expectNumber();
+        this.expect("comma");
+        const yy = this.expectNumber();
+        this.expect("rparen");
+        if (translateX !== 0 || translateY !== 0) {
+            throw new ParseError("canonical affine transform must be shiftless");
+        }
+        this.expect("star");
+        const axisX: PairExpr = { kind: "pair", x: xx, y: yx };
+        const axisY: PairExpr = { kind: "pair", x: xy, y: yy };
+        const primitive = this.expect("ident").value;
+        if (primitive === "unitcircle") {
+            return { kind: "affine-ellipse", center, axisX, axisY };
+        }
+        if (primitive !== "arc") throw new ParseError("expected unitcircle or arc");
+        this.expect("lparen");
+        const localCenter = this.parsePair();
+        this.expect("comma");
+        const radius = this.expectNumber();
+        this.expect("comma");
+        const angle1 = this.expectNumber();
+        this.expect("comma");
+        const angle2 = this.expectNumber();
+        this.expect("rparen");
+        if (localCenter.x !== 0 || localCenter.y !== 0 || radius !== 1) {
+            throw new ParseError("canonical affine arc must use the unit circle");
+        }
+        return { kind: "affine-arc", center, axisX, axisY, angle1, angle2 };
     }
 
     private parseCircle(): CircleExpr {

@@ -18,6 +18,7 @@ const snapshot: WhiteboardRenderSnapshot = {
                 pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
             },
             { id: "label", kind: "label", at: [0, 0], text: "$A&B<$" },
+            { id: "ellipse", kind: "ellipse", center: [0, 0], axisX: [2, 0], axisY: [0, 1] },
         ],
     },
     viewport: { width: 320, height: 180, scale: 40, origin: [160, 90] },
@@ -43,6 +44,7 @@ describe("whiteboard export", () => {
         expect(svg).toContain("<path");
         expect(svg).toContain('<circle cx="240" cy="50" r="21" fill="rgb(0,0,255)" opacity="0.4"/>');
         expect(svg).toContain("A&amp;B&lt;");
+        expect(svg).toContain('d="M 240,90 L');
         expect(svg).not.toContain("selection");
         expect(svg).not.toContain("<image");
     });

@@ -107,6 +107,18 @@ export function scalePair(p: Pair, origin: Pair, factor: number): Pair {
     ];
 }
 
+/** Independently scale a point's x/y offsets around `origin`. */
+export function scalePairBy(p: Pair, origin: Pair, factors: Pair): Pair {
+    return [
+        origin[0] + (p[0] - origin[0]) * factors[0],
+        origin[1] + (p[1] - origin[1]) * factors[1],
+    ];
+}
+
+function scaleVectorBy(vector: Pair, factors: Pair): Pair {
+    return [vector[0] * factors[0], vector[1] * factors[1]];
+}
+
 /** Rotate a point around `origin` by `degrees` counter-clockwise in asy-space. */
 export function rotatePair(p: Pair, origin: Pair, degrees: number): Pair {
     const radians = (degrees * Math.PI) / 180;
@@ -138,6 +150,9 @@ export function translateElement(el: SceneElement, dx: number, dy: number): Scen
         case "circle":
         case "arc":
             return { ...el, center: translatePair(el.center, dx, dy) };
+        case "ellipse":
+        case "elliptical-arc":
+            return { ...el, center: translatePair(el.center, dx, dy) };
         case "raw":
             return el;
     }
@@ -162,6 +177,73 @@ export function scaleElement(el: SceneElement, origin: Pair, factor: number): Sc
                 ...el,
                 center: scalePair(el.center, origin, factor),
                 radius: el.radius * factor,
+            };
+        case "ellipse":
+        case "elliptical-arc":
+            return {
+                ...el,
+                center: scalePair(el.center, origin, factor),
+                axisX: scalePair(el.axisX, [0, 0], factor),
+                axisY: scalePair(el.axisY, [0, 0], factor),
+            };
+        case "raw":
+            return el;
+    }
+}
+
+
+/**
+ * Return an anisotropically scaled copy of `el`. Circular primitives remain
+ * circles for a uniform factor and become affine ellipse primitives otherwise.
+ */
+export function scaleElementBy(
+    el: SceneElement,
+    origin: Pair,
+    factors: Pair,
+): SceneElement {
+    const [scaleX, scaleY] = factors;
+    if (Math.abs(scaleX - scaleY) <= 1e-9) return scaleElement(el, origin, scaleX);
+    switch (el.kind) {
+        case "dot":
+        case "label":
+            return { ...el, at: scalePairBy(el.at, origin, factors) };
+        case "path":
+            return {
+                ...el,
+                path: { ...el.path, nodes: el.path.nodes.map((node) => scalePairBy(node, origin, factors)) },
+            };
+        case "fill":
+            return {
+                ...el,
+                path: { ...el.path, nodes: el.path.nodes.map((node) => scalePairBy(node, origin, factors)) },
+            };
+        case "circle": {
+            const { radius, ...base } = el;
+            return {
+                ...base,
+                kind: "ellipse",
+                center: scalePairBy(el.center, origin, factors),
+                axisX: [radius * scaleX, 0],
+                axisY: [0, radius * scaleY],
+            };
+        }
+        case "arc": {
+            const { radius, ...base } = el;
+            return {
+                ...base,
+                kind: "elliptical-arc",
+                center: scalePairBy(el.center, origin, factors),
+                axisX: [radius * scaleX, 0],
+                axisY: [0, radius * scaleY],
+            };
+        }
+        case "ellipse":
+        case "elliptical-arc":
+            return {
+                ...el,
+                center: scalePairBy(el.center, origin, factors),
+                axisX: scaleVectorBy(el.axisX, factors),
+                axisY: scaleVectorBy(el.axisY, factors),
             };
         case "raw":
             return el;
@@ -194,6 +276,14 @@ export function rotateElement(el: SceneElement, origin: Pair, degrees: number): 
                 center: rotatePair(el.center, origin, degrees),
                 angle1: el.angle1 + degrees,
                 angle2: el.angle2 + degrees,
+            };
+        case "ellipse":
+        case "elliptical-arc":
+            return {
+                ...el,
+                center: rotatePair(el.center, origin, degrees),
+                axisX: rotatePair(el.axisX, [0, 0], degrees),
+                axisY: rotatePair(el.axisY, [0, 0], degrees),
             };
         case "raw":
             return el;

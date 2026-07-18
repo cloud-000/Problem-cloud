@@ -2,7 +2,7 @@ import type { Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { hitTest } from "../hit-test";
-import { distance, rotateElement, scaleElement, translateElement } from "../geometry";
+import { distance, rotateElement, scaleElementBy, translateElement } from "../geometry";
 import {
     mapElements,
     NO_RESULT,
@@ -15,8 +15,9 @@ import {
 /**
  * Select + move + marquee + transform. Click an element to select it; drag
  * selected elements to move them. Drag empty space to rubber-band every fully
- * enclosed element. Handle metadata supplied by the view starts proportional
- * resize or rotation. Every completed gesture is committed once on release.
+ * enclosed element. Handle metadata supplied by the view starts freeform or
+ * aspect-locked resize, or rotation. Every completed gesture is committed once
+ * on release.
  */
 export class SelectTool implements Tool {
     readonly kind = "select" as const;
@@ -243,20 +244,39 @@ export class SelectTool implements Tool {
             };
         }
         if (this.transform.kind === "resize") {
-            const { anchor, handle, minimumScale } = this.transform;
+            const { anchor, handle, axes, minimumScale } = this.transform;
             const startX = handle[0] - anchor[0];
             const startY = handle[1] - anchor[1];
-            const lengthSquared = startX * startX + startY * startY;
-            if (lengthSquared === 0) return { scene, changed: false };
             const adjustedX = pointer[0] - this.transformPointerOffset[0] - anchor[0];
             const adjustedY = pointer[1] - this.transformPointerOffset[1] - anchor[1];
-            const projected = (adjustedX * startX + adjustedY * startY) / lengthSquared;
-            const factor = Math.max(minimumScale, projected);
+            const activeX = axes.x && Math.abs(startX) > 1e-12;
+            const activeY = axes.y && Math.abs(startY) > 1e-12;
+            if (!activeX && !activeY) return { scene, changed: false };
+
+            let scaleX = activeX ? adjustedX / startX : 1;
+            let scaleY = activeY ? adjustedY / startY : 1;
+            if (ctx.lockAspectRatio) {
+                let factor: number;
+                if (activeX && activeY) {
+                    const lengthSquared = startX * startX + startY * startY;
+                    factor = (adjustedX * startX + adjustedY * startY) / lengthSquared;
+                } else {
+                    factor = activeX ? scaleX : scaleY;
+                }
+                const uniformMinimum = Math.max(minimumScale[0], minimumScale[1]);
+                factor = Math.max(uniformMinimum, factor);
+                scaleX = factor;
+                scaleY = factor;
+            } else {
+                if (activeX) scaleX = Math.max(minimumScale[0], scaleX);
+                if (activeY) scaleY = Math.max(minimumScale[1], scaleY);
+            }
+            const factors: Pair = [scaleX, scaleY];
             return {
                 scene: mapElements(scene, (element) =>
-                    selected.has(element.id) ? scaleElement(element, anchor, factor) : element,
+                    selected.has(element.id) ? scaleElementBy(element, anchor, factors) : element,
                 ),
-                changed: Math.abs(factor - 1) > 1e-9,
+                changed: Math.abs(scaleX - 1) > 1e-9 || Math.abs(scaleY - 1) > 1e-9,
             };
         }
 

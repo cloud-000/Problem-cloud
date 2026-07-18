@@ -57,6 +57,17 @@ function growElement(box: MutableBox, el: SceneElement): void {
             grow(box, cx + el.radius, cy + el.radius);
             break;
         }
+        case "ellipse":
+        case "elliptical-arc": {
+            const [cx, cy] = el.center;
+            const extentX = Math.hypot(el.axisX[0], el.axisY[0]);
+            const extentY = Math.hypot(el.axisX[1], el.axisY[1]);
+            // Elliptical arcs intentionally use the conservative full-ellipse
+            // box, matching the existing full-circle treatment for arcs.
+            grow(box, cx - extentX, cy - extentY);
+            grow(box, cx + extentX, cy + extentY);
+            break;
+        }
         case "raw":
             // Raw asy has no known geometry; contributes nothing to bounds.
             break;

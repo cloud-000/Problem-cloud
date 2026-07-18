@@ -36,6 +36,24 @@ export interface ArcExpr {
     angle2: number;
 }
 
+/** Canonical affine ellipse emitted by this codec. */
+export interface AffineEllipseExpr {
+    kind: "affine-ellipse";
+    center: PairExpr | RefExpr;
+    axisX: PairExpr;
+    axisY: PairExpr;
+}
+
+/** Canonical affine circular arc emitted by this codec. */
+export interface AffineArcExpr {
+    kind: "affine-arc";
+    center: PairExpr | RefExpr;
+    axisX: PairExpr;
+    axisY: PairExpr;
+    angle1: number;
+    angle2: number;
+}
+
 /** A guide/path built from nodes joined by `--`/`..`, optionally cyclic. */
 export interface GuideExpr {
     kind: "guide";
@@ -45,7 +63,7 @@ export interface GuideExpr {
 }
 
 /** Any path-valued expression. */
-export type PathExpr = GuideExpr | CircleExpr | ArcExpr | RefExpr;
+export type PathExpr = GuideExpr | CircleExpr | ArcExpr | AffineEllipseExpr | AffineArcExpr | RefExpr;
 
 // --- pens ---------------------------------------------------------------------
 

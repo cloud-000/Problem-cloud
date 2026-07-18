@@ -4,6 +4,8 @@ import {
     createArc,
     createCircle,
     createDot,
+    createEllipse,
+    createEllipticalArc,
     createFill,
     createLabel,
     createPath,
@@ -49,6 +51,15 @@ describe("serialize", () => {
     test("circle and arc stay first-class", () => {
         expect(serialize(scene(createCircle([0, 0], 5)))).toBe("draw(circle((0,0), 5));");
         expect(serialize(scene(createArc([0, 0], 2, 0, 90)))).toBe("draw(arc((0,0), 2, 0, 90));");
+    });
+
+    test("ellipses serialize as canonical native affine transforms", () => {
+        expect(serialize(scene(createEllipse([1, 2], [3, 4], [-2, 1])))).toBe(
+            "draw(shift((1,2))*transform(0,0,3,-2,4,1)*unitcircle);",
+        );
+        expect(serialize(scene(createEllipticalArc([1, 2], [3, 0], [0, 2], 10, 80)))).toBe(
+            "draw(shift((1,2))*transform(0,0,3,0,0,2)*arc((0,0), 1, 10, 80));",
+        );
     });
 
     test("label with and without align", () => {

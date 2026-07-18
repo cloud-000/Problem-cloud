@@ -104,16 +104,17 @@ describe("tokenize", () => {
         expect(decodeString(str.value)).toBe('$A"$');
     });
 
-    test("unknown chars become 'other' so scanning reaches ;", () => {
+    test("multiplication is tokenized while unknown chars still allow recovery", () => {
         expect(kinds("x = a*b;")).toEqual([
             "ident",
             "equals",
             "ident",
-            "other", // *
+            "star",
             "ident",
             "semi",
             "eof",
         ]);
+        expect(kinds("x = a/b;")).toContain("other");
     });
 
     test("token offsets map back to source", () => {

@@ -10,6 +10,8 @@ import type {
     ArcElement,
     CircleElement,
     DotElement,
+    EllipseElement,
+    EllipticalArcElement,
     FillElement,
     LabelElement,
     Pair,
@@ -49,6 +51,10 @@ function emitElement(el: SceneElement, ctx: Ctx): string {
             return emitCircle(el, ctx);
         case "arc":
             return emitArc(el, ctx);
+        case "ellipse":
+            return emitEllipse(el, ctx);
+        case "elliptical-arc":
+            return emitEllipticalArc(el, ctx);
         case "label":
             return emitLabel(el, ctx);
         case "fill":
@@ -145,6 +151,22 @@ function emitCircle(el: CircleElement, ctx: Ctx): string {
 
 function emitArc(el: ArcElement, ctx: Ctx): string {
     const guide = `arc(${pair(el.center, ctx)}, ${num(el.radius, ctx)}, ${num(el.angle1, ctx)}, ${num(el.angle2, ctx)})`;
+    return `draw(${withPen(guide, el.pen, ctx)});`;
+}
+
+function affineGuide(center: Pair, axisX: Pair, axisY: Pair, primitive: string, ctx: Ctx): string {
+    const matrix = [axisX[0], axisY[0], axisX[1], axisY[1]].map((value) => num(value, ctx));
+    return `shift(${pair(center, ctx)})*transform(0,0,${matrix.join(",")})*${primitive}`;
+}
+
+function emitEllipse(el: EllipseElement, ctx: Ctx): string {
+    const guide = affineGuide(el.center, el.axisX, el.axisY, "unitcircle", ctx);
+    return `draw(${withPen(guide, el.pen, ctx)});`;
+}
+
+function emitEllipticalArc(el: EllipticalArcElement, ctx: Ctx): string {
+    const arc = `arc((0,0), 1, ${num(el.angle1, ctx)}, ${num(el.angle2, ctx)})`;
+    const guide = affineGuide(el.center, el.axisX, el.axisY, arc, ctx);
     return `draw(${withPen(guide, el.pen, ctx)});`;
 }
 

@@ -6,6 +6,7 @@ import {
     dotRadius,
     penStroke,
     projectedArc,
+    projectedEllipseArc,
     projectedPath,
     renderWhiteboard,
     resizeHandleAt,
@@ -75,6 +76,14 @@ describe("projected geometry", () => {
         expect(points[2]).toEqual([90, 100]);
     });
 
+    test("projects affine ellipse basis vectors", () => {
+        const points = projectedEllipseArc([1, 1], [2, 1], [-1, 2], 0, 360, project, 4);
+        expect(points).toHaveLength(5);
+        expect(points[0]).toEqual(project([3, 2]));
+        expect(points[1][0]).toBeCloseTo(project([0, 3])[0]);
+        expect(points[1][1]).toBeCloseTo(project([0, 3])[1]);
+    });
+
     test("grid adapts to the current camera", () => {
         const lines = gridLines({ width: 200, height: 200, scale: 40, origin: [100, 100] });
         expect(lines.vertical).toContain(0);
@@ -123,6 +132,16 @@ describe("Canvas 2D rendering", () => {
                 { id: "fill", kind: "fill", path: makePath([[0, 0], [1, 0], [0, 1]], { cyclic: true }) },
                 { id: "circle", kind: "circle", center: [0, 0], radius: 1 },
                 { id: "arc", kind: "arc", center: [0, 0], radius: 1, angle1: 0, angle2: 90 },
+                { id: "ellipse", kind: "ellipse", center: [0, 0], axisX: [2, 0], axisY: [0, 1] },
+                {
+                    id: "elliptical-arc",
+                    kind: "elliptical-arc",
+                    center: [0, 0],
+                    axisX: [2, 0],
+                    axisY: [0, 1],
+                    angle1: 0,
+                    angle2: 90,
+                },
                 { id: "dot", kind: "dot", at: [0, 0] },
                 { id: "label", kind: "label", at: [0, 0], text: "$A$" },
             ],

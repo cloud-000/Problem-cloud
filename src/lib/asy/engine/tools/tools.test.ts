@@ -3,7 +3,7 @@ import { createTool, type ToolContext } from "./index";
 import { History } from "../history";
 import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
-import { createPath, makePath } from "../../scene/factory";
+import { createCircle, createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
 import { pathCommands } from "../../scene/path-geometry";
 import type { Pair, Scene } from "../../scene/types";
@@ -512,7 +512,8 @@ describe("SelectTool", () => {
                 kind: "resize",
                 anchor: [0, 0],
                 handle: [3, 1],
-                minimumScale: 0.1,
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
             },
         };
         resize.onPointerDown(resizedSource.scene, [3, 1], resizeCtx);
@@ -607,7 +608,14 @@ describe("SelectTool", () => {
             const transformCtx: ToolContext = {
                 ...ctx,
                 selection,
-                selectionTransform: { kind: "resize", anchor, handle, minimumScale: 0.1 },
+                lockAspectRatio: true,
+                selectionTransform: {
+                    kind: "resize",
+                    anchor,
+                    handle,
+                    axes: { x: true, y: true },
+                    minimumScale: [0.1, 0.1],
+                },
             };
             tool.onPointerDown(scene, handle, transformCtx);
             expect(tool.onPointerMove(scene, target, transformCtx).commit).toBeUndefined();
@@ -615,6 +623,101 @@ describe("SelectTool", () => {
             expect(elementBounds(result.commit!.elements[0])).toEqual(expected);
         });
     }
+
+    test("corner resize changes width and height independently", () => {
+        const shape = createPath(makePath([[0, 0], [2, 0], [2, 2], [0, 2]], { cyclic: true }));
+        const scene = { elements: [shape] };
+        const tool = createTool("select");
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [shape.id],
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 2],
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
+            },
+        };
+        tool.onPointerDown(scene, [2, 2], transformCtx);
+        const result = tool.onPointerUp(scene, [4, 6], transformCtx);
+        expect(elementBounds(result.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 6] });
+    });
+
+    test("edge resize changes one dimension and Shift preserves the original ratio", () => {
+        const shape = createPath(makePath([[0, 0], [2, 0], [2, 2], [0, 2]], { cyclic: true }));
+        const scene = { elements: [shape] };
+        const gesture = {
+            kind: "resize" as const,
+            anchor: [0, 1] as Pair,
+            handle: [2, 1] as Pair,
+            axes: { x: true, y: false },
+            minimumScale: [0.1, 0.1] as Pair,
+        };
+
+        const free = createTool("select");
+        const freeCtx: ToolContext = { ...ctx, selection: [shape.id], selectionTransform: gesture };
+        free.onPointerDown(scene, [2, 1], freeCtx);
+        const freeResult = free.onPointerUp(scene, [4, 3], freeCtx);
+        expect(elementBounds(freeResult.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 2] });
+
+        const locked = createTool("select");
+        const lockedCtx: ToolContext = { ...freeCtx, lockAspectRatio: true };
+        locked.onPointerDown(scene, [2, 1], lockedCtx);
+        const lockedResult = locked.onPointerUp(scene, [4, 1], lockedCtx);
+        expect(elementBounds(lockedResult.commit!.elements[0])).toEqual({ min: [0, -1], max: [4, 3] });
+    });
+
+    test("aspect locking can be toggled during an active corner drag", () => {
+        const shape = createPath(makePath([[0, 0], [2, 0], [2, 2], [0, 2]], { cyclic: true }));
+        const scene = { elements: [shape] };
+        const freeCtx: ToolContext = {
+            ...ctx,
+            selection: [shape.id],
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 2],
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [2, 2], freeCtx);
+        const freePreview = tool.onPointerMove(scene, [4, 6], freeCtx).preview!;
+        expect(elementBounds(freePreview.elements[0])).toEqual({ min: [0, 0], max: [4, 6] });
+        const lockedPreview = tool.onPointerMove(scene, [4, 6], {
+            ...freeCtx,
+            lockAspectRatio: true,
+        }).preview!;
+        expect(elementBounds(lockedPreview.elements[0])).toEqual({ min: [0, 0], max: [5, 5] });
+        const result = tool.onPointerUp(scene, [4, 6], freeCtx);
+        expect(elementBounds(result.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 6] });
+    });
+
+    test("anisotropic resize converts circles to editable ellipses", () => {
+        const circle = createCircle([1, 1], 1);
+        const scene = { elements: [circle] };
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [circle.id],
+            selectionTransform: {
+                kind: "resize",
+                anchor: [0, 0],
+                handle: [2, 2],
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [2, 2], transformCtx);
+        expect(tool.onPointerUp(scene, [4, 6], transformCtx).commit?.elements[0]).toMatchObject({
+            kind: "ellipse",
+            center: [2, 3],
+            axisX: [2, 0],
+            axisY: [0, 3],
+        });
+    });
 
     test("resize keeps the UI handle offset and clamps before mirroring", () => {
         const scene = {
@@ -629,7 +732,8 @@ describe("SelectTool", () => {
                 kind: "resize",
                 anchor: [0, 0],
                 handle: [2, 0],
-                minimumScale: 0.25,
+                axes: { x: true, y: false },
+                minimumScale: [0.25, 0],
             },
         };
         tool.onPointerDown(scene, [2.2, 0.1], transformCtx);
@@ -694,7 +798,8 @@ describe("SelectTool", () => {
                 kind: "resize",
                 anchor: [0, 0],
                 handle: [2, 2],
-                minimumScale: 0.1,
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
             },
         };
         const tool = createTool("select");
@@ -761,7 +866,8 @@ describe("SelectTool", () => {
                 kind: "resize",
                 anchor: [0, 0],
                 handle: [2, 0],
-                minimumScale: 0.1,
+                axes: { x: true, y: false },
+                minimumScale: [0.1, 0],
             },
         };
         const noOp = createTool("select");

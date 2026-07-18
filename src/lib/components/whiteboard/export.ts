@@ -6,6 +6,7 @@ import {
     penStroke,
     projectPoint,
     projectedArc,
+    projectedEllipseArc,
     projectedPath,
     renderWhiteboard,
     type ProjectedPathCommand,
@@ -76,6 +77,19 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
             element.radius,
             element.angle1,
             element.angle2,
+            project,
+        ).map((value, index) => index === 0
+            ? { kind: "move" as const, point: value }
+            : { kind: "line" as const, point: value });
+        return `<path d="${pathData(commands)}" fill="none" ${stroke} stroke-linecap="round"/>`;
+    }
+    if (element.kind === "ellipse" || element.kind === "elliptical-arc") {
+        const commands: ProjectedPathCommand[] = projectedEllipseArc(
+            element.center,
+            element.axisX,
+            element.axisY,
+            element.kind === "ellipse" ? 0 : element.angle1,
+            element.kind === "ellipse" ? 360 : element.angle2,
             project,
         ).map((value, index) => index === 0
             ? { kind: "move" as const, point: value }

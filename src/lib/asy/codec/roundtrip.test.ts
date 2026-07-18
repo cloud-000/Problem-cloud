@@ -77,4 +77,11 @@ label("$P$", (2,2), N);
 draw(circle((0,0), 1), dashed);`;
         assertStableRoundTrip(asy);
     });
+
+    test("canonical affine ellipse output is stable", () => {
+        assertStableRoundTrip(
+            "draw(shift((1,2))*transform(0,0,3,-2,4,1)*unitcircle);\n" +
+            "draw(shift((0,0))*transform(0,0,2,0,0,1)*arc((0,0), 1, 20, 140));",
+        );
+    });
 });

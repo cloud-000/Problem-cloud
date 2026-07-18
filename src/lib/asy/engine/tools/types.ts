@@ -40,8 +40,10 @@ export type SelectionTransformGesture =
           anchor: Pair;
           /** Unpadded geometry corner represented by the dragged UI handle. */
           handle: Pair;
-          /** Smallest allowed positive scale, preventing collapse/mirroring. */
-          minimumScale: number;
+          /** Dimensions controlled by this handle. */
+          axes: { x: boolean; y: boolean };
+          /** Smallest allowed positive scale per axis, preventing collapse/mirroring. */
+          minimumScale: Pair;
       }
     | {
           kind: "rotate";
@@ -76,6 +78,8 @@ export interface ToolContext {
     selectionTransform?: SelectionTransformGesture;
     /** Snap an active rotation gesture to 15-degree increments. */
     snapRotation?: boolean;
+    /** Preserve the pointer-down selection aspect ratio during resize. */
+    lockAspectRatio?: boolean;
     /** Supplied by the view for the label tool; returns text or null if cancelled. */
     promptLabel?: (at: Pair) => string | null;
 }

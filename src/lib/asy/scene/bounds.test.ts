@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { sceneBounds } from "./bounds";
-import { createArc, createCircle, createDot, createPath, createRaw, emptyScene, makePath } from "./factory";
+import { createArc, createCircle, createDot, createEllipse, createPath, createRaw, emptyScene, makePath } from "./factory";
 import type { Scene } from "./types";
 
 function scene(...elements: Scene["elements"]): Scene {
@@ -44,6 +44,14 @@ describe("sceneBounds", () => {
     test("uses the full circle box for an arc (conservative)", () => {
         const b = sceneBounds(scene(createArc([0, 0], 2, 0, 90)));
         expect(b).toEqual({ min: [-2, -2], max: [2, 2] });
+    });
+
+    test("bounds an affine ellipse from its basis vectors", () => {
+        const b = sceneBounds(scene(createEllipse([1, 2], [3, 4], [-2, 1])));
+        expect(b?.min[0]).toBeCloseTo(1 - Math.sqrt(13));
+        expect(b?.max[0]).toBeCloseTo(1 + Math.sqrt(13));
+        expect(b?.min[1]).toBeCloseTo(2 - Math.sqrt(17));
+        expect(b?.max[1]).toBeCloseTo(2 + Math.sqrt(17));
     });
 
     test("ignores raw elements when other geometry is present", () => {

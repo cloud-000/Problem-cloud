@@ -14,6 +14,8 @@ import {
     createArc,
     createCircle,
     createDot,
+    createEllipse,
+    createEllipticalArc,
     createFill,
     createLabel,
     createPath,
@@ -119,6 +121,24 @@ function lowerDraw(path: PathExpr, pen: Pen | undefined, syms: SymbolTable): Sce
             pen
         );
     }
+    if (path.kind === "affine-ellipse") {
+        return createEllipse(
+            resolvePoint(path.center, syms),
+            resolvePoint(path.axisX, syms),
+            resolvePoint(path.axisY, syms),
+            pen,
+        );
+    }
+    if (path.kind === "affine-arc") {
+        return createEllipticalArc(
+            resolvePoint(path.center, syms),
+            resolvePoint(path.axisX, syms),
+            resolvePoint(path.axisY, syms),
+            path.angle1,
+            path.angle2,
+            pen,
+        );
+    }
     return createPath(resolvePath(path, syms), pen);
 }
 
@@ -157,7 +177,12 @@ function resolvePath(expr: PathExpr, syms: SymbolTable): Path {
         if (!p) throw new LowerError(`unresolved path reference: ${expr.name}`);
         return clonePath(p);
     }
-    if (expr.kind === "circle" || expr.kind === "arc") {
+    if (
+        expr.kind === "circle" ||
+        expr.kind === "arc" ||
+        expr.kind === "affine-ellipse" ||
+        expr.kind === "affine-arc"
+    ) {
         // fill/decl of a circle/arc isn't representable as a node Path.
         throw new LowerError(`cannot lower ${expr.kind} to a node path`);
     }

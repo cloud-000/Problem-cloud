@@ -159,6 +159,30 @@ export function projectedArc(
     return points;
 }
 
+export function projectedEllipseArc(
+    center: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    angle1: number,
+    angle2: number,
+    project: Project,
+    steps = 96,
+): Pair[] {
+    const rawSweep = angle2 - angle1;
+    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+    const points: Pair[] = [];
+    for (let index = 0; index <= steps; index++) {
+        const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        points.push(project([
+            center[0] + axisX[0] * cos + axisY[0] * sin,
+            center[1] + axisX[1] * cos + axisY[1] * sin,
+        ]));
+    }
+    return points;
+}
+
 export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette): StrokeStyle {
     const rgb = resolvePenColor(pen);
     let color = palette.foreground;
@@ -281,6 +305,18 @@ export function drawSceneElement(
     } else if (element.kind === "arc") {
         drawPolyline(context, projectedArc(
             element.center, element.radius, element.angle1, element.angle2, project,
+        ));
+        applyStroke(context, style);
+        if (selected) context.strokeStyle = palette.primary;
+        context.stroke();
+    } else if (element.kind === "ellipse" || element.kind === "elliptical-arc") {
+        drawPolyline(context, projectedEllipseArc(
+            element.center,
+            element.axisX,
+            element.axisY,
+            element.kind === "ellipse" ? 0 : element.angle1,
+            element.kind === "ellipse" ? 360 : element.angle2,
+            project,
         ));
         applyStroke(context, style);
         if (selected) context.strokeStyle = palette.primary;

@@ -13,6 +13,28 @@ import {
     pointToRing,
 } from "./geometry";
 
+function ellipsePoints(
+    center: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    angle1 = 0,
+    angle2 = 360,
+    steps = 96,
+): Pair[] {
+    const sweep = Math.abs(angle2 - angle1) >= 360
+        ? 360
+        : ((angle2 - angle1) % 360 + 360) % 360;
+    return Array.from({ length: steps + 1 }, (_, index) => {
+        const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return [
+            center[0] + axisX[0] * cos + axisY[0] * sin,
+            center[1] + axisX[1] * cos + axisY[1] * sin,
+        ] as Pair;
+    });
+}
+
 /** Distance from `p` to a single element's geometry (Infinity for raw). */
 export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 0.01): number {
     switch (el.kind) {
@@ -25,6 +47,18 @@ export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 
             return pointToRing(p, el.center, el.radius);
         case "arc":
             return pointToArc(p, el.center, el.radius, el.angle1, el.angle2);
+        case "ellipse":
+            return pointToPolyline(p, {
+                nodes: ellipsePoints(el.center, el.axisX, el.axisY),
+                joins: Array.from({ length: 96 }, () => "--"),
+                cyclic: false,
+            }, flattenTolerance);
+        case "elliptical-arc":
+            return pointToPolyline(p, {
+                nodes: ellipsePoints(el.center, el.axisX, el.axisY, el.angle1, el.angle2),
+                joins: Array.from({ length: 96 }, () => "--"),
+                cyclic: false,
+            }, flattenTolerance);
         case "fill":
             // Inside the region counts as a direct hit; otherwise use the outline.
             return pointInPolygon(p, el.path, flattenTolerance)
