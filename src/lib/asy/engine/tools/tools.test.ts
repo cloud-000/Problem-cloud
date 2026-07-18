@@ -627,7 +627,7 @@ describe("SelectTool", () => {
         expect(rotated.path.nodes[1][1]).toBeCloseTo(1);
     });
 
-    test("dragging empty space marquee-selects fully enclosed elements", () => {
+    test("dragging empty space marquee-selects elements whose bounds intersect it", () => {
         const point = createTool("point");
         let scene = point.onPointerDown(emptyScene(), [1, 1], ctx).commit!;
         scene = createTool("point").onPointerDown(scene, [6, 6], ctx).commit!;
@@ -639,6 +639,24 @@ describe("SelectTool", () => {
         const result = tool.onPointerUp(scene, [3, 3], ctx);
         expect(result.selection).toEqual([scene.elements[0].id]);
         expect(result.selectionPreview).toBeNull();
+    });
+
+    test("marquee selection includes partially overlapping and edge-touching bounds", () => {
+        const rectangle = createTool("rectangle");
+        rectangle.onPointerDown(emptyScene(), [1, 1], ctx);
+        const scene = rectangle.onPointerUp(emptyScene(), [5, 5], ctx).commit!;
+
+        const overlapping = createTool("select");
+        overlapping.onPointerDown(scene, [0, 0], ctx);
+        expect(overlapping.onPointerMove(scene, [3, 3], ctx).selectionPreview).toEqual([
+            scene.elements[0].id,
+        ]);
+
+        const touching = createTool("select");
+        touching.onPointerDown(scene, [0, 0], ctx);
+        expect(touching.onPointerMove(scene, [1, 1], ctx).selectionPreview).toEqual([
+            scene.elements[0].id,
+        ]);
     });
 
     test("dragging one member of a selection moves the whole group", () => {
