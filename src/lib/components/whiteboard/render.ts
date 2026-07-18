@@ -40,6 +40,7 @@ export interface RenderResizeHandle {
 
 export interface RenderVertexHandle {
     screen: Pair;
+    state?: "default" | "hovered" | "selected";
 }
 
 export interface RenderRotationControl {
@@ -391,11 +392,15 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.stroke();
     }
     for (const handle of overlay.vertexHandles) {
-        context.fillStyle = palette.background;
+        const state = handle.state ?? "default";
+        const radius = state === "selected" ? 6 : state === "hovered" ? 5.5 : 5;
+        context.globalAlpha = state === "hovered" ? 0.2 : 1;
+        context.fillStyle = state === "default" ? palette.background : palette.primary;
         context.strokeStyle = palette.primary;
         context.beginPath();
-        context.arc(handle.screen[0], handle.screen[1], 5, 0, Math.PI * 2);
+        context.arc(handle.screen[0], handle.screen[1], radius, 0, Math.PI * 2);
         context.fill();
+        context.globalAlpha = 1;
         context.stroke();
     }
     context.restore();

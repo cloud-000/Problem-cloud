@@ -56,6 +56,8 @@
         "nwse-resize" | "nesw-resize" | "grab" | "grabbing" | "move" | null
     >(null);
     let spacePressed = $state(false);
+    let selectedVertex = $state<VertexRef | null>(null);
+    let hoveredVertex = $state<VertexRef | null>(null);
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
@@ -69,6 +71,11 @@
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
 
     type ResizeCorner = "nw" | "ne" | "se" | "sw";
+
+    interface VertexRef {
+        elementId: string;
+        nodeIndex: number;
+    }
 
     interface ResizeHandle extends RenderResizeHandle {
         corner: ResizeCorner;
@@ -84,6 +91,7 @@
         elementId: string;
         nodeIndex: number;
         cursor: "move";
+        state: "default" | "hovered" | "selected";
     }
 
     function screenRect(bounds: Bounds, padding = 0): ScreenRect {
@@ -145,6 +153,19 @@
     const selectedPathHasMultipleSegments = $derived(
         (selectedEditablePath?.path.joins.length ?? 0) > 1,
     );
+
+    const activeSelectedVertex = $derived.by(() =>
+        selectedVertex &&
+        selectedEditablePath?.id === selectedVertex.elementId &&
+        selectedVertex.nodeIndex >= 0 &&
+        selectedVertex.nodeIndex < selectedEditablePath.path.nodes.length
+            ? selectedVertex
+            : null,
+    );
+
+    function isVertex(ref: VertexRef | null, elementId: string, nodeIndex: number): boolean {
+        return ref?.elementId === elementId && ref.nodeIndex === nodeIndex;
+    }
 
     const hasTransformExtent = $derived.by(() => {
         if (!selectionGeometryBounds) return false;
@@ -241,6 +262,11 @@
             elementId: selectedEditablePath.id,
             nodeIndex,
             cursor: "move",
+            state: isVertex(activeSelectedVertex, selectedEditablePath.id, nodeIndex)
+                ? "selected"
+                : isVertex(hoveredVertex, selectedEditablePath.id, nodeIndex)
+                  ? "hovered"
+                  : "default",
         }));
     });
 
@@ -359,6 +385,8 @@
         }
 
         if (e.button === 0 && store.toolKind === "select" && store.lineContinuation) {
+            selectedVertex = null;
+            hoveredVertex = null;
             interaction = "draw";
             syncToolScale();
             store.pointerDown(toAsyAt(e.clientX, e.clientY));
@@ -370,6 +398,11 @@
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
         const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
         if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
+            selectedVertex = {
+                elementId: vertexHandle.elementId,
+                nodeIndex: vertexHandle.nodeIndex,
+            };
+            hoveredVertex = selectedVertex;
             interaction = "transform";
             transformCursor = vertexHandle.cursor;
             syncToolScale();
@@ -380,6 +413,10 @@
                 handle: vertexHandle.handle,
             });
             return;
+        }
+        if (e.button === 0) {
+            selectedVertex = null;
+            hoveredVertex = null;
         }
         if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
             const handle = resizeHandle;
@@ -427,17 +464,22 @@
         if (interaction === "idle") {
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
             if (store.lineContinuation) {
+                hoveredVertex = null;
                 transformCursor = null;
                 syncToolScale();
                 store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
                 return;
             }
             const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
+            hoveredVertex = vertexHandle
+                ? { elementId: vertexHandle.elementId, nodeIndex: vertexHandle.nodeIndex }
+                : null;
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
             transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ?? (overRotation ? "grab" : null);
             return;
         }
+        hoveredVertex = null;
         if (e.pointerId !== pointerId) return;
         if (interaction === "pan" && panStart) {
             panX = panStart.x + e.clientX - panStart.clientX;
@@ -465,6 +507,7 @@
         pointerId = null;
         panStart = null;
         transformCursor = null;
+        hoveredVertex = activeSelectedVertex;
         interaction = "idle";
     }
 
@@ -477,6 +520,7 @@
         panStart = null;
         pinchStart = null;
         transformCursor = null;
+        hoveredVertex = null;
         interaction = "idle";
     }
 
@@ -486,6 +530,8 @@
             spacePressed = true;
         } else if (e.key === "Escape") {
             store.cancel();
+            selectedVertex = null;
+            hoveredVertex = null;
             if (interaction === "draw" || interaction === "transform") {
                 if (pointerId !== null) release(pointerId);
                 pointerId = null;
@@ -493,7 +539,15 @@
                 interaction = "idle";
             }
         } else if (e.key === "Delete" || e.key === "Backspace") {
-            if (store.selection.length) {
+            if (activeSelectedVertex) {
+                e.preventDefault();
+                store.deletePathVertex(
+                    activeSelectedVertex.elementId,
+                    activeSelectedVertex.nodeIndex,
+                );
+                selectedVertex = null;
+                hoveredVertex = null;
+            } else if (store.selection.length) {
                 e.preventDefault();
                 store.deleteSelected();
             }
@@ -603,7 +657,10 @@
                 ? { stemStart: rotationControl.stemStart, screen: rotationControl.screen }
                 : null,
             resizeHandles: resizeHandles.map((handle) => ({ screen: handle.screen })),
-            vertexHandles: vertexHandles.map((handle) => ({ screen: handle.screen })),
+            vertexHandles: vertexHandles.map((handle) => ({
+                screen: handle.screen,
+                state: handle.state,
+            })),
         };
 
         const backingWidth = Math.max(1, Math.round(width * pixelRatio));
@@ -667,7 +724,12 @@
         onpointermove={onPointerMove}
         onpointerup={onPointerUp}
         onpointercancel={onPointerCancel}
-        onpointerleave={() => interaction === "idle" && (transformCursor = null)}
+        onpointerleave={() => {
+            if (interaction === "idle") {
+                transformCursor = null;
+                hoveredVertex = null;
+            }
+        }}
         onwheel={onWheel}
     ></canvas>
 </div>

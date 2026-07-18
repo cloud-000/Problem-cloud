@@ -136,7 +136,7 @@ describe("Canvas 2D rendering", () => {
             selectionRect: { x: 3, y: 3, width: 10, height: 10 },
             rotationControl: { stemStart: [8, 3], screen: [8, 0] },
             resizeHandles: [{ screen: [3, 3] }],
-            vertexHandles: [{ screen: [13, 13] }],
+            vertexHandles: [{ screen: [13, 13], state: "selected" }],
         }, 2);
 
         expect(context.calls[0]).toBe("setTransform:2");

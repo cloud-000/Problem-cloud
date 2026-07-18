@@ -170,6 +170,47 @@ export class WhiteboardStore {
 
     // --- editing convenience --------------------------------------------------
 
+    deletePathVertex(elementId: string, nodeIndex: number): void {
+        const element = this.scene.elements.find(({ id }) => id === elementId);
+        if (
+            element?.kind !== "path" ||
+            nodeIndex < 0 ||
+            nodeIndex >= element.path.nodes.length
+        ) return;
+
+        const nodes = element.path.nodes.filter((_, index) => index !== nodeIndex);
+        if (nodes.length < 2) {
+            this.apply({
+                ...this.scene,
+                elements: this.scene.elements.filter(({ id }) => id !== elementId),
+            });
+            this.selection = this.selection.filter((id) => id !== elementId);
+        } else {
+            const cyclic = element.path.cyclic && nodes.length >= 3;
+            const joinCount = cyclic ? nodes.length : nodes.length - 1;
+            this.apply({
+                ...this.scene,
+                elements: this.scene.elements.map((candidate) =>
+                    candidate.id === elementId && candidate.kind === "path"
+                        ? {
+                              ...candidate,
+                              path: {
+                                  ...candidate.path,
+                                  nodes,
+                                  joins: Array.from({ length: joinCount }, () => "--" as const),
+                                  cyclic,
+                              },
+                          }
+                        : candidate,
+                ),
+            });
+        }
+        this.preview = null;
+        this.selectionPreview = null;
+        this.marquee = null;
+        this.lineContinuation = null;
+    }
+
     deleteSelected(): void {
         if (this.selection.length === 0) return;
         this.apply({
