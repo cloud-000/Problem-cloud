@@ -1,6 +1,7 @@
 import type { Pair, SceneElement } from "$lib/asy/scene";
 import {
     canvasSnapshot,
+    dotRadius,
     gridLines,
     penStroke,
     projectPoint,
@@ -83,7 +84,7 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
     }
     if (element.kind === "dot") {
         const at = project(element.at);
-        return `<circle cx="${number(at[0])}" cy="${number(at[1])}" r="3.5" ` +
+        return `<circle cx="${number(at[0])}" cy="${number(at[1])}" r="${number(dotRadius(style))}" ` +
             `fill="${escapeXml(style.color)}" opacity="${number(style.opacity)}"/>`;
     }
     if (element.kind === "label") {

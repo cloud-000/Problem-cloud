@@ -53,6 +53,8 @@ export class WhiteboardStore {
     /** Hit-test / commit tolerance in asy-space; the view keeps this in sync
      *  with its current px->asy scale. */
     tolerance = 0.5;
+    /** Pen travel that still counts as a tap; the view derives it from 2 CSS px. */
+    penTapTolerance = 0.05;
     /** Freehand cleanup controls. The view keeps distance values in sync with
      *  its current px->scene scale; scalar values remain framework defaults. */
     strokeProcessing: StrokeProcessingOptions = { ...DEFAULT_STROKE_PROCESSING_OPTIONS };
@@ -117,6 +119,7 @@ export class WhiteboardStore {
         return {
             pen: $state.snapshot(this.pen) as Pen,
             tolerance: this.tolerance,
+            penTapTolerance: this.penTapTolerance,
             strokeProcessing: { ...this.strokeProcessing },
             selection: $state.snapshot(this.selection) as string[],
             lineContinuation: this.lineContinuation

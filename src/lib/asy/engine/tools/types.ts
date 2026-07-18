@@ -64,6 +64,8 @@ export interface ToolContext {
     pen: Pen;
     /** Hit-test tolerance in asy-space (view derives from its px->asy scale). */
     tolerance: number;
+    /** Maximum pen travel that commits as one tap mark, in scene units. */
+    penTapTolerance: number;
     /** Freehand cleanup controls; distance values are in scene units. */
     strokeProcessing: StrokeProcessingOptions;
     /** Current selected element ids, used by tools that operate on a group. */

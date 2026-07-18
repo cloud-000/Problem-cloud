@@ -181,6 +181,11 @@ export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette): Str
     };
 }
 
+/** Use the size-1 pen's 7 px dot as the baseline and scale linearly with pen width. */
+export function dotRadius(style: StrokeStyle): number {
+    return Math.max(0, style.width) * 3.5;
+}
+
 export function gridStep(scale: number): number {
     const target = 32 / scale;
     const power = Math.pow(10, Math.floor(Math.log10(target)));
@@ -283,7 +288,7 @@ export function drawSceneElement(
     } else if (element.kind === "dot") {
         const point = project(element.at);
         context.beginPath();
-        context.arc(point[0], point[1], selected ? 5 : 3.5, 0, Math.PI * 2);
+        context.arc(point[0], point[1], selected ? Math.max(5, dotRadius(style)) : dotRadius(style), 0, Math.PI * 2);
         context.fillStyle = selected ? palette.primary : style.color;
         context.globalAlpha = style.opacity;
         context.fill();

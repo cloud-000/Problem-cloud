@@ -3,6 +3,7 @@ import { makePath, type Pair, type Scene } from "$lib/asy/scene";
 import {
     gridLines,
     isRotationHandleAt,
+    dotRadius,
     penStroke,
     projectedArc,
     projectedPath,
@@ -42,7 +43,7 @@ class RecordingContext {
     moveTo(x: number, y: number) { this.calls.push(`moveTo:${x},${y}`); }
     lineTo(x: number, y: number) { this.calls.push(`lineTo:${x},${y}`); }
     bezierCurveTo() { this.calls.push("bezierCurveTo"); }
-    arc() { this.calls.push("arc"); }
+    arc(_x: number, _y: number, radius: number) { this.calls.push(`arc:${radius}`); }
     fill() { this.calls.push("fill"); }
     stroke() { this.calls.push("stroke"); }
     fillRect() { this.calls.push("fillRect"); }
@@ -105,6 +106,12 @@ describe("adaptive pen styles", () => {
             width: 3,
         });
     });
+
+    test("dots scale linearly from the size-1 pen baseline", () => {
+        expect(dotRadius(penStroke({ lineWidth: 1 }, palette))).toBe(3.5);
+        expect(dotRadius(penStroke({ lineWidth: 2 }, palette))).toBe(7);
+        expect(dotRadius(penStroke({ lineWidth: 4 }, palette))).toBe(14);
+    });
 });
 
 describe("Canvas 2D rendering", () => {
@@ -142,9 +149,33 @@ describe("Canvas 2D rendering", () => {
         expect(context.calls[0]).toBe("setTransform:2");
         expect(context.calls.indexOf("fillRect")).toBeLessThan(context.calls.indexOf("bezierCurveTo"));
         expect(context.calls).toContain("closePath");
-        expect(context.calls.filter((call) => call === "arc").length).toBeGreaterThanOrEqual(4);
+        expect(context.calls.filter((call) => call.startsWith("arc:")).length).toBeGreaterThanOrEqual(4);
         expect(context.calls).toContain("fillText:A");
         expect(context.calls).toContain("roundRect");
         expect(context.calls.at(-1)).toBe("setTransform:1");
+    });
+
+    test("sizes an unselected dot from its pen width", () => {
+        const context = new RecordingContext();
+        const snapshot: WhiteboardRenderSnapshot = {
+            scene: {
+                elements: [{
+                    id: "tap",
+                    kind: "dot",
+                    at: [0, 0],
+                    pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
+                }],
+            },
+            viewport: { width: 200, height: 200, scale: 40, origin: [100, 100] },
+            showGrid: false,
+            transparent: false,
+            palette,
+        };
+
+        renderWhiteboard(context as unknown as CanvasRenderingContext2D, snapshot);
+
+        expect(context.calls).toContain("arc:21");
+        expect(context.fillStyle).toBe("rgb(0,0,255)");
+        expect(context.globalAlpha).toBe(0.4);
     });
 });

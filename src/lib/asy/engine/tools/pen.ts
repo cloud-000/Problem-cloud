@@ -1,5 +1,5 @@
 import type { Pair, Scene } from "../../scene/types";
-import { makePath, newId } from "../../scene/factory";
+import { createDot, makePath, newId } from "../../scene/factory";
 import { classifyStrokeJoins, processStroke } from "../simplify";
 import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
 
@@ -40,8 +40,15 @@ export class PenTool implements Tool {
         this.drawing = false;
         this.samples.push(...pendingMoves);
         this.samples.push(p);
+        const isTap = this.gestureTravel() <= Math.max(0, ctx.penTapTolerance);
+        const tapAt = this.samples[0];
         const nodes = processStroke(this.samples, ctx.strokeProcessing);
         this.samples = [];
+        if (isTap) {
+            const dot = createDot(tapAt, ctx.pen);
+            this.draftId = null;
+            return { commit: addElement(scene, dot), selection: [], preview: null };
+        }
         if (nodes.length < 2) {
             this.draftId = null;
             return { preview: null };
@@ -63,6 +70,16 @@ export class PenTool implements Tool {
     private strokePath(ctx: ToolContext) {
         const nodes = processStroke(this.samples, ctx.strokeProcessing);
         return this.strokePathFromNodes(nodes, ctx);
+    }
+
+    /** Largest displacement from pointer-down; tiny coalesced jitter remains a tap. */
+    private gestureTravel(): number {
+        const start = this.samples[0];
+        if (!start) return 0;
+        return this.samples.reduce(
+            (maximum, point) => Math.max(maximum, Math.hypot(point[0] - start[0], point[1] - start[1])),
+            0,
+        );
     }
 
     private strokePathFromNodes(nodes: Pair[], ctx: ToolContext) {

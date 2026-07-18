@@ -11,6 +11,12 @@ const snapshot: WhiteboardRenderSnapshot = {
                 path: { nodes: [[0, 0], [1, 1]], joins: ["--"], cyclic: false },
                 pen: { namedColor: "red" },
             },
+            {
+                id: "tap",
+                kind: "dot",
+                at: [2, 1],
+                pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
+            },
             { id: "label", kind: "label", at: [0, 0], text: "$A&B<$" },
         ],
     },
@@ -35,6 +41,7 @@ describe("whiteboard export", () => {
         expect(svg).toContain('width="320" height="180"');
         expect(svg).toContain("<g stroke=\"#ddd\"");
         expect(svg).toContain("<path");
+        expect(svg).toContain('<circle cx="240" cy="50" r="21" fill="rgb(0,0,255)" opacity="0.4"/>');
         expect(svg).toContain("A&amp;B&lt;");
         expect(svg).not.toContain("selection");
         expect(svg).not.toContain("<image");

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTool, type ToolContext } from "./index";
+import { History } from "../history";
 import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
 import { createPath, makePath } from "../../scene/factory";
@@ -10,6 +11,7 @@ import type { Pair, Scene } from "../../scene/types";
 const ctx: ToolContext = {
     pen: { namedColor: "red" },
     tolerance: 0.5,
+    penTapTolerance: 0.05,
     strokeProcessing: { ...DEFAULT_STROKE_PROCESSING_OPTIONS },
     selection: [],
     lineContinuation: null,
@@ -95,6 +97,56 @@ describe("RectangleTool", () => {
 });
 
 describe("PenTool", () => {
+    test("a tap commits exactly one pen-aware dot", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        const styled = {
+            ...ctx,
+            pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
+        };
+        tool.onPointerDown(scene, [1, 2], styled);
+
+        const up = tool.onPointerUp(scene, [1, 2], styled);
+
+        expect(up.commit?.elements).toHaveLength(1);
+        expect(up.commit?.elements).toMatchObject([
+            {
+                kind: "dot",
+                at: [1, 2],
+                pen: styled.pen,
+            },
+        ]);
+        expect(up.selection).toEqual([]);
+    });
+
+    test("small drags resolve to either one tap or one stroke, never both", () => {
+        const scene = emptyScene();
+        const tap = createTool("pen");
+        tap.onPointerDown(scene, [0, 0], ctx);
+        const tapCommit = tap.onPointerUp(scene, [0.04, 0], ctx, [[0.02, 0.01]]).commit;
+
+        const stroke = createTool("pen");
+        stroke.onPointerDown(scene, [0, 0], ctx);
+        const strokeCommit = stroke.onPointerUp(scene, [0.06, 0], ctx, [[0.03, 0]]).commit;
+
+        expect(tapCommit?.elements).toHaveLength(1);
+        expect(tapCommit?.elements[0].kind).toBe("dot");
+        expect(strokeCommit?.elements).toHaveLength(1);
+        expect(strokeCommit?.elements[0].kind).toBe("path");
+    });
+
+    test("a tap commit is one undoable history step", () => {
+        const before = emptyScene();
+        const tool = createTool("pen");
+        tool.onPointerDown(before, [0, 0], ctx);
+        const after = tool.onPointerUp(before, [0, 0], ctx).commit!;
+        const history = new History<Scene>();
+        history.push(before);
+
+        expect(history.undo(after)).toEqual(before);
+        expect(history.redo(before)?.elements).toHaveLength(1);
+    });
+
     test("live preview uses the current pen style", () => {
         const tool = createTool("pen");
         const scene = emptyScene();
@@ -182,6 +234,7 @@ describe("PenTool", () => {
         expect(previewElement?.kind).toBe("path");
         expect(commitElement?.kind).toBe("path");
         if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(commitElement.id).toBe(previewElement.id);
         expect(commitElement.path).toEqual(previewElement.path);
     });
 
