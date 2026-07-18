@@ -6,7 +6,9 @@
         elementBounds,
         isStraightPathVertexEditable,
         sceneBounds,
+        type ArcElement,
         type Bounds,
+        type EllipticalArcElement,
         type Pair,
         type Scene,
         type SceneElement as SceneElementModel,
@@ -185,14 +187,14 @@
         (selectedStraightVertexEditablePath?.path.joins.length ?? 0) > 1,
     );
 
-    const selectedCircularArc = $derived.by(() => {
+    const selectedArcElement = $derived.by(() => {
         if (
             activeSelection.length !== 1 ||
             store.selectionPreview !== null ||
             store.toolKind !== "select"
         ) return null;
         const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        return element?.kind === "arc" ? element : null;
+        return element?.kind === "arc" || element?.kind === "elliptical-arc" ? element : null;
     });
 
     const activeSelectedVertex = $derived.by(() =>
@@ -224,6 +226,20 @@
         ];
     }
 
+    function selectedArcPoint(
+        element: ArcElement | EllipticalArcElement,
+        angle: number,
+    ): Pair {
+        if (element.kind === "arc") return arcPoint(element.center, element.radius, angle);
+        const radians = (angle * Math.PI) / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return [
+            element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
+            element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
+        ];
+    }
+
     const hasTransformExtent = $derived.by(() => {
         if (!selectionGeometryBounds) return false;
         const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
@@ -233,7 +249,6 @@
 
     const selectionRect = $derived.by(() => {
         if (activeSelection.length === 0) return null;
-        if (selectedCircularArc) return null;
         if (
             selectedStraightVertexEditablePath &&
             !selectedStraightPathHasMultipleSegments &&
@@ -272,7 +287,6 @@
     const resizeHandles = $derived.by<ResizeHandle[]>(() => {
         if (
             (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
-            selectedCircularArc ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -414,55 +428,69 @@
                 handles,
                 editHandles: [] as ArcHandle[],
                 elementId: null,
+                points: undefined,
+                radiusEditable: false,
             };
         }
-        if (!selectedCircularArc) return null;
+        if (!selectedArcElement) return null;
 
-        const start = arcPoint(
-            selectedCircularArc.center,
-            selectedCircularArc.radius,
-            selectedCircularArc.angle1,
-        );
-        const end = arcPoint(
-            selectedCircularArc.center,
-            selectedCircularArc.radius,
-            selectedCircularArc.angle2,
-        );
+        const start = selectedArcPoint(selectedArcElement, selectedArcElement.angle1);
+        const end = selectedArcPoint(selectedArcElement, selectedArcElement.angle2);
         let startScreen = project(start);
         let endScreen = project(end);
         if (Math.hypot(startScreen[0] - endScreen[0], startScreen[1] - endScreen[1]) < 2) {
-            const radians = (selectedCircularArc.angle1 * Math.PI) / 180;
-            const tangent: Pair = [-Math.sin(radians) * 7, -Math.cos(radians) * 7];
+            const radians = (selectedArcElement.angle1 * Math.PI) / 180;
+            const tangentWorld: Pair = selectedArcElement.kind === "arc"
+                ? [-Math.sin(radians), Math.cos(radians)]
+                : [
+                      -selectedArcElement.axisX[0] * Math.sin(radians) +
+                          selectedArcElement.axisY[0] * Math.cos(radians),
+                      -selectedArcElement.axisX[1] * Math.sin(radians) +
+                          selectedArcElement.axisY[1] * Math.cos(radians),
+                  ];
+            const tangentLength = Math.max(1e-9, Math.hypot(tangentWorld[0], tangentWorld[1]));
+            const tangent: Pair = [
+                (tangentWorld[0] / tangentLength) * 7,
+                -(tangentWorld[1] / tangentLength) * 7,
+            ];
             startScreen = [startScreen[0] - tangent[0], startScreen[1] - tangent[1]];
             endScreen = [endScreen[0] + tangent[0], endScreen[1] + tangent[1]];
         }
 
         const editHandles: ArcHandle[] = ([
-            { control: "center", handle: selectedCircularArc.center, screen: project(selectedCircularArc.center) },
+            { control: "center", handle: selectedArcElement.center, screen: project(selectedArcElement.center) },
             { control: "start", handle: start, screen: startScreen },
             { control: "end", handle: end, screen: endScreen },
         ] as const).map((handle) => ({
             ...handle,
-            elementId: selectedCircularArc.id,
-            state: isArcControl(selectedArcControl, selectedCircularArc.id, handle.control)
+            elementId: selectedArcElement.id,
+            state: isArcControl(selectedArcControl, selectedArcElement.id, handle.control)
                 ? "selected"
-                : isArcControl(hoveredArcControl, selectedCircularArc.id, handle.control)
+                : isArcControl(hoveredArcControl, selectedArcElement.id, handle.control)
                   ? "hovered"
                   : "default",
         }));
+        const points = selectedArcElement.kind === "elliptical-arc"
+            ? Array.from({ length: 65 }, (_, index) =>
+                  project(selectedArcPoint(selectedArcElement, (index / 64) * 360)),
+              )
+            : undefined;
         return {
-            center: project(selectedCircularArc.center),
-            radius: Math.abs(selectedCircularArc.radius * scale),
+            center: project(selectedArcElement.center),
+            radius: selectedArcElement.kind === "arc"
+                ? Math.abs(selectedArcElement.radius * scale)
+                : undefined,
+            points,
             handles: editHandles,
             editHandles,
-            elementId: selectedCircularArc.id,
+            elementId: selectedArcElement.id,
+            radiusEditable: selectedArcElement.kind === "arc",
         };
     });
 
     const rotationControl = $derived.by(() => {
         if (
             (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
-            selectedCircularArc ||
             !selectionRect ||
             !selectionGeometryBounds ||
             !hasTransformExtent ||
@@ -615,6 +643,7 @@
         const pointerScreen: Pair = [pointerX, pointerY];
         const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
         const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
+            arcGuide?.radiusEditable === true &&
             isArcGuideAt(pointerScreen, arcGuide);
         const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
@@ -744,6 +773,7 @@
             const pointerScreen: Pair = [pointerX, pointerY];
             const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
             const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
+                arcGuide?.radiusEditable === true &&
                 isArcGuideAt(pointerScreen, arcGuide);
             hoveredArcControl = arcHandle
                 ? { elementId: arcHandle.elementId, control: arcHandle.control }
@@ -1000,6 +1030,7 @@
                 ? {
                       center: arcGuide.center,
                       radius: arcGuide.radius,
+                      points: arcGuide.points,
                       handles: arcGuide.handles.map((handle) => ({
                           control: handle.control,
                           screen: handle.screen,

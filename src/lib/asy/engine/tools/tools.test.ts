@@ -3,7 +3,7 @@ import { createTool, type ToolContext } from "./index";
 import { History } from "../history";
 import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
-import { createArc, createCircle, createPath, makePath } from "../../scene/factory";
+import { createArc, createCircle, createEllipticalArc, createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
 import { pathCommands } from "../../scene/path-geometry";
 import type { Pair, Scene } from "../../scene/types";
@@ -1084,6 +1084,98 @@ describe("SelectTool", () => {
             radius: 0.5,
             angle1: 20,
             angle2: 200,
+        });
+    });
+
+    test("anisotropic bounding-box resize converts an arc to an editable elliptical arc", () => {
+        const arc = createArc([0, 0], 1, 0, 90);
+        const scene = { elements: [arc] };
+        const resizeCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "resize",
+                anchor: [-1, -1],
+                handle: [1, 1],
+                axes: { x: true, y: true },
+                minimumScale: [0.1, 0.1],
+            },
+        };
+        const resize = createTool("select");
+        resize.onPointerDown(scene, [1, 1], resizeCtx);
+        const resized = resize.onPointerUp(scene, [3, 1], resizeCtx).commit!;
+        expect(resized.elements[0]).toMatchObject({
+            kind: "elliptical-arc",
+            center: [1, 0],
+            axisX: [2, 0],
+            axisY: [0, 1],
+            angle1: 0,
+            angle2: 90,
+        });
+
+        const elliptical = resized.elements[0];
+        const endpointCtx: ToolContext = {
+            ...ctx,
+            selection: [elliptical.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: elliptical.id,
+                control: "end",
+                handle: [1, 1],
+                minimumRadius: 0.25,
+            },
+        };
+        const endpoint = createTool("select");
+        endpoint.onPointerDown(resized, [1, 1], endpointCtx);
+        expect(endpoint.onPointerUp(resized, [-1, 0], endpointCtx).commit?.elements[0]).toMatchObject({
+            kind: "elliptical-arc",
+            center: [1, 0],
+            axisX: [2, 0],
+            axisY: [0, 1],
+            angle1: 0,
+            angle2: 180,
+        });
+    });
+
+    test("elliptical arc center and endpoint controls use affine parameter space", () => {
+        const arc = createEllipticalArc([2, 3], [3, 1], [-1, 2], 0, 180);
+        const scene = { elements: [arc] };
+        const centerCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "center",
+                handle: arc.center,
+                minimumRadius: 0.25,
+            },
+        };
+        const center = createTool("select");
+        center.onPointerDown(scene, [2, 3], centerCtx);
+        expect(center.onPointerUp(scene, [4, 6], centerCtx).commit?.elements[0]).toMatchObject({
+            kind: "elliptical-arc",
+            center: [4, 6],
+            axisX: [3, 1],
+            axisY: [-1, 2],
+        });
+
+        const startCtx: ToolContext = {
+            ...centerCtx,
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "start",
+                handle: [5, 4],
+                minimumRadius: 0.25,
+            },
+        };
+        const start = createTool("select");
+        start.onPointerDown(scene, [5, 4], startCtx);
+        expect(start.onPointerUp(scene, [1, 5], startCtx).commit?.elements[0]).toMatchObject({
+            kind: "elliptical-arc",
+            angle1: 90,
+            angle2: 180,
         });
     });
 

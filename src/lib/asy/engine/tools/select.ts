@@ -1,4 +1,4 @@
-import type { Pair, Scene } from "../../scene/types";
+import type { ArcElement, EllipticalArcElement, Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { hitTest } from "../hit-test";
@@ -13,6 +13,21 @@ import {
     type ToolContext,
     type ToolResult,
 } from "./types";
+
+function arcParameterAngle(element: ArcElement | EllipticalArcElement, point: Pair): number | null {
+    const dx = point[0] - element.center[0];
+    const dy = point[1] - element.center[1];
+    if (element.kind === "arc") {
+        if (Math.hypot(dx, dy) <= 1e-12) return null;
+        return Math.atan2(dy, dx);
+    }
+    const determinant = element.axisX[0] * element.axisY[1] - element.axisX[1] * element.axisY[0];
+    if (Math.abs(determinant) <= 1e-12) return null;
+    const localX = (dx * element.axisY[1] - dy * element.axisY[0]) / determinant;
+    const localY = (-dx * element.axisX[1] + dy * element.axisX[0]) / determinant;
+    if (Math.hypot(localX, localY) <= 1e-12) return null;
+    return Math.atan2(localY, localX);
+}
 
 type ShapeTransformGesture = Exclude<SelectionTransformGesture, { kind: "move" }>;
 
@@ -249,7 +264,10 @@ export class SelectTool implements Tool {
         if (this.transform.kind === "arc") {
             const { elementId, control, handle, minimumRadius } = this.transform;
             const element = scene.elements.find(({ id }) => id === elementId);
-            if (!selected.has(elementId) || element?.kind !== "arc") {
+            if (
+                !selected.has(elementId) ||
+                (element?.kind !== "arc" && element?.kind !== "elliptical-arc")
+            ) {
                 return { scene, changed: false };
             }
 
@@ -262,7 +280,8 @@ export class SelectTool implements Tool {
                 return {
                     scene: changed
                         ? mapElements(scene, (candidate) =>
-                              candidate.id === elementId && candidate.kind === "arc"
+                              candidate.id === elementId &&
+                              (candidate.kind === "arc" || candidate.kind === "elliptical-arc")
                                   ? { ...candidate, center: nextCenter }
                                   : candidate,
                           )
@@ -272,6 +291,7 @@ export class SelectTool implements Tool {
             }
 
             if (control === "radius") {
+                if (element.kind !== "arc") return { scene, changed: false };
                 const radius = Math.max(minimumRadius, distance(element.center, pointer));
                 const changed = Math.abs(radius - element.radius) > 1e-9;
                 return {
@@ -286,14 +306,11 @@ export class SelectTool implements Tool {
                 };
             }
 
-            const startPointerAngle = Math.atan2(
-                this.dragStart[1] - element.center[1],
-                this.dragStart[0] - element.center[0],
-            );
-            const pointerAngle = Math.atan2(
-                pointer[1] - element.center[1],
-                pointer[0] - element.center[0],
-            );
+            const startPointerAngle = arcParameterAngle(element, this.dragStart);
+            const pointerAngle = arcParameterAngle(element, pointer);
+            if (startPointerAngle === null || pointerAngle === null) {
+                return { scene, changed: false };
+            }
             const delta = ((pointerAngle - startPointerAngle) * 180) / Math.PI;
             if (Math.abs(delta) <= 1e-9) return { scene, changed: false };
 
@@ -308,7 +325,8 @@ export class SelectTool implements Tool {
 
             return {
                 scene: mapElements(scene, (candidate) =>
-                    candidate.id === elementId && candidate.kind === "arc"
+                    candidate.id === elementId &&
+                    (candidate.kind === "arc" || candidate.kind === "elliptical-arc")
                         ? {
                               ...candidate,
                               angle1: nextStart,

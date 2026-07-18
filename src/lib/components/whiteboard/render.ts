@@ -70,16 +70,36 @@ export interface RenderArcHandle extends RenderResizeHandle {
 
 export interface RenderArcGuide {
     center: Pair;
-    radius: number;
+    radius?: number;
+    points?: Pair[];
     handles: RenderArcHandle[];
 }
 
 export function isArcGuideAt(
     point: Pair,
-    guide: Pick<RenderArcGuide, "center" | "radius"> | null,
+    guide: Pick<RenderArcGuide, "center" | "radius" | "points"> | null,
     tolerance = 8,
 ): boolean {
-    return guide !== null && Math.abs(
+    if (!guide) return false;
+    if (guide.points && guide.points.length > 1) {
+        for (let index = 1; index < guide.points.length; index++) {
+            const a = guide.points[index - 1];
+            const b = guide.points[index];
+            const dx = b[0] - a[0];
+            const dy = b[1] - a[1];
+            const lengthSquared = dx * dx + dy * dy;
+            const t = lengthSquared <= 1e-12
+                ? 0
+                : Math.max(0, Math.min(1,
+                      ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / lengthSquared,
+                  ));
+            if (Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy) <= tolerance) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return guide.radius !== undefined && Math.abs(
         Math.hypot(point[0] - guide.center[0], point[1] - guide.center[1]) - guide.radius,
     ) <= tolerance;
 }
@@ -487,13 +507,19 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.lineWidth = 1.25;
         context.setLineDash([5, 4]);
         context.beginPath();
-        context.arc(
-            overlay.arcGuide.center[0],
-            overlay.arcGuide.center[1],
-            overlay.arcGuide.radius,
-            0,
-            Math.PI * 2,
-        );
+        const guidePoints = overlay.arcGuide.points;
+        if (guidePoints && guidePoints.length > 0) {
+            context.moveTo(guidePoints[0][0], guidePoints[0][1]);
+            for (const point of guidePoints.slice(1)) context.lineTo(point[0], point[1]);
+        } else if (overlay.arcGuide.radius !== undefined) {
+            context.arc(
+                overlay.arcGuide.center[0],
+                overlay.arcGuide.center[1],
+                overlay.arcGuide.radius,
+                0,
+                Math.PI * 2,
+            );
+        }
         context.stroke();
         context.globalAlpha = 1;
         context.setLineDash([]);
