@@ -49,6 +49,9 @@
     const project = $derived.by<Project>(
         () => (p: Pair) => [origin[0] + p[0] * scale, origin[1] - p[1] * scale],
     );
+    // Scene geometry stays in asy/world space. The SVG group below applies the
+    // camera in one operation, avoiding a full path-string rebuild on pan/zoom.
+    const worldProject: Project = (p) => [p[0], p[1]];
     const activeSelection = $derived(store.selectionPreview ?? store.selection);
     const selectedIds = $derived(new SvelteSet(activeSelection));
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
@@ -546,9 +549,16 @@
                 {/each}
             {/if}
 
-            {#each store.displayScene.elements as element (element.id)}
-                <SceneElement {element} {project} {scale} selected={selectedIds.has(element.id)} />
-            {/each}
+            <g transform={`translate(${origin[0]} ${origin[1]}) scale(${scale} ${-scale})`}>
+                {#each store.displayScene.elements as element (element.id)}
+                    <SceneElement
+                        {element}
+                        project={worldProject}
+                        {scale}
+                        selected={selectedIds.has(element.id)}
+                    />
+                {/each}
+            </g>
 
             {#each previewElementRects as rect, index (`${index}-${rect.x}-${rect.y}`)}
                 <rect

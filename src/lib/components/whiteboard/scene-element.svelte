@@ -30,6 +30,7 @@
         stroke-opacity={style.opacity}
         stroke-linejoin="round"
         stroke-linecap="round"
+        vector-effect="non-scaling-stroke"
     />
     {#if selected}
         <path
@@ -40,6 +41,7 @@
             stroke-opacity="0.25"
             stroke-linejoin="round"
             stroke-linecap="round"
+            vector-effect="non-scaling-stroke"
         />
     {/if}
 {:else if element.kind === "fill"}
@@ -52,18 +54,20 @@
         stroke-width={element.drawPen
             ? penStroke(element.drawPen).strokeWidth
             : 0}
+        vector-effect="non-scaling-stroke"
     />
 {:else if element.kind === "circle"}
     {@const c = project(element.center)}
     <circle
         cx={c[0]}
         cy={c[1]}
-        r={element.radius * scale}
+        r={element.radius}
         fill="none"
         stroke={selected ? selectStroke : style.stroke}
         stroke-width={style.strokeWidth}
         stroke-dasharray={style.dasharray}
         stroke-opacity={style.opacity}
+        vector-effect="non-scaling-stroke"
     />
 {:else if element.kind === "arc"}
     <path
@@ -79,24 +83,26 @@
         stroke-width={style.strokeWidth}
         stroke-dasharray={style.dasharray}
         stroke-linecap="round"
+        vector-effect="non-scaling-stroke"
     />
 {:else if element.kind === "dot"}
     {@const d = project(element.at)}
     <circle
         cx={d[0]}
         cy={d[1]}
-        r={selected ? 5 : 3.5}
+        r={(selected ? 5 : 3.5) / scale}
         fill={selected ? selectStroke : style.stroke}
     />
 {:else if element.kind === "label"}
     {@const l = project(element.at)}
     <text
-        x={l[0]}
-        y={l[1]}
+        x="0"
+        y="0"
         fill={selected ? selectStroke : style.stroke}
-        font-size="14"
+        font-size={14 / scale}
         text-anchor="middle"
         dominant-baseline="middle"
+        transform={`translate(${l[0]} ${l[1]}) scale(1 -1)`}
         class="select-none">{element.text.replaceAll("$", "")}</text
     >
 {/if}
