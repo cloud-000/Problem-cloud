@@ -13,6 +13,7 @@ const ctx: ToolContext = {
     tolerance: 0.5,
     penTapTolerance: 0.05,
     strokeProcessing: { ...DEFAULT_STROKE_PROCESSING_OPTIONS },
+    sceneUnitsPerPixel: 0.025,
     selection: [],
     lineContinuation: null,
     promptLabel: () => "$P$",
@@ -148,7 +149,7 @@ describe("PenTool", () => {
         expect(tapCommit?.elements).toHaveLength(1);
         expect(tapCommit?.elements[0].kind).toBe("dot");
         expect(strokeCommit?.elements).toHaveLength(1);
-        expect(strokeCommit?.elements[0].kind).toBe("path");
+        expect(strokeCommit?.elements[0].kind).toBe("fill");
     });
 
     test("a tap commit is one undoable history step", () => {
@@ -179,16 +180,20 @@ describe("PenTool", () => {
         ]);
     });
 
-    test("freehand simplifies a straight drag to endpoints", () => {
+    test("solid freehand commits a finite cyclic brush silhouette", () => {
         const tool = createTool("pen");
         let s: Scene = emptyScene();
         tool.onPointerDown(s, [0, 0], ctx);
         for (const x of [1, 2, 3, 4]) tool.onPointerMove(s, [x, 0.01], ctx);
         const up = tool.onPointerUp(s, [5, 0], ctx);
         const el = up.commit!.elements[0];
-        expect(el.kind).toBe("path");
-        // A near-straight stroke collapses to 2 nodes.
-        expect(el.kind === "path" && el.path.nodes.length).toBe(2);
+        expect(el.kind).toBe("fill");
+        if (el.kind !== "fill") return;
+        expect(el.path.cyclic).toBe(true);
+        expect(el.path.joins).toHaveLength(el.path.nodes.length);
+        expect(el.path.nodes.length).toBeGreaterThan(4);
+        expect(el.path.nodes.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
+        expect(el.pen).toEqual({ namedColor: "red", opacity: 1 });
     });
 
     test("processes a sample batch into one preview with the same raw geometry", () => {
@@ -205,9 +210,9 @@ describe("PenTool", () => {
 
         const batchedElement = preview?.preview?.elements[0];
         const individualElement = last?.preview?.elements[0];
-        expect(batchedElement).toMatchObject({ kind: "path" });
-        expect(batchedElement?.kind === "path" ? batchedElement.path : null).toEqual(
-            individualElement?.kind === "path" ? individualElement.path : null,
+        expect(batchedElement).toMatchObject({ kind: "fill" });
+        expect(batchedElement?.kind === "fill" ? batchedElement.path : null).toEqual(
+            individualElement?.kind === "fill" ? individualElement.path : null,
         );
     });
 
@@ -222,8 +227,9 @@ describe("PenTool", () => {
         reference.onPointerDown(scene, [0, 0], ctx);
         reference.onPointerMoves?.(scene, [[1, 0.2], [2, 0.1]], ctx);
         const expected = reference.onPointerUp(scene, [3, 1], ctx).commit?.elements[0];
-        expect(committed?.kind === "path" ? committed.path : null).toEqual(
-            expected?.kind === "path" ? expected.path : null,
+        expect(committed?.kind).toBe("fill");
+        expect(committed?.kind === "fill" ? committed.path : null).toEqual(
+            expected?.kind === "fill" ? expected.path : null,
         );
     });
 
@@ -236,7 +242,7 @@ describe("PenTool", () => {
         expect(tool.onPointerUp(scene, [3, 1], ctx, [[2.5, 1]])).toEqual({});
     });
 
-    test("live and committed strokes use the same processed mixed-join geometry", () => {
+    test("live and committed solid strokes use the same brush geometry", () => {
         const tool = createTool("pen");
         const scene = emptyScene();
         tool.onPointerDown(scene, [0, 0], ctx);
@@ -247,9 +253,9 @@ describe("PenTool", () => {
         const previewElement = preview.preview?.elements[0];
         const commitElement = commit.commit?.elements[0];
 
-        expect(previewElement?.kind).toBe("path");
-        expect(commitElement?.kind).toBe("path");
-        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(previewElement?.kind).toBe("fill");
+        expect(commitElement?.kind).toBe("fill");
+        if (previewElement?.kind !== "fill" || commitElement?.kind !== "fill") return;
         expect(commitElement.id).toBe(previewElement.id);
         expect(commitElement.path).toEqual(previewElement.path);
     });
@@ -276,9 +282,9 @@ describe("PenTool", () => {
         const previewElement = preview?.preview?.elements[0];
         const commitElement = commit.commit?.elements[0];
 
-        expect(previewElement?.kind).toBe("path");
-        expect(commitElement?.kind).toBe("path");
-        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
+        expect(previewElement?.kind).toBe("fill");
+        expect(commitElement?.kind).toBe("fill");
+        if (previewElement?.kind !== "fill" || commitElement?.kind !== "fill") return;
         expect(commitElement.path).toEqual(previewElement.path);
     });
 
@@ -288,6 +294,7 @@ describe("PenTool", () => {
             const tool = createTool("pen");
             const options: ToolContext = {
                 ...ctx,
+                pen: { ...ctx.pen, dash: "dashed" },
                 strokeProcessing: {
                     sampleSpacing: 0,
                     simplifyTolerance: 0,
@@ -311,6 +318,7 @@ describe("PenTool", () => {
         const scene = emptyScene();
         const exact = {
             ...ctx,
+            pen: { ...ctx.pen, dash: "dashed" as const },
             strokeProcessing: {
                 ...ctx.strokeProcessing,
                 sampleSpacing: 0,

@@ -22,9 +22,9 @@
     ];
 
     const WIDTHS: { value: number; label: string }[] = [
-        { value: 1, label: "S" },
-        { value: 2, label: "M" },
-        { value: 4, label: "L" },
+        { value: 3, label: "S" },
+        { value: 6, label: "M" },
+        { value: 12, label: "L" },
     ];
 </script>
 
@@ -119,7 +119,7 @@
 
         {#each WIDTHS as w (w.value)}
             <Button
-                variant={(store.pen.lineWidth ?? 1) === w.value ? "default" : "ghost"}
+                variant={(store.pen.lineWidth ?? 3) === w.value ? "default" : "ghost"}
                 size="icon-sm"
                 title={"Width " + w.label}
                 onclick={() => setWidth(w.value)}

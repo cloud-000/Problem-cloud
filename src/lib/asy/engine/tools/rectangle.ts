@@ -1,23 +1,25 @@
 import type { Pair, Scene } from "../../scene/types";
 import { createPath, makePath } from "../../scene/factory";
-import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
+import { addElement, NO_RESULT, pointerPoint, type PointerInput, type Tool, type ToolContext, type ToolResult } from "./types";
 
 /** Axis-aligned rectangle via press-drag-release. */
 export class RectangleTool implements Tool {
     readonly kind = "rectangle" as const;
     private start: Pair | null = null;
 
-    onPointerDown(scene: Scene, p: Pair): ToolResult {
-        this.start = p;
+    onPointerDown(scene: Scene, input: PointerInput): ToolResult {
+        this.start = pointerPoint(input);
         return { preview: scene };
     }
 
-    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerMove(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (!this.start) return NO_RESULT;
         return { preview: addElement(scene, this.createRectangle(this.start, p, ctx)) };
     }
 
-    onPointerUp(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerUp(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (!this.start) return NO_RESULT;
         const start = this.start;
         this.start = null;

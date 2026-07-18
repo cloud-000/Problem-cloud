@@ -127,6 +127,40 @@ describe("adaptive pen styles", () => {
 });
 
 describe("Canvas 2D rendering", () => {
+    test("reuses cached Path2D geometry until the path or viewport changes", () => {
+        const originalPath2D = Object.getOwnPropertyDescriptor(globalThis, "Path2D");
+        let constructions = 0;
+        class MockPath2D {
+            constructor() { constructions++; }
+            moveTo() {}
+            lineTo() {}
+            bezierCurveTo() {}
+            closePath() {}
+        }
+        Object.defineProperty(globalThis, "Path2D", { configurable: true, value: MockPath2D });
+        try {
+            const path = makePath([[0, 0], [1, 0], [0, 1]], { cyclic: true });
+            const snapshot: WhiteboardRenderSnapshot = {
+                scene: { elements: [{ id: "path-cache-test", kind: "fill", path }] },
+                viewport: { width: 200, height: 200, scale: 40, origin: [100, 100] },
+                showGrid: false,
+                transparent: false,
+                palette,
+            };
+            const context = new RecordingContext();
+            renderWhiteboard(context as unknown as CanvasRenderingContext2D, snapshot);
+            renderWhiteboard(context as unknown as CanvasRenderingContext2D, snapshot);
+            expect(constructions).toBe(1);
+
+            path.nodes[1] = [2, 0];
+            renderWhiteboard(context as unknown as CanvasRenderingContext2D, snapshot);
+            expect(constructions).toBe(2);
+        } finally {
+            if (originalPath2D) Object.defineProperty(globalThis, "Path2D", originalPath2D);
+            else Reflect.deleteProperty(globalThis, "Path2D");
+        }
+    });
+
     test("renders every editable element and high-DPI overlay in order", () => {
         const path = makePath([[0, 0], [1, 1], [2, 0]], { join: ".." });
         const scene: Scene = {

@@ -1,5 +1,3 @@
-import type { Pair } from "../scene/types";
-
 export type FrameScheduler = (callback: () => void) => number;
 export type FrameCanceller = (handle: number) => void;
 
@@ -8,17 +6,17 @@ export type FrameCanceller = (handle: number) => void;
  * `flushWith` lets pointer-up synchronously consume the pending batch without
  * first generating a redundant preview.
  */
-export class PointerSampleBatcher {
-    private pending: Pair[] = [];
+export class PointerSampleBatcher<T> {
+    private pending: T[] = [];
     private frame: number | null = null;
 
     constructor(
-        private readonly onBatch: (points: readonly Pair[]) => void,
+        private readonly onBatch: (points: readonly T[]) => void,
         private readonly schedule: FrameScheduler,
         private readonly cancelFrame: FrameCanceller,
     ) {}
 
-    add(points: readonly Pair[]): void {
+    add(points: readonly T[]): void {
         if (points.length === 0) return;
         this.pending.push(...points);
         if (this.frame !== null) return;
@@ -33,7 +31,7 @@ export class PointerSampleBatcher {
         return this.flushWith(this.onBatch);
     }
 
-    flushWith(consumer: (points: readonly Pair[]) => void): boolean {
+    flushWith(consumer: (points: readonly T[]) => void): boolean {
         this.cancelScheduledFrame();
         const batch = this.takePending();
         if (batch.length === 0) return false;
@@ -52,7 +50,7 @@ export class PointerSampleBatcher {
         this.frame = null;
     }
 
-    private takePending(): Pair[] {
+    private takePending(): T[] {
         const batch = this.pending;
         this.pending = [];
         return batch;

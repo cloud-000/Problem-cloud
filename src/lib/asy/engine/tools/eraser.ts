@@ -1,6 +1,6 @@
 import type { Pair, Scene } from "../../scene/types";
 import { hitTest } from "../hit-test";
-import { NO_RESULT, removeElementById, type Tool, type ToolContext, type ToolResult } from "./types";
+import { NO_RESULT, pointerPoint, removeElementById, type PointerInput, type Tool, type ToolContext, type ToolResult } from "./types";
 
 /**
  * Removes elements under the pointer. A press-drag erases everything the cursor
@@ -13,14 +13,16 @@ export class EraserTool implements Tool {
     private working: Scene | null = null;
     private changed = false;
 
-    onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         this.erasing = true;
         this.working = scene;
         this.changed = false;
         return this.eraseAt(p, ctx);
     }
 
-    onPointerMove(_scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerMove(_scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (!this.erasing) return NO_RESULT;
         return this.eraseAt(p, ctx);
     }

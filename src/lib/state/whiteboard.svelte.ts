@@ -27,6 +27,7 @@ import {
     type ArcGuide,
     DEFAULT_STROKE_PROCESSING_OPTIONS,
     type StrokeProcessingOptions,
+    type PointerInput,
 } from "$lib/asy/engine";
 import { History } from "$lib/asy/engine";
 
@@ -39,7 +40,7 @@ export type WhiteboardToolKind = ToolKind | "pan";
 export class WhiteboardStore {
     scene = $state<Scene>(emptyScene());
     toolKind = $state<WhiteboardToolKind>("select");
-    pen = $state<Pen>({ namedColor: "black", lineWidth: 1 });
+    pen = $state<Pen>({ namedColor: "black", lineWidth: 3 });
     selection = $state<string[]>([]);
     /** Candidate selection while a marquee drag is in progress. */
     selectionPreview = $state<string[] | null>(null);
@@ -61,6 +62,8 @@ export class WhiteboardStore {
     /** Freehand cleanup controls. The view keeps distance values in sync with
      *  its current px->scene scale; scalar values remain framework defaults. */
     strokeProcessing: StrokeProcessingOptions = { ...DEFAULT_STROKE_PROCESSING_OPTIONS };
+    /** Scene-space distance represented by one CSS pixel at the active zoom. */
+    sceneUnitsPerPixel = 1 / 40;
     /** Supplied by the view so the label tool can prompt for text. */
     promptLabel?: (at: readonly [number, number]) => string | null;
 
@@ -89,17 +92,17 @@ export class WhiteboardStore {
 
     // --- pointer plumbing (the view maps screen->asy before calling these) ----
 
-    pointerDown(p: readonly [number, number], selectionTransform?: SelectionTransformGesture): void {
+    pointerDown(p: PointerInput, selectionTransform?: SelectionTransformGesture): void {
         this.#dispatch(this.#tool.onPointerDown(this.scene, p, this.#ctx({ selectionTransform })));
     }
-    pointerMove(p: readonly [number, number], shiftKey = false): void {
+    pointerMove(p: PointerInput, shiftKey = false): void {
         this.#dispatch(this.#tool.onPointerMove(
             this.scene,
             p,
             this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey }),
         ));
     }
-    pointerMoves(points: readonly (readonly [number, number])[], shiftKey = false): void {
+    pointerMoves(points: readonly PointerInput[], shiftKey = false): void {
         if (points.length === 0) return;
         const ctx = this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey });
         const result = this.#tool.onPointerMoves
@@ -108,9 +111,9 @@ export class WhiteboardStore {
         this.#dispatch(result);
     }
     pointerUp(
-        p: readonly [number, number],
+        p: PointerInput,
         shiftKey = false,
-        pendingMoves: readonly (readonly [number, number])[] = [],
+        pendingMoves: readonly PointerInput[] = [],
     ): void {
         this.#dispatch(this.#tool.onPointerUp(
             this.scene,
@@ -134,6 +137,7 @@ export class WhiteboardStore {
             tolerance: this.tolerance,
             penTapTolerance: this.penTapTolerance,
             strokeProcessing: { ...this.strokeProcessing },
+            sceneUnitsPerPixel: this.sceneUnitsPerPixel,
             selection: $state.snapshot(this.selection) as string[],
             lineContinuation: this.lineContinuation
                 ? ($state.snapshot(this.lineContinuation) as LineContinuation)

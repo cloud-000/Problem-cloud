@@ -6,6 +6,8 @@ import { distance, normalizeDeg, rotateElement, scaleElementBy, translateElement
 import {
     mapElements,
     NO_RESULT,
+    pointerPoint,
+    type PointerInput,
     type SelectionTransformGesture,
     type Tool,
     type ToolContext,
@@ -29,7 +31,8 @@ export class SelectTool implements Tool {
     private base: Scene | null = null;
     private moved = false;
 
-    onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (ctx.lineContinuation) {
             const source = scene.elements.find(({ id }) => id === ctx.lineContinuation?.elementId);
             if (source?.kind !== "path") {
@@ -102,7 +105,8 @@ export class SelectTool implements Tool {
         return { selection: this.movingIds, selectionPreview: null, preview: scene, marquee: null };
     }
 
-    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerMove(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (ctx.lineContinuation && !this.dragStart && !this.marqueeStart && !this.transform) {
             const source = scene.elements.find(({ id }) => id === ctx.lineContinuation?.elementId);
             if (source?.kind !== "path") {
@@ -142,7 +146,8 @@ export class SelectTool implements Tool {
         return NO_RESULT;
     }
 
-    onPointerUp(_scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerUp(_scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (this.transform && this.dragStart && this.base) {
             const transformed = this.transformScene(this.base, this.movingIds, p, ctx);
             this.reset();

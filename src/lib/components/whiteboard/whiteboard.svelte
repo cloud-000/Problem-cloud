@@ -12,7 +12,7 @@
         type SceneElement as SceneElementModel,
     } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { PointerSampleBatcher } from "$lib/asy/engine";
+    import { PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
     import { Theme } from "$lib/utils/Theme.svelte";
     import {
         registerCanvasSnapshot,
@@ -74,7 +74,7 @@
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
-    const penSamples = new PointerSampleBatcher(
+    const penSamples = new PointerSampleBatcher<PointerSample>(
         (points) => {
             if (interaction === "draw" && store.toolKind === "pen") store.pointerMoves(points);
         },
@@ -481,6 +481,7 @@
     function syncToolScale() {
         store.tolerance = 8 / scale;
         store.penTapTolerance = 2 / scale;
+        store.sceneUnitsPerPixel = 1 / scale;
         store.strokeProcessing = {
             ...store.strokeProcessing,
             sampleSpacing: 1.5 / scale,
@@ -511,6 +512,18 @@
     function toAsyAt(clientX: number, clientY: number): Pair {
         const [px, py] = localPoint(clientX, clientY);
         return [(px - origin[0]) / scale, (origin[1] - py) / scale];
+    }
+
+    function pointerSample(e: PointerEvent): PointerSample {
+        const pressure = e.pointerType === "pen" && Number.isFinite(e.pressure) && e.pressure > 0
+            ? Math.max(0, Math.min(1, e.pressure))
+            : undefined;
+        return {
+            point: toAsyAt(e.clientX, e.clientY),
+            timestamp: e.timeStamp,
+            pointerType: e.pointerType || "mouse",
+            ...(pressure === undefined ? {} : { pressure }),
+        };
     }
 
     function capture(id: number) {
@@ -690,7 +703,7 @@
 
         interaction = "draw";
         syncToolScale();
-        store.pointerDown(toAsyAt(e.clientX, e.clientY));
+        store.pointerDown(store.toolKind === "pen" ? pointerSample(e) : toAsyAt(e.clientX, e.clientY));
     }
 
     function onPointerMove(e: PointerEvent) {
@@ -747,11 +760,11 @@
                 typeof e.getCoalescedEvents === "function"
                 ? e.getCoalescedEvents()
                 : [];
-            const points = (samples.length > 0 ? samples : [e]).map((sample) =>
-                toAsyAt(sample.clientX, sample.clientY)
-            );
-            if (interaction === "draw" && store.toolKind === "pen") penSamples.add(points);
-            else store.pointerMoves(points, e.shiftKey);
+            if (interaction === "draw" && store.toolKind === "pen") {
+                penSamples.add((samples.length > 0 ? samples : [e]).map(pointerSample));
+            } else {
+                store.pointerMoves([toAsyAt(e.clientX, e.clientY)], e.shiftKey);
+            }
         }
     }
 
@@ -768,7 +781,9 @@
         }
         if (e.pointerId !== pointerId) return;
         if (interaction === "draw" || interaction === "transform") {
-            const point = toAsyAt(e.clientX, e.clientY);
+            const point = interaction === "draw" && store.toolKind === "pen"
+                ? pointerSample(e)
+                : toAsyAt(e.clientX, e.clientY);
             if (interaction === "draw" && store.toolKind === "pen") {
                 const flushed = penSamples.flushWith((points) =>
                     store.pointerUp(point, e.shiftKey, points)

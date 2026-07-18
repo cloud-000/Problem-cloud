@@ -128,6 +128,8 @@ const DASH: Record<string, number[]> = {
 };
 
 const canvasSnapshots = new WeakMap<HTMLCanvasElement, WhiteboardRenderSnapshot>();
+const canvasPathCache = new Map<string, { signature: string; path: Path2D }>();
+const MAX_CACHED_PATHS = 2048;
 
 export function registerCanvasSnapshot(canvas: HTMLCanvasElement, snapshot: WhiteboardRenderSnapshot): void {
     canvasSnapshots.set(canvas, snapshot);
@@ -256,17 +258,65 @@ export function gridLines(viewport: WhiteboardViewport): { vertical: number[]; h
     return { vertical, horizontal };
 }
 
-function tracePath(context: CanvasRenderingContext2D, commands: ProjectedPathCommand[]): void {
-    context.beginPath();
+type PathTarget = Pick<CanvasRenderingContext2D, "moveTo" | "lineTo" | "bezierCurveTo" | "closePath">;
+
+function appendPath(target: PathTarget, commands: ProjectedPathCommand[]): void {
     for (const command of commands) {
-        if (command.kind === "move") context.moveTo(command.point[0], command.point[1]);
-        else if (command.kind === "line") context.lineTo(command.point[0], command.point[1]);
+        if (command.kind === "move") target.moveTo(command.point[0], command.point[1]);
+        else if (command.kind === "line") target.lineTo(command.point[0], command.point[1]);
         else if (command.kind === "curve") {
-            context.bezierCurveTo(
+            target.bezierCurveTo(
                 command.c1[0], command.c1[1], command.c2[0], command.c2[1], command.point[0], command.point[1],
             );
-        } else context.closePath();
+        } else target.closePath();
     }
+}
+
+function tracePath(context: CanvasRenderingContext2D, commands: ProjectedPathCommand[]): void {
+    context.beginPath();
+    appendPath(context, commands);
+}
+
+function mixHash(hash: number, value: number): number {
+    hash ^= Math.round(value * 1_000_000);
+    return Math.imul(hash, 16_777_619);
+}
+
+function pathSignature(path: Path, viewport: WhiteboardViewport): string {
+    let hash = 2_166_136_261;
+    for (const [x, y] of path.nodes) {
+        hash = mixHash(hash, x);
+        hash = mixHash(hash, y);
+    }
+    for (const join of path.joins) hash = mixHash(hash, join === ".." ? 2 : 1);
+    hash = mixHash(hash, path.cyclic ? 1 : 0);
+    return [
+        hash >>> 0,
+        path.nodes.length,
+        viewport.scale,
+        viewport.origin[0],
+        viewport.origin[1],
+    ].join(":");
+}
+
+function cachedPath(
+    id: string,
+    path: Path,
+    viewport: WhiteboardViewport,
+    project: Project,
+): Path2D | null {
+    if (typeof Path2D === "undefined") return null;
+    const signature = pathSignature(path, viewport);
+    const cached = canvasPathCache.get(id);
+    if (cached?.signature === signature) return cached.path;
+
+    const canvasPath = new Path2D();
+    appendPath(canvasPath, projectedPath(path, project));
+    if (canvasPathCache.size >= MAX_CACHED_PATHS && !canvasPathCache.has(id)) {
+        canvasPathCache.clear();
+    }
+    canvasPathCache.set(id, { signature, path: canvasPath });
+    return canvasPath;
 }
 
 function applyStroke(context: CanvasRenderingContext2D, style: StrokeStyle): void {
@@ -298,24 +348,30 @@ export function drawSceneElement(
     context.save();
 
     if (element.kind === "path") {
-        tracePath(context, projectedPath(element.path, project));
+        const path = cachedPath(element.id, element.path, viewport, project);
+        if (!path) tracePath(context, projectedPath(element.path, project));
         applyStroke(context, style);
-        context.stroke();
+        if (path) context.stroke(path);
+        else context.stroke();
         if (selected) {
             context.strokeStyle = palette.primary;
             context.lineWidth = style.width + 3;
             context.globalAlpha = 0.25;
             context.setLineDash([]);
-            context.stroke();
+            if (path) context.stroke(path);
+            else context.stroke();
         }
     } else if (element.kind === "fill") {
-        tracePath(context, projectedPath(element.path, project));
+        const path = cachedPath(element.id, element.path, viewport, project);
+        if (!path) tracePath(context, projectedPath(element.path, project));
         context.fillStyle = style.color;
         context.globalAlpha = element.pen?.opacity ?? 0.85;
-        context.fill();
+        if (path) context.fill(path);
+        else context.fill();
         if (element.drawPen) {
             applyStroke(context, penStroke(element.drawPen, palette));
-            context.stroke();
+            if (path) context.stroke(path);
+            else context.stroke();
         }
     } else if (element.kind === "circle") {
         const center = project(element.center);

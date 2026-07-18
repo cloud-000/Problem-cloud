@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pair } from "../scene/types";
+import type { PointerSample } from "./tools";
 import { PointerSampleBatcher } from "./pointer-sample-batcher";
 
 function harness() {
@@ -7,7 +8,7 @@ function harness() {
     const cancelled: number[] = [];
     const batches: Pair[][] = [];
     let nextHandle = 1;
-    const batcher = new PointerSampleBatcher(
+    const batcher = new PointerSampleBatcher<Pair>(
         (points) => batches.push([...points]),
         (callback) => {
             const handle = nextHandle++;
@@ -52,5 +53,25 @@ describe("PointerSampleBatcher", () => {
         expect(cancelled).toEqual([1]);
         expect(batcher.flush()).toBe(false);
         expect(batches).toEqual([]);
+    });
+
+    test("preserves enriched pointer metadata in order", () => {
+        const callbacks = new Map<number, () => void>();
+        const batches: PointerSample[][] = [];
+        const batcher = new PointerSampleBatcher<PointerSample>(
+            (points) => batches.push([...points]),
+            (callback) => {
+                callbacks.set(1, callback);
+                return 1;
+            },
+            () => {},
+        );
+        const samples: PointerSample[] = [
+            { point: [1, 2], timestamp: 10, pointerType: "pen", pressure: 0.2 },
+            { point: [2, 3], timestamp: 12, pointerType: "pen", pressure: 0.8 },
+        ];
+        batcher.add(samples);
+        callbacks.get(1)?.();
+        expect(batches).toEqual([samples]);
     });
 });

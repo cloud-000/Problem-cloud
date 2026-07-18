@@ -17,6 +17,28 @@
 import type { Pair, Pen, Scene } from "../../scene/types";
 import type { StrokeProcessingOptions } from "../simplify";
 
+/** Pointer data retained for pressure/velocity-sensitive tools. */
+export interface PointerSample {
+    point: Pair;
+    timestamp: number;
+    pointerType: string;
+    /** Normalized hardware pressure in 0..1 when the device reports it. */
+    pressure?: number;
+}
+
+/** Plain pairs remain accepted by the framework-neutral tool tests and API. */
+export type PointerInput = Pair | PointerSample;
+
+export function pointerPoint(input: PointerInput): Pair {
+    return "point" in input ? input.point : input;
+}
+
+export function pointerSample(input: PointerInput, fallbackTimestamp = 0): PointerSample {
+    return "point" in input
+        ? input
+        : { point: input, timestamp: fallbackTimestamp, pointerType: "mouse" };
+}
+
 export interface LineContinuation {
     /** Open path created by the line tool and still accepting nodes. */
     elementId: string;
@@ -87,6 +109,8 @@ export interface ToolContext {
     penTapTolerance: number;
     /** Freehand cleanup controls; distance values are in scene units. */
     strokeProcessing: StrokeProcessingOptions;
+    /** Scene-space distance represented by one CSS pixel at the active zoom. */
+    sceneUnitsPerPixel: number;
     /** Current selected element ids, used by tools that operate on a group. */
     selection: string[];
     /** Connected-path preview handed from the Line tool to Select. */
@@ -122,16 +146,16 @@ export interface ToolResult {
 
 export interface Tool {
     readonly kind: ToolKind;
-    onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult;
-    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult;
+    onPointerDown(scene: Scene, p: PointerInput, ctx: ToolContext): ToolResult;
+    onPointerMove(scene: Scene, p: PointerInput, ctx: ToolContext): ToolResult;
     /** Process a coalesced/frame batch in one tool update when supported. */
-    onPointerMoves?(scene: Scene, points: readonly Pair[], ctx: ToolContext): ToolResult;
+    onPointerMoves?(scene: Scene, points: readonly PointerInput[], ctx: ToolContext): ToolResult;
     onPointerUp(
         scene: Scene,
-        p: Pair,
+        p: PointerInput,
         ctx: ToolContext,
         /** Samples buffered since the last preview, synchronously drained on release. */
-        pendingMoves?: readonly Pair[],
+        pendingMoves?: readonly PointerInput[],
     ): ToolResult;
     /** Abandon any in-progress interaction (e.g. Escape). */
     onCancel(): ToolResult;

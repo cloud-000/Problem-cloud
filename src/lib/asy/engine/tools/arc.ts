@@ -1,7 +1,7 @@
 import type { Pair, Scene } from "../../scene/types";
 import { createArc } from "../../scene/factory";
 import { distance, normalizeDeg } from "../geometry";
-import { addElement, NO_RESULT, type Tool, type ToolContext, type ToolResult } from "./types";
+import { addElement, NO_RESULT, pointerPoint, type PointerInput, type Tool, type ToolContext, type ToolResult } from "./types";
 
 function angleOf(center: Pair, p: Pair): number {
     return normalizeDeg((Math.atan2(p[1] - center[1], p[0] - center[0]) * 180) / Math.PI);
@@ -18,7 +18,8 @@ export class ArcTool implements Tool {
     private angle1 = 0;
     private phase: 0 | 1 | 2 | 3 = 0;
 
-    onPointerDown(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (this.phase === 0) {
             this.center = p;
             this.phase = 1;
@@ -69,7 +70,8 @@ export class ArcTool implements Tool {
         };
     }
 
-    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
+    onPointerMove(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
+        const p = pointerPoint(input);
         if (this.phase === 1) {
             const r = distance(this.center!, p);
             return { preview: scene, arcGuide: { center: this.center!, radius: r } };
