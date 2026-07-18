@@ -93,6 +93,22 @@ describe("RectangleTool", () => {
 });
 
 describe("PenTool", () => {
+    test("live preview uses the current pen style", () => {
+        const tool = createTool("pen");
+        const scene = emptyScene();
+        const styled = {
+            ...ctx,
+            pen: { namedColor: "blue", lineWidth: 4, dash: "dashed" as const },
+        };
+        tool.onPointerDown(scene, [0, 0], styled);
+
+        const preview = tool.onPointerMove(scene, [1, 1], styled);
+
+        expect(preview.preview?.elements).toMatchObject([
+            { kind: "path", pen: styled.pen },
+        ]);
+    });
+
     test("freehand simplifies a straight drag to endpoints", () => {
         const tool = createTool("pen");
         let s: Scene = emptyScene();

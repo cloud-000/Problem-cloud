@@ -19,10 +19,10 @@ export class PenTool implements Tool {
         return { preview: scene };
     }
 
-    onPointerMove(scene: Scene, p: Pair): ToolResult {
+    onPointerMove(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
         if (!this.drawing) return NO_RESULT;
         this.samples.push(p);
-        return { preview: addElement(scene, this.draftPath()) };
+        return { preview: addElement(scene, this.draftPath(ctx.pen)) };
     }
 
     onPointerUp(scene: Scene, p: Pair, ctx: ToolContext): ToolResult {
@@ -44,7 +44,7 @@ export class PenTool implements Tool {
         return { preview: null };
     }
 
-    private draftPath() {
-        return createPath(makePath(this.samples));
+    private draftPath(pen: ToolContext["pen"]) {
+        return createPath(makePath(this.samples), pen);
     }
 }

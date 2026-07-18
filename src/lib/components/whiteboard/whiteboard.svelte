@@ -488,7 +488,13 @@
             panX = panStart.x + e.clientX - panStart.clientX;
             panY = panStart.y + e.clientY - panStart.clientY;
         } else if (interaction === "draw" || interaction === "transform") {
-            store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+            const samples = interaction === "draw" && store.toolKind === "pen" &&
+                typeof e.getCoalescedEvents === "function"
+                ? e.getCoalescedEvents()
+                : [];
+            for (const sample of samples.length > 0 ? samples : [e]) {
+                store.pointerMove(toAsyAt(sample.clientX, sample.clientY), e.shiftKey);
+            }
         }
     }
 
