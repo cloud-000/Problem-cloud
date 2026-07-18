@@ -6,6 +6,7 @@
         { kind: "pan", icon: "pan_tool", title: "Pan canvas" },
         { kind: "pen", icon: "draw", title: "Freehand pen" },
         { kind: "line", icon: "timeline", title: "Line" },
+        { kind: "rectangle", icon: "rectangle", title: "Rectangle" },
         { kind: "arc", icon: "architecture", title: "Compass / arc (3 clicks)" },
         { kind: "point", icon: "fiber_manual_record", title: "Point" },
         { kind: "label", icon: "text_fields", title: "Label" },

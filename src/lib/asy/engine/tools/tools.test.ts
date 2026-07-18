@@ -43,6 +43,46 @@ describe("LineTool", () => {
     });
 });
 
+describe("RectangleTool", () => {
+    test("drag creates a closed four-corner path with a live preview", () => {
+        const tool = createTool("rectangle");
+        const scene = emptyScene();
+        tool.onPointerDown(scene, [1, 2], ctx);
+
+        const preview = tool.onPointerMove(scene, [4, 6], ctx);
+        expect(preview.preview?.elements).toMatchObject([
+            {
+                kind: "path",
+                path: {
+                    nodes: [[1, 2], [4, 2], [4, 6], [1, 6]],
+                    cyclic: true,
+                },
+            },
+        ]);
+
+        const up = tool.onPointerUp(scene, [4, 6], ctx);
+        expect(up.commit?.elements).toMatchObject([
+            {
+                kind: "path",
+                path: {
+                    nodes: [[1, 2], [4, 2], [4, 6], [1, 6]],
+                    joins: ["--", "--", "--", "--"],
+                    cyclic: true,
+                },
+                pen: { namedColor: "red" },
+            },
+        ]);
+        expect(up.selection).toEqual([up.commit?.elements[0].id]);
+    });
+
+    test("a drag with either dimension shorter than tolerance commits nothing", () => {
+        const scene = emptyScene();
+        const tool = createTool("rectangle");
+        tool.onPointerDown(scene, [0, 0], ctx);
+        expect(tool.onPointerUp(scene, [0.1, 4], ctx).commit).toBeUndefined();
+    });
+});
+
 describe("PenTool", () => {
     test("freehand simplifies a straight drag to endpoints", () => {
         const tool = createTool("pen");

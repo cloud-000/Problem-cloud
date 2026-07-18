@@ -18,6 +18,7 @@ export type ToolKind =
     | "select"
     | "pen"
     | "line"
+    | "rectangle"
     | "arc"
     | "point"
     | "label"
