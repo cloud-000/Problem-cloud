@@ -16,6 +16,31 @@ Object.assign(globalThis, { $state: state });
 const { WhiteboardStore } = await import("./whiteboard.svelte");
 
 describe("WhiteboardStore selection gestures", () => {
+    test("switching tools clears the current object selection", () => {
+        const store = new WhiteboardStore({
+            elements: [{ id: "selected", kind: "dot", at: [0, 0] }],
+        });
+        store.selection = ["selected"];
+
+        store.setTool("line");
+
+        expect(store.toolKind).toBe("line");
+        expect(store.selection).toEqual([]);
+    });
+
+    test("the automatic return to select keeps the newly created object selected", () => {
+        const store = new WhiteboardStore();
+        store.setTool("line");
+
+        store.pointerDown([0, 0]);
+        store.pointerMove([4, 0]);
+        store.pointerUp([4, 0]);
+
+        expect(store.toolKind).toBe("select");
+        expect(store.selection).toHaveLength(1);
+        expect(store.scene.elements[0]?.id).toBe(store.selection[0]);
+    });
+
     test("an explicit move gesture drags a selection from empty space inside its box", () => {
         const scene: Scene = {
             elements: [
@@ -60,6 +85,70 @@ describe("WhiteboardStore selection gestures", () => {
         store.undo();
         expect(store.scene.elements[1]).toMatchObject({ kind: "dot", at: [10, 10] });
         expect(store.canUndo).toBe(false);
+    });
+
+    test("solver-routes a direct drag of an unselected smart item", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const store = new WhiteboardStore(created.document);
+
+        store.pointerDown([2, 0]);
+        expect(store.selection).toEqual(["smart"]);
+        store.pointerMove([4, 3]);
+        const preview = store.displayScene.elements[0];
+        if (preview.kind !== "path") throw new Error("missing smart path preview");
+        expect(preview.path.nodes[0][0]).toBeCloseTo(2, 9);
+        expect(preview.path.nodes[0][1]).toBeCloseTo(3, 9);
+        expect(preview.path.nodes[1][0]).toBeCloseTo(6, 9);
+        expect(preview.path.nodes[1][1]).toBeCloseTo(3, 9);
+        store.pointerUp([4, 3]);
+
+        const committed = store.scene.elements[0];
+        if (committed.kind !== "path") throw new Error("missing committed smart path");
+        expect(committed.path.nodes[0][0]).toBeCloseTo(2, 9);
+        expect(committed.path.nodes[0][1]).toBeCloseTo(3, 9);
+        expect(committed.path.nodes[1][0]).toBeCloseTo(6, 9);
+        expect(committed.path.nodes[1][1]).toBeCloseTo(3, 9);
+        expect(store.preview).toBeNull();
+        expect(store.canUndo).toBe(true);
+    });
+
+    test("a direct drag on a selected baked item solver-routes the mixed selection", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const document = {
+            ...created.document,
+            items: [
+                ...created.document.items,
+                { kind: "baked" as const, element: { id: "baked", kind: "dot" as const, at: [10, 10] as const } },
+            ],
+        };
+        const store = new WhiteboardStore(document);
+        store.selection = ["smart", "baked"];
+
+        store.pointerDown([10, 10]);
+        store.pointerMove([12, 13]);
+        store.pointerUp([12, 13]);
+
+        const movedSmart = store.scene.elements[0];
+        if (movedSmart.kind !== "path") throw new Error("missing moved smart path");
+        expect(movedSmart.path.nodes[0][0]).toBeCloseTo(2, 9);
+        expect(movedSmart.path.nodes[0][1]).toBeCloseTo(3, 9);
+        expect(movedSmart.path.nodes[1][0]).toBeCloseTo(6, 9);
+        expect(movedSmart.path.nodes[1][1]).toBeCloseTo(3, 9);
+        expect(store.scene.elements[1]).toMatchObject({ kind: "dot", at: [12, 13] });
     });
 
     test("feature actions, relation creation, and driving dimension edits are each atomic", () => {

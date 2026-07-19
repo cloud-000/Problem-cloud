@@ -29,6 +29,7 @@ import {
 import { parse, serialize } from "$lib/asy/codec";
 import {
     createTool,
+    hitTest,
     type Tool,
     type ToolContext,
     type ToolKind,
@@ -206,6 +207,7 @@ export class WhiteboardStore {
     }
 
     setTool(kind: WhiteboardToolKind): void {
+        const changed = kind !== this.toolKind;
         this.commitPropertyEdit();
         this.#tool.onCancel();
         this.preview = null;
@@ -217,6 +219,7 @@ export class WhiteboardStore {
         this.selectedConstraintId = null;
         this.selectedDimensionId = null;
         this.featureSelection = [];
+        if (changed) this.selection = [];
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
     }
@@ -230,16 +233,27 @@ export class WhiteboardStore {
         additiveFeatureSelection = false,
     ): void {
         const point = "point" in p ? p.point : p;
+        const directMoveIds = !selectionTransform && this.toolKind === "select" && !this.lineContinuation
+            ? (() => {
+                  const hit = hitTest(this.scene, point, this.tolerance);
+                  if (!hit || hit.kind === "raw") return null;
+                  return this.selection.includes(hit.id) ? [...this.selection] : [hit.id];
+              })()
+            : null;
+        const movingIds = selectionTransform?.kind === "move"
+            ? [...this.selection]
+            : directMoveIds;
         const smartFeature = selectionTransform?.kind === "vertex"
             ? pathNodeFeature(this.document, selectionTransform.elementId, selectionTransform.nodeIndex)
-            : selectionTransform?.kind === "move" && this.selection.length === 1
-              ? this.#markerFeature(this.selection[0])
+            : movingIds?.length === 1
+              ? this.#markerFeature(movingIds[0])
               : null;
-        if (selectionTransform?.kind === "move" && !smartFeature && this.#selectionHasSmartItems()) {
+        if (movingIds && !smartFeature && this.#selectionHasSmartItems(movingIds)) {
+            if (directMoveIds) this.#selectForDirectMove(directMoveIds);
             this.#smartTranslation = {
                 base: documentSnapshot(this.document),
                 start: point,
-                itemIds: [...this.selection],
+                itemIds: movingIds,
             };
             this.preview = this.scene;
             this.selectedConstraintId = null;
@@ -247,6 +261,7 @@ export class WhiteboardStore {
             return;
         }
         if (smartFeature) {
+            if (directMoveIds) this.#selectForDirectMove(directMoveIds);
             const at = pointFeaturePosition(this.document, smartFeature);
             if (!at) return;
             this.#smartDrag = {
@@ -340,8 +355,14 @@ export class WhiteboardStore {
         this.conflictingConstraintIds = [];
     }
 
-    #selectionHasSmartItems(): boolean {
-        return this.document.items.some((item) => item.kind !== "baked" && this.selection.includes(item.id));
+    #selectionHasSmartItems(itemIds: readonly string[] = this.selection): boolean {
+        return this.document.items.some((item) => item.kind !== "baked" && itemIds.includes(item.id));
+    }
+
+    #selectForDirectMove(itemIds: string[]): void {
+        this.selection = itemIds;
+        this.featureSelection = [];
+        this.selectedDimensionId = null;
     }
 
     #translationDelta(point: readonly [number, number]): readonly [number, number] {
@@ -515,7 +536,9 @@ export class WhiteboardStore {
             this.marquee = null;
             if (result.nextTool) {
                 const continuation = result.lineContinuation;
+                const committedSelection = result.selection;
                 this.setTool(result.nextTool);
+                if (committedSelection !== undefined) this.selection = committedSelection;
                 if (continuation !== undefined) this.lineContinuation = continuation;
             }
         } else if (result.preview !== undefined) {
