@@ -448,6 +448,15 @@ export class WhiteboardStore {
         this.arcGuide = null;
     }
 
+    selectAll(): void {
+        this.selection = this.scene.elements.map(({ id }) => id);
+        this.preview = null;
+        this.selectionPreview = null;
+        this.marquee = null;
+        this.lineContinuation = null;
+        this.arcGuide = null;
+    }
+
     clearAll(): void {
         this.apply(emptyScene());
         this.selection = [];

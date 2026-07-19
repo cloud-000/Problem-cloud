@@ -1,3 +1,7 @@
+<script module lang="ts">
+    let activeShortcutSurface: HTMLCanvasElement | null = null;
+</script>
+
 <script lang="ts">
     import { cn } from "$lib/utils.js";
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
@@ -39,7 +43,13 @@
         showGrid = true,
         transparent = false,
         navigation = true,
+        shortcutsAlwaysActive = false,
         surface = $bindable(null),
+        scale = $bindable(40),
+        panX = $bindable(0),
+        panY = $bindable(0),
+        minimumZoom = 20,
+        resetViewportControl = false,
         class: className,
     }: {
         store: WhiteboardStore;
@@ -49,17 +59,26 @@
         transparent?: boolean;
         /** Disable viewport gestures when the host image must remain registration-locked. */
         navigation?: boolean;
+        /** Handle canvas shortcuts immediately, without requiring prior canvas interaction. */
+        shortcutsAlwaysActive?: boolean;
         /** Bindable ref to the underlying canvas (for SVG/PNG export). */
         surface?: HTMLCanvasElement | null;
+        /** Bindable viewport scale in pixels per scene unit. */
+        scale?: number;
+        /** Bindable horizontal viewport offset in pixels. */
+        panX?: number;
+        /** Bindable vertical viewport offset in pixels. */
+        panY?: number;
+        /** Minimum viewport zoom percentage. */
+        minimumZoom?: number;
+        /** Make the viewport action reset to 100% and zero pan instead of fitting the scene. */
+        resetViewportControl?: boolean;
         class?: string;
     } = $props();
 
     let width = $state(0);
     let height = $state(0);
     let pixelRatio = $state(1);
-    let scale = $state(40); // px per asy unit
-    let panX = $state(0);
-    let panY = $state(0);
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
     type TransformCursor =
@@ -89,6 +108,7 @@
     );
 
     const origin = $derived<[number, number]>([width / 2 + panX, height / 2 + panY]);
+    const minimumScale = $derived(Math.max(8, Math.min(400, (minimumZoom / 100) * 40)));
     const project = $derived.by<(point: Pair) => Pair>(
         () => (p: Pair) => [origin[0] + p[0] * scale, origin[1] - p[1] * scale],
     );
@@ -618,6 +638,7 @@
         attachedStore.promptLabel = promptLabel;
         return () => {
             penSamples.cancel();
+            if (activeShortcutSurface === node) activeShortcutSurface = null;
             if (surface === node) surface = null;
             if (attachedStore.promptLabel === promptLabel) attachedStore.promptLabel = undefined;
         };
@@ -689,13 +710,17 @@
         const midClientY = (a.clientY + b.clientY) / 2;
         const [midX, midY] = localPoint(midClientX, midClientY);
         const distance = Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY));
-        scale = Math.max(8, Math.min(400, pinchStart.scale * (distance / pinchStart.distance)));
+        scale = Math.max(
+            minimumScale,
+            Math.min(400, pinchStart.scale * (distance / pinchStart.distance)),
+        );
         panX = midX - width / 2 - pinchStart.world[0] * scale;
         panY = midY - height / 2 + pinchStart.world[1] * scale;
     }
 
     function onPointerDown(e: PointerEvent) {
         if (!surface || (e.button !== 0 && e.button !== 1)) return;
+        activeShortcutSurface = surface;
         e.preventDefault();
         surface.focus();
         if (store.toolKind === "eraser") eraserPointer = localPoint(e.clientX, e.clientY);
@@ -955,6 +980,14 @@
     }
 
     function onKeyDown(e: KeyboardEvent) {
+        const target = e.target;
+        if (
+            (!shortcutsAlwaysActive && activeShortcutSurface !== surface) ||
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLTextAreaElement ||
+            (target instanceof HTMLElement && target.isContentEditable)
+        ) return;
+
         if (navigation && e.key === " ") {
             e.preventDefault();
             spacePressed = true;
@@ -971,6 +1004,15 @@
                 transformCursor = null;
                 interaction = "idle";
             }
+        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            penSamples.cancel();
+            store.cancel();
+            selectedVertex = null;
+            hoveredVertex = null;
+            selectedArcControl = null;
+            hoveredArcControl = null;
+            store.selectAll();
         } else if (e.key === "Delete" || e.key === "Backspace") {
             if (activeSelectedVertex) {
                 e.preventDefault();
@@ -1004,7 +1046,7 @@
     function zoomAt(clientX: number, clientY: number, factor: number) {
         const world = toAsyAt(clientX, clientY);
         const [px, py] = localPoint(clientX, clientY);
-        scale = Math.max(8, Math.min(400, scale * factor));
+        scale = Math.max(minimumScale, Math.min(400, scale * factor));
         panX = px - width / 2 - world[0] * scale;
         panY = py - height / 2 + world[1] * scale;
     }
@@ -1015,7 +1057,7 @@
     }
 
     function zoomTo(percentage: number) {
-        const targetScale = Math.max(8, Math.min(400, (percentage / 100) * 40));
+        const targetScale = Math.max(minimumScale, Math.min(400, (percentage / 100) * 40));
         zoomBy(targetScale / scale);
     }
 
@@ -1032,12 +1074,18 @@
         const fittedScale = Math.min(widthScale, heightScale);
 
         scale = Number.isFinite(fittedScale)
-            ? Math.max(8, Math.min(400, fittedScale))
+            ? Math.max(minimumScale, Math.min(400, fittedScale))
             : 40;
         const centerX = (bounds.min[0] + bounds.max[0]) / 2;
         const centerY = (bounds.min[1] + bounds.max[1]) / 2;
         panX = -centerX * scale;
         panY = centerY * scale;
+    }
+
+    function resetViewport() {
+        scale = 40;
+        panX = 0;
+        panY = 0;
     }
 
     const zoomPercentage = $derived(Math.round((scale / 40) * 100));
@@ -1147,6 +1195,7 @@
 </script>
 
 <svelte:window
+    onkeydown={onKeyDown}
     onkeyup={onWindowKeyUp}
     onresize={onWindowResize}
     onblur={() => (spacePressed = false)}
@@ -1154,7 +1203,7 @@
 
 <div
     class={cn(
-        "relative h-full w-full overflow-hidden",
+        "relative h-full w-full overflow-hidden select-none",
         transparent ? "bg-transparent" : "bg-surface-container-lowest",
         className,
     )}
@@ -1168,8 +1217,10 @@
                 onZoomOut={() => zoomBy(1 / 1.2)}
                 onZoomIn={() => zoomBy(1.2)}
                 onZoomTo={zoomTo}
-                onFitScene={fitScene}
-                {canFitScene}
+                onFitScene={resetViewportControl ? resetViewport : fitScene}
+                canFitScene={resetViewportControl || canFitScene}
+                minimumPercentage={minimumZoom}
+                resetViewport={resetViewportControl}
             />
         </div>
     {/if}
@@ -1193,7 +1244,6 @@
                     : "cursor-crosshair",
         )}
         style:cursor={transformCursor}
-        onkeydown={onKeyDown}
         onpointerdown={onPointerDown}
         onpointermove={onPointerMove}
         onpointerup={onPointerUp}

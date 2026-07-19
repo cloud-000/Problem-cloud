@@ -49,30 +49,19 @@
     <title>Whiteboard · ProblemCloud</title>
 </svelte:head>
 
-<div class="flex h-full flex-col gap-2 p-3">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-        <div>
-            <h1 class="text-lg font-semibold">Whiteboard</h1>
-            <p class="text-sm text-muted-foreground">
-                Sketch freely — draw shapes and export to Asymptote, SVG, or PNG. Your board is saved automatically.
-            </p>
-        </div>
-    </div>
-
-    <div class="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border/60">
-        <Whiteboard {store} bind:surface />
-        <WhiteboardCompactControls {store} class="absolute left-3 right-3 top-3 z-10 md:hidden" />
-        <WhiteboardToolbar {store} orientation="vertical" class="absolute left-3 top-3 z-10 hidden md:flex" />
-        <WhiteboardPropertyCard {store} class="absolute left-14 top-3 z-10 hidden md:block" />
-        <WhiteboardCommandCard {store} class="absolute right-3 top-3 z-10 hidden md:flex">
-            {#snippet actions()}
-                <Button variant="ghost" size="icon-sm" title="Download SVG" onclick={downloadSvg}>
-                    <Icon name="download" />
-                </Button>
-                <Button variant="ghost" size="icon-sm" title="Download PNG" onclick={downloadPng}>
-                    <Icon name="image" />
-                </Button>
-            {/snippet}
-        </WhiteboardCommandCard>
-    </div>
+<div class="relative h-full min-h-0 overflow-hidden">
+    <Whiteboard {store} shortcutsAlwaysActive bind:surface />
+    <WhiteboardCompactControls {store} class="absolute left-3 right-3 top-3 z-10 md:hidden" />
+    <WhiteboardToolbar {store} orientation="vertical" class="absolute left-3 top-3 z-10 hidden md:flex" />
+    <WhiteboardPropertyCard {store} class="absolute left-14 top-3 z-10 hidden md:block" />
+    <WhiteboardCommandCard {store} class="absolute right-3 top-3 z-10 hidden md:flex">
+        {#snippet actions()}
+            <Button variant="ghost" size="icon-sm" title="Download SVG" onclick={downloadSvg}>
+                <Icon name="download" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" title="Download PNG" onclick={downloadPng}>
+                <Icon name="image" />
+            </Button>
+        {/snippet}
+    </WhiteboardCommandCard>
 </div>

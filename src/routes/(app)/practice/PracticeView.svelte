@@ -2162,7 +2162,6 @@
          <WhiteboardPanel
             store={whiteboardStore}
             persistKey={whiteboardPersistKey}
-            onClose={() => utilityPanel.close()}
          />
       </UtilityPanelRegister>
 

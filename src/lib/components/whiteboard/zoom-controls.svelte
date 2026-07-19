@@ -10,6 +10,8 @@
         onZoomTo,
         onFitScene,
         canFitScene = true,
+        minimumPercentage = 20,
+        resetViewport = false,
     }: {
         percentage: number;
         onZoomIn: () => void;
@@ -17,6 +19,8 @@
         onZoomTo: (percentage: number) => void;
         onFitScene: () => void;
         canFitScene?: boolean;
+        minimumPercentage?: number;
+        resetViewport?: boolean;
     } = $props();
 
     function commitZoom(event: Event) {
@@ -48,7 +52,7 @@
     <div class="relative min-w-14">
         <Input
             type="number"
-            min={20}
+            min={minimumPercentage}
             max={1000}
             step={1}
             aria-label="Zoom percentage"
@@ -66,11 +70,11 @@
     <Button
         variant="ghost"
         size="icon-sm"
-        title="Fit scene"
-        aria-label="Fit scene"
+        title={resetViewport ? "Reset view" : "Fit scene"}
+        aria-label={resetViewport ? "Reset view" : "Fit scene"}
         disabled={!canFitScene}
         onclick={onFitScene}
     >
-        <Icon name="fit_screen" />
+        <Icon name={resetViewport ? "restart_alt" : "fit_screen"} />
     </Button>
 </div>

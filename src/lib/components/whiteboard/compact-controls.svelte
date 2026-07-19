@@ -9,10 +9,12 @@
         store,
         class: className,
         showPan = true,
+        showProperties = true,
     }: {
         store: WhiteboardStore;
         class?: string;
         showPan?: boolean;
+        showProperties?: boolean;
     } = $props();
 
     let root: HTMLDivElement | null = null;
@@ -55,10 +57,10 @@
         {showPan}
         class="min-w-0 flex-1"
         {propertiesOpen}
-        onProperties={toggleProperties}
+        onProperties={showProperties ? toggleProperties : undefined}
     />
     <CommandCard {store} compact class="shrink-0" />
-    {#if propertiesOpen}
+    {#if showProperties && propertiesOpen}
         <PropertyCard
             {store}
             onClose={closeProperties}

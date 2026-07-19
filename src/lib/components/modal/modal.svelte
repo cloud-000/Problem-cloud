@@ -106,7 +106,7 @@
         class={cn(
             "fixed inset-0 z-80 flex items-center justify-center",
             variant === "bare"
-                ? "bg-black/70 backdrop-blur-(--backdrop-blur) p-6"
+                ? "bg-background/70 backdrop-blur-(--backdrop-blur) p-6"
                 : "bg-black/40 backdrop-blur-xs p-md",
             // In bare mode there is no panel, so the consumer's `class` styles the backdrop.
             variant === "bare" && className,

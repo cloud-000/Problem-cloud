@@ -28,10 +28,16 @@
 
     // Lightbox annotations are deliberately throwaway per open in v1.
     let board = $state<WhiteboardStore | null>(null);
+    let lightboxScale = $state(40);
+    let lightboxPanX = $state(0);
+    let lightboxPanY = $state(0);
 
     function openLightbox() {
         board = new WhiteboardStore();
         board.setTool("pen");
+        lightboxScale = 40;
+        lightboxPanX = 0;
+        lightboxPanY = 0;
         expanded = true;
     }
 
@@ -127,7 +133,7 @@
                 <img
                     src={imageSrc}
                     {alt}
-                    style={inverted ? INVERT_STYLE : ""}
+                    style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale / 40});`}
                     class="block max-h-full max-w-full rounded-lg object-contain select-none"
                 />
             </div>
@@ -136,13 +142,17 @@
                 store={board}
                 showGrid={false}
                 transparent
-                navigation={false}
+                navigation
+                minimumZoom={50}
+                resetViewportControl
+                bind:scale={lightboxScale}
+                bind:panX={lightboxPanX}
+                bind:panY={lightboxPanY}
                 class="absolute inset-0"
             />
 
             <WhiteboardCompactControls
                 store={board}
-                showPan={false}
                 class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
             />
         </div>
