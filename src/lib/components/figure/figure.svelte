@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from "svelte";
     import { scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
     import { cn } from "$lib/utils.js";
@@ -26,14 +27,36 @@
     let view = $state<"image" | "code">("image");
     let expanded = $state(false);
 
-    // Lightbox annotations are deliberately throwaway per open in v1.
-    let board = $state<WhiteboardStore | null>(null);
+    function annotationKey(source: string): string {
+        // Keep data/blob URLs out of the localStorage key while making the
+        // persisted scene stable across mounts for the same trainer image.
+        let hash = 2166136261;
+        for (let index = 0; index < source.length; index += 1) {
+            hash ^= source.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `figure:annotations:${(hash >>> 0).toString(36)}:${source.length}`;
+    }
+
+    // MathStatement keys image segments, so a changed source remounts Figure.
+    const persistKey = annotationKey(untrack(() => imageSrc));
+    const board = new WhiteboardStore(WhiteboardStore.restore(persistKey) ?? undefined);
     let lightboxScale = $state(40);
     let lightboxPanX = $state(0);
     let lightboxPanY = $state(0);
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+    $effect(() => {
+        void board.scene;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => board.persist(persistKey), 400);
+        return () => {
+            clearTimeout(saveTimer);
+            board.persist(persistKey);
+        };
+    });
 
     function openLightbox() {
-        board = new WhiteboardStore();
         board.setTool("pen");
         lightboxScale = 40;
         lightboxPanX = 0;
@@ -43,7 +66,6 @@
 
     function closeLightbox() {
         expanded = false;
-        board = null;
     }
 
     // State to track user's manual override of the theme's default inversion.
@@ -66,12 +88,25 @@
             title="Click to expand"
             onclick={openLightbox}
         >
-            <img
-                src={imageSrc}
-                {alt}
-                style={inverted ? INVERT_STYLE : ""}
-                class="block max-h-[300px] max-w-full object-contain mx-auto rounded-lg select-none"
-            />
+            <span class="relative mx-auto block w-fit max-w-full">
+                <img
+                    src={imageSrc}
+                    {alt}
+                    style={inverted ? INVERT_STYLE : ""}
+                    class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
+                />
+                {#if board.scene.elements.length > 0}
+                    <span class="pointer-events-none absolute inset-0" inert>
+                        <Whiteboard
+                            store={board}
+                            showGrid={false}
+                            transparent
+                            navigation={false}
+                            class="absolute inset-0"
+                        />
+                    </span>
+                {/if}
+            </span>
         </button>
     {:else}
         <pre
@@ -122,41 +157,38 @@
     variant="bare"
     class="p-0"
     aria-label="Annotate expanded image"
-    onClose={() => (board = null)}
 >
-    {#if board}
-        <div class="relative h-full w-full overflow-hidden">
-            <div
-                class="pointer-events-none absolute inset-0 flex items-center justify-center p-3 pt-16 sm:p-6 sm:pt-20"
-                transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
-            >
-                <img
-                    src={imageSrc}
-                    {alt}
-                    style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale / 40});`}
-                    class="block max-h-full max-w-full rounded-lg object-contain select-none"
-                />
-            </div>
-
-            <Whiteboard
-                store={board}
-                showGrid={false}
-                transparent
-                navigation
-                minimumZoom={50}
-                resetViewportControl
-                bind:scale={lightboxScale}
-                bind:panX={lightboxPanX}
-                bind:panY={lightboxPanY}
-                class="absolute inset-0"
-            />
-
-            <WhiteboardCompactControls
-                store={board}
-                class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
+    <div class="relative h-full w-full overflow-hidden">
+        <div
+            class="pointer-events-none absolute inset-0 flex items-center justify-center"
+            transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
+        >
+            <img
+                src={imageSrc}
+                {alt}
+                style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale / 40});`}
+                class="block max-h-full max-w-full rounded-lg object-contain select-none"
             />
         </div>
-    {/if}
+
+        <Whiteboard
+            store={board}
+            showGrid={false}
+            transparent
+            navigation
+            minimumZoom={50}
+            resetViewportControl
+            bind:scale={lightboxScale}
+            bind:panX={lightboxPanX}
+            bind:panY={lightboxPanY}
+            class="absolute inset-0"
+        />
+
+        <WhiteboardCompactControls
+            store={board}
+            class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
+        />
+    </div>
     <Button
         variant="ghost"
         size="icon"
