@@ -92,6 +92,8 @@ export interface ElementBase {
     /** Stable unique id (see `factory.newId`). */
     id: string;
     pen?: Pen;
+    /** Explicitly false for fill-only primitives whose absent pen must not mean currentpen. */
+    strokeEnabled?: boolean;
 }
 
 /** A dot: asy `dot((x,y))`. */
@@ -104,6 +106,8 @@ export interface DotElement extends ElementBase {
 export interface PathElement extends ElementBase {
     kind: "path";
     path: Path;
+    /** Optional interior paint. Only meaningful for cyclic paths. */
+    fillPen?: Pen;
 }
 
 /**
@@ -114,6 +118,7 @@ export interface CircleElement extends ElementBase {
     kind: "circle";
     center: Pair;
     radius: number;
+    fillPen?: Pen;
 }
 
 /** An arc: asy `draw(arc(c, r, angle1, angle2))`. Angles in degrees. */
@@ -136,6 +141,7 @@ export interface EllipseElement extends ElementBase {
     center: Pair;
     axisX: Pair;
     axisY: Pair;
+    fillPen?: Pen;
 }
 
 /** An affine image of a circular arc, using the same basis convention as an ellipse. */

@@ -106,6 +106,17 @@ describe("parse", () => {
         ]);
     });
 
+    test("fill and filldraw preserve circle and affine ellipse primitives", () => {
+        expect(bare(parse("fill(circle((0,0), 2), red);").scene)).toEqual([{
+            kind: "circle", center: [0, 0], radius: 2,
+            fillPen: { namedColor: "red" }, strokeEnabled: false,
+        }]);
+        expect(bare(parse("filldraw(circle((0,0), 2), yellow, black);").scene)).toEqual([{
+            kind: "circle", center: [0, 0], radius: 2, pen: { namedColor: "black" },
+            fillPen: { namedColor: "yellow" }, strokeEnabled: true,
+        }]);
+    });
+
     test("symbol table: pair and path declarations resolve", () => {
         const asy = "pair A=(0,0); pair B=(4,0); draw(A--B);";
         expect(bare(parse(asy).scene)).toEqual([

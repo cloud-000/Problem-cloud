@@ -2,7 +2,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import Toolbar from "./toolbar.svelte";
+    import CompactControls from "./compact-controls.svelte";
     import Whiteboard from "./whiteboard.svelte";
 
     let {
@@ -40,8 +40,8 @@
             <Icon name="close" />
         </Button>
     </div>
-    <div class="shrink-0 border-b border-border/60 p-2">
-        <Toolbar {store} compact class="border-0 bg-transparent p-0 shadow-none" />
+    <div class="relative z-20 shrink-0 border-b border-border/60 p-2">
+        <CompactControls {store} />
     </div>
     <div class="min-h-0 flex-1">
         <Whiteboard {store} />

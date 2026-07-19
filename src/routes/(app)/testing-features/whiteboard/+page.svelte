@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Whiteboard, WhiteboardToolbar } from "$lib/components/whiteboard";
+    import { Whiteboard, WhiteboardToolbar, WhiteboardPropertyCard, WhiteboardCommandCard } from "$lib/components/whiteboard";
     import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
 
     const store = new WhiteboardStore();
@@ -42,7 +42,11 @@ draw(circle((0,0), 1), red+dashed);`;
         </div>
     </div>
 
-    <WhiteboardToolbar {store} class="self-start" />
+    <div class="flex items-start gap-2">
+        <WhiteboardToolbar {store} />
+        <WhiteboardCommandCard {store} />
+        <WhiteboardPropertyCard {store} />
+    </div>
 
     <div class="grid min-h-0 flex-1 grid-cols-[1fr_320px] gap-3">
         <div class="min-h-0 overflow-hidden rounded-xl border border-border/60">

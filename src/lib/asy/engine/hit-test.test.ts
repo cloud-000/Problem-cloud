@@ -48,6 +48,19 @@ describe("hitTest", () => {
         expect(hitTest(scene(fill), [2, 2], 0.5)?.id).toBe(fill.id);
     });
 
+    test("hits interiors painted through fillPen", () => {
+        const path = createPath(
+            makePath([[0, 0], [2, 0], [2, 2], [0, 2]], { cyclic: true }),
+            undefined,
+            { namedColor: "red" },
+        );
+        const circle = createCircle([5, 0], 2, undefined, { namedColor: "blue" });
+        const ellipse = createEllipse([10, 0], [2, 0], [0, 1], undefined, { namedColor: "green" });
+        expect(hitTest(scene(path), [1, 1], 0.05)?.id).toBe(path.id);
+        expect(hitTest(scene(circle), [5, 0], 0.05)?.id).toBe(circle.id);
+        expect(hitTest(scene(ellipse), [10, 0], 0.05)?.id).toBe(ellipse.id);
+    });
+
     test("topmost element wins on overlap", () => {
         const under = createDot([0, 0]);
         const over = createDot([0, 0]);

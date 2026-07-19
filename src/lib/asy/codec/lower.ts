@@ -76,13 +76,7 @@ export function lower(
                     elements.push(lowerLabel(stmt, syms));
                     break;
                 case "fill":
-                    elements.push(
-                        createFill(
-                            resolvePath(stmt.path, syms),
-                            lowerPen(stmt.pen),
-                            stmt.filldraw ? (lowerPen(stmt.drawPen) ?? {}) : undefined
-                        )
-                    );
+                    elements.push(lowerFill(stmt, syms));
                     break;
                 case "unknown":
                     raw(stmt, "unrecognized statement");
@@ -95,6 +89,38 @@ export function lower(
     }
 
     return { elements, diagnostics };
+}
+
+function lowerFill(
+    stmt: Extract<SpannedStmt, { kind: "fill" }>,
+    syms: SymbolTable,
+): SceneElement {
+    const fillPen = lowerPen(stmt.pen);
+    const drawPen = stmt.filldraw ? (lowerPen(stmt.drawPen) ?? {}) : undefined;
+    const strokeEnabled = stmt.filldraw;
+    if (stmt.path.kind === "circle") {
+        return {
+            ...createCircle(resolvePoint(stmt.path.center, syms), stmt.path.radius, drawPen, fillPen ?? {}),
+            strokeEnabled,
+        };
+    }
+    if (stmt.path.kind === "affine-ellipse") {
+        return {
+            ...createEllipse(
+                resolvePoint(stmt.path.center, syms),
+                resolvePoint(stmt.path.axisX, syms),
+                resolvePoint(stmt.path.axisY, syms),
+                drawPen,
+                fillPen ?? {},
+            ),
+            strokeEnabled,
+        };
+    }
+    return createFill(
+        resolvePath(stmt.path, syms),
+        fillPen,
+        stmt.filldraw ? (drawPen ?? {}) : undefined,
+    );
 }
 
 function lowerDecl(

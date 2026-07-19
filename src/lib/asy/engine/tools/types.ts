@@ -107,6 +107,10 @@ export type ToolKind =
 export interface ToolContext {
     /** Pen applied to newly created elements. */
     pen: Pen;
+    /** Optional interior paint for tools that create closed geometry. */
+    fillPen?: Pen;
+    /** Eraser radius in CSS pixels; converted through sceneUnitsPerPixel. */
+    eraserRadius: number;
     /** Hit-test tolerance in asy-space (view derives from its px->asy scale). */
     tolerance: number;
     /** Maximum pen travel that commits as one tap mark, in scene units. */

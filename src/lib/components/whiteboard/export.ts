@@ -50,10 +50,17 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
     const project = (value: Pair) => projectPoint(value, viewport);
     const style = penStroke(element.pen, palette);
     const stroke = `stroke="${escapeXml(style.color)}" stroke-width="${number(style.width)}"` +
-        `${dashAttribute(style.dash)} opacity="${number(style.opacity)}"`;
+        `${dashAttribute(style.dash)} stroke-opacity="${number(style.opacity)}"`;
+    const strokeAttributes = element.strokeEnabled === false ? 'stroke="none"' : stroke;
+    const fillAttributes = "fillPen" in element && element.fillPen
+        ? (() => {
+              const fill = penStroke(element.fillPen, palette);
+              return `fill="${escapeXml(fill.color)}" fill-opacity="${number(fill.opacity)}"`;
+          })()
+        : 'fill="none"';
 
     if (element.kind === "path") {
-        return `<path d="${pathData(projectedPath(element.path, project))}" fill="none" ${stroke} ` +
+        return `<path d="${pathData(projectedPath(element.path, project))}" ${fillAttributes} ${strokeAttributes} ` +
             'stroke-linejoin="round" stroke-linecap="round"/>';
     }
     if (element.kind === "fill") {
@@ -69,7 +76,7 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
     if (element.kind === "circle") {
         const center = project(element.center);
         return `<circle cx="${number(center[0])}" cy="${number(center[1])}" ` +
-            `r="${number(Math.abs(element.radius * viewport.scale))}" fill="none" ${stroke}/>`;
+            `r="${number(Math.abs(element.radius * viewport.scale))}" ${fillAttributes} ${strokeAttributes}/>`;
     }
     if (element.kind === "arc") {
         const commands: ProjectedPathCommand[] = projectedArc(
@@ -81,7 +88,7 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
         ).map((value, index) => index === 0
             ? { kind: "move" as const, point: value }
             : { kind: "line" as const, point: value });
-        return `<path d="${pathData(commands)}" fill="none" ${stroke} stroke-linecap="round"/>`;
+        return `<path d="${pathData(commands)}" fill="none" ${strokeAttributes} stroke-linecap="round"/>`;
     }
     if (element.kind === "ellipse" || element.kind === "elliptical-arc") {
         const commands: ProjectedPathCommand[] = projectedEllipseArc(
@@ -94,7 +101,7 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
         ).map((value, index) => index === 0
             ? { kind: "move" as const, point: value }
             : { kind: "line" as const, point: value });
-        return `<path d="${pathData(commands)}" fill="none" ${stroke} stroke-linecap="round"/>`;
+        return `<path d="${pathData(commands)}" ${element.kind === "ellipse" ? fillAttributes : 'fill="none"'} ${strokeAttributes} stroke-linecap="round"/>`;
     }
     if (element.kind === "dot") {
         const at = project(element.at);

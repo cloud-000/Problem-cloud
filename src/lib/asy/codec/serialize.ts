@@ -141,11 +141,13 @@ function emitDot(el: DotElement, ctx: Ctx): string {
 }
 
 function emitPath(el: PathElement, ctx: Ctx): string {
+    if (el.fillPen !== undefined) return emitFillDraw(emitPathGuide(el.path, ctx), el.fillPen, el.pen, ctx, el.strokeEnabled !== false);
     return `draw(${withPen(emitPathGuide(el.path, ctx), el.pen, ctx)});`;
 }
 
 function emitCircle(el: CircleElement, ctx: Ctx): string {
     const guide = `circle(${pair(el.center, ctx)}, ${num(el.radius, ctx)})`;
+    if (el.fillPen !== undefined) return emitFillDraw(guide, el.fillPen, el.pen, ctx, el.strokeEnabled !== false);
     return `draw(${withPen(guide, el.pen, ctx)});`;
 }
 
@@ -161,6 +163,7 @@ function affineGuide(center: Pair, axisX: Pair, axisY: Pair, primitive: string, 
 
 function emitEllipse(el: EllipseElement, ctx: Ctx): string {
     const guide = affineGuide(el.center, el.axisX, el.axisY, "unitcircle", ctx);
+    if (el.fillPen !== undefined) return emitFillDraw(guide, el.fillPen, el.pen, ctx, el.strokeEnabled !== false);
     return `draw(${withPen(guide, el.pen, ctx)});`;
 }
 
@@ -180,12 +183,24 @@ function emitFill(el: FillElement, ctx: Ctx): string {
     const guide = emitPathGuide(el.path, ctx);
     if (el.drawPen !== undefined) {
         // filldraw(path, fillpen, drawpen)
-        const fill = emitPen(el.pen, ctx);
-        const draw = emitPen(el.drawPen, ctx);
-        const args = [guide, fill, draw].filter((p): p is string => p !== null).join(", ");
-        return `filldraw(${args});`;
+        const fill = emitPen(el.pen, ctx) ?? "currentpen";
+        const draw = emitPen(el.drawPen, ctx) ?? "currentpen";
+        return `filldraw(${guide}, ${fill}, ${draw});`;
     }
     return `fill(${withPen(guide, el.pen, ctx)});`;
+}
+
+function emitFillDraw(
+    guide: string,
+    fillPen: Pen,
+    drawPen: Pen | undefined,
+    ctx: Ctx,
+    strokeEnabled: boolean,
+): string {
+    if (!strokeEnabled) return `fill(${withPen(guide, fillPen, ctx)});`;
+    const fill = emitPen(fillPen, ctx) ?? "currentpen";
+    const draw = emitPen(drawPen, ctx) ?? "currentpen";
+    return `filldraw(${guide}, ${fill}, ${draw});`;
 }
 
 function escapeAsyString(text: string): string {

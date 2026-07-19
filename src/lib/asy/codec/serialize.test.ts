@@ -105,6 +105,17 @@ describe("serialize", () => {
         ).toBe("filldraw((0,0)--(1,0)--(0,1)--cycle, yellow, black);");
     });
 
+    test("closed primitives with fillPen serialize as fill/filldraw", () => {
+        expect(serialize({ elements: [{
+            id: "c", kind: "circle", center: [0, 0], radius: 2,
+            pen: { namedColor: "black" }, fillPen: { namedColor: "yellow" },
+        }] })).toBe("filldraw(circle((0,0), 2), yellow, black);");
+        expect(serialize({ elements: [{
+            id: "e", kind: "ellipse", center: [0, 0], axisX: [2, 0], axisY: [0, 1],
+            fillPen: { namedColor: "red" }, strokeEnabled: false,
+        }] })).toBe("fill(shift((0,0))*transform(0,0,2,0,0,1)*unitcircle, red);");
+    });
+
     test("raw passes through verbatim", () => {
         expect(serialize(scene(createRaw("size(200);")))).toBe("size(200);");
     });

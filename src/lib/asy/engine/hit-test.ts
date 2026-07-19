@@ -4,7 +4,7 @@
  * back-to-front.
  */
 
-import type { Pair, Scene, SceneElement } from "../scene/types";
+import type { Pair, Path, Scene, SceneElement } from "../scene/types";
 import {
     distance,
     pointInPolygon,
@@ -42,17 +42,23 @@ export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 
         case "label":
             return distance(p, el.at);
         case "path":
+            if (el.fillPen && el.path.cyclic && pointInPolygon(p, el.path, flattenTolerance)) return 0;
             return pointToPolyline(p, el.path, flattenTolerance);
         case "circle":
+            if (el.fillPen && distance(p, el.center) <= Math.abs(el.radius)) return 0;
             return pointToRing(p, el.center, el.radius);
         case "arc":
             return pointToArc(p, el.center, el.radius, el.angle1, el.angle2);
-        case "ellipse":
-            return pointToPolyline(p, {
-                nodes: ellipsePoints(el.center, el.axisX, el.axisY),
-                joins: Array.from({ length: 96 }, () => "--"),
-                cyclic: false,
-            }, flattenTolerance);
+        case "ellipse": {
+            const nodes = ellipsePoints(el.center, el.axisX, el.axisY);
+            const path: Path = {
+                nodes,
+                joins: Array.from({ length: 96 }, () => "--" as const),
+                cyclic: true,
+            };
+            if (el.fillPen && pointInPolygon(p, path, flattenTolerance)) return 0;
+            return pointToPolyline(p, path, flattenTolerance);
+        }
         case "elliptical-arc":
             return pointToPolyline(p, {
                 nodes: ellipsePoints(el.center, el.axisX, el.axisY, el.angle1, el.angle2),

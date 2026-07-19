@@ -10,6 +10,7 @@ import type { Pair, Scene } from "../../scene/types";
 
 const ctx: ToolContext = {
     pen: { namedColor: "red" },
+    eraserRadius: 8,
     tolerance: 0.5,
     penTapTolerance: 0.05,
     strokeProcessing: { ...DEFAULT_STROKE_PROCESSING_OPTIONS },
@@ -103,6 +104,17 @@ describe("RectangleTool", () => {
         ]);
         expect(up.selection).toEqual([up.commit?.elements[0].id]);
         expect(up.nextTool).toBe("select");
+    });
+
+    test("applies the rectangle tool's optional fill pen", () => {
+        const tool = createTool("rectangle");
+        const fillCtx = { ...ctx, fillPen: { namedColor: "yellow", opacity: 0.25 } };
+        tool.onPointerDown(emptyScene(), [0, 0], fillCtx);
+        const result = tool.onPointerUp(emptyScene(), [2, 1], fillCtx);
+        expect(result.commit?.elements[0]).toMatchObject({
+            kind: "path",
+            fillPen: { namedColor: "yellow", opacity: 0.25 },
+        });
     });
 
     test("a drag with either dimension shorter than tolerance commits nothing", () => {
@@ -432,6 +444,19 @@ describe("EraserTool", () => {
         const s = emptyScene();
         eraser.onPointerDown(s, [0, 0], ctx);
         expect(eraser.onPointerUp(s, [0, 0], ctx).commit).toBeUndefined();
+    });
+
+    test("uses the configured visual eraser radius", () => {
+        const eraser = createTool("eraser");
+        const point = createCircle([0, 0], 0.05);
+        const radiusCtx: ToolContext = {
+            ...ctx,
+            tolerance: 0.01,
+            eraserRadius: 8,
+            sceneUnitsPerPixel: 0.1,
+        };
+        eraser.onPointerDown({ elements: [point] }, [0.6, 0], radiusCtx);
+        expect(eraser.onPointerUp({ elements: [point] }, [0.6, 0], radiusCtx).commit?.elements).toEqual([]);
     });
 });
 

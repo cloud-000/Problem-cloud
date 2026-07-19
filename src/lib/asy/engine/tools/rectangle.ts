@@ -50,6 +50,7 @@ export class RectangleTool implements Tool {
                 { cyclic: true },
             ),
             ctx.pen,
+            ctx.fillPen,
         );
     }
 }

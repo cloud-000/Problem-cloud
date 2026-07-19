@@ -376,9 +376,18 @@ export function drawSceneElement(
     if (element.kind === "path") {
         const path = cachedPath(element.id, element.path, viewport, project);
         if (!path) tracePath(context, projectedPath(element.path, project));
-        applyStroke(context, style);
-        if (path) context.stroke(path);
-        else context.stroke();
+        if (element.fillPen && element.path.cyclic) {
+            const fill = penStroke(element.fillPen, palette);
+            context.fillStyle = fill.color;
+            context.globalAlpha = fill.opacity;
+            if (path) context.fill(path);
+            else context.fill();
+        }
+        if (element.strokeEnabled !== false) {
+            applyStroke(context, style);
+            if (path) context.stroke(path);
+            else context.stroke();
+        }
         if (selected) {
             context.strokeStyle = palette.primary;
             context.lineWidth = style.width + 3;
@@ -403,9 +412,17 @@ export function drawSceneElement(
         const center = project(element.center);
         context.beginPath();
         context.arc(center[0], center[1], Math.abs(element.radius * viewport.scale), 0, Math.PI * 2);
-        applyStroke(context, style);
-        if (selected) context.strokeStyle = palette.primary;
-        context.stroke();
+        if (element.fillPen) {
+            const fill = penStroke(element.fillPen, palette);
+            context.fillStyle = fill.color;
+            context.globalAlpha = fill.opacity;
+            context.fill();
+        }
+        if (element.strokeEnabled !== false) {
+            applyStroke(context, style);
+            if (selected) context.strokeStyle = palette.primary;
+            context.stroke();
+        }
     } else if (element.kind === "arc") {
         drawPolyline(context, projectedArc(
             element.center, element.radius, element.angle1, element.angle2, project,
@@ -422,9 +439,17 @@ export function drawSceneElement(
             element.kind === "ellipse" ? 360 : element.angle2,
             project,
         ));
-        applyStroke(context, style);
-        if (selected) context.strokeStyle = palette.primary;
-        context.stroke();
+        if (element.kind === "ellipse" && element.fillPen) {
+            const fill = penStroke(element.fillPen, palette);
+            context.fillStyle = fill.color;
+            context.globalAlpha = fill.opacity;
+            context.fill();
+        }
+        if (element.strokeEnabled !== false) {
+            applyStroke(context, style);
+            if (selected) context.strokeStyle = palette.primary;
+            context.stroke();
+        }
     } else if (element.kind === "dot") {
         const point = project(element.at);
         context.beginPath();

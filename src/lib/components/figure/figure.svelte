@@ -5,7 +5,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Modal } from "$lib/components/modal";
-    import { Whiteboard, WhiteboardToolbar } from "$lib/components/whiteboard";
+    import { Whiteboard, WhiteboardCompactControls } from "$lib/components/whiteboard";
     import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
 
@@ -140,9 +140,8 @@
                 class="absolute inset-0"
             />
 
-            <WhiteboardToolbar
+            <WhiteboardCompactControls
                 store={board}
-                compact
                 showPan={false}
                 class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
             />

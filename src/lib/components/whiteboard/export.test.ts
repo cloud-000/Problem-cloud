@@ -12,6 +12,13 @@ const snapshot: WhiteboardRenderSnapshot = {
                 pen: { namedColor: "red" },
             },
             {
+                id: "filled-rectangle",
+                kind: "path",
+                path: { nodes: [[-2, -1], [-1, -1], [-1, 0], [-2, 0]], joins: ["--", "--", "--", "--"], cyclic: true },
+                pen: { namedColor: "blue", lineWidth: 2 },
+                fillPen: { namedColor: "orange", opacity: 0.25 },
+            },
+            {
                 id: "brush",
                 kind: "fill",
                 path: {
@@ -53,6 +60,7 @@ describe("whiteboard export", () => {
         expect(svg).toContain("<g stroke=\"#ddd\"");
         expect(svg).toContain("<path");
         expect(svg).toContain('fill="#111" fill-opacity="1" stroke="none"');
+        expect(svg).toContain('fill="rgb(255,128,0)" fill-opacity="0.25" stroke="rgb(0,0,255)" stroke-width="2"');
         expect(svg).toContain('<circle cx="240" cy="50" r="21" fill="rgb(0,0,255)" opacity="0.4"/>');
         expect(svg).toContain("A&amp;B&lt;");
         expect(svg).toContain('d="M 240,90 L');

@@ -55,12 +55,12 @@ export function createDot(at: Pair, pen?: Pen): DotElement {
     return { id: newId(), kind: "dot", at, ...(pen ? { pen } : {}) };
 }
 
-export function createPath(path: Path, pen?: Pen): PathElement {
-    return { id: newId(), kind: "path", path, ...(pen ? { pen } : {}) };
+export function createPath(path: Path, pen?: Pen, fillPen?: Pen): PathElement {
+    return { id: newId(), kind: "path", path, ...(pen ? { pen } : {}), ...(fillPen ? { fillPen } : {}) };
 }
 
-export function createCircle(center: Pair, radius: number, pen?: Pen): CircleElement {
-    return { id: newId(), kind: "circle", center, radius, ...(pen ? { pen } : {}) };
+export function createCircle(center: Pair, radius: number, pen?: Pen, fillPen?: Pen): CircleElement {
+    return { id: newId(), kind: "circle", center, radius, ...(pen ? { pen } : {}), ...(fillPen ? { fillPen } : {}) };
 }
 
 export function createArc(
@@ -78,8 +78,9 @@ export function createEllipse(
     axisX: Pair,
     axisY: Pair,
     pen?: Pen,
+    fillPen?: Pen,
 ): EllipseElement {
-    return { id: newId(), kind: "ellipse", center, axisX, axisY, ...(pen ? { pen } : {}) };
+    return { id: newId(), kind: "ellipse", center, axisX, axisY, ...(pen ? { pen } : {}), ...(fillPen ? { fillPen } : {}) };
 }
 
 export function createEllipticalArc(

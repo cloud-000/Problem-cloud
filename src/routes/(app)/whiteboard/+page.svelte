@@ -4,6 +4,9 @@
     import {
         Whiteboard,
         WhiteboardToolbar,
+        WhiteboardPropertyCard,
+        WhiteboardCommandCard,
+        WhiteboardCompactControls,
         downloadBlob,
         toPngBlob,
         toSvgString,
@@ -58,9 +61,11 @@
 
     <div class="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border/60">
         <Whiteboard {store} bind:surface />
-        <WhiteboardToolbar {store} class="absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)]">
+        <WhiteboardCompactControls {store} class="absolute left-3 right-3 top-3 z-10 md:hidden" />
+        <WhiteboardToolbar {store} orientation="vertical" class="absolute left-3 top-3 z-10 hidden md:flex" />
+        <WhiteboardPropertyCard {store} class="absolute left-14 top-3 z-10 hidden md:block" />
+        <WhiteboardCommandCard {store} class="absolute right-3 top-3 z-10 hidden md:flex">
             {#snippet actions()}
-                <div class="mx-1 h-6 w-px bg-border/60"></div>
                 <Button variant="ghost" size="icon-sm" title="Download SVG" onclick={downloadSvg}>
                     <Icon name="download" />
                 </Button>
@@ -68,6 +73,6 @@
                     <Icon name="image" />
                 </Button>
             {/snippet}
-        </WhiteboardToolbar>
+        </WhiteboardCommandCard>
     </div>
 </div>

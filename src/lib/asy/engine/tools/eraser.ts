@@ -45,7 +45,11 @@ export class EraserTool implements Tool {
 
     private eraseAt(p: Pair, ctx: ToolContext): ToolResult {
         if (!this.working) return NO_RESULT;
-        const hit = hitTest(this.working, p, ctx.tolerance);
+        const hit = hitTest(
+            this.working,
+            p,
+            Math.max(ctx.tolerance, ctx.eraserRadius * ctx.sceneUnitsPerPixel),
+        );
         if (!hit) return { preview: this.working };
         this.working = removeElementById(this.working, hit.id);
         this.changed = true;

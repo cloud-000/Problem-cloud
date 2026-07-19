@@ -12,3 +12,4 @@
 export * from "./scene";
 export * from "./codec";
 export * from "./engine";
+export * from "./editor-properties";

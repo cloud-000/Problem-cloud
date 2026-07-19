@@ -69,6 +69,7 @@
         | "grabbing"
         | "move";
     let transformCursor = $state<TransformCursor | null>(null);
+    let eraserPointer = $state<Pair | null>(null);
     let spacePressed = $state(false);
     let selectedVertex = $state<VertexRef | null>(null);
     let hoveredVertex = $state<VertexRef | null>(null);
@@ -608,6 +609,7 @@
         if (!surface || (e.button !== 0 && e.button !== 1)) return;
         e.preventDefault();
         surface.focus();
+        if (store.toolKind === "eraser") eraserPointer = localPoint(e.clientX, e.clientY);
         capture(e.pointerId);
 
         if (e.pointerType === "touch") {
@@ -749,6 +751,7 @@
     }
 
     function onPointerMove(e: PointerEvent) {
+        eraserPointer = store.toolKind === "eraser" ? localPoint(e.clientX, e.clientY) : null;
         if (activeTouches.has(e.pointerId)) {
             activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
         }
@@ -1095,6 +1098,8 @@
                   ? "cursor-grab"
                   : store.toolKind === "select"
                     ? "cursor-default"
+                    : store.toolKind === "eraser"
+                      ? "cursor-none"
                     : "cursor-crosshair",
         )}
         style:cursor={transformCursor}
@@ -1105,6 +1110,7 @@
         onpointercancel={onPointerCancel}
         onpointerleave={() => {
             if (interaction === "idle") {
+                eraserPointer = null;
                 transformCursor = null;
                 hoveredVertex = null;
                 hoveredArcControl = null;
@@ -1112,4 +1118,14 @@
         }}
         onwheel={onWheel}
     ></canvas>
+    {#if store.toolKind === "eraser" && eraserPointer}
+        <div
+            class="pointer-events-none absolute z-20 rounded-full border border-foreground/70 bg-background/20 shadow-sm"
+            style:left={`${eraserPointer[0] - store.eraserSize}px`}
+            style:top={`${eraserPointer[1] - store.eraserSize}px`}
+            style:width={`${store.eraserSize * 2}px`}
+            style:height={`${store.eraserSize * 2}px`}
+            aria-hidden="true"
+        ></div>
+    {/if}
 </div>
