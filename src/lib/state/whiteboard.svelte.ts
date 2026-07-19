@@ -4,7 +4,7 @@
  * at once (e.g. a scratch overlay plus a "trace this diagram" board).
  *
  * It bridges the three pure-TS layers to the Svelte view:
- *   - scene / selection / tool / pen are reactive `$state`
+ *   - document / selection / tool / pen are reactive `$state`
  *   - edits flow through the engine tools and are recorded in snapshot history
  *   - `toAsy` / `loadAsy` use the codec; `persist` / `restore` use localStorage
  *
@@ -14,7 +14,7 @@
 
 import { browser } from "$app/environment";
 import type { Pen, Scene } from "$lib/asy/scene/types";
-import { emptyScene, isStraightPathVertexEditable } from "$lib/asy/scene";
+import { isStraightPathVertexEditable } from "$lib/asy/scene";
 import {
     EDITOR_PROPERTY_DEFINITIONS,
     penColorHex,
@@ -41,9 +41,17 @@ import {
     type PointerInput,
 } from "$lib/asy/engine";
 import { History } from "$lib/asy/engine";
+import {
+    emptyWhiteboardDocument,
+    migrateSceneToWhiteboardDocument,
+    parsePersistedWhiteboardDocument,
+    replaceBakedDocumentScene,
+    resolveWhiteboardDocument,
+    type WhiteboardDocument,
+} from "$lib/whiteboard/model";
 
-function snapshot(scene: Scene): Scene {
-    return $state.snapshot(scene) as Scene;
+function documentSnapshot(document: WhiteboardDocument): WhiteboardDocument {
+    return $state.snapshot(document) as WhiteboardDocument;
 }
 
 export type WhiteboardToolKind = ToolKind | "pan";
@@ -60,7 +68,7 @@ const DEFAULT_TOOL_PENS: Record<StyledToolKind, Pen> = {
 };
 
 export class WhiteboardStore {
-    scene = $state<Scene>(emptyScene());
+    document = $state<WhiteboardDocument>(emptyWhiteboardDocument());
     toolKind = $state<WhiteboardToolKind>("select");
     strokeColor = $state("#000000");
     toolPens = $state<Record<StyledToolKind, Pen>>(structuredClone(DEFAULT_TOOL_PENS));
@@ -93,12 +101,21 @@ export class WhiteboardStore {
     /** Supplied by the view so the label tool can prompt for text. */
     promptLabel?: (at: readonly [number, number]) => string | null;
 
-    #history = new History<Scene>();
+    #history = new History<WhiteboardDocument>();
     #tool: Tool = createTool("select");
-    #propertyBaseline: Scene | null = null;
+    #propertyBaseline: WhiteboardDocument | null = null;
 
-    constructor(initial?: Scene) {
-        if (initial) this.scene = initial;
+    constructor(initial?: Scene | WhiteboardDocument) {
+        if (initial) {
+            this.document = "schemaVersion" in initial
+                ? initial
+                : migrateSceneToWhiteboardDocument(initial);
+        }
+    }
+
+    /** Concrete compatibility IR for tools, rendering, hit-testing, and export. */
+    get scene(): Scene {
+        return resolveWhiteboardDocument(this.document);
     }
 
     /** The scene the view should render (preview wins while dragging). */
@@ -238,17 +255,17 @@ export class WhiteboardStore {
 
     // --- history --------------------------------------------------------------
 
-    /** Replace the scene, recording the prior state for undo. */
+    /** Replace the resolved baked scene, recording the prior document for undo. */
     apply(next: Scene): void {
-        this.#history.push(snapshot(this.scene));
-        this.scene = next;
+        this.#history.push(documentSnapshot(this.document));
+        this.document = replaceBakedDocumentScene(this.document, next);
         this.#syncFlags();
     }
 
     undo(): void {
-        const prev = this.#history.undo(snapshot(this.scene));
+        const prev = this.#history.undo(documentSnapshot(this.document));
         if (prev) {
-            this.scene = prev;
+            this.document = prev;
             this.selection = [];
             this.preview = null;
             this.selectionPreview = null;
@@ -259,9 +276,9 @@ export class WhiteboardStore {
     }
 
     redo(): void {
-        const next = this.#history.redo(snapshot(this.scene));
+        const next = this.#history.redo(documentSnapshot(this.document));
         if (next) {
-            this.scene = next;
+            this.document = next;
             this.selection = [];
             this.preview = null;
             this.selectionPreview = null;
@@ -283,20 +300,24 @@ export class WhiteboardStore {
             this.#writeToolProperty(id, value);
             return;
         }
-        const base = this.#propertyBaseline ?? this.scene;
+        const base = this.#propertyBaseline
+            ? resolveWhiteboardDocument(this.#propertyBaseline)
+            : this.scene;
         const next = {
             ...base,
             elements: base.elements.map((element) => this.selection.includes(element.id)
                 ? writeElementProperty(element, id, value)
                 : element),
         };
-        if (this.#propertyBaseline) this.scene = next;
+        if (this.#propertyBaseline) {
+            this.document = replaceBakedDocumentScene(this.#propertyBaseline, next);
+        }
         else this.apply(next);
     }
 
     beginPropertyEdit(): void {
         if (this.selection.length > 0 && !this.#propertyBaseline) {
-            this.#propertyBaseline = snapshot(this.scene);
+            this.#propertyBaseline = documentSnapshot(this.document);
         }
     }
 
@@ -304,7 +325,7 @@ export class WhiteboardStore {
         if (!this.#propertyBaseline) return;
         const baseline = this.#propertyBaseline;
         this.#propertyBaseline = null;
-        if (JSON.stringify(baseline) !== JSON.stringify(snapshot(this.scene))) {
+        if (JSON.stringify(baseline) !== JSON.stringify(documentSnapshot(this.document))) {
             this.#history.push(baseline);
             this.#syncFlags();
         }
@@ -312,7 +333,7 @@ export class WhiteboardStore {
 
     cancelPropertyEdit(): void {
         if (!this.#propertyBaseline) return;
-        this.scene = this.#propertyBaseline;
+        this.document = this.#propertyBaseline;
         this.#propertyBaseline = null;
     }
 
@@ -458,7 +479,7 @@ export class WhiteboardStore {
     }
 
     clearAll(): void {
-        this.apply(emptyScene());
+        this.apply({ elements: [] });
         this.selection = [];
         this.selectionPreview = null;
         this.marquee = null;
@@ -469,7 +490,7 @@ export class WhiteboardStore {
     // --- asy codec ------------------------------------------------------------
 
     toAsy(): string {
-        return serialize(snapshot(this.scene));
+        return serialize(resolveWhiteboardDocument(documentSnapshot(this.document)));
     }
 
     /** Replace the scene with the result of parsing asy (undoable). */
@@ -490,20 +511,18 @@ export class WhiteboardStore {
     persist(key: string): void {
         if (!browser) return;
         try {
-            localStorage.setItem(key, JSON.stringify(snapshot(this.scene)));
+            localStorage.setItem(key, JSON.stringify(documentSnapshot(this.document)));
         } catch {
             // best-effort; a full/blocked store must not break editing
         }
     }
 
-    static restore(key: string): Scene | null {
+    static restore(key: string): WhiteboardDocument | null {
         if (!browser) return null;
         try {
             const raw = localStorage.getItem(key);
             if (!raw) return null;
-            const parsed = JSON.parse(raw) as Scene;
-            if (!parsed || !Array.isArray(parsed.elements)) return null;
-            return parsed;
+            return parsePersistedWhiteboardDocument(JSON.parse(raw));
         } catch {
             return null;
         }

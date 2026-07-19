@@ -24,7 +24,7 @@
     // Debounced autosave, off the editing path (best-effort).
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     $effect(() => {
-        void store.scene;
+        void store.document;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => store.persist(PERSIST_KEY), 400);
         return () => clearTimeout(saveTimer);

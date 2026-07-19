@@ -15,7 +15,7 @@
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     $effect(() => {
         if (!persistKey) return;
-        void store.scene;
+        void store.document;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => store.persist(persistKey), 400);
         return () => {

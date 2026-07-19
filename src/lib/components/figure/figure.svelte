@@ -47,7 +47,7 @@
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
     $effect(() => {
-        void board.scene;
+        void board.document;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => board.persist(persistKey), 400);
         return () => {
