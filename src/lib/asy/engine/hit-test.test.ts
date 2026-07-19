@@ -22,6 +22,19 @@ describe("hitTest", () => {
         expect(hitTest(scene(path), [2, 0.1], 0.5)?.id).toBe(path.id);
     });
 
+    test("hits inside a closed path polygon even when it is not filled", () => {
+        const path = createPath(
+            makePath([[0, 0], [4, 0], [4, 4], [0, 4]], { cyclic: true }),
+        );
+        expect(hitTest(scene(path), [2, 2], 0.1)?.id).toBe(path.id);
+        expect(hitTest(scene(path), [5, 2], 0.1)).toBeNull();
+    });
+
+    test("does not treat an open path as a polygon", () => {
+        const path = createPath(makePath([[0, 0], [4, 0], [4, 4], [0, 4]]));
+        expect(hitTest(scene(path), [2, 2], 0.1)).toBeNull();
+    });
+
     test("hits the visible cubic away from its chord without hitting the chord gap", () => {
         const path = createPath(makePath(
             [[0, 0], [1, 1], [2, 1], [3, 0]],

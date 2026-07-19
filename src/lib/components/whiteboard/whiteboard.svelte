@@ -20,7 +20,7 @@
         type SceneElement as SceneElementModel,
     } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
+    import { hitTest, PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
     import { Theme } from "$lib/utils/Theme.svelte";
     import {
         registerCanvasSnapshot,
@@ -28,7 +28,6 @@
         resizeHandleAt,
         isRotationHandleAt,
         isArcGuideAt,
-        isScreenPointInRect,
         type RenderResizeHandle,
         type RenderArcHandle,
         type ScreenRect,
@@ -633,6 +632,11 @@
         };
     }
 
+    function isSelectedGeometryAt(point: Pair): boolean {
+        const hit = hitTest(store.scene, point, 8 / scale);
+        return hit !== null && store.selection.includes(hit.id);
+    }
+
     const attachSurface: Attachment<HTMLCanvasElement> = (node) => {
         const attachedStore = store;
         const promptLabel = () =>
@@ -869,7 +873,7 @@
             e.button === 0 &&
             store.toolKind === "select" &&
             !selectionIsPreview &&
-            isScreenPointInRect(pointerScreen, selectionRect)
+            isSelectedGeometryAt(toAsyAt(e.clientX, e.clientY))
         ) {
             interaction = "transform";
             transformCursor = "move";
@@ -934,7 +938,7 @@
             const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
             const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
             const overSelectionBody = !selectionIsPreview &&
-                isScreenPointInRect(pointerScreen, selectionRect);
+                isSelectedGeometryAt(toAsyAt(e.clientX, e.clientY));
             transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ??
                 (overRotation ? "grab" : overSelectionBody ? "move" : null);
             return;

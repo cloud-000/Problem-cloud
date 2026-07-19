@@ -42,7 +42,7 @@ export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 
         case "label":
             return distance(p, el.at);
         case "path":
-            if (el.fillPen && el.path.cyclic && pointInPolygon(p, el.path, flattenTolerance)) return 0;
+            if (el.path.cyclic && pointInPolygon(p, el.path, flattenTolerance)) return 0;
             return pointToPolyline(p, el.path, flattenTolerance);
         case "circle":
             if (el.fillPen && distance(p, el.center) <= Math.abs(el.radius)) return 0;

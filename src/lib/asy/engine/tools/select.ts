@@ -41,8 +41,8 @@ type ShapeTransformGesture = Exclude<SelectionTransformGesture, { kind: "move" }
 
 /**
  * Select + move + marquee + transform. Click an element to select it; drag
- * selected elements to move them. Drag empty space to rubber-band every
- * intersecting element. Handle metadata supplied by the view starts freeform or
+ * selected elements to move them. Drag empty space to rubber-band every fully
+ * contained element. Handle metadata supplied by the view starts freeform or
  * aspect-locked resize, or rotation. Every completed gesture is committed once
  * on release.
  */
@@ -182,7 +182,7 @@ export class SelectTool implements Tool {
         if (this.marqueeStart && this.base) {
             this.moved = this.moved || p[0] !== this.marqueeStart[0] || p[1] !== this.marqueeStart[1];
             return {
-                selectionPreview: this.intersectingIds(this.base, this.marqueeStart, p),
+                selectionPreview: this.containedIds(this.base, this.marqueeStart, p),
                 marquee: { start: this.marqueeStart, end: p },
             };
         }
@@ -214,7 +214,7 @@ export class SelectTool implements Tool {
             this.reset();
             if (!moved) return { selection: [], selectionPreview: null, marquee: null };
             return {
-                selection: this.intersectingIds(base, start, p),
+                selection: this.containedIds(base, start, p),
                 selectionPreview: null,
                 marquee: null,
             };
@@ -500,7 +500,7 @@ export class SelectTool implements Tool {
         };
     }
 
-    private intersectingIds(scene: Scene, start: Pair, end: Pair): string[] {
+    private containedIds(scene: Scene, start: Pair, end: Pair): string[] {
         const minX = Math.min(start[0], end[0]);
         const maxX = Math.max(start[0], end[0]);
         const minY = Math.min(start[1], end[1]);
@@ -508,8 +508,8 @@ export class SelectTool implements Tool {
         return scene.elements.flatMap((element) => {
             const bounds = elementBounds(element);
             return bounds &&
-                bounds.max[0] >= minX && bounds.min[0] <= maxX &&
-                bounds.max[1] >= minY && bounds.min[1] <= maxY
+                bounds.min[0] >= minX && bounds.max[0] <= maxX &&
+                bounds.min[1] >= minY && bounds.max[1] <= maxY
                 ? [element.id]
                 : [];
         });

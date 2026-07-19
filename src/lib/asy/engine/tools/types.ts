@@ -58,7 +58,7 @@ export interface ArcGuide {
 
 export type SelectionTransformGesture =
     | {
-          /** Move the current selection from anywhere inside its visible bounds. */
+          /** Move the current selection after its actual geometry was hit. */
           kind: "move";
       }
     | {
