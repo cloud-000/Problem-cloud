@@ -43,10 +43,24 @@ import {
 import { History } from "$lib/asy/engine";
 import {
     emptyWhiteboardDocument,
+    addCoincidentConstraint,
+    appendSmartPathNode,
+    closeSmartPath,
+    createSmartPath,
+    createSmartPointMarker,
+    deleteWhiteboardItems,
     migrateSceneToWhiteboardDocument,
+    nearestPointFeature,
     parsePersistedWhiteboardDocument,
-    replaceBakedDocumentScene,
+    pathNodeFeature,
+    pointFeaturePointId,
+    pointFeaturePosition,
+    reconcileResolvedScene,
+    removeConstraint,
     resolveWhiteboardDocument,
+    solveWhiteboardDocument,
+    type PointFeatureRef,
+    type SnapRelationProposal,
     type WhiteboardDocument,
 } from "$lib/whiteboard/model";
 
@@ -85,6 +99,9 @@ export class WhiteboardStore {
     lineContinuation = $state<LineContinuation | null>(null);
     /** Transient construction guide for the active arc tool. */
     arcGuide = $state<ArcGuide | null>(null);
+    /** Visible inference feedback; never persisted or exported. */
+    snapProposal = $state<{ from: readonly [number, number]; to: readonly [number, number] } | null>(null);
+    selectedConstraintId = $state<string | null>(null);
     canUndo = $state(false);
     canRedo = $state(false);
 
@@ -104,6 +121,13 @@ export class WhiteboardStore {
     #history = new History<WhiteboardDocument>();
     #tool: Tool = createTool("select");
     #propertyBaseline: WhiteboardDocument | null = null;
+    #smartDrag: {
+        base: WhiteboardDocument;
+        feature: PointFeatureRef;
+        pointerOffset: readonly [number, number];
+        candidate: SnapRelationProposal | null;
+    } | null = null;
+    #suppressSnapCommit = false;
 
     constructor(initial?: Scene | WhiteboardDocument) {
         if (initial) {
@@ -164,44 +188,180 @@ export class WhiteboardStore {
         this.marquee = null;
         this.lineContinuation = null;
         this.arcGuide = null;
+        this.snapProposal = null;
+        this.selectedConstraintId = null;
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
     }
 
     // --- pointer plumbing (the view maps screen->asy before calling these) ----
 
-    pointerDown(p: PointerInput, selectionTransform?: SelectionTransformGesture): void {
+    pointerDown(
+        p: PointerInput,
+        selectionTransform?: SelectionTransformGesture,
+        suppressSnap = false,
+    ): void {
+        const point = "point" in p ? p.point : p;
+        const smartFeature = selectionTransform?.kind === "vertex"
+            ? pathNodeFeature(this.document, selectionTransform.elementId, selectionTransform.nodeIndex)
+            : selectionTransform?.kind === "move" && this.selection.length === 1
+              ? this.#markerFeature(this.selection[0])
+              : null;
+        if (smartFeature) {
+            const at = pointFeaturePosition(this.document, smartFeature);
+            if (!at) return;
+            this.#smartDrag = {
+                base: documentSnapshot(this.document),
+                feature: smartFeature,
+                pointerOffset: [point[0] - at[0], point[1] - at[1]],
+                candidate: null,
+            };
+            this.preview = this.scene;
+            this.selectedConstraintId = null;
+            if (!suppressSnap) this.#previewSmartDrag(point, false);
+            return;
+        }
+        this.selectedConstraintId = null;
+        this.#suppressSnapCommit = suppressSnap;
         this.#dispatch(this.#tool.onPointerDown(this.scene, p, this.#ctx({ selectionTransform })));
+        this.#suppressSnapCommit = false;
     }
-    pointerMove(p: PointerInput, shiftKey = false): void {
+    pointerMove(p: PointerInput, shiftKey = false, suppressSnap = false): void {
+        if (this.#smartDrag) {
+            this.#previewSmartDrag("point" in p ? p.point : p, suppressSnap);
+            return;
+        }
+        this.#suppressSnapCommit = suppressSnap;
         this.#dispatch(this.#tool.onPointerMove(
             this.scene,
             p,
             this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey }),
         ));
+        this.#suppressSnapCommit = false;
     }
-    pointerMoves(points: readonly PointerInput[], shiftKey = false): void {
+    pointerMoves(points: readonly PointerInput[], shiftKey = false, suppressSnap = false): void {
         if (points.length === 0) return;
+        if (this.#smartDrag) {
+            const last = points[points.length - 1];
+            this.#previewSmartDrag("point" in last ? last.point : last, suppressSnap);
+            return;
+        }
         const ctx = this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey });
         const result = this.#tool.onPointerMoves
             ? this.#tool.onPointerMoves(this.scene, points, ctx)
             : this.#tool.onPointerMove(this.scene, points[points.length - 1], ctx);
+        this.#suppressSnapCommit = suppressSnap;
         this.#dispatch(result);
+        this.#suppressSnapCommit = false;
     }
     pointerUp(
         p: PointerInput,
         shiftKey = false,
         pendingMoves: readonly PointerInput[] = [],
+        suppressSnap = false,
     ): void {
+        if (this.#smartDrag) {
+            this.#commitSmartDrag("point" in p ? p.point : p, suppressSnap);
+            return;
+        }
+        this.#suppressSnapCommit = suppressSnap;
         this.#dispatch(this.#tool.onPointerUp(
             this.scene,
             p,
             this.#ctx({ snapRotation: shiftKey, lockAspectRatio: shiftKey }),
             pendingMoves,
         ));
+        this.#suppressSnapCommit = false;
     }
     cancel(): void {
+        this.#smartDrag = null;
+        this.snapProposal = null;
         this.#dispatch(this.#tool.onCancel());
+    }
+
+    #markerFeature(itemId: string): PointFeatureRef | null {
+        const item = this.document.items.find((candidate) =>
+            candidate.kind === "sketch-point-marker" && candidate.id === itemId
+        );
+        return item?.kind === "sketch-point-marker"
+            ? { kind: "point", pointId: item.pointId }
+            : null;
+    }
+
+    #smartDragTarget(point: readonly [number, number]): readonly [number, number] {
+        if (!this.#smartDrag) return point;
+        return [
+            point[0] - this.#smartDrag.pointerOffset[0],
+            point[1] - this.#smartDrag.pointerOffset[1],
+        ];
+    }
+
+    #smartDragCandidate(
+        target: readonly [number, number],
+        suppressSnap: boolean,
+    ): SnapRelationProposal | null {
+        if (!this.#smartDrag || suppressSnap) return null;
+        const acquired = this.#smartDrag.candidate;
+        const acquiredAt = acquired
+            ? pointFeaturePosition(this.#smartDrag.base, acquired.target)
+            : null;
+        if (
+            acquired && acquiredAt &&
+            Math.hypot(acquiredAt[0] - target[0], acquiredAt[1] - target[1]) <=
+                12 * this.sceneUnitsPerPixel
+        ) {
+            return { ...acquired, from: target, to: acquiredAt };
+        }
+        const candidate = nearestPointFeature(
+            this.#smartDrag.base,
+            target,
+            8 * this.sceneUnitsPerPixel,
+            this.#smartDrag.feature,
+        );
+        return candidate ? {
+            source: this.#smartDrag.feature,
+            target: candidate.ref,
+            from: target,
+            to: candidate.at,
+        } : null;
+    }
+
+    #previewSmartDrag(point: readonly [number, number], suppressSnap: boolean): void {
+        if (!this.#smartDrag) return;
+        const rawTarget = this.#smartDragTarget(point);
+        const candidate = this.#smartDragCandidate(rawTarget, suppressSnap);
+        this.#smartDrag.candidate = candidate;
+        const target = candidate?.to ?? rawTarget;
+        const solved = solveWhiteboardDocument(this.#smartDrag.base, {
+            affected: [this.#smartDrag.feature],
+            drivers: [{ feature: this.#smartDrag.feature, target }],
+            mode: "preview",
+        });
+        this.preview = solved.document ? resolveWhiteboardDocument(solved.document) : this.scene;
+        this.snapProposal = candidate ? { from: rawTarget, to: candidate.to } : null;
+    }
+
+    #commitSmartDrag(point: readonly [number, number], suppressSnap: boolean): void {
+        if (!this.#smartDrag) return;
+        const drag = this.#smartDrag;
+        const rawTarget = this.#smartDragTarget(point);
+        const candidate = this.#smartDragCandidate(rawTarget, suppressSnap);
+        const solved = solveWhiteboardDocument(drag.base, {
+            affected: [drag.feature],
+            drivers: [{ feature: drag.feature, target: candidate?.to ?? rawTarget }],
+            mode: "commit",
+        });
+        this.#smartDrag = null;
+        this.preview = null;
+        this.snapProposal = null;
+        if (!solved.document) {
+            if (solved.diagnostic) console.info(`[Whiteboard] ${solved.diagnostic}`);
+            return;
+        }
+        const committed = candidate
+            ? addCoincidentConstraint(solved.document, drag.feature, candidate.target, "inferred")
+            : solved.document;
+        if (committed) this.applyDocument(committed);
     }
 
     #ctx(
@@ -230,6 +390,7 @@ export class WhiteboardStore {
     }
 
     #dispatch(result: ToolResult): void {
+        const priorContinuation = this.lineContinuation;
         if (result.consoleMessage) console.info(result.consoleMessage);
         if (result.selection !== undefined) this.selection = result.selection;
         if (result.selectionPreview !== undefined) this.selectionPreview = result.selectionPreview;
@@ -239,8 +400,11 @@ export class WhiteboardStore {
         }
         if (result.arcGuide !== undefined) this.arcGuide = result.arcGuide;
         if (result.commit !== undefined) {
-            this.apply(result.commit);
+            const smartCommit = this.#smartToolCommit(result.commit, priorContinuation);
+            if (smartCommit) this.applyDocument(smartCommit);
+            else this.apply(result.commit);
             this.preview = null;
+            this.snapProposal = null;
             this.selectionPreview = null;
             this.marquee = null;
             if (result.nextTool) {
@@ -249,16 +413,179 @@ export class WhiteboardStore {
                 if (continuation !== undefined) this.lineContinuation = continuation;
             }
         } else if (result.preview !== undefined) {
-            this.preview = result.preview;
+            this.preview = this.#snapCreationPreview(result.preview);
         }
+    }
+
+    #smartToolCommit(scene: Scene, priorContinuation: LineContinuation | null): WhiteboardDocument | null {
+        if (this.toolKind === "select" && priorContinuation) {
+            const item = this.document.items.find((candidate) =>
+                candidate.kind === "sketch-path" && candidate.id === priorContinuation.elementId
+            );
+            if (item?.kind === "sketch-path") {
+                const committedPath = scene.elements.find((element) =>
+                    element.id === item.id && element.kind === "path"
+                );
+                if (committedPath?.kind !== "path") return null;
+                if (committedPath.path.cyclic && !item.cyclic) {
+                    return closeSmartPath(this.document, item.id);
+                }
+                if (committedPath.path.nodes.length === item.uses.length + 2) {
+                    const at = committedPath.path.nodes.at(-1)!;
+                    const appended = appendSmartPathNode(this.document, item.id, at);
+                    return this.#conjoinCreatedFeature(appended.document, appended.feature, this.document);
+                }
+            }
+        }
+
+        const currentIds = this.scene.elements.map(({ id }) => id);
+        const added = scene.elements.find((element) => !currentIds.includes(element.id));
+        if (this.toolKind === "line" && added?.kind === "path") {
+            const created = createSmartPath(
+                this.document,
+                added.path.nodes,
+                false,
+                added.pen,
+                added.fillPen,
+                added.id,
+            );
+            return this.#conjoinCreatedFeatures(created.document, created.endpointFeatures, this.document);
+        }
+        if (this.toolKind === "rectangle" && added?.kind === "path") {
+            const rawStart = added.path.nodes[0];
+            const rawEnd = added.path.nodes[2];
+            if (!rawStart || !rawEnd) return null;
+            const snappedStart = this.#suppressSnapCommit
+                ? rawStart
+                : nearestPointFeature(this.document, rawStart, 8 * this.sceneUnitsPerPixel)?.at ?? rawStart;
+            const snappedEnd = this.#suppressSnapCommit
+                ? rawEnd
+                : nearestPointFeature(this.document, rawEnd, 8 * this.sceneUnitsPerPixel)?.at ?? rawEnd;
+            const created = createSmartPath(
+                this.document,
+                [
+                    snappedStart,
+                    [snappedEnd[0], snappedStart[1]],
+                    snappedEnd,
+                    [snappedStart[0], snappedEnd[1]],
+                ],
+                true,
+                added.pen,
+                added.fillPen,
+                added.id,
+            );
+            return this.#conjoinCreatedFeatures(
+                created.document,
+                [created.endpointFeatures[0], created.endpointFeatures[2]].filter(
+                    (feature): feature is PointFeatureRef => feature !== undefined,
+                ),
+                this.document,
+            );
+        }
+        if (this.toolKind === "point" && added?.kind === "dot") {
+            const created = createSmartPointMarker(this.document, added.at, added.pen, added.id);
+            return this.#conjoinCreatedFeatures(created.document, created.endpointFeatures, this.document);
+        }
+        return null;
+    }
+
+    #conjoinCreatedFeatures(
+        document: WhiteboardDocument,
+        features: readonly PointFeatureRef[],
+        candidateSource: WhiteboardDocument,
+    ): WhiteboardDocument {
+        return features.reduce(
+            (current, feature) => this.#conjoinCreatedFeature(current, feature, candidateSource),
+            document,
+        );
+    }
+
+    #conjoinCreatedFeature(
+        document: WhiteboardDocument,
+        feature: PointFeatureRef,
+        candidateSource: WhiteboardDocument,
+    ): WhiteboardDocument {
+        if (this.#suppressSnapCommit) return document;
+        const at = pointFeaturePosition(document, feature);
+        if (!at) return document;
+        const candidate = nearestPointFeature(
+            candidateSource,
+            at,
+            8 * this.sceneUnitsPerPixel,
+        );
+        if (!candidate) return document;
+        const pointId = pointFeaturePointId(document, feature);
+        if (!pointId) return document;
+        const points = {
+            ...document.sketch.points,
+            [pointId]: { ...document.sketch.points[pointId], at: candidate.at },
+        };
+        const positioned = { ...document, sketch: { ...document.sketch, points } };
+        return addCoincidentConstraint(positioned, feature, candidate.ref, "inferred") ?? document;
+    }
+
+    #snapCreationPreview(scene: Scene | null): Scene | null {
+        if (!scene || (this.toolKind !== "line" && this.toolKind !== "rectangle" && this.toolKind !== "point")) {
+            this.snapProposal = null;
+            return scene;
+        }
+        const currentIds = this.scene.elements.map(({ id }) => id);
+        const added = scene.elements.findLast((element) => !currentIds.includes(element.id));
+        if (!added) return scene;
+        const at = added.kind === "dot"
+            ? added.at
+            : added.kind === "path"
+              ? added.path.nodes[this.toolKind === "rectangle" ? 2 : added.path.nodes.length - 1]
+              : undefined;
+        if (!at) {
+            this.snapProposal = null;
+            return scene;
+        }
+        const candidate = nearestPointFeature(this.document, at, 8 * this.sceneUnitsPerPixel);
+        if (!candidate) {
+            this.snapProposal = null;
+            return scene;
+        }
+        const addedId = added.id;
+        this.snapProposal = { from: at, to: candidate.at };
+        return {
+            ...scene,
+            elements: scene.elements.map((element) => {
+                if (element.id !== addedId) return element;
+                if (element.kind === "dot") return { ...element, at: candidate.at };
+                if (element.kind === "path") {
+                    const start = element.path.nodes[0];
+                    const nodes = this.toolKind === "rectangle" && start
+                        ? [
+                              start,
+                              [candidate.at[0], start[1]] as const,
+                              candidate.at,
+                              [start[0], candidate.at[1]] as const,
+                          ]
+                        : element.path.nodes.map((node, index) =>
+                              index === element.path.nodes.length - 1 ? candidate.at : node
+                          );
+                    return { ...element, path: { ...element.path, nodes } };
+                }
+                return element;
+            }),
+        };
     }
 
     // --- history --------------------------------------------------------------
 
-    /** Replace the resolved baked scene, recording the prior document for undo. */
+    /** Reconcile a legacy Scene operation without flattening canonical smart items. */
     apply(next: Scene): void {
+        try {
+            this.applyDocument(reconcileResolvedScene(documentSnapshot(this.document), next));
+        } catch (error) {
+            console.info(`[Whiteboard] ${error instanceof Error ? error.message : "unsupported smart edit"}`);
+        }
+    }
+
+    applyDocument(next: WhiteboardDocument): void {
         this.#history.push(documentSnapshot(this.document));
-        this.document = replaceBakedDocumentScene(this.document, next);
+        this.document = next;
         this.#syncFlags();
     }
 
@@ -271,6 +598,8 @@ export class WhiteboardStore {
             this.selectionPreview = null;
             this.lineContinuation = null;
             this.arcGuide = null;
+            this.selectedConstraintId = null;
+            this.snapProposal = null;
         }
         this.#syncFlags();
     }
@@ -284,6 +613,8 @@ export class WhiteboardStore {
             this.selectionPreview = null;
             this.lineContinuation = null;
             this.arcGuide = null;
+            this.selectedConstraintId = null;
+            this.snapProposal = null;
         }
         this.#syncFlags();
     }
@@ -310,7 +641,11 @@ export class WhiteboardStore {
                 : element),
         };
         if (this.#propertyBaseline) {
-            this.document = replaceBakedDocumentScene(this.#propertyBaseline, next);
+            try {
+                this.document = reconcileResolvedScene(this.#propertyBaseline, next);
+            } catch (error) {
+                console.info(`[Whiteboard] ${error instanceof Error ? error.message : "unsupported smart edit"}`);
+            }
         }
         else this.apply(next);
     }
@@ -414,6 +749,11 @@ export class WhiteboardStore {
     }
 
     deletePathVertex(elementId: string, nodeIndex: number): void {
+        const smartFeature = pathNodeFeature(this.document, elementId, nodeIndex);
+        if (smartFeature) {
+            // Structural smart-path vertex deletion changes topology and remains deferred.
+            return;
+        }
         const element = this.scene.elements.find(({ id }) => id === elementId);
         if (
             element?.kind !== "path" ||
@@ -457,11 +797,12 @@ export class WhiteboardStore {
     }
 
     deleteSelected(): void {
+        if (this.selectedConstraintId) {
+            this.deleteSelectedConstraint();
+            return;
+        }
         if (this.selection.length === 0) return;
-        this.apply({
-            ...this.scene,
-            elements: this.scene.elements.filter((element) => !this.selection.includes(element.id)),
-        });
+        this.applyDocument(deleteWhiteboardItems(this.document, this.selection));
         this.selection = [];
         this.selectionPreview = null;
         this.marquee = null;
@@ -479,12 +820,56 @@ export class WhiteboardStore {
     }
 
     clearAll(): void {
-        this.apply({ elements: [] });
+        this.applyDocument(emptyWhiteboardDocument());
         this.selection = [];
         this.selectionPreview = null;
         this.marquee = null;
         this.lineContinuation = null;
         this.arcGuide = null;
+    }
+
+    get constraintGlyphs(): Array<{
+        id: string;
+        at: readonly [number, number];
+        a: readonly [number, number];
+        b: readonly [number, number];
+        selected: boolean;
+    }> {
+        return Object.values(this.document.sketch.constraints).flatMap((constraint) => {
+            if (!constraint.enabled || constraint.kind !== "coincident") return [];
+            const a = pointFeaturePosition(this.document, constraint.a);
+            const b = pointFeaturePosition(this.document, constraint.b);
+            if (!a || !b) return [];
+            return [{
+                id: constraint.id,
+                at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as const,
+                a,
+                b,
+                selected: this.selectedConstraintId === constraint.id,
+            }];
+        });
+    }
+
+    selectConstraint(id: string | null): void {
+        this.selectedConstraintId = id && this.document.sketch.constraints[id] ? id : null;
+        if (this.selectedConstraintId) this.selection = [];
+    }
+
+    updateSnapProposal(at: readonly [number, number], suppressSnap = false): void {
+        if (suppressSnap || !["line", "rectangle", "point"].includes(this.toolKind)) {
+            this.snapProposal = null;
+            return;
+        }
+        const candidate = nearestPointFeature(this.document, at, 8 * this.sceneUnitsPerPixel);
+        this.snapProposal = candidate ? { from: at, to: candidate.at } : null;
+    }
+
+    deleteSelectedConstraint(): void {
+        if (!this.selectedConstraintId) return;
+        const next = removeConstraint(this.document, this.selectedConstraintId);
+        if (next !== this.document) this.applyDocument(next);
+        this.selectedConstraintId = null;
+        this.snapProposal = null;
     }
 
     // --- asy codec ------------------------------------------------------------

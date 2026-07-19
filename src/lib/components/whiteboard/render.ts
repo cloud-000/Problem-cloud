@@ -142,6 +142,8 @@ export interface WhiteboardRenderOverlay {
     resizeHandles: RenderResizeHandle[];
     vertexHandles: RenderVertexHandle[];
     arcGuide: RenderArcGuide | null;
+    snapProposal?: { from: Pair; to: Pair } | null;
+    constraintGlyphs?: Array<{ id: string; screen: Pair; selected: boolean }>;
 }
 
 export type ProjectedPathCommand = PathCommand;
@@ -588,6 +590,38 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
             }
             context.globalAlpha = 1;
         }
+    }
+    if (overlay.snapProposal) {
+        context.globalAlpha = 0.8;
+        context.strokeStyle = palette.primary;
+        context.fillStyle = palette.background;
+        context.setLineDash([3, 3]);
+        context.beginPath();
+        context.moveTo(overlay.snapProposal.from[0], overlay.snapProposal.from[1]);
+        context.lineTo(overlay.snapProposal.to[0], overlay.snapProposal.to[1]);
+        context.stroke();
+        context.setLineDash([]);
+        for (const point of [overlay.snapProposal.from, overlay.snapProposal.to]) {
+            context.beginPath();
+            context.arc(point[0], point[1], 5, 0, Math.PI * 2);
+            context.fill();
+            context.stroke();
+        }
+        context.globalAlpha = 1;
+    }
+    for (const glyph of overlay.constraintGlyphs ?? []) {
+        context.strokeStyle = palette.primary;
+        context.fillStyle = glyph.selected ? palette.primary : palette.background;
+        context.lineWidth = glyph.selected ? 2 : 1.5;
+        context.beginPath();
+        context.roundRect(glyph.screen[0] - 8, glyph.screen[1] - 6, 16, 12, 6);
+        context.fill();
+        context.stroke();
+        context.beginPath();
+        context.arc(glyph.screen[0] - 3, glyph.screen[1], 2.5, 0, Math.PI * 2);
+        context.arc(glyph.screen[0] + 3, glyph.screen[1], 2.5, 0, Math.PI * 2);
+        context.strokeStyle = glyph.selected ? palette.background : palette.primary;
+        context.stroke();
     }
     if (overlay.rotationControl) {
         context.setLineDash([]);

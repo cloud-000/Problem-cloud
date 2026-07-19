@@ -115,6 +115,11 @@
     const activeSelection = $derived(store.selectionPreview ?? store.selection);
     const selectedIds = $derived(new SvelteSet(activeSelection));
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
+    const constraintGlyphs = $derived(store.constraintGlyphs.map((glyph) => ({
+        id: glyph.id,
+        screen: [project(glyph.at)[0] + 12, project(glyph.at)[1] - 12] as Pair,
+        selected: glyph.selected,
+    })));
 
     type ResizePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -751,12 +756,26 @@
             hoveredArcControl = null;
             interaction = "draw";
             syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY));
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), undefined, e.altKey);
             return;
         }
 
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
         const pointerScreen: Pair = [pointerX, pointerY];
+        const constraintGlyph = store.toolKind === "select"
+            ? constraintGlyphs.find((glyph) =>
+                  Math.hypot(glyph.screen[0] - pointerX, glyph.screen[1] - pointerY) <= 10
+              )
+            : undefined;
+        if (e.button === 0 && constraintGlyph) {
+            store.selectConstraint(constraintGlyph.id);
+            selectedVertex = null;
+            hoveredVertex = null;
+            selectedArcControl = null;
+            hoveredArcControl = null;
+            interaction = "idle";
+            return;
+        }
         const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
         const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
             arcGuide?.radiusEditable === true &&
@@ -785,7 +804,7 @@
                 control,
                 handle,
                 minimumRadius: 12 / scale,
-            });
+            }, e.altKey);
             return;
         }
         if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
@@ -804,7 +823,7 @@
                 elementId: vertexHandle.elementId,
                 nodeIndex: vertexHandle.nodeIndex,
                 handle: vertexHandle.handle,
-            });
+            }, e.altKey);
             return;
         }
         if (e.button === 0) {
@@ -832,7 +851,7 @@
                         extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
                         extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,
                     ],
-                });
+                }, e.altKey);
                 return;
             }
         }
@@ -843,7 +862,7 @@
             store.pointerDown(toAsyAt(e.clientX, e.clientY), {
                 kind: "rotate",
                 pivot: rotationControl.pivot,
-            });
+            }, e.altKey);
             return;
         }
         if (
@@ -855,13 +874,17 @@
             interaction = "transform";
             transformCursor = "move";
             syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" });
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" }, e.altKey);
             return;
         }
 
         interaction = "draw";
         syncToolScale();
-        store.pointerDown(store.toolKind === "pen" ? pointerSample(e) : toAsyAt(e.clientX, e.clientY));
+        store.pointerDown(
+            store.toolKind === "pen" ? pointerSample(e) : toAsyAt(e.clientX, e.clientY),
+            undefined,
+            e.altKey,
+        );
     }
 
     function onPointerMove(e: PointerEvent) {
@@ -875,6 +898,10 @@
         }
         if (interaction === "idle") {
             const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+            if (["line", "rectangle", "point"].includes(store.toolKind)) {
+                syncToolScale();
+                store.updateSnapProposal(toAsyAt(e.clientX, e.clientY), e.altKey);
+            }
             if (
                 store.lineContinuation ||
                 (store.toolKind === "line" && store.preview !== null) ||
@@ -884,7 +911,7 @@
                 hoveredArcControl = null;
                 transformCursor = null;
                 syncToolScale();
-                store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey);
+                store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey, e.altKey);
                 return;
             }
             const pointerScreen: Pair = [pointerX, pointerY];
@@ -926,7 +953,7 @@
             if (interaction === "draw" && store.toolKind === "pen") {
                 penSamples.add((samples.length > 0 ? samples : [e]).map(pointerSample));
             } else {
-                store.pointerMoves([toAsyAt(e.clientX, e.clientY)], e.shiftKey);
+                store.pointerMoves([toAsyAt(e.clientX, e.clientY)], e.shiftKey, e.altKey);
             }
         }
     }
@@ -949,10 +976,10 @@
                 : toAsyAt(e.clientX, e.clientY);
             if (interaction === "draw" && store.toolKind === "pen") {
                 const flushed = penSamples.flushWith((points) =>
-                    store.pointerUp(point, e.shiftKey, points)
+                    store.pointerUp(point, e.shiftKey, points, e.altKey)
                 );
-                if (!flushed) store.pointerUp(point, e.shiftKey);
-            } else store.pointerUp(point, e.shiftKey);
+                if (!flushed) store.pointerUp(point, e.shiftKey, [], e.altKey);
+            } else store.pointerUp(point, e.shiftKey, [], e.altKey);
         }
         pointerId = null;
         panStart = null;
@@ -1024,6 +1051,9 @@
                 hoveredVertex = null;
                 selectedArcControl = null;
                 hoveredArcControl = null;
+            } else if (store.selectedConstraintId) {
+                e.preventDefault();
+                store.deleteSelectedConstraint();
             } else if (store.selection.length) {
                 e.preventDefault();
                 store.deleteSelected();
@@ -1179,6 +1209,10 @@
                       })),
                   }
                 : null,
+            snapProposal: store.snapProposal
+                ? { from: project(store.snapProposal.from), to: project(store.snapProposal.to) }
+                : null,
+            constraintGlyphs: constraintGlyphs.map((glyph) => ({ ...glyph })),
         };
 
         const backingWidth = Math.max(1, Math.round(width * pixelRatio));
