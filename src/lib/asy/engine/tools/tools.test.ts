@@ -357,6 +357,17 @@ describe("PenTool", () => {
 });
 
 describe("ArcTool", () => {
+    test("radius construction snaps to an integer and stays sticky", () => {
+        const tool = createTool("arc");
+        const scene = emptyScene();
+        tool.onPointerDown(scene, [0, 0], ctx);
+
+        expect(tool.onPointerMove(scene, [0.8, 0], ctx).arcGuide?.radius).toBe(0.8);
+        expect(tool.onPointerMove(scene, [0.92, 0], ctx).arcGuide?.radius).toBe(1);
+        expect(tool.onPointerMove(scene, [0.94, 0], ctx).arcGuide?.radius).toBe(1);
+        expect(tool.onPointerMove(scene, [0.92, 0], ctx).arcGuide?.radius).toBe(0.92);
+    });
+
     test("four clicks preview each construction phase and produce an arc", () => {
         const tool = createTool("arc");
         const s = emptyScene();
@@ -1114,6 +1125,29 @@ describe("SelectTool", () => {
             angle1: 20,
             angle2: 200,
         });
+    });
+
+    test("arc radius editing snaps near construction-friendly values", () => {
+        const arc = createArc([0, 0], 2, 20, 200);
+        const scene = { elements: [arc] };
+        const transformCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "radius",
+                handle: [2, 0],
+                minimumRadius: 0.1,
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [2, 0], transformCtx);
+        tool.onPointerMove(scene, [0.8, 0], transformCtx);
+        expect(tool.onPointerMove(scene, [0.92, 0], transformCtx).preview?.elements[0])
+            .toMatchObject({ kind: "arc", radius: 1 });
+        expect(tool.onPointerUp(scene, [0.94, 0], transformCtx).commit?.elements[0])
+            .toMatchObject({ kind: "arc", radius: 1 });
     });
 
     test("anisotropic bounding-box resize converts an arc to an editable elliptical arc", () => {

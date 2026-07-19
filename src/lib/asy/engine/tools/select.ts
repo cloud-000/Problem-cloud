@@ -3,7 +3,14 @@ import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { principalEllipseGeometry } from "../../scene/ellipse-geometry";
 import { hitTest } from "../hit-test";
-import { distance, normalizeDeg, rotateElement, scaleElementBy, translateElement } from "../geometry";
+import {
+    distance,
+    normalizeDeg,
+    rotateElement,
+    scaleElementBy,
+    snapConstructionScalar,
+    translateElement,
+} from "../geometry";
 import {
     mapElements,
     NO_RESULT,
@@ -48,6 +55,8 @@ export class SelectTool implements Tool {
     private transformPointerOffset: Pair = [0, 0];
     private base: Scene | null = null;
     private moved = false;
+    private scalarSnapTarget: number | null = null;
+    private previousRawScalar: number | null = null;
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         const p = pointerPoint(input);
@@ -297,7 +306,15 @@ export class SelectTool implements Tool {
 
             if (control === "radius") {
                 if (element.kind !== "arc") return { scene, changed: false };
-                const radius = Math.max(minimumRadius, distance(element.center, pointer));
+                const rawRadius = Math.max(minimumRadius, distance(element.center, pointer));
+                const snapped = snapConstructionScalar(
+                    rawRadius,
+                    this.previousRawScalar,
+                    this.scalarSnapTarget,
+                );
+                this.previousRawScalar = rawRadius;
+                this.scalarSnapTarget = snapped.target;
+                const radius = Math.max(minimumRadius, snapped.value);
                 const changed = Math.abs(radius - element.radius) > 1e-9;
                 return {
                     scene: changed
@@ -506,5 +523,7 @@ export class SelectTool implements Tool {
         this.transformPointerOffset = [0, 0];
         this.base = null;
         this.moved = false;
+        this.scalarSnapTarget = null;
+        this.previousRawScalar = null;
     }
 }

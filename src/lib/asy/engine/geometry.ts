@@ -10,6 +10,44 @@ export function distance(a: Pair, b: Pair): number {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }
 
+export interface ScalarSnapResult {
+    value: number;
+    /** The target retained for hysteresis on the next pointer sample. */
+    target: number | null;
+}
+
+/**
+ * Snap a measured scalar to the nearest configured increment when it enters
+ * the fixed scene-unit threshold while moving toward that target. Moving away
+ * releases an engaged target immediately, so snapping never pulls backward.
+ */
+export function snapConstructionScalar(
+    value: number,
+    previousValue: number | null = null,
+    engagedTarget: number | null = null,
+    threshold = 0.1,
+    step = 0.5,
+): ScalarSnapResult {
+    const snapDistance = Math.max(0, threshold);
+    const snapStep = Math.max(Number.EPSILON, Math.abs(step));
+    if (engagedTarget !== null) {
+        const distanceNow = Math.abs(value - engagedTarget);
+        const distanceBefore = previousValue === null
+            ? Infinity
+            : Math.abs(previousValue - engagedTarget);
+        if (distanceNow <= distanceBefore) return { value: engagedTarget, target: engagedTarget };
+        return { value, target: null };
+    }
+
+    const target = Math.round(value / snapStep) * snapStep;
+    const distanceNow = Math.abs(value - target);
+    const movingToward = previousValue === null ||
+        distanceNow < Math.abs(previousValue - target);
+    return target > 0 && distanceNow <= snapDistance && movingToward
+        ? { value: target, target }
+        : { value, target: null };
+}
+
 /** Shortest distance from point `p` to segment `a`-`b`. */
 export function pointToSegment(p: Pair, a: Pair, b: Pair): number {
     const abx = b[0] - a[0];

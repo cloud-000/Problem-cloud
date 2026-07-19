@@ -9,6 +9,7 @@ import {
     rotateElement,
     scaleElement,
     scaleElementBy,
+    snapConstructionScalar,
     translateElement,
 } from "./geometry";
 import {
@@ -25,6 +26,33 @@ import {
 describe("geometry", () => {
     test("distance", () => {
         expect(distance([0, 0], [3, 4])).toBe(5);
+    });
+
+    test("construction scalar snapping engages only while approaching a target", () => {
+        const entered = snapConstructionScalar(0.92, 0.8);
+        expect(entered).toEqual({ value: 1, target: 1 });
+
+        expect(snapConstructionScalar(0.92, 0.95)).toEqual({
+            value: 0.92,
+            target: null,
+        });
+    });
+
+    test("construction scalar snapping releases as soon as movement reverses", () => {
+        expect(snapConstructionScalar(0.94, 0.92, 1)).toEqual({ value: 1, target: 1 });
+        expect(snapConstructionScalar(0.92, 0.94, 1)).toEqual({ value: 0.92, target: null });
+    });
+
+    test("construction scalar snapping uses half-unit targets only", () => {
+        expect(snapConstructionScalar(2.58, 2.7)).toEqual({ value: 2.5, target: 2.5 });
+        expect(snapConstructionScalar(3.27, 3.4)).toEqual({ value: 3.27, target: null });
+    });
+
+    test("construction scalar snapping accepts a custom increment", () => {
+        expect(snapConstructionScalar(2.08, 2.2, null, 0.1, 1)).toEqual({
+            value: 2,
+            target: 2,
+        });
     });
 
     test("pointToSegment: perpendicular and endpoint clamping", () => {

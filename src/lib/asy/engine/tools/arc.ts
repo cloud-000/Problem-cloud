@@ -1,6 +1,6 @@
 import type { Pair, Scene } from "../../scene/types";
 import { createArc } from "../../scene/factory";
-import { distance, normalizeDeg } from "../geometry";
+import { distance, normalizeDeg, snapConstructionScalar } from "../geometry";
 import { addElement, NO_RESULT, pointerPoint, type PointerInput, type Tool, type ToolContext, type ToolResult } from "./types";
 
 function angleOf(center: Pair, p: Pair): number {
@@ -17,6 +17,19 @@ export class ArcTool implements Tool {
     private radius = 0;
     private angle1 = 0;
     private phase: 0 | 1 | 2 | 3 = 0;
+    private radiusSnapTarget: number | null = null;
+    private previousRawRadius: number | null = null;
+
+    private snappedRadius(rawRadius: number): number {
+        const snapped = snapConstructionScalar(
+            rawRadius,
+            this.previousRawRadius,
+            this.radiusSnapTarget,
+        );
+        this.previousRawRadius = rawRadius;
+        this.radiusSnapTarget = snapped.target;
+        return snapped.value;
+    }
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         const p = pointerPoint(input);
@@ -26,7 +39,7 @@ export class ArcTool implements Tool {
             return { preview: scene, arcGuide: { center: p, radius: 0, radiusPoint: p } };
         }
         if (this.phase === 1) {
-            this.radius = distance(this.center!, p);
+            this.radius = this.snappedRadius(distance(this.center!, p));
             if (this.radius < ctx.tolerance) return this.onCancel();
             this.phase = 2;
             return {
@@ -73,7 +86,7 @@ export class ArcTool implements Tool {
     onPointerMove(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         const p = pointerPoint(input);
         if (this.phase === 1) {
-            const r = distance(this.center!, p);
+            const r = this.snappedRadius(distance(this.center!, p));
             return { preview: scene, arcGuide: { center: this.center!, radius: r, radiusPoint: p } };
         }
         if (this.phase === 2) {
@@ -115,5 +128,7 @@ export class ArcTool implements Tool {
         this.radius = 0;
         this.angle1 = 0;
         this.phase = 0;
+        this.radiusSnapTarget = null;
+        this.previousRawRadius = null;
     }
 }
