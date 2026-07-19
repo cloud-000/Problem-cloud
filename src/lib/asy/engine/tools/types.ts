@@ -50,6 +50,8 @@ export interface LineContinuation {
 export interface ArcGuide {
     center: Pair;
     radius: number;
+    /** Point defining the visible construction radius before a start angle exists. */
+    radiusPoint?: Pair;
     angle1?: number;
     angle2?: number;
 }
@@ -87,7 +89,7 @@ export type SelectionTransformGesture =
     | {
           kind: "arc";
           elementId: string;
-          control: "center" | "start" | "end" | "radius";
+          control: "center" | "start" | "end" | "radius" | "focus1" | "focus2";
           /** Semantic geometry point, used to keep center drags from jumping. */
           handle: Pair;
           /** Smallest radius allowed by a radius drag. */

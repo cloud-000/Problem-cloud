@@ -341,6 +341,12 @@ export class WhiteboardStore {
             case "pointSize": return pen.lineWidth ?? 3;
             case "eraserSize": return this.eraserSize;
             case "labelText": return "";
+            case "radius":
+            case "semiMajorAxis":
+            case "semiMinorAxis":
+            case "eccentricity":
+            case "startAngle":
+            case "arcAngle": return 0;
         }
     }
 
@@ -365,6 +371,14 @@ export class WhiteboardStore {
             this.eraserSize = Number(value);
             return;
         }
+        if (
+            id === "radius" ||
+            id === "semiMajorAxis" ||
+            id === "semiMinorAxis" ||
+            id === "eccentricity" ||
+            id === "startAngle" ||
+            id === "arcAngle"
+        ) return;
         if (!this.#isStyledTool(this.toolKind)) return;
         const patch: Partial<Pen> = id === "lineWidth" || id === "pointSize"
             ? { lineWidth: Number(value) }

@@ -210,8 +210,21 @@ describe("Canvas 2D rendering", () => {
             arcGuide: {
                 center: [50, 50],
                 radius: 25,
+                measurements: {
+                    axes: [{
+                        start: [25, 50],
+                        end: [75, 50],
+                        label: "a 2",
+                        labelAt: [65, 45],
+                    }],
+                    angleRays: [[75, 50], [50, 25]],
+                    angleLabel: "θ 90°",
+                    angleLabelAt: [60, 40],
+                },
                 handles: [
                     { control: "center", screen: [50, 50] },
+                    { control: "focus1", screen: [40, 50] },
+                    { control: "focus2", screen: [60, 50], state: "selected" },
                     { control: "start", screen: [75, 50] },
                     { control: "end", screen: [50, 25], state: "selected" },
                 ],
@@ -225,6 +238,8 @@ describe("Canvas 2D rendering", () => {
         expect(context.calls).toContain("fillText:A");
         expect(context.calls).toContain("roundRect");
         expect(context.calls).toContain("arc:25");
+        expect(context.calls).toContain("fillText:a 2");
+        expect(context.calls).toContain("fillText:θ 90°");
         expect(context.calls).toContain("dash:5,4");
         expect(context.calls.at(-1)).toBe("setTransform:1");
     });

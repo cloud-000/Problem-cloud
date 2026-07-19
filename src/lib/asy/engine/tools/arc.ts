@@ -23,7 +23,7 @@ export class ArcTool implements Tool {
         if (this.phase === 0) {
             this.center = p;
             this.phase = 1;
-            return { preview: scene, arcGuide: { center: p, radius: 0 } };
+            return { preview: scene, arcGuide: { center: p, radius: 0, radiusPoint: p } };
         }
         if (this.phase === 1) {
             this.radius = distance(this.center!, p);
@@ -31,7 +31,7 @@ export class ArcTool implements Tool {
             this.phase = 2;
             return {
                 preview: scene,
-                arcGuide: { center: this.center!, radius: this.radius },
+                arcGuide: { center: this.center!, radius: this.radius, radiusPoint: p },
             };
         }
         if (this.phase === 2) {
@@ -74,7 +74,7 @@ export class ArcTool implements Tool {
         const p = pointerPoint(input);
         if (this.phase === 1) {
             const r = distance(this.center!, p);
-            return { preview: scene, arcGuide: { center: this.center!, radius: r } };
+            return { preview: scene, arcGuide: { center: this.center!, radius: r, radiusPoint: p } };
         }
         if (this.phase === 2) {
             const angle1 = angleOf(this.center!, p);

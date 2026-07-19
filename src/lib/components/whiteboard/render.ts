@@ -64,7 +64,7 @@ export interface RenderRotationControl {
 }
 
 export interface RenderArcHandle extends RenderResizeHandle {
-    control: "center" | "start" | "end";
+    control: "center" | "start" | "end" | "focus1" | "focus2";
     state?: "default" | "hovered" | "selected";
 }
 
@@ -73,6 +73,12 @@ export interface RenderArcGuide {
     radius?: number;
     points?: Pair[];
     handles: RenderArcHandle[];
+    measurements?: {
+        axes: Array<{ start: Pair; end: Pair; label: string; labelAt: Pair }>;
+        angleRays?: readonly [Pair, Pair];
+        angleLabel?: string;
+        angleLabelAt?: Pair;
+    };
 }
 
 export function isArcGuideAt(
@@ -548,6 +554,40 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.stroke();
         context.globalAlpha = 1;
         context.setLineDash([]);
+
+        const measurements = overlay.arcGuide.measurements;
+        if (measurements) {
+            context.globalAlpha = 0.8;
+            context.lineWidth = 1;
+            context.setLineDash([3, 3]);
+            for (const axis of measurements.axes) {
+                context.beginPath();
+                context.moveTo(axis.start[0], axis.start[1]);
+                context.lineTo(axis.end[0], axis.end[1]);
+                context.stroke();
+            }
+            for (const ray of measurements.angleRays ?? []) {
+                context.beginPath();
+                context.moveTo(overlay.arcGuide.center[0], overlay.arcGuide.center[1]);
+                context.lineTo(ray[0], ray[1]);
+                context.stroke();
+            }
+            context.setLineDash([]);
+            context.font = "11px system-ui, sans-serif";
+            context.textAlign = "center";
+            context.textBaseline = "middle";
+            for (const axis of measurements.axes) {
+                context.fillText(axis.label, axis.labelAt[0], axis.labelAt[1]);
+            }
+            if (measurements.angleLabel && measurements.angleLabelAt) {
+                context.fillText(
+                    measurements.angleLabel,
+                    measurements.angleLabelAt[0],
+                    measurements.angleLabelAt[1],
+                );
+            }
+            context.globalAlpha = 1;
+        }
     }
     if (overlay.rotationControl) {
         context.setLineDash([]);
@@ -586,7 +626,7 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         const state = handle.state ?? "default";
         const radius = state === "selected" ? 6 : state === "hovered" ? 5.5 : 5;
         context.globalAlpha = state === "hovered" ? 0.2 : 1;
-        context.fillStyle = handle.control === "center" || state !== "default"
+        context.fillStyle = handle.control === "center" || handle.control.startsWith("focus") || state !== "default"
             ? palette.primary
             : palette.background;
         context.strokeStyle = palette.primary;

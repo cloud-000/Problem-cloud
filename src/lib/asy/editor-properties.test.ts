@@ -4,11 +4,20 @@ import {
     elementPropertyIds,
     penColorHex,
     penWithColor,
+    readElementProperty,
     resolveElementProperties,
     toolPropertyIds,
     writeElementProperty,
 } from "./editor-properties";
-import { createCircle, createFill, createLabel, createPath, makePath } from "./scene/factory";
+import {
+    createArc,
+    createCircle,
+    createEllipticalArc,
+    createFill,
+    createLabel,
+    createPath,
+    makePath,
+} from "./scene/factory";
 
 describe("whiteboard editor properties", () => {
     test("advertises only properties meaningful to each element and tool", () => {
@@ -56,5 +65,31 @@ describe("whiteboard editor properties", () => {
         const custom = penWithColor({}, "#123456");
         expect(custom.namedColor).toBeUndefined();
         expect(penColorHex(custom)).toBe("#123456");
+    });
+
+    test("edits compass geometry through radius, eccentricity, axes, and arc angles", () => {
+        const circleArc = createArc([0, 0], 4, 30, 120);
+        expect(elementPropertyIds(circleArc)).toContain("eccentricity");
+        expect(readElementProperty(circleArc, "radius")).toBe(4);
+        expect(readElementProperty(circleArc, "arcAngle")).toBe(90);
+
+        const eccentric = writeElementProperty(circleArc, "eccentricity", 0.6);
+        expect(eccentric.kind).toBe("elliptical-arc");
+        expect(readElementProperty(eccentric, "semiMajorAxis")).toBeCloseTo(4);
+        expect(readElementProperty(eccentric, "semiMinorAxis")).toBeCloseTo(3.2);
+        expect(readElementProperty(eccentric, "eccentricity")).toBeCloseTo(0.6);
+
+        const widerSweep = writeElementProperty(eccentric, "arcAngle", 210);
+        expect(widerSweep).toMatchObject({ angle1: 30, angle2: 240 });
+
+        const circularAgain = writeElementProperty(eccentric, "eccentricity", 0);
+        expect(circularAgain.kind).toBe("arc");
+    });
+
+    test("reports true principal axes for rotated affine elliptical arcs", () => {
+        const ellipse = createEllipticalArc([1, 2], [0, 5], [-2, 0], 0, 180);
+        expect(readElementProperty(ellipse, "semiMajorAxis")).toBeCloseTo(5);
+        expect(readElementProperty(ellipse, "semiMinorAxis")).toBeCloseTo(2);
+        expect(readElementProperty(ellipse, "eccentricity")).toBeCloseTo(Math.sqrt(21) / 5);
     });
 });

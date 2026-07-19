@@ -5,6 +5,8 @@
     import {
         elementBounds,
         isStraightPathVertexEditable,
+        positiveArcSweep,
+        principalEllipseGeometry,
         sceneBounds,
         type ArcElement,
         type Bounds,
@@ -101,7 +103,7 @@
         nodeIndex: number;
     }
 
-    type ArcControl = "center" | "start" | "end" | "radius";
+    type ArcControl = "center" | "start" | "end" | "radius" | "focus1" | "focus2";
 
     interface ArcControlRef {
         elementId: string;
@@ -239,6 +241,10 @@
             element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
             element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
         ];
+    }
+
+    function geometryLabel(value: number): string {
+        return Number(value.toFixed(2)).toString();
     }
 
     const hasTransformExtent = $derived.by(() => {
@@ -400,6 +406,13 @@
     const arcGuide = $derived.by(() => {
         const construction = store.arcGuide;
         if (construction) {
+            const radiusEnd = construction.angle1 !== undefined
+                ? arcPoint(construction.center, construction.radius, construction.angle1)
+                : construction.radiusPoint ?? construction.center;
+            const radiusLabelAt: Pair = [
+                construction.center[0] + (radiusEnd[0] - construction.center[0]) * 0.55,
+                construction.center[1] + (radiusEnd[1] - construction.center[1]) * 0.55,
+            ];
             const handles: RenderArcHandle[] = [
                 { control: "center", screen: project(construction.center) },
             ];
@@ -431,6 +444,16 @@
                 elementId: null,
                 points: undefined,
                 radiusEditable: false,
+                measurements: construction.radius > 1e-9
+                    ? {
+                          axes: [{
+                              start: project(construction.center),
+                              end: project(radiusEnd),
+                              label: `r ${geometryLabel(construction.radius)}`,
+                              labelAt: project(radiusLabelAt),
+                          }],
+                      }
+                    : undefined,
             };
         }
         if (!selectedArcElement) return null;
@@ -458,11 +481,23 @@
             endScreen = [endScreen[0] + tangent[0], endScreen[1] + tangent[1]];
         }
 
-        const editHandles: ArcHandle[] = ([
+        const geometry = principalEllipseGeometry(selectedArcElement);
+        const semanticHandles: Array<{
+            control: Exclude<ArcControl, "radius">;
+            handle: Pair;
+            screen: Pair;
+        }> = [
             { control: "center", handle: selectedArcElement.center, screen: project(selectedArcElement.center) },
             { control: "start", handle: start, screen: startScreen },
             { control: "end", handle: end, screen: endScreen },
-        ] as const).map((handle) => ({
+        ];
+        if (selectedArcElement.kind === "elliptical-arc" && geometry.eccentricity > 1e-4) {
+            semanticHandles.push(
+                { control: "focus1", handle: geometry.foci[0], screen: project(geometry.foci[0]) },
+                { control: "focus2", handle: geometry.foci[1], screen: project(geometry.foci[1]) },
+            );
+        }
+        const editHandles: ArcHandle[] = semanticHandles.map((handle) => ({
             ...handle,
             elementId: selectedArcElement.id,
             state: isArcControl(selectedArcControl, selectedArcElement.id, handle.control)
@@ -476,8 +511,56 @@
                   project(selectedArcPoint(selectedArcElement, (index / 64) * 360)),
               )
             : undefined;
+        const majorOffset: Pair = [
+            geometry.majorDirection[0] * geometry.semiMajor,
+            geometry.majorDirection[1] * geometry.semiMajor,
+        ];
+        const minorOffset: Pair = [
+            geometry.minorDirection[0] * geometry.semiMinor,
+            geometry.minorDirection[1] * geometry.semiMinor,
+        ];
+        const center = selectedArcElement.center;
+        const axes = selectedArcElement.kind === "arc"
+            ? [{
+                  start: project(center),
+                  end: project(start),
+                  label: `r ${geometryLabel(geometry.semiMajor)}`,
+                  labelAt: project([
+                      center[0] + (start[0] - center[0]) * 0.55,
+                      center[1] + (start[1] - center[1]) * 0.55,
+                  ]),
+              }]
+            : [
+                  {
+                      start: project([center[0] - majorOffset[0], center[1] - majorOffset[1]]),
+                      end: project([center[0] + majorOffset[0], center[1] + majorOffset[1]]),
+                      label: `a ${geometryLabel(geometry.semiMajor)}`,
+                      labelAt: project([
+                          center[0] + majorOffset[0] * 0.58,
+                          center[1] + majorOffset[1] * 0.58,
+                      ]),
+                  },
+                  {
+                      start: project([center[0] - minorOffset[0], center[1] - minorOffset[1]]),
+                      end: project([center[0] + minorOffset[0], center[1] + minorOffset[1]]),
+                      label: `b ${geometryLabel(geometry.semiMinor)}`,
+                      labelAt: project([
+                          center[0] + minorOffset[0] * 0.58,
+                          center[1] + minorOffset[1] * 0.58,
+                      ]),
+                  },
+              ];
+        const sweep = positiveArcSweep(selectedArcElement.angle1, selectedArcElement.angle2);
+        const angleMidpoint = selectedArcPoint(
+            selectedArcElement,
+            selectedArcElement.angle1 + sweep / 2,
+        );
+        const angleLabelAt = project([
+            center[0] + (angleMidpoint[0] - center[0]) * 0.38,
+            center[1] + (angleMidpoint[1] - center[1]) * 0.38,
+        ]);
         return {
-            center: project(selectedArcElement.center),
+            center: project(center),
             radius: selectedArcElement.kind === "arc"
                 ? Math.abs(selectedArcElement.radius * scale)
                 : undefined,
@@ -486,6 +569,12 @@
             editHandles,
             elementId: selectedArcElement.id,
             radiusEditable: selectedArcElement.kind === "arc",
+            measurements: {
+                axes,
+                angleRays: [project(start), project(end)] as const,
+                angleLabel: `θ ${geometryLabel(sweep)}°`,
+                angleLabelAt,
+            },
         };
     });
 
@@ -1034,6 +1123,7 @@
                       center: arcGuide.center,
                       radius: arcGuide.radius,
                       points: arcGuide.points,
+                      measurements: arcGuide.measurements,
                       handles: arcGuide.handles.map((handle) => ({
                           control: handle.control,
                           screen: handle.screen,

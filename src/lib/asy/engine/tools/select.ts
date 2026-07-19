@@ -1,6 +1,7 @@
 import type { ArcElement, EllipticalArcElement, Pair, Scene } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
+import { principalEllipseGeometry } from "../../scene/ellipse-geometry";
 import { hitTest } from "../hit-test";
 import { distance, normalizeDeg, rotateElement, scaleElementBy, translateElement } from "../geometry";
 import {
@@ -106,7 +107,11 @@ export class SelectTool implements Tool {
             if (
                 selectionGesture.kind === "resize" ||
                 selectionGesture.kind === "vertex" ||
-                (selectionGesture.kind === "arc" && selectionGesture.control === "center")
+                (selectionGesture.kind === "arc" && (
+                    selectionGesture.control === "center" ||
+                    selectionGesture.control === "focus1" ||
+                    selectionGesture.control === "focus2"
+                ))
             ) {
                 this.transformPointerOffset = [
                     p[0] - selectionGesture.handle[0],
@@ -299,6 +304,62 @@ export class SelectTool implements Tool {
                         ? mapElements(scene, (candidate) =>
                               candidate.id === elementId && candidate.kind === "arc"
                                   ? { ...candidate, radius }
+                                  : candidate,
+                          )
+                        : scene,
+                    changed,
+                };
+            }
+
+            if (control === "focus1" || control === "focus2") {
+                if (element.kind !== "elliptical-arc") return { scene, changed: false };
+                const geometry = principalEllipseGeometry(element);
+                const focusPointer: Pair = [
+                    pointer[0] - this.transformPointerOffset[0],
+                    pointer[1] - this.transformPointerOffset[1],
+                ];
+                const dx = focusPointer[0] - element.center[0];
+                const dy = focusPointer[1] - element.center[1];
+                const pointerDistance = Math.hypot(dx, dy);
+                const maxFocalDistance = Math.sqrt(Math.max(
+                    0,
+                    geometry.semiMajor ** 2 - Math.min(minimumRadius, geometry.semiMajor) ** 2,
+                ));
+                const focalDistance = Math.min(pointerDistance, maxFocalDistance);
+                const fallbackSign = control === "focus1" ? -1 : 1;
+                const majorDirection: Pair = pointerDistance > 1e-9
+                    ? [
+                          (dx / pointerDistance) * fallbackSign,
+                          (dy / pointerDistance) * fallbackSign,
+                      ]
+                    : geometry.majorDirection;
+                const orientation =
+                    geometry.majorDirection[0] * geometry.minorDirection[1] -
+                    geometry.majorDirection[1] * geometry.minorDirection[0] < 0
+                        ? -1
+                        : 1;
+                const minorDirection: Pair = [
+                    -majorDirection[1] * orientation,
+                    majorDirection[0] * orientation,
+                ];
+                const semiMinor = Math.sqrt(Math.max(
+                    0,
+                    geometry.semiMajor ** 2 - focalDistance ** 2,
+                ));
+                const axisX: Pair = [
+                    majorDirection[0] * geometry.semiMajor,
+                    majorDirection[1] * geometry.semiMajor,
+                ];
+                const axisY: Pair = [
+                    minorDirection[0] * semiMinor,
+                    minorDirection[1] * semiMinor,
+                ];
+                const changed = distance(focusPointer, handle) > 1e-9;
+                return {
+                    scene: changed
+                        ? mapElements(scene, (candidate) =>
+                              candidate.id === elementId && candidate.kind === "elliptical-arc"
+                                  ? { ...candidate, axisX, axisY }
                                   : candidate,
                           )
                         : scene,

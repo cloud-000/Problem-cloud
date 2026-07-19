@@ -361,10 +361,14 @@ describe("ArcTool", () => {
         const tool = createTool("arc");
         const s = emptyScene();
         const center = tool.onPointerDown(s, [0, 0], ctx);
-        expect(center.arcGuide).toEqual({ center: [0, 0], radius: 0 });
+        expect(center.arcGuide).toEqual({ center: [0, 0], radius: 0, radiusPoint: [0, 0] });
 
         const radiusPreview = tool.onPointerMove(s, [2, 0], ctx);
-        expect(radiusPreview.arcGuide).toEqual({ center: [0, 0], radius: 2 });
+        expect(radiusPreview.arcGuide).toEqual({
+            center: [0, 0],
+            radius: 2,
+            radiusPoint: [2, 0],
+        });
         expect(tool.onPointerDown(s, [2, 0], ctx).commit).toBeUndefined();
 
         const startPreview = tool.onPointerMove(s, [0, 3], ctx);
@@ -1202,6 +1206,36 @@ describe("SelectTool", () => {
             angle1: 90,
             angle2: 180,
         });
+    });
+
+    test("elliptical arc focus controls update eccentricity and rotate the focal axis", () => {
+        const arc = createEllipticalArc([0, 0], [4, 0], [0, 3], 0, 180);
+        const scene = { elements: [arc] };
+        const focalDistance = Math.sqrt(7);
+        const focusCtx: ToolContext = {
+            ...ctx,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "focus2",
+                handle: [focalDistance, 0],
+                minimumRadius: 0.25,
+            },
+        };
+        const focus = createTool("select");
+        focus.onPointerDown(scene, [focalDistance, 0], focusCtx);
+        expect(focus.onPointerUp(scene, [0, 3], focusCtx).commit?.elements[0]).toMatchObject({
+            kind: "elliptical-arc",
+            axisX: [0, 4],
+            axisY: [-Math.sqrt(7), 0],
+            angle1: 0,
+            angle2: 180,
+        });
+
+        const noOp = createTool("select");
+        noOp.onPointerDown(scene, [focalDistance, 0], focusCtx);
+        expect(noOp.onPointerUp(scene, [focalDistance, 0], focusCtx).commit).toBeUndefined();
     });
 
     test("no-op and cancelled transforms do not commit", () => {

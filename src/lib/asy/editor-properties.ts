@@ -1,5 +1,6 @@
 import type { Dash, Pen, RGB, SceneElement } from "./scene/types";
 import { resolvePenColor, rgbToNamedColor } from "./scene/pen";
+import { positiveArcSweep, principalEllipseGeometry } from "./scene/ellipse-geometry";
 import type { ToolKind } from "./engine/tools/types";
 
 export type EditorPropertyId =
@@ -13,7 +14,13 @@ export type EditorPropertyId =
     | "labelText"
     | "fontSize"
     | "pointSize"
-    | "eraserSize";
+    | "eraserSize"
+    | "radius"
+    | "semiMajorAxis"
+    | "semiMinorAxis"
+    | "eccentricity"
+    | "startAngle"
+    | "arcAngle";
 
 export type EditorPropertyValue = string | number | boolean;
 export type PropertyControl = "color" | "toggle" | "number" | "dash" | "text";
@@ -44,6 +51,12 @@ export const EDITOR_PROPERTY_DEFINITIONS: Record<EditorPropertyId, EditorPropert
     fontSize: { id: "fontSize", label: "Font size", control: "number", min: 8, max: 48, step: 1 },
     pointSize: { id: "pointSize", label: "Point size", control: "number", min: 1, max: 12, step: 0.5 },
     eraserSize: { id: "eraserSize", label: "Eraser size", control: "number", min: 4, max: 32, step: 1 },
+    radius: { id: "radius", label: "Radius", control: "number", min: 0.01, max: 1000, step: 0.1 },
+    semiMajorAxis: { id: "semiMajorAxis", label: "Semi-major axis", control: "number", min: 0.01, max: 1000, step: 0.1 },
+    semiMinorAxis: { id: "semiMinorAxis", label: "Semi-minor axis", control: "number", min: 0.01, max: 1000, step: 0.1 },
+    eccentricity: { id: "eccentricity", label: "Eccentricity", control: "number", min: 0, max: 0.999, step: 0.01 },
+    startAngle: { id: "startAngle", label: "Start angle", control: "number", min: -360, max: 360, step: 1 },
+    arcAngle: { id: "arcAngle", label: "Arc angle", control: "number", min: 1, max: 360, step: 1 },
 };
 
 const STROKE_PROPERTIES: EditorPropertyId[] = [
@@ -91,8 +104,16 @@ export function elementPropertyIds(element: SceneElement): EditorPropertyId[] {
             if (element.strokeEnabled === false) return ["fillColor", "fillOpacity"];
             return [...STROKE_PROPERTIES, "fillEnabled", "fillColor", "fillOpacity"];
         case "arc":
+            return [...STROKE_PROPERTIES, "radius", "eccentricity", "startAngle", "arcAngle"];
         case "elliptical-arc":
-            return STROKE_PROPERTIES;
+            return [
+                ...STROKE_PROPERTIES,
+                "semiMajorAxis",
+                "semiMinorAxis",
+                "eccentricity",
+                "startAngle",
+                "arcAngle",
+            ];
     }
 }
 
@@ -170,7 +191,66 @@ export function readElementProperty(element: SceneElement, id: EditorPropertyId)
         case "fontSize": return element.kind === "label" ? (element.pen?.fontSize ?? 14) : 14;
         case "pointSize": return element.kind === "dot" ? (element.pen?.lineWidth ?? 3) : 3;
         case "eraserSize": return 8;
+        case "radius": return element.kind === "arc" ? Math.abs(element.radius) : 0;
+        case "semiMajorAxis":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? principalEllipseGeometry(element).semiMajor
+                : 0;
+        case "semiMinorAxis":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? principalEllipseGeometry(element).semiMinor
+                : 0;
+        case "eccentricity":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? principalEllipseGeometry(element).eccentricity
+                : 0;
+        case "startAngle":
+            return element.kind === "arc" || element.kind === "elliptical-arc" ? element.angle1 : 0;
+        case "arcAngle":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? positiveArcSweep(element.angle1, element.angle2)
+                : 0;
     }
+}
+
+function finiteClamped(value: EditorPropertyValue, min: number, max: number): number {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : min;
+}
+
+function withArcAxes(
+    element: Extract<SceneElement, { kind: "arc" | "elliptical-arc" }>,
+    semiMajor: number,
+    semiMinor: number,
+): SceneElement {
+    const geometry = principalEllipseGeometry(element);
+    const major = Math.max(0.01, semiMajor);
+    const minor = Math.max(0.01, Math.min(major, semiMinor));
+    if (Math.abs(major - minor) <= 1e-9) {
+        const orientation = Math.atan2(geometry.majorDirection[1], geometry.majorDirection[0]) * 180 / Math.PI;
+        const angleOffset = element.kind === "elliptical-arc" ? orientation : 0;
+        return {
+            id: element.id,
+            kind: "arc",
+            center: element.center,
+            radius: major,
+            angle1: element.angle1 + angleOffset,
+            angle2: element.angle2 + angleOffset,
+            ...(element.pen ? { pen: element.pen } : {}),
+            ...(element.strokeEnabled === false ? { strokeEnabled: false } : {}),
+        };
+    }
+    return {
+        id: element.id,
+        kind: "elliptical-arc",
+        center: element.center,
+        axisX: [geometry.majorDirection[0] * major, geometry.majorDirection[1] * major],
+        axisY: [geometry.minorDirection[0] * minor, geometry.minorDirection[1] * minor],
+        angle1: element.angle1,
+        angle2: element.angle2,
+        ...(element.pen ? { pen: element.pen } : {}),
+        ...(element.strokeEnabled === false ? { strokeEnabled: false } : {}),
+    };
 }
 
 function patchStroke(element: SceneElement, patch: Partial<Pen>): SceneElement {
@@ -219,6 +299,44 @@ export function writeElementProperty(
         case "fontSize": return patchStroke(element, { fontSize: Number(value) });
         case "pointSize": return patchStroke(element, { lineWidth: Number(value) });
         case "eraserSize": return element;
+        case "radius":
+            return element.kind === "arc"
+                ? { ...element, radius: finiteClamped(value, 0.01, 1000) }
+                : element;
+        case "semiMajorAxis": {
+            if (element.kind !== "arc" && element.kind !== "elliptical-arc") return element;
+            const geometry = principalEllipseGeometry(element);
+            const major = finiteClamped(value, 0.01, 1000);
+            return withArcAxes(element, major, Math.min(geometry.semiMinor, major));
+        }
+        case "semiMinorAxis": {
+            if (element.kind !== "arc" && element.kind !== "elliptical-arc") return element;
+            const geometry = principalEllipseGeometry(element);
+            const minor = finiteClamped(value, 0.01, 1000);
+            return withArcAxes(element, Math.max(geometry.semiMajor, minor), minor);
+        }
+        case "eccentricity": {
+            if (element.kind !== "arc" && element.kind !== "elliptical-arc") return element;
+            const geometry = principalEllipseGeometry(element);
+            const eccentricity = finiteClamped(value, 0, 0.999);
+            return withArcAxes(
+                element,
+                geometry.semiMajor,
+                geometry.semiMajor * Math.sqrt(1 - eccentricity * eccentricity),
+            );
+        }
+        case "startAngle":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? {
+                      ...element,
+                      angle1: finiteClamped(value, -360, 360),
+                      angle2: finiteClamped(value, -360, 360) + positiveArcSweep(element.angle1, element.angle2),
+                  }
+                : element;
+        case "arcAngle":
+            return element.kind === "arc" || element.kind === "elliptical-arc"
+                ? { ...element, angle2: element.angle1 + finiteClamped(value, 1, 360) }
+                : element;
     }
 }
 
