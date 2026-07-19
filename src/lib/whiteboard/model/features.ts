@@ -177,3 +177,27 @@ export function pathNodeFeature(
     return { kind: "curve-point", curveId: use.curveId, feature: use.reversed ? "start" : "end" };
 }
 
+export function nearestSegmentFeature(
+    document: WhiteboardDocument,
+    at: Pair,
+    radius: number,
+    itemId?: string,
+): { ref: { kind: "curve"; curveId: string }; distance: number } | null {
+    const candidates = Object.values(document.sketch.curves).flatMap((curve) => {
+        if (curve.kind !== "segment") return [];
+        if (itemId && !itemIdsForCurve(document, curve.id).includes(itemId)) return [];
+        const start = document.sketch.points[curve.start]?.at;
+        const end = document.sketch.points[curve.end]?.at;
+        if (!start || !end) return [];
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const lengthSquared = dx * dx + dy * dy;
+        const t = lengthSquared <= 1e-20 ? 0 : Math.max(0, Math.min(1,
+            ((at[0] - start[0]) * dx + (at[1] - start[1]) * dy) / lengthSquared,
+        ));
+        const distance = Math.hypot(at[0] - (start[0] + t * dx), at[1] - (start[1] + t * dy));
+        return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
+    });
+    candidates.sort((a, b) => a.distance - b.distance || a.ref.curveId.localeCompare(b.ref.curveId));
+    return candidates[0] ?? null;
+}

@@ -27,6 +27,11 @@ interface ConstraintBase {
  */
 export type SolverConstraint =
     | (ConstraintBase & {
+          kind: "fixed-point";
+          point: PointId;
+          at: SolverPoint;
+      })
+    | (ConstraintBase & {
           kind: "coincident";
           a: PointId;
           b: PointId;

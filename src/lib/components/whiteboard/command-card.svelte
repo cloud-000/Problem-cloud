@@ -44,7 +44,7 @@
     <Button variant="ghost" size="icon-sm" title="Redo" disabled={!store.canRedo} onclick={() => store.redo()}>
         <Icon name="redo" />
     </Button>
-    <Button variant="ghost" size="icon-sm" title="Delete selection" disabled={store.selection.length === 0} onclick={() => store.deleteSelected()}>
+    <Button variant="ghost" size="icon-sm" title="Delete selection" disabled={store.selection.length === 0 && !store.selectedConstraintId && !store.selectedDimensionId} onclick={() => store.deleteSelected()}>
         <Icon name="delete" />
     </Button>
     <Button variant="ghost" size="icon-sm" title="Clear all" onclick={() => store.clearAll()}>

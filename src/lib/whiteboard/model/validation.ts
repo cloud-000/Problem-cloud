@@ -236,6 +236,7 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
     if (value.schemaVersion !== WHITEBOARD_SCHEMA_VERSION) errors.push("unsupported schemaVersion");
     if (!Array.isArray(value.items)) errors.push("document.items must be an array");
     if (!record(value.sketch)) errors.push("document.sketch must be an object");
+    if (value.dimensions !== undefined && !record(value.dimensions)) errors.push("document.dimensions must be an object");
     if (value.meta !== undefined && !sceneMeta(value.meta)) errors.push("document.meta is invalid");
     if (errors.length > 0) return { valid: false, errors };
 
@@ -335,6 +336,26 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
                 break;
             default:
                 errors.push(`constraint ${id} has unsupported kind ${String((constraint as unknown as UnknownRecord).kind)}`);
+        }
+    }
+    for (const [id, dimension] of Object.entries(candidate.dimensions ?? {})) {
+        if (!record(dimension) || dimension.id !== id || dimension.kind !== "length" ||
+            (dimension.mode !== "driving" && dimension.mode !== "reference") ||
+            dimension.a === undefined || dimension.b === undefined ||
+            (dimension.constraintId !== undefined && typeof dimension.constraintId !== "string") ||
+            (dimension.labelOffset !== undefined && !pair(dimension.labelOffset))) {
+            errors.push(`dimension ${id} is invalid`);
+            continue;
+        }
+        pointFeature(dimension.a, candidate, errors, `dimension ${id}.a`);
+        pointFeature(dimension.b, candidate, errors, `dimension ${id}.b`);
+        if (dimension.mode === "driving") {
+            const constraint = dimension.constraintId
+                ? candidate.sketch.constraints[dimension.constraintId]
+                : undefined;
+            if (constraint?.kind !== "distance") errors.push(`dimension ${id} is missing its distance constraint`);
+        } else if (dimension.constraintId !== undefined) {
+            errors.push(`reference dimension ${id} cannot own a constraint`);
         }
     }
     if (errors.length === 0) validateReferences(candidate, errors);

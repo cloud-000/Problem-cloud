@@ -44,21 +44,37 @@ import { History } from "$lib/asy/engine";
 import {
     emptyWhiteboardDocument,
     addCoincidentConstraint,
+    addLengthDimension,
+    addRelationConstraint,
+    applicableRelationActions,
+    contextualRelationActions,
     appendSmartPathNode,
     closeSmartPath,
     createSmartPath,
     createSmartPointMarker,
     deleteWhiteboardItems,
+    editDrivingLengthDimension,
+    featureKey,
+    lengthDimensionValue,
+    lengthDimensionsForSelection,
     migrateSceneToWhiteboardDocument,
     nearestPointFeature,
+    nearestSegmentFeature,
     parsePersistedWhiteboardDocument,
     pathNodeFeature,
     pointFeaturePointId,
     pointFeaturePosition,
     reconcileResolvedScene,
     removeConstraint,
+    removeLengthDimension,
     resolveWhiteboardDocument,
     solveWhiteboardDocument,
+    switchDirectionalRelationConstraint,
+    translateWhiteboardItems,
+    updateSmartPresentationStyle,
+    type FeatureRef,
+    type GeometryOperationResult,
+    type RelationKind,
     type PointFeatureRef,
     type SnapRelationProposal,
     type WhiteboardDocument,
@@ -102,6 +118,10 @@ export class WhiteboardStore {
     /** Visible inference feedback; never persisted or exported. */
     snapProposal = $state<{ from: readonly [number, number]; to: readonly [number, number] } | null>(null);
     selectedConstraintId = $state<string | null>(null);
+    featureSelection = $state<FeatureRef[]>([]);
+    selectedDimensionId = $state<string | null>(null);
+    solverDiagnostic = $state<string | null>(null);
+    conflictingConstraintIds = $state<string[]>([]);
     canUndo = $state(false);
     canRedo = $state(false);
 
@@ -126,6 +146,11 @@ export class WhiteboardStore {
         feature: PointFeatureRef;
         pointerOffset: readonly [number, number];
         candidate: SnapRelationProposal | null;
+    } | null = null;
+    #smartTranslation: {
+        base: WhiteboardDocument;
+        start: readonly [number, number];
+        itemIds: string[];
     } | null = null;
     #suppressSnapCommit = false;
 
@@ -190,6 +215,8 @@ export class WhiteboardStore {
         this.arcGuide = null;
         this.snapProposal = null;
         this.selectedConstraintId = null;
+        this.selectedDimensionId = null;
+        this.featureSelection = [];
         this.toolKind = kind;
         if (kind !== "pan") this.#tool = createTool(kind);
     }
@@ -200,6 +227,7 @@ export class WhiteboardStore {
         p: PointerInput,
         selectionTransform?: SelectionTransformGesture,
         suppressSnap = false,
+        additiveFeatureSelection = false,
     ): void {
         const point = "point" in p ? p.point : p;
         const smartFeature = selectionTransform?.kind === "vertex"
@@ -207,6 +235,17 @@ export class WhiteboardStore {
             : selectionTransform?.kind === "move" && this.selection.length === 1
               ? this.#markerFeature(this.selection[0])
               : null;
+        if (selectionTransform?.kind === "move" && !smartFeature && this.#selectionHasSmartItems()) {
+            this.#smartTranslation = {
+                base: documentSnapshot(this.document),
+                start: point,
+                itemIds: [...this.selection],
+            };
+            this.preview = this.scene;
+            this.selectedConstraintId = null;
+            this.selectedDimensionId = null;
+            return;
+        }
         if (smartFeature) {
             const at = pointFeaturePosition(this.document, smartFeature);
             if (!at) return;
@@ -218,6 +257,7 @@ export class WhiteboardStore {
             };
             this.preview = this.scene;
             this.selectedConstraintId = null;
+            this.selectFeature(smartFeature, additiveFeatureSelection);
             if (!suppressSnap) this.#previewSmartDrag(point, false);
             return;
         }
@@ -227,6 +267,10 @@ export class WhiteboardStore {
         this.#suppressSnapCommit = false;
     }
     pointerMove(p: PointerInput, shiftKey = false, suppressSnap = false): void {
+        if (this.#smartTranslation) {
+            this.#previewSmartTranslation("point" in p ? p.point : p);
+            return;
+        }
         if (this.#smartDrag) {
             this.#previewSmartDrag("point" in p ? p.point : p, suppressSnap);
             return;
@@ -241,6 +285,11 @@ export class WhiteboardStore {
     }
     pointerMoves(points: readonly PointerInput[], shiftKey = false, suppressSnap = false): void {
         if (points.length === 0) return;
+        if (this.#smartTranslation) {
+            const last = points[points.length - 1];
+            this.#previewSmartTranslation("point" in last ? last.point : last);
+            return;
+        }
         if (this.#smartDrag) {
             const last = points[points.length - 1];
             this.#previewSmartDrag("point" in last ? last.point : last, suppressSnap);
@@ -260,6 +309,10 @@ export class WhiteboardStore {
         pendingMoves: readonly PointerInput[] = [],
         suppressSnap = false,
     ): void {
+        if (this.#smartTranslation) {
+            this.#commitSmartTranslation("point" in p ? p.point : p);
+            return;
+        }
         if (this.#smartDrag) {
             this.#commitSmartDrag("point" in p ? p.point : p, suppressSnap);
             return;
@@ -275,8 +328,55 @@ export class WhiteboardStore {
     }
     cancel(): void {
         this.#smartDrag = null;
+        this.#smartTranslation = null;
         this.snapProposal = null;
+        this.clearFeatureSelection();
         this.#dispatch(this.#tool.onCancel());
+    }
+
+    clearFeatureSelection(): void {
+        this.featureSelection = [];
+        this.solverDiagnostic = null;
+        this.conflictingConstraintIds = [];
+    }
+
+    #selectionHasSmartItems(): boolean {
+        return this.document.items.some((item) => item.kind !== "baked" && this.selection.includes(item.id));
+    }
+
+    #translationDelta(point: readonly [number, number]): readonly [number, number] {
+        return this.#smartTranslation
+            ? [point[0] - this.#smartTranslation.start[0], point[1] - this.#smartTranslation.start[1]]
+            : [0, 0];
+    }
+
+    #previewSmartTranslation(point: readonly [number, number]): void {
+        if (!this.#smartTranslation) return;
+        const result = translateWhiteboardItems(
+            this.#smartTranslation.base,
+            this.#smartTranslation.itemIds,
+            this.#translationDelta(point),
+            "preview",
+        );
+        this.preview = result.document ? resolveWhiteboardDocument(result.document) : this.scene;
+        this.#setSolverResult(result);
+    }
+
+    #commitSmartTranslation(point: readonly [number, number]): void {
+        if (!this.#smartTranslation) return;
+        const drag = this.#smartTranslation;
+        const result = translateWhiteboardItems(
+            drag.base,
+            drag.itemIds,
+            this.#translationDelta(point),
+            "commit",
+        );
+        this.#smartTranslation = null;
+        this.preview = null;
+        this.#setSolverResult(result);
+        if (result.document && JSON.stringify(result.document) !== JSON.stringify(drag.base)) {
+            this.applyDocument(result.document);
+        }
     }
 
     #markerFeature(itemId: string): PointFeatureRef | null {
@@ -337,6 +437,7 @@ export class WhiteboardStore {
             drivers: [{ feature: this.#smartDrag.feature, target }],
             mode: "preview",
         });
+        this.#setSolverResult(solved);
         this.preview = solved.document ? resolveWhiteboardDocument(solved.document) : this.scene;
         this.snapProposal = candidate ? { from: rawTarget, to: candidate.to } : null;
     }
@@ -351,6 +452,7 @@ export class WhiteboardStore {
             drivers: [{ feature: drag.feature, target: candidate?.to ?? rawTarget }],
             mode: "commit",
         });
+        this.#setSolverResult(solved);
         this.#smartDrag = null;
         this.preview = null;
         this.snapProposal = null;
@@ -361,7 +463,7 @@ export class WhiteboardStore {
         const committed = candidate
             ? addCoincidentConstraint(solved.document, drag.feature, candidate.target, "inferred")
             : solved.document;
-        if (committed) this.applyDocument(committed);
+        if (committed && JSON.stringify(committed) !== JSON.stringify(drag.base)) this.applyDocument(committed);
     }
 
     #ctx(
@@ -392,7 +494,11 @@ export class WhiteboardStore {
     #dispatch(result: ToolResult): void {
         const priorContinuation = this.lineContinuation;
         if (result.consoleMessage) console.info(result.consoleMessage);
-        if (result.selection !== undefined) this.selection = result.selection;
+        if (result.selection !== undefined) {
+            this.selection = result.selection;
+            this.featureSelection = [];
+            this.selectedDimensionId = null;
+        }
         if (result.selectionPreview !== undefined) this.selectionPreview = result.selectionPreview;
         if (result.marquee !== undefined) this.marquee = result.marquee;
         if (result.lineContinuation !== undefined) {
@@ -599,6 +705,8 @@ export class WhiteboardStore {
             this.lineContinuation = null;
             this.arcGuide = null;
             this.selectedConstraintId = null;
+            this.selectedDimensionId = null;
+            this.featureSelection = [];
             this.snapProposal = null;
         }
         this.#syncFlags();
@@ -614,6 +722,8 @@ export class WhiteboardStore {
             this.lineContinuation = null;
             this.arcGuide = null;
             this.selectedConstraintId = null;
+            this.selectedDimensionId = null;
+            this.featureSelection = [];
             this.snapProposal = null;
         }
         this.#syncFlags();
@@ -631,23 +741,26 @@ export class WhiteboardStore {
             this.#writeToolProperty(id, value);
             return;
         }
-        const base = this.#propertyBaseline
-            ? resolveWhiteboardDocument(this.#propertyBaseline)
-            : this.scene;
-        const next = {
-            ...base,
-            elements: base.elements.map((element) => this.selection.includes(element.id)
-                ? writeElementProperty(element, id, value)
-                : element),
-        };
-        if (this.#propertyBaseline) {
-            try {
-                this.document = reconcileResolvedScene(this.#propertyBaseline, next);
-            } catch (error) {
-                console.info(`[Whiteboard] ${error instanceof Error ? error.message : "unsupported smart edit"}`);
-            }
+        const baseDocument = this.#propertyBaseline ?? documentSnapshot(this.document);
+        const baseScene = resolveWhiteboardDocument(baseDocument);
+        let next = baseDocument;
+        for (const element of baseScene.elements) {
+            if (!this.selection.includes(element.id)) continue;
+            const updated = writeElementProperty(element, id, value);
+            const item = next.items.find((candidate) =>
+                (candidate.kind === "baked" ? candidate.element.id : candidate.id) === element.id
+            );
+            if (item?.kind === "baked") {
+                next = {
+                    ...next,
+                    items: next.items.map((candidate) => candidate === item
+                        ? { ...candidate, element: updated }
+                        : candidate),
+                };
+            } else next = updateSmartPresentationStyle(next, element.id, updated);
         }
-        else this.apply(next);
+        if (this.#propertyBaseline) this.document = next;
+        else if (JSON.stringify(next) !== JSON.stringify(baseDocument)) this.applyDocument(next);
     }
 
     beginPropertyEdit(): void {
@@ -797,6 +910,12 @@ export class WhiteboardStore {
     }
 
     deleteSelected(): void {
+        if (this.selectedDimensionId) {
+            const next = removeLengthDimension(this.document, this.selectedDimensionId);
+            if (next !== this.document) this.applyDocument(next);
+            this.selectedDimensionId = null;
+            return;
+        }
         if (this.selectedConstraintId) {
             this.deleteSelectedConstraint();
             return;
@@ -836,9 +955,26 @@ export class WhiteboardStore {
         selected: boolean;
     }> {
         return Object.values(this.document.sketch.constraints).flatMap((constraint) => {
-            if (!constraint.enabled || constraint.kind !== "coincident") return [];
-            const a = pointFeaturePosition(this.document, constraint.a);
-            const b = pointFeaturePosition(this.document, constraint.b);
+            if (!constraint.enabled) return [];
+            let a: readonly [number, number] | null = null;
+            let b: readonly [number, number] | null = null;
+            if (constraint.kind === "coincident" || constraint.kind === "distance") {
+                a = pointFeaturePosition(this.document, constraint.a);
+                b = pointFeaturePosition(this.document, constraint.b);
+            } else if (constraint.kind === "fixed-point") {
+                a = pointFeaturePosition(this.document, constraint.point);
+                b = a;
+            } else if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
+                const refs = this.#curvePointRefs(constraint.curveId);
+                a = refs ? pointFeaturePosition(this.document, refs[0]) : null;
+                b = refs ? pointFeaturePosition(this.document, refs[1]) : null;
+            } else if (
+                constraint.kind === "parallel" || constraint.kind === "perpendicular" ||
+                constraint.kind === "equal-length" || constraint.kind === "angle"
+            ) {
+                a = this.#curveMidpoint(constraint.a);
+                b = this.#curveMidpoint(constraint.b);
+            } else return [];
             if (!a || !b) return [];
             return [{
                 id: constraint.id,
@@ -850,9 +986,213 @@ export class WhiteboardStore {
         });
     }
 
+    #curvePointRefs(curveId: string): [PointFeatureRef, PointFeatureRef] | null {
+        const curve = this.document.sketch.curves[curveId];
+        return curve?.kind === "segment" ? [
+            { kind: "curve-point", curveId, feature: "start" },
+            { kind: "curve-point", curveId, feature: "end" },
+        ] : null;
+    }
+
+    #curveMidpoint(curveId: string): readonly [number, number] | null {
+        const refs = this.#curvePointRefs(curveId);
+        if (!refs) return null;
+        const a = pointFeaturePosition(this.document, refs[0]);
+        const b = pointFeaturePosition(this.document, refs[1]);
+        return a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;
+    }
+
+    get dimensionGlyphs(): Array<{
+        id: string;
+        a: readonly [number, number];
+        b: readonly [number, number];
+        at: readonly [number, number];
+        value: number;
+        mode: "driving" | "reference";
+        selected: boolean;
+    }> {
+        return Object.values(this.document.dimensions ?? {}).flatMap((dimension) => {
+            const a = pointFeaturePosition(this.document, dimension.a);
+            const b = pointFeaturePosition(this.document, dimension.b);
+            const value = lengthDimensionValue(this.document, dimension.id);
+            if (!a || !b || value === null) return [];
+            const offset = dimension.labelOffset ?? [0, 0];
+            return [{
+                id: dimension.id,
+                a,
+                b,
+                at: [(a[0] + b[0]) / 2 + offset[0], (a[1] + b[1]) / 2 + offset[1]],
+                value,
+                mode: dimension.mode,
+                selected: this.selectedDimensionId === dimension.id,
+            }];
+        });
+    }
+
+    get applicableRelationActions() {
+        return applicableRelationActions(this.document, this.featureSelection);
+    }
+
+    get contextualRelationActions() {
+        return contextualRelationActions(this.document, this.featureSelection);
+    }
+
+    get selectedFeatureGeometry(): {
+        points: Array<readonly [number, number]>;
+        segments: Array<{ a: readonly [number, number]; b: readonly [number, number] }>;
+    } {
+        const points: Array<readonly [number, number]> = [];
+        const segments: Array<{ a: readonly [number, number]; b: readonly [number, number] }> = [];
+        for (const feature of this.featureSelection) {
+            if (feature.kind !== "curve") {
+                const at = pointFeaturePosition(this.document, feature);
+                if (at) points.push(at);
+                continue;
+            }
+            const refs = this.#curvePointRefs(feature.curveId);
+            const a = refs ? pointFeaturePosition(this.document, refs[0]) : null;
+            const b = refs ? pointFeaturePosition(this.document, refs[1]) : null;
+            if (a && b) segments.push({ a, b });
+        }
+        return { points, segments };
+    }
+
+    get canDimensionSelection(): boolean {
+        if (this.featureSelection.length === 1 && this.featureSelection[0].kind === "curve") {
+            return this.document.sketch.curves[this.featureSelection[0].curveId]?.kind === "segment";
+        }
+        return this.featureSelection.length === 2 && this.featureSelection.every((feature) => feature.kind !== "curve");
+    }
+
+    get selectedFeatureDimensions() {
+        return lengthDimensionsForSelection(this.document, this.featureSelection).flatMap((dimension) => {
+            const value = lengthDimensionValue(this.document, dimension.id);
+            return value === null ? [] : [{ ...dimension, value }];
+        });
+    }
+
+    selectFeature(feature: FeatureRef, additive = false): void {
+        const key = featureKey(feature);
+        if (!additive) this.featureSelection = [feature];
+        else if (this.featureSelection.some((selected) => featureKey(selected) === key)) {
+            this.featureSelection = this.featureSelection.filter((selected) => featureKey(selected) !== key);
+        } else this.featureSelection = [...this.featureSelection, feature];
+        this.selectedConstraintId = null;
+        this.selectedDimensionId = null;
+    }
+
+    selectCurveFeatureForItem(itemId: string, additive = false): void {
+        const item = this.document.items.find((candidate) => candidate.kind !== "baked" && candidate.id === itemId);
+        const curveId = item?.kind === "sketch-path" ? item.uses[0]?.curveId
+            : item?.kind === "sketch-curve" ? item.curveId : undefined;
+        if (curveId && this.document.sketch.curves[curveId]?.kind === "segment") {
+            this.selectFeature({ kind: "curve", curveId }, additive);
+        }
+    }
+
+    selectCurveFeatureAt(itemId: string, at: readonly [number, number], additive = false): void {
+        const feature = nearestSegmentFeature(this.document, at, 8 * this.sceneUnitsPerPixel, itemId);
+        if (feature) this.selectFeature(feature.ref, additive);
+    }
+
+    selectFeatureAtItem(itemId: string, at: readonly [number, number], additive = false): void {
+        const marker = this.#markerFeature(itemId);
+        if (marker) {
+            this.selectFeature(marker, additive);
+            return;
+        }
+        this.selectCurveFeatureAt(itemId, at, additive);
+    }
+
+    #setSolverResult(result: GeometryOperationResult): void {
+        this.solverDiagnostic = result.diagnostic ?? (result.status === "under-constrained"
+            ? `Geometry remains under-constrained${result.degreesOfFreedom === undefined ? "" : ` (${result.degreesOfFreedom} DOF)`}`
+            : null);
+        this.conflictingConstraintIds = [...result.conflictingConstraintIds];
+    }
+
+    applyRelation(kind: RelationKind): boolean {
+        const result = addRelationConstraint(documentSnapshot(this.document), kind, this.featureSelection);
+        this.#setSolverResult(result);
+        if (!result.document || JSON.stringify(result.document) === JSON.stringify(documentSnapshot(this.document))) return false;
+        this.applyDocument(result.document);
+        return true;
+    }
+
+    toggleRelation(kind: RelationKind): boolean {
+        const active = this.contextualRelationActions.find((action) => action.kind === kind)?.constraintId;
+        if (active) return this.removeRelationConstraint(active);
+        if (kind === "horizontal" || kind === "vertical") {
+            const opposite = kind === "horizontal" ? "vertical" : "horizontal";
+            const replaced = this.contextualRelationActions.find((action) => action.kind === opposite)?.constraintId;
+            if (replaced) {
+                const result = switchDirectionalRelationConstraint(
+                    documentSnapshot(this.document),
+                    kind,
+                    this.featureSelection,
+                    replaced,
+                );
+                this.#setSolverResult(result);
+                if (!result.document) return false;
+                this.applyDocument(result.document);
+                return true;
+            }
+        }
+        return this.applyRelation(kind);
+    }
+
+    removeRelationConstraint(constraintId: string): boolean {
+        const next = removeConstraint(this.document, constraintId);
+        if (next === this.document) return false;
+        this.applyDocument(next);
+        if (this.selectedConstraintId === constraintId) this.selectedConstraintId = null;
+        this.solverDiagnostic = null;
+        this.conflictingConstraintIds = [];
+        return true;
+    }
+
+    addLengthDimension(mode: "driving" | "reference"): boolean {
+        const result = addLengthDimension(documentSnapshot(this.document), this.featureSelection, mode);
+        this.#setSolverResult(result);
+        if (!result.document) return false;
+        const newId = Object.keys(result.document.dimensions ?? {}).find((id) => !this.document.dimensions?.[id]);
+        this.applyDocument(result.document);
+        this.selectedDimensionId = newId ?? null;
+        this.selectedConstraintId = null;
+        return true;
+    }
+
+    removeDimension(dimensionId: string): boolean {
+        const next = removeLengthDimension(this.document, dimensionId);
+        if (next === this.document) return false;
+        this.applyDocument(next);
+        if (this.selectedDimensionId === dimensionId) this.selectedDimensionId = null;
+        this.solverDiagnostic = null;
+        this.conflictingConstraintIds = [];
+        return true;
+    }
+
+    editDimension(dimensionId: string, value: number): boolean {
+        const result = editDrivingLengthDimension(documentSnapshot(this.document), dimensionId, value);
+        this.#setSolverResult(result);
+        if (!result.document) return false;
+        this.applyDocument(result.document);
+        this.selectedDimensionId = dimensionId;
+        return true;
+    }
+
+    selectDimension(id: string | null): void {
+        this.selectedDimensionId = id && this.document.dimensions?.[id] ? id : null;
+        if (this.selectedDimensionId) {
+            this.selectedConstraintId = null;
+            this.selection = [];
+        }
+    }
+
     selectConstraint(id: string | null): void {
         this.selectedConstraintId = id && this.document.sketch.constraints[id] ? id : null;
         if (this.selectedConstraintId) this.selection = [];
+        if (this.selectedConstraintId) this.selectedDimensionId = null;
     }
 
     updateSnapProposal(at: readonly [number, number], suppressSnap = false): void {
@@ -866,9 +1206,7 @@ export class WhiteboardStore {
 
     deleteSelectedConstraint(): void {
         if (!this.selectedConstraintId) return;
-        const next = removeConstraint(this.document, this.selectedConstraintId);
-        if (next !== this.document) this.applyDocument(next);
-        this.selectedConstraintId = null;
+        this.removeRelationConstraint(this.selectedConstraintId);
         this.snapProposal = null;
     }
 

@@ -78,6 +78,13 @@ export function documentToSolverGraph(document: WhiteboardDocument): SolverGraph
                 });
                 break;
             case "fixed-point":
+                constraints.push({
+                    id,
+                    kind: "fixed-point",
+                    point: requiredPointId(document, constraint.point),
+                    at: constraint.at,
+                });
+                break;
             case "radial-distance":
                 throw new Error(`${constraint.kind} is outside the point/segment solver adapter`);
         }
@@ -106,10 +113,10 @@ export function solveWhiteboardDocument(
         target: driver.target,
         ...(driver.weight === undefined ? {} : { weight: driver.weight }),
     }));
-    const stayRefs = request.stays ?? Object.keys(document.sketch.points).sort().map((pointId) => ({
-        kind: "point" as const,
-        pointId,
-    }));
+    const drivenPointIds = new Set(drivers.map((driver) => driver.pointId));
+    const stayRefs = request.stays ?? Object.keys(document.sketch.points).sort()
+        .filter((pointId) => !drivenPointIds.has(pointId))
+        .map((pointId) => ({ kind: "point" as const, pointId }));
     const stays: StayPreference[] = stayRefs.map((ref) => ({
         pointId: requiredPointId(document, ref),
     }));
@@ -127,4 +134,3 @@ export function solveWhiteboardDocument(
         ? result
         : { ...result, document: patchedDocument(document, result.pointUpdates) };
 }
-

@@ -35,6 +35,9 @@ export type PointFeatureRef =
     | { kind: "point"; pointId: PointId }
     | { kind: "curve-point"; curveId: CurveId; feature: "center" | "start" | "end" };
 
+export type CurveFeatureRef = { kind: "curve"; curveId: CurveId };
+export type FeatureRef = PointFeatureRef | CurveFeatureRef;
+
 export type Constraint = {
     id: ConstraintId;
     enabled: boolean;
@@ -59,6 +62,18 @@ export interface SketchGraph {
     parameters: Record<ParameterId, ScalarParameter>;
     curves: Record<CurveId, SketchCurve>;
     constraints: Record<ConstraintId, Constraint>;
+}
+
+export interface LengthDimension {
+    id: string;
+    kind: "length";
+    mode: "driving" | "reference";
+    a: PointFeatureRef;
+    b: PointFeatureRef;
+    /** Present only for driving dimensions. */
+    constraintId?: ConstraintId;
+    /** Scene-space label offset from the measured segment midpoint. */
+    labelOffset?: Pair;
 }
 
 export interface BakedItem {
@@ -99,6 +114,8 @@ export interface WhiteboardDocument {
     schemaVersion: typeof WHITEBOARD_SCHEMA_VERSION;
     items: WhiteboardItem[];
     sketch: SketchGraph;
+    /** Optional so persisted Phase 1/2 V2 documents remain valid without migration. */
+    dimensions?: Record<string, LengthDimension>;
     meta?: SceneMeta;
 }
 

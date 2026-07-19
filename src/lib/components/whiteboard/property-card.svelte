@@ -38,6 +38,9 @@
 
     const properties = $derived(store.inspectorProperties);
     const fillEnabled = $derived(properties.find(({ id }) => id === "fillEnabled"));
+    const dimension = $derived(store.selectedDimensionId
+        ? store.dimensionGlyphs.find(({ id }) => id === store.selectedDimensionId)
+        : undefined);
 
     function update(id: EditorPropertyId, value: EditorPropertyValue) {
         store.setInspectorProperty(id, value);
@@ -104,6 +107,22 @@
     </header>
 
     <div class="max-h-[min(70vh,34rem)] space-y-4 overflow-y-auto p-3">
+        {#if dimension}
+            <div class="space-y-1.5 border-b border-border/60 pb-3">
+                <label class="text-xs font-medium" for="whiteboard-dimension-value">
+                    {dimension.mode === "driving" ? "Driving length" : "Reference length"}
+                </label>
+                <Input
+                    id="whiteboard-dimension-value"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={dimension.value}
+                    disabled={dimension.mode === "reference"}
+                    onchange={(event) => store.editDimension(dimension.id, numberFrom(event))}
+                />
+            </div>
+        {/if}
         {#if properties.length === 0}
             <p class="py-5 text-center text-xs leading-relaxed text-muted-foreground">
                 {store.selection.length > 0

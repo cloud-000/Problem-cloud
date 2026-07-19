@@ -144,6 +144,17 @@ export interface WhiteboardRenderOverlay {
     arcGuide: RenderArcGuide | null;
     snapProposal?: { from: Pair; to: Pair } | null;
     constraintGlyphs?: Array<{ id: string; screen: Pair; selected: boolean }>;
+    dimensions?: Array<{
+        id: string;
+        a: Pair;
+        b: Pair;
+        label: Pair;
+        text: string;
+        mode: "driving" | "reference";
+        selected: boolean;
+    }>;
+    featurePoints?: Pair[];
+    featureSegments?: Array<{ a: Pair; b: Pair }>;
 }
 
 export type ProjectedPathCommand = PathCommand;
@@ -609,6 +620,46 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         }
         context.globalAlpha = 1;
     }
+    for (const dimension of overlay.dimensions ?? []) {
+        context.save();
+        context.strokeStyle = dimension.mode === "driving" ? palette.primary : palette.border;
+        context.fillStyle = palette.background;
+        context.lineWidth = dimension.selected ? 2 : 1;
+        context.setLineDash(dimension.mode === "reference" ? [4, 3] : []);
+        context.beginPath();
+        context.moveTo(dimension.a[0], dimension.a[1]);
+        context.lineTo(dimension.b[0], dimension.b[1]);
+        context.stroke();
+        context.setLineDash([]);
+        const width = Math.max(28, context.measureText(dimension.text).width + 10);
+        context.beginPath();
+        context.roundRect(dimension.label[0] - width / 2, dimension.label[1] - 9, width, 18, 5);
+        context.fill();
+        context.stroke();
+        context.fillStyle = dimension.mode === "driving" ? palette.primary : palette.foreground;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.font = "11px sans-serif";
+        context.fillText(dimension.text, dimension.label[0], dimension.label[1]);
+        context.restore();
+    }
+    context.save();
+    context.strokeStyle = palette.primary;
+    context.fillStyle = palette.background;
+    context.lineWidth = 3;
+    for (const segment of overlay.featureSegments ?? []) {
+        context.beginPath();
+        context.moveTo(segment.a[0], segment.a[1]);
+        context.lineTo(segment.b[0], segment.b[1]);
+        context.stroke();
+    }
+    for (const point of overlay.featurePoints ?? []) {
+        context.beginPath();
+        context.arc(point[0], point[1], 6, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+    }
+    context.restore();
     for (const glyph of overlay.constraintGlyphs ?? []) {
         context.strokeStyle = palette.primary;
         context.fillStyle = glyph.selected ? palette.primary : palette.background;

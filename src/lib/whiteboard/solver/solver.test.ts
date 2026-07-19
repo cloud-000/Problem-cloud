@@ -68,6 +68,17 @@ function expectSatisfied(result: SolveResult, constraintId: string): void {
 }
 
 describe("DampedLeastSquaresSolver individual constraints", () => {
+    test("fixed point", () => {
+        const result = solver.solve(request(graph(
+            { a: [4, 7] },
+            [],
+            [{ id: "fixed", kind: "fixed-point", point: "a", at: [1, 2] }],
+        ), { affected: [{ kind: "point", pointId: "a" }] }));
+        expect(result.status).toBe("solved");
+        expect(result.pointUpdates.a[0]).toBeCloseTo(1, 7);
+        expect(result.pointUpdates.a[1]).toBeCloseTo(2, 7);
+        expectSatisfied(result, "fixed");
+    });
     test("coincidence", () => {
         const result = solver.solve(request(graph(
             { a: [0, 0], b: [2, 1] },

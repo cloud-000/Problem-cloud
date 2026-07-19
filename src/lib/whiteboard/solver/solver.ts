@@ -82,6 +82,8 @@ function segmentPointIds(graph: SolverGraph, id: string): PointId[] {
 
 function constraintPointIds(graph: SolverGraph, constraint: SolverConstraint): PointId[] {
     switch (constraint.kind) {
+        case "fixed-point":
+            return [constraint.point];
         case "coincident":
         case "distance":
             return sortedUnique([constraint.a, constraint.b]);
@@ -117,7 +119,10 @@ function validateRequest(request: SolveRequest, config: SolverConfig): string | 
         if (!constraint.id) return "constraint id must be non-empty";
         if (constraintIds.has(constraint.id)) return `duplicate constraint id ${constraint.id}`;
         constraintIds.add(constraint.id);
-        if (constraint.kind === "coincident" || constraint.kind === "distance") {
+        if (constraint.kind === "fixed-point") {
+            if (!graph.points[constraint.point]) return `constraint ${constraint.id} references a missing point`;
+            if (!finitePoint(constraint.at)) return `constraint ${constraint.id} has a non-finite fixed position`;
+        } else if (constraint.kind === "coincident" || constraint.kind === "distance") {
             if (!graph.points[constraint.a] || !graph.points[constraint.b]) {
                 return `constraint ${constraint.id} references a missing point`;
             }
@@ -302,6 +307,10 @@ function constraintResiduals(
     degeneracyTolerance: number,
 ): number[] {
     switch (constraint.kind) {
+        case "fixed-point": {
+            const at = point(constraint.point);
+            return [(at[0] - constraint.at[0]) / scale, (at[1] - constraint.at[1]) / scale];
+        }
         case "coincident": {
             const a = point(constraint.a);
             const b = point(constraint.b);
@@ -514,12 +523,18 @@ function directionDegeneracy(
     const segmentIds = new Set<string>();
     for (const constraint of problem.constraints) {
         if (
+            constraint.kind === "horizontal" ||
+            constraint.kind === "vertical" ||
             constraint.kind === "parallel" ||
             constraint.kind === "perpendicular" ||
             constraint.kind === "angle"
         ) {
-            segmentIds.add(constraint.a);
-            segmentIds.add(constraint.b);
+            if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
+                segmentIds.add(constraint.segment);
+            } else {
+                segmentIds.add(constraint.a);
+                segmentIds.add(constraint.b);
+            }
         }
     }
     for (const id of [...segmentIds].sort((a, b) => a.localeCompare(b))) {

@@ -4,6 +4,8 @@
 
 <script lang="ts">
     import { cn } from "$lib/utils.js";
+    import { Button } from "$lib/components/button";
+    import { Icon } from "$lib/components/icon";
     import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import type { Attachment } from "svelte/attachments";
     import {
@@ -20,7 +22,8 @@
         type SceneElement as SceneElementModel,
     } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
+    import type { RelationKind } from "$lib/whiteboard/model";
+    import { hitTest, PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
     import { Theme } from "$lib/utils/Theme.svelte";
     import {
         registerCanvasSnapshot,
@@ -96,6 +99,8 @@
     let hoveredVertex = $state<VertexRef | null>(null);
     let selectedArcControl = $state<ArcControlRef | null>(null);
     let hoveredArcControl = $state<ArcControlRef | null>(null);
+    let lengthMenuOpen = $state(false);
+    let featureClickStart: { screen: Pair; selection: typeof store.featureSelection } | null = null;
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
@@ -120,6 +125,53 @@
         screen: [project(glyph.at)[0] + 12, project(glyph.at)[1] - 12] as Pair,
         selected: glyph.selected,
     })));
+    const dimensionGlyphs = $derived(store.dimensionGlyphs.map((glyph) => ({
+        ...glyph,
+        aScreen: project(glyph.a),
+        bScreen: project(glyph.b),
+        screen: project(glyph.at),
+    })));
+    const selectedDimension = $derived(dimensionGlyphs.find(({ selected }) => selected));
+    const constraintToolbarPosition = $derived.by(() => {
+        if (store.toolKind !== "select" || store.featureSelection.length === 0) return null;
+        const geometry = store.selectedFeatureGeometry;
+        const anchors = [
+            ...geometry.points.map(project),
+            ...geometry.segments.flatMap((segment) => [project(segment.a), project(segment.b)]),
+        ];
+        if (anchors.length === 0) return null;
+        const minX = Math.min(...anchors.map((point) => point[0]));
+        const maxX = Math.max(...anchors.map((point) => point[0]));
+        const minY = Math.min(...anchors.map((point) => point[1]));
+        const maxY = Math.max(...anchors.map((point) => point[1]));
+        const toolbarHalfWidth = Math.min(160, Math.max(0, width / 2 - 8));
+        const centerX = Math.max(toolbarHalfWidth + 8, Math.min(width - toolbarHalfWidth - 8, (minX + maxX) / 2));
+        const aboveSelection = minY >= 56;
+        const top = aboveSelection ? minY - 44 : maxY + 12;
+        return {
+            left: centerX,
+            top: Math.max(8, Math.min(height - 44, top)),
+            menuAbove: top + 190 > height,
+        };
+    });
+
+    const relationGlyphs: Record<RelationKind, string> = {
+        horizontal: "H",
+        vertical: "V",
+        parallel: "∥",
+        perpendicular: "⟂",
+        "equal-length": "=",
+        "fixed-point": "⌖",
+        distance: "↔",
+    };
+
+    function toggleContextRelation(kind: RelationKind) {
+        store.toggleRelation(kind);
+    }
+
+    function addContextDimension(mode: "driving" | "reference") {
+        store.addLengthDimension(mode);
+    }
 
     type ResizePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -767,6 +819,16 @@
                   Math.hypot(glyph.screen[0] - pointerX, glyph.screen[1] - pointerY) <= 10
               )
             : undefined;
+        const dimensionGlyph = store.toolKind === "select"
+            ? dimensionGlyphs.find((glyph) =>
+                  Math.abs(glyph.screen[0] - pointerX) <= 28 && Math.abs(glyph.screen[1] - pointerY) <= 12
+              )
+            : undefined;
+        if (e.button === 0 && dimensionGlyph) {
+            store.selectDimension(dimensionGlyph.id);
+            interaction = "idle";
+            return;
+        }
         if (e.button === 0 && constraintGlyph) {
             store.selectConstraint(constraintGlyph.id);
             selectedVertex = null;
@@ -823,7 +885,7 @@
                 elementId: vertexHandle.elementId,
                 nodeIndex: vertexHandle.nodeIndex,
                 handle: vertexHandle.handle,
-            }, e.altKey);
+            }, e.altKey, e.shiftKey);
             return;
         }
         if (e.button === 0) {
@@ -871,20 +933,45 @@
             !selectionIsPreview &&
             isScreenPointInRect(pointerScreen, selectionRect)
         ) {
+            featureClickStart = {
+                screen: pointerScreen,
+                selection: [...store.featureSelection],
+            };
             interaction = "transform";
             transformCursor = "move";
             syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" }, e.altKey);
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" }, e.altKey, e.shiftKey);
             return;
         }
 
+        if (e.button === 0 && store.toolKind === "select" && store.featureSelection.length > 0) {
+            const element = hitTest(store.scene, toAsyAt(e.clientX, e.clientY), 8 / scale);
+            if (!element) {
+                store.clearFeatureSelection();
+                lengthMenuOpen = false;
+            }
+        }
+
         interaction = "draw";
+        if (e.button === 0 && store.toolKind === "select") {
+            featureClickStart = {
+                screen: pointerScreen,
+                selection: [...store.featureSelection],
+            };
+        }
         syncToolScale();
         store.pointerDown(
             store.toolKind === "pen" ? pointerSample(e) : toAsyAt(e.clientX, e.clientY),
             undefined,
             e.altKey,
         );
+    }
+
+    function onDoubleClick(e: MouseEvent) {
+        if (store.toolKind !== "select") return;
+        const at = toAsyAt(e.clientX, e.clientY);
+        const element = hitTest(store.scene, at, 8 / scale);
+        if (element) store.selectCurveFeatureAt(element.id, at, e.shiftKey);
     }
 
     function onPointerMove(e: PointerEvent) {
@@ -981,6 +1068,24 @@
                 if (!flushed) store.pointerUp(point, e.shiftKey, [], e.altKey);
             } else store.pointerUp(point, e.shiftKey, [], e.altKey);
         }
+        if (store.toolKind === "select" && featureClickStart) {
+            const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
+            const moved = Math.hypot(
+                pointerX - featureClickStart.screen[0],
+                pointerY - featureClickStart.screen[1],
+            );
+            if (moved <= 3) {
+                const at = toAsyAt(e.clientX, e.clientY);
+                const element = hitTest(store.scene, at, 8 / scale);
+                if (element) {
+                    if (e.shiftKey) {
+                        for (const feature of featureClickStart.selection) store.selectFeature(feature, true);
+                    }
+                    store.selectFeatureAtItem(element.id, at, e.shiftKey);
+                }
+            }
+        }
+        featureClickStart = null;
         pointerId = null;
         panStart = null;
         transformCursor = null;
@@ -1000,6 +1105,7 @@
         panStart = null;
         pinchStart = null;
         transformCursor = null;
+        featureClickStart = null;
         hoveredVertex = null;
         selectedArcControl = null;
         hoveredArcControl = null;
@@ -1054,6 +1160,9 @@
             } else if (store.selectedConstraintId) {
                 e.preventDefault();
                 store.deleteSelectedConstraint();
+            } else if (store.selectedDimensionId) {
+                e.preventDefault();
+                store.deleteSelected();
             } else if (store.selection.length) {
                 e.preventDefault();
                 store.deleteSelected();
@@ -1213,6 +1322,20 @@
                 ? { from: project(store.snapProposal.from), to: project(store.snapProposal.to) }
                 : null,
             constraintGlyphs: constraintGlyphs.map((glyph) => ({ ...glyph })),
+            dimensions: dimensionGlyphs.map((glyph) => ({
+                id: glyph.id,
+                a: glyph.aScreen,
+                b: glyph.bScreen,
+                label: glyph.screen,
+                text: `${glyph.value.toFixed(2)}${glyph.mode === "reference" ? " ref" : ""}`,
+                mode: glyph.mode,
+                selected: glyph.selected,
+            })),
+            featurePoints: store.selectedFeatureGeometry.points.map(project),
+            featureSegments: store.selectedFeatureGeometry.segments.map((segment) => ({
+                a: project(segment.a),
+                b: project(segment.b),
+            })),
         };
 
         const backingWidth = Math.max(1, Math.round(width * pixelRatio));
@@ -1290,8 +1413,157 @@
                 hoveredArcControl = null;
             }
         }}
+        ondblclick={onDoubleClick}
         onwheel={onWheel}
     ></canvas>
+    {#if constraintToolbarPosition}
+        <section
+            class="absolute z-30 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-lg border border-border/70 bg-surface-container-lowest/97 p-1 shadow-lg backdrop-blur-(--backdrop-blur)"
+            style:left={`${constraintToolbarPosition.left}px`}
+            style:top={`${constraintToolbarPosition.top}px`}
+            aria-label="Constraint toolbar"
+        >
+            <div class="flex items-center gap-1" role="toolbar" aria-label="Geometry constraints">
+                {#each store.contextualRelationActions as action (action.kind)}
+                    {#if action.kind !== "distance" || (
+                        action.constraintId &&
+                        !store.selectedFeatureDimensions.some(({ constraintId }) => constraintId === action.constraintId)
+                    )}
+                        <Button
+                            variant={action.constraintId ? "secondary" : "ghost"}
+                            size="icon-sm"
+                            class={action.constraintId ? "text-primary" : undefined}
+                            aria-label={`${action.constraintId ? "Remove" : "Add"} ${action.label.toLowerCase()} constraint`}
+                            aria-pressed={Boolean(action.constraintId)}
+                            title={`${action.constraintId ? "Remove" : "Add"} ${action.label.toLowerCase()} constraint`}
+                            onclick={() => toggleContextRelation(action.kind)}
+                        >
+                            <span class="text-base font-semibold leading-none" aria-hidden="true">{relationGlyphs[action.kind]}</span>
+                        </Button>
+                    {/if}
+                {/each}
+                {#if store.canDimensionSelection}
+                    <div class="mx-0.5 h-5 w-px bg-border" aria-hidden="true"></div>
+                    <Button
+                        variant={lengthMenuOpen || store.selectedFeatureDimensions.length > 0 ? "secondary" : "ghost"}
+                        size="sm"
+                        class={store.selectedFeatureDimensions.length > 0 ? "text-primary" : undefined}
+                        aria-haspopup="menu"
+                        aria-expanded={lengthMenuOpen}
+                        title="Length dimensions"
+                        onclick={() => lengthMenuOpen = !lengthMenuOpen}
+                    >
+                        <Icon name="straighten" />
+                        <span>Length</span>
+                    </Button>
+                {/if}
+                <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Close constraint toolbar"
+                    title="Close constraint toolbar"
+                    onclick={() => {
+                        lengthMenuOpen = false;
+                        store.clearFeatureSelection();
+                    }}
+                >
+                    <Icon name="close" />
+                </Button>
+            </div>
+
+            {#if lengthMenuOpen && store.canDimensionSelection}
+                <div
+                    class={cn(
+                        "absolute right-0 w-64 rounded-lg border border-border/70 bg-surface-container-lowest p-2 shadow-lg",
+                        constraintToolbarPosition.menuAbove ? "bottom-full mb-2" : "top-full mt-2",
+                    )}
+                    role="menu"
+                    aria-label="Length dimensions"
+                >
+                    <p class="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Length dimensions
+                    </p>
+                    {#if store.selectedFeatureDimensions.length > 0}
+                        <div class="space-y-1 border-b border-border/60 pb-2">
+                            {#each store.selectedFeatureDimensions as dimension (dimension.id)}
+                                <div class="grid grid-cols-[1fr_5rem_1.75rem] items-center gap-1">
+                                    <span class="truncate px-1 text-xs capitalize">{dimension.mode}</span>
+                                    {#if dimension.mode === "driving"}
+                                        <input
+                                            class="h-7 min-w-0 rounded-md border border-input bg-background px-1.5 text-right text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={dimension.value}
+                                            aria-label="Driving length"
+                                            onchange={(event) => store.editDimension(dimension.id, Number(event.currentTarget.value))}
+                                        />
+                                    {:else}
+                                        <span class="px-1 text-right text-xs tabular-nums">{dimension.value.toFixed(2)}</span>
+                                    {/if}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        aria-label={`Remove ${dimension.mode} length dimension`}
+                                        title={`Remove ${dimension.mode} length dimension`}
+                                        onclick={() => store.removeDimension(dimension.id)}
+                                    >
+                                        <Icon name="delete" />
+                                    </Button>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                    <div class="grid grid-cols-2 gap-1 pt-2">
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            disabled={store.selectedFeatureDimensions.some(({ mode }) => mode === "driving")}
+                            onclick={() => addContextDimension("driving")}
+                        >Driving</Button>
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            disabled={store.selectedFeatureDimensions.some(({ mode }) => mode === "reference")}
+                            onclick={() => addContextDimension("reference")}
+                        >Reference</Button>
+                    </div>
+                    <p class="px-1 pt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                        Driving controls geometry. Reference only measures it.
+                    </p>
+                </div>
+            {/if}
+            {#if store.solverDiagnostic && store.conflictingConstraintIds.length > 0}
+                <p class="absolute left-0 top-full mt-2 w-64 rounded-md bg-surface-container-lowest px-2 py-1.5 text-[10px] leading-relaxed text-destructive shadow-md">
+                    {store.solverDiagnostic}
+                </p>
+            {/if}
+        </section>
+    {/if}
+    {#if selectedDimension && selectedDimension.mode === "driving" && !lengthMenuOpen}
+        <input
+            class="absolute z-30 h-7 w-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary bg-background px-1 text-center text-xs shadow-sm outline-none focus:ring-2 focus:ring-ring"
+            style:left={`${selectedDimension.screen[0]}px`}
+            style:top={`${selectedDimension.screen[1]}px`}
+            type="number"
+            min="0"
+            step="0.1"
+            value={selectedDimension.value}
+            aria-label="Driving length"
+            onkeydown={(event) => {
+                const input = event.currentTarget;
+                if (event.key === "Enter") {
+                    store.editDimension(selectedDimension.id, Number(input.value));
+                    input.blur();
+                } else if (event.key === "Escape") input.blur();
+            }}
+        />
+    {/if}
+    {#if store.solverDiagnostic && store.conflictingConstraintIds.length > 0 && !constraintToolbarPosition}
+        <div class="pointer-events-none absolute bottom-3 left-1/2 z-30 max-w-sm -translate-x-1/2 rounded-lg border border-destructive/40 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm">
+            {store.solverDiagnostic}
+        </div>
+    {/if}
     {#if store.toolKind === "eraser" && eraserPointer}
         <div
             class="pointer-events-none absolute z-20 rounded-full border border-foreground/70 bg-background/20 shadow-sm"
