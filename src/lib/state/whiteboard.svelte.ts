@@ -1114,11 +1114,20 @@ export class WhiteboardStore {
     }
 
     selectCurveFeatureAt(itemId: string, at: readonly [number, number], additive = false): void {
-        const feature = nearestSegmentFeature(this.document, at, 8 * this.sceneUnitsPerPixel, itemId);
+        const feature = nearestSegmentFeature(this.document, at, 12 * this.sceneUnitsPerPixel, itemId);
         if (feature) this.selectFeature(feature.ref, additive);
     }
 
-    selectFeatureAtItem(itemId: string, at: readonly [number, number], additive = false): void {
+    selectFeatureAtItem(
+        itemId: string,
+        at: readonly [number, number],
+        additive = false,
+        additiveBase?: readonly FeatureRef[],
+    ): void {
+        // Pointer-down may either preserve feature selection (same item) or clear
+        // it (another item). Always continue Shift-click from the pointer-down
+        // snapshot so both paths have identical additive behavior.
+        if (additive && additiveBase) this.featureSelection = [...additiveBase];
         const marker = this.#markerFeature(itemId);
         if (marker) {
             this.selectFeature(marker, additive);

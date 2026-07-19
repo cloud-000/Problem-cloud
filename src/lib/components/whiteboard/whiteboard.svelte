@@ -154,6 +154,23 @@
             menuAbove: top + 190 > height,
         };
     });
+    const selectedSegmentMarkers = $derived(
+        store.selectedFeatureGeometry.segments.map((segment, index) => ({
+            label: index + 1,
+            screen: project([
+                (segment.a[0] + segment.b[0]) / 2,
+                (segment.a[1] + segment.b[1]) / 2,
+            ]),
+        })),
+    );
+    const lineSelectionGuidance = $derived.by(() => {
+        if (store.featureSelection.length !== selectedSegmentMarkers.length) return null;
+        if (selectedSegmentMarkers.length === 1) {
+            return "Shift-click another smart line to compare segments";
+        }
+        if (selectedSegmentMarkers.length === 2) return "Choose a relationship for these segments";
+        return null;
+    });
 
     const relationGlyphs: Record<RelationKind, string> = {
         horizontal: "H",
@@ -1078,10 +1095,7 @@
                 const at = toAsyAt(e.clientX, e.clientY);
                 const element = hitTest(store.scene, at, 8 / scale);
                 if (element) {
-                    if (e.shiftKey) {
-                        for (const feature of featureClickStart.selection) store.selectFeature(feature, true);
-                    }
-                    store.selectFeatureAtItem(element.id, at, e.shiftKey);
+                    store.selectFeatureAtItem(element.id, at, e.shiftKey, featureClickStart.selection);
                 }
             }
         }
@@ -1416,6 +1430,14 @@
         ondblclick={onDoubleClick}
         onwheel={onWheel}
     ></canvas>
+    {#each selectedSegmentMarkers as marker (marker.label)}
+        <span
+            class="pointer-events-none absolute z-20 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-surface-container-lowest bg-primary text-[10px] font-bold text-primary-foreground shadow-sm"
+            style:left={`${marker.screen[0]}px`}
+            style:top={`${marker.screen[1]}px`}
+            aria-hidden="true"
+        >{marker.label}</span>
+    {/each}
     {#if constraintToolbarPosition}
         <section
             class="absolute z-30 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-lg border border-border/70 bg-surface-container-lowest/97 p-1 shadow-lg backdrop-blur-(--backdrop-blur)"
@@ -1431,7 +1453,7 @@
                     )}
                         <Button
                             variant={action.constraintId ? "secondary" : "ghost"}
-                            size="icon-sm"
+                            size="sm"
                             class={action.constraintId ? "text-primary" : undefined}
                             aria-label={`${action.constraintId ? "Remove" : "Add"} ${action.label.toLowerCase()} constraint`}
                             aria-pressed={Boolean(action.constraintId)}
@@ -1439,6 +1461,7 @@
                             onclick={() => toggleContextRelation(action.kind)}
                         >
                             <span class="text-base font-semibold leading-none" aria-hidden="true">{relationGlyphs[action.kind]}</span>
+                            <span>{action.label}</span>
                         </Button>
                     {/if}
                 {/each}
@@ -1470,6 +1493,12 @@
                     <Icon name="close" />
                 </Button>
             </div>
+
+            {#if lineSelectionGuidance}
+                <p class="px-2 pb-1 pt-0.5 text-center text-xs text-muted-foreground" role="status" aria-live="polite">
+                    {lineSelectionGuidance}
+                </p>
+            {/if}
 
             {#if lengthMenuOpen && store.canDimensionSelection}
                 <div

@@ -284,6 +284,46 @@ describe("WhiteboardStore selection gestures", () => {
         expect(store.featureSelection[1]).toMatchObject({ kind: "point" });
     });
 
+    test("short-click segment routing has a forgiving visual hit target", () => {
+        const line = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [4, 0]], false, undefined, undefined, "line");
+        const store = new WhiteboardStore(line.document);
+        const lineItem = line.document.items[0];
+        if (lineItem.kind !== "sketch-path") throw new Error("missing smart path");
+
+        store.selectFeatureAtItem("line", [2, 0.275]);
+
+        expect(store.featureSelection).toEqual([{ kind: "curve", curveId: lineItem.uses[0].curveId }]);
+    });
+
+    test("shift-click can select two segments from the same smart path", () => {
+        const path = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0], [4, 4]],
+            false,
+            undefined,
+            undefined,
+            "path",
+        );
+        const store = new WhiteboardStore(path.document);
+        const pathItem = path.document.items[0];
+        if (pathItem.kind !== "sketch-path") throw new Error("missing smart path");
+
+        store.selectFeatureAtItem("path", [2, 0]);
+        const pointerDownSelection = [...store.featureSelection];
+        store.clearFeatureSelection();
+        store.selectFeatureAtItem("path", [4, 2], true, pointerDownSelection);
+
+        expect(store.featureSelection).toEqual([
+            { kind: "curve", curveId: pathItem.uses[0].curveId },
+            { kind: "curve", curveId: pathItem.uses[1].curveId },
+        ]);
+        expect(store.contextualRelationActions.map(({ kind }) => kind)).toEqual([
+            "parallel",
+            "perpendicular",
+            "equal-length",
+        ]);
+    });
+
     test("smart presentation property edits update style without copying resolved geometry", () => {
         const created = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [4, 0]], false, undefined, undefined, "smart");
         const store = new WhiteboardStore(created.document);
