@@ -39,6 +39,7 @@
         type WhiteboardRenderOverlay,
         type WhiteboardRenderSnapshot,
     } from "./render";
+    import { clampToolbarPosition } from "./constraint-toolbar";
     import ZoomControls from "./zoom-controls.svelte";
 
     let {
@@ -100,6 +101,18 @@
     let selectedArcControl = $state<ArcControlRef | null>(null);
     let hoveredArcControl = $state<ArcControlRef | null>(null);
     let lengthMenuOpen = $state(false);
+    let constraintToolbarWidth = $state(0);
+    let constraintToolbarHeight = $state(0);
+    let constraintToolbarPlacement = $state<{ selectionKey: string; offset: Pair }>({
+        selectionKey: "",
+        offset: [0, 0],
+    });
+    let constraintToolbarDrag: {
+        pointerId: number;
+        selectionKey: string;
+        clientStart: Pair;
+        positionStart: Pair;
+    } | null = null;
     let featureClickStart: { screen: Pair; selection: typeof store.featureSelection } | null = null;
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
@@ -132,6 +145,7 @@
         screen: project(glyph.at),
     })));
     const selectedDimension = $derived(dimensionGlyphs.find(({ selected }) => selected));
+    const constraintToolbarSelectionKey = $derived(JSON.stringify(store.featureSelection));
     const constraintToolbarPosition = $derived.by(() => {
         if (store.toolKind !== "select" || store.featureSelection.length === 0) return null;
         const geometry = store.selectedFeatureGeometry;
@@ -144,14 +158,24 @@
         const maxX = Math.max(...anchors.map((point) => point[0]));
         const minY = Math.min(...anchors.map((point) => point[1]));
         const maxY = Math.max(...anchors.map((point) => point[1]));
-        const toolbarHalfWidth = Math.min(160, Math.max(0, width / 2 - 8));
-        const centerX = Math.max(toolbarHalfWidth + 8, Math.min(width - toolbarHalfWidth - 8, (minX + maxX) / 2));
         const aboveSelection = minY >= 56;
-        const top = aboveSelection ? minY - 44 : maxY + 12;
+        const autoPosition = {
+            left: (minX + maxX) / 2,
+            top: aboveSelection ? minY - 44 : maxY + 12,
+        };
+        const offset = constraintToolbarPlacement.selectionKey === constraintToolbarSelectionKey
+            ? constraintToolbarPlacement.offset
+            : [0, 0] as Pair;
+        const position = clampToolbarPosition(
+            { left: autoPosition.left + offset[0], top: autoPosition.top + offset[1] },
+            { width, height },
+            { width: constraintToolbarWidth || 320, height: constraintToolbarHeight || 40 },
+        );
         return {
-            left: centerX,
-            top: Math.max(8, Math.min(height - 44, top)),
-            menuAbove: top + 190 > height,
+            ...position,
+            menuAbove: position.top + constraintToolbarHeight + 190 > height,
+            autoPosition,
+            offset,
         };
     });
     const selectedSegmentMarkers = $derived(
@@ -184,6 +208,46 @@
 
     function toggleContextRelation(kind: RelationKind) {
         store.toggleRelation(kind);
+    }
+
+    function onConstraintToolbarDragStart(event: PointerEvent) {
+        if (event.button !== 0 || !constraintToolbarPosition) return;
+        event.preventDefault();
+        (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
+        constraintToolbarDrag = {
+            pointerId: event.pointerId,
+            selectionKey: constraintToolbarSelectionKey,
+            clientStart: [event.clientX, event.clientY],
+            positionStart: [constraintToolbarPosition.left, constraintToolbarPosition.top],
+        };
+    }
+
+    function onConstraintToolbarDragMove(event: PointerEvent) {
+        if (
+            !constraintToolbarDrag ||
+            event.pointerId !== constraintToolbarDrag.pointerId ||
+            !constraintToolbarPosition
+        ) return;
+        const position = clampToolbarPosition(
+            {
+                left: constraintToolbarDrag.positionStart[0] + event.clientX - constraintToolbarDrag.clientStart[0],
+                top: constraintToolbarDrag.positionStart[1] + event.clientY - constraintToolbarDrag.clientStart[1],
+            },
+            { width, height },
+            { width: constraintToolbarWidth || 320, height: constraintToolbarHeight || 40 },
+        );
+        constraintToolbarPlacement = {
+            selectionKey: constraintToolbarDrag.selectionKey,
+            offset: [
+                position.left - constraintToolbarPosition.autoPosition.left,
+                position.top - constraintToolbarPosition.autoPosition.top,
+            ],
+        };
+    }
+
+    function onConstraintToolbarDragEnd(event: PointerEvent) {
+        if (!constraintToolbarDrag || event.pointerId !== constraintToolbarDrag.pointerId) return;
+        constraintToolbarDrag = null;
     }
 
     function addContextDimension(mode: "driving" | "reference") {
@@ -1444,8 +1508,22 @@
             style:left={`${constraintToolbarPosition.left}px`}
             style:top={`${constraintToolbarPosition.top}px`}
             aria-label="Constraint toolbar"
+            bind:clientWidth={constraintToolbarWidth}
+            bind:clientHeight={constraintToolbarHeight}
         >
             <div class="flex items-center gap-1" role="toolbar" aria-label="Geometry constraints">
+                <button
+                    type="button"
+                    class="flex size-6 shrink-0 touch-none cursor-grab items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
+                    aria-label="Drag constraint toolbar"
+                    title="Drag constraint toolbar"
+                    onpointerdown={onConstraintToolbarDragStart}
+                    onpointermove={onConstraintToolbarDragMove}
+                    onpointerup={onConstraintToolbarDragEnd}
+                    onpointercancel={onConstraintToolbarDragEnd}
+                >
+                    <Icon name="drag_indicator" />
+                </button>
                 {#each store.contextualRelationActions as action (action.kind)}
                     {#if action.kind !== "distance" || (
                         action.constraintId &&
