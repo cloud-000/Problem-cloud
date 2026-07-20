@@ -102,6 +102,8 @@ export interface StayPreference {
 
 export interface SolveRequest {
     graph: SolverGraph;
+    /** Optional previous solution used only as the numerical starting point. */
+    initialPoints?: Readonly<Record<PointId, SolverPoint>>;
     /** Seeds the connected component to solve. Empty means every constrained component. */
     affected: readonly SolverFeatureRef[];
     drivers: readonly DriverConstraint[];
@@ -143,7 +145,7 @@ export interface NonlinearSolverOptions {
     finiteDifferenceStep?: number;
     /** Initial Levenberg-Marquardt damping. Default 1e-3. */
     initialDamping?: number;
-    /** Residual multiplier that makes persisted constraints dominate preferences. Default 1e4. */
+    /** Residual multiplier for the preference solve before hard-feasibility projection. Default 1. */
     hardConstraintMultiplier?: number;
     /** Segment length at or below this normalized threshold is direction-degenerate. Default 1e-9. */
     degeneracyTolerance?: number;

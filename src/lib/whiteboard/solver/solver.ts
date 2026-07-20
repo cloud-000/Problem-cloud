@@ -43,6 +43,8 @@ interface Evaluation {
     rankValues: number[];
 }
 
+type ObjectiveMode = "combined" | "hard";
+
 const DEFAULTS: SolverConfig = {
     commitTolerance: 1e-7,
     previewTolerance: 1e-5,
@@ -50,7 +52,7 @@ const DEFAULTS: SolverConfig = {
     previewIterations: 24,
     finiteDifferenceStep: 1e-6,
     initialDamping: 1e-3,
-    hardConstraintMultiplier: 1e4,
+    hardConstraintMultiplier: 1,
     degeneracyTolerance: 1e-9,
 };
 
@@ -106,6 +108,10 @@ function validateRequest(request: SolveRequest, config: SolverConfig): string | 
     for (const [key, point] of Object.entries(graph.points)) {
         if (point.id !== key) return `point key ${key} does not match id ${point.id}`;
         if (!finitePoint(point.at)) return `point ${key} has a non-finite coordinate`;
+    }
+    for (const [id, point] of Object.entries(request.initialPoints ?? {})) {
+        if (!graph.points[id]) return `initial point references missing point ${id}`;
+        if (!finitePoint(point)) return `initial point ${id} has a non-finite coordinate`;
     }
     for (const [key, segment] of Object.entries(graph.segments)) {
         if (segment.id !== key) return `segment key ${key} does not match id ${segment.id}`;
@@ -264,8 +270,15 @@ function buildActiveProblem(request: SolveRequest): ActiveProblem {
     };
 }
 
-function initialVector(graph: SolverGraph, pointIds: readonly PointId[]): number[] {
-    return pointIds.flatMap((id) => [graph.points[id].at[0], graph.points[id].at[1]]);
+function initialVector(
+    graph: SolverGraph,
+    pointIds: readonly PointId[],
+    initialPoints: SolveRequest["initialPoints"],
+): number[] {
+    return pointIds.flatMap((id) => {
+        const at = initialPoints?.[id] ?? graph.points[id].at;
+        return [at[0], at[1]];
+    });
 }
 
 function pointReader(pointIds: readonly PointId[], vector: readonly number[]): (id: PointId) => SolverPoint {
@@ -350,6 +363,7 @@ function evaluate(
     problem: ActiveProblem,
     vector: readonly number[],
     config: SolverConfig,
+    objectiveMode: ObjectiveMode = "combined",
 ): Evaluation {
     const point = pointReader(problem.pointIds, vector);
     const hard = problem.constraints.map((constraint) => ({
@@ -382,11 +396,13 @@ function evaluate(
     });
     return {
         hard,
-        weighted: [
-            ...hardValues.map((value) => value * config.hardConstraintMultiplier),
-            ...driverValues,
-            ...stayValues,
-        ],
+        weighted: objectiveMode === "hard"
+            ? hardValues
+            : [
+                  ...hardValues.map((value) => value * config.hardConstraintMultiplier),
+                  ...driverValues,
+                  ...stayValues,
+              ],
         rankValues: [
             ...hardValues,
             ...driverValues,
@@ -538,7 +554,13 @@ function directionDegeneracy(
         }
     }
     for (const id of [...segmentIds].sort((a, b) => a.localeCompare(b))) {
-        if (vectorLength(segmentVector(graph.segments[id], point)) <= threshold) {
+        const segment = graph.segments[id];
+        const initialLength = vectorLength(vectorBetween(
+            graph.points[segment.start].at,
+            graph.points[segment.end].at,
+        ));
+        const collapseThreshold = Math.max(threshold, initialLength * 1e-6);
+        if (vectorLength(segmentVector(segment, point)) <= collapseThreshold) {
             return `direction constraint references degenerate segment ${id}`;
         }
     }
@@ -585,7 +607,7 @@ export class DampedLeastSquaresSolver implements ConstraintSolver {
             };
         }
 
-        let vector = initialVector(request.graph, problem.pointIds);
+        let vector = initialVector(request.graph, problem.pointIds, request.initialPoints);
         const initialDegeneracy = directionDegeneracy(
             request.graph,
             problem,
@@ -594,7 +616,8 @@ export class DampedLeastSquaresSolver implements ConstraintSolver {
         );
         if (initialDegeneracy) return failed(initialDegeneracy);
 
-        let evaluation = evaluate(request.graph, problem, vector, this.#config);
+        let objectiveMode: ObjectiveMode = "combined";
+        let evaluation = evaluate(request.graph, problem, vector, this.#config, objectiveMode);
         if (!allFinite(evaluation.weighted)) return failed("initial residual evaluation is non-finite");
         let cost = objective(evaluation.weighted);
         let damping = this.#config.initialDamping;
@@ -602,49 +625,80 @@ export class DampedLeastSquaresSolver implements ConstraintSolver {
             ? this.#config.previewIterations
             : this.#config.commitIterations;
         let iterations = 0;
+        const tolerance = request.mode === "preview"
+            ? this.#config.previewTolerance
+            : this.#config.commitTolerance;
 
-        for (; iterations < maxIterations; iterations++) {
-            if (evaluation.weighted.length === 0 || vector.length === 0) break;
-            const jacobian = numericalJacobian(
-                vector,
-                evaluation.weighted,
-                problem.scale,
-                this.#config.finiteDifferenceStep,
-                (candidate) => evaluate(request.graph, problem, candidate, this.#config).weighted,
-            );
-            if (!jacobian) return failed("numerical Jacobian is non-finite", iterations);
-            const { matrix, gradient } = normalEquations(jacobian, evaluation.weighted);
-            const gradientMaximum = Math.max(0, ...gradient.map(Math.abs));
-            if (gradientMaximum <= 1e-12) break;
-            for (let index = 0; index < matrix.length; index++) {
-                matrix[index][index] += damping * Math.max(1, matrix[index][index]);
+        while (true) {
+            for (let phaseIterations = 0; phaseIterations < maxIterations; phaseIterations++, iterations++) {
+                if (evaluation.weighted.length === 0 || vector.length === 0) break;
+                const jacobian = numericalJacobian(
+                    vector,
+                    evaluation.weighted,
+                    problem.scale,
+                    this.#config.finiteDifferenceStep,
+                    (candidate) => evaluate(
+                        request.graph,
+                        problem,
+                        candidate,
+                        this.#config,
+                        objectiveMode,
+                    ).weighted,
+                );
+                if (!jacobian) return failed("numerical Jacobian is non-finite", iterations);
+                const { matrix, gradient } = normalEquations(jacobian, evaluation.weighted);
+                const gradientMaximum = Math.max(0, ...gradient.map(Math.abs));
+                if (gradientMaximum <= 1e-12) break;
+                for (let index = 0; index < matrix.length; index++) {
+                    matrix[index][index] += damping * Math.max(1, matrix[index][index]);
+                }
+                const step = solveLinearSystem(matrix, gradient.map((value) => -value));
+                if (!step) return failed("damped normal equations are singular", iterations);
+                const stepLength = Math.hypot(...step);
+                if (!Number.isFinite(stepLength)) return failed("solver step is non-finite", iterations);
+                if (stepLength <= 1e-11 * problem.scale) break;
+
+                const candidate = vector.map((value, index) => value + step[index]);
+                if (!allFinite(candidate)) return failed("candidate geometry is non-finite", iterations);
+                const candidateEvaluation = evaluate(
+                    request.graph,
+                    problem,
+                    candidate,
+                    this.#config,
+                    objectiveMode,
+                );
+                if (!allFinite(candidateEvaluation.weighted)) {
+                    damping *= 10;
+                    if (!Number.isFinite(damping)) return failed("solver damping overflowed", iterations);
+                    continue;
+                }
+                const candidateCost = objective(candidateEvaluation.weighted);
+                if (candidateCost < cost) {
+                    const improvement = cost - candidateCost;
+                    vector = candidate;
+                    evaluation = candidateEvaluation;
+                    cost = candidateCost;
+                    damping = Math.max(1e-12, damping / 3);
+                    if (improvement <= 1e-14 * Math.max(1, cost)) break;
+                } else {
+                    damping *= 10;
+                    if (damping > 1e20) break;
+                }
             }
-            const step = solveLinearSystem(matrix, gradient.map((value) => -value));
-            if (!step) return failed("damped normal equations are singular", iterations);
-            const stepLength = Math.hypot(...step);
-            if (!Number.isFinite(stepLength)) return failed("solver step is non-finite", iterations);
-            if (stepLength <= 1e-11 * problem.scale) break;
 
-            const candidate = vector.map((value, index) => value + step[index]);
-            if (!allFinite(candidate)) return failed("candidate geometry is non-finite", iterations);
-            const candidateEvaluation = evaluate(request.graph, problem, candidate, this.#config);
-            if (!allFinite(candidateEvaluation.weighted)) {
-                damping *= 10;
-                if (!Number.isFinite(damping)) return failed("solver damping overflowed", iterations);
+            const hardResidual = residualSummary(evaluation.hard).maxResidual;
+            if (objectiveMode === "combined" && hardResidual > tolerance && problem.constraints.length > 0) {
+                // The pointer and stay objective uses a finite penalty for persisted
+                // constraints. Finish with a feasibility-only projection so a
+                // solvable drag cannot be rejected merely because that penalty's
+                // optimum sits just outside the hard tolerance.
+                objectiveMode = "hard";
+                evaluation = evaluate(request.graph, problem, vector, this.#config, objectiveMode);
+                cost = objective(evaluation.weighted);
+                damping = this.#config.initialDamping;
                 continue;
             }
-            const candidateCost = objective(candidateEvaluation.weighted);
-            if (candidateCost < cost) {
-                const improvement = cost - candidateCost;
-                vector = candidate;
-                evaluation = candidateEvaluation;
-                cost = candidateCost;
-                damping = Math.max(1e-12, damping / 3);
-                if (improvement <= 1e-14 * Math.max(1, cost)) break;
-            } else {
-                damping *= 10;
-                if (damping > 1e20) break;
-            }
+            break;
         }
 
         if (!allFinite(vector) || !Number.isFinite(cost)) {
@@ -659,10 +713,8 @@ export class DampedLeastSquaresSolver implements ConstraintSolver {
         if (finalDegeneracy) return failed(finalDegeneracy, iterations);
 
         evaluation = evaluate(request.graph, problem, vector, this.#config);
+        cost = objective(evaluation.weighted);
         const { residuals, maxResidual } = residualSummary(evaluation.hard);
-        const tolerance = request.mode === "preview"
-            ? this.#config.previewTolerance
-            : this.#config.commitTolerance;
         const conflictingConstraintIds = Object.entries(residuals)
             .filter(([, residual]) => residual > tolerance)
             .map(([id]) => id)

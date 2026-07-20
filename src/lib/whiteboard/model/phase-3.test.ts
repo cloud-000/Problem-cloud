@@ -11,6 +11,8 @@ import {
     lengthDimensionValue,
     lengthDimensionsForSelection,
     resolveWhiteboardDocument,
+    rotateWhiteboardItems,
+    scaleWhiteboardItems,
     switchDirectionalRelationConstraint,
     translateWhiteboardItems,
     updateSmartPresentationStyle,
@@ -33,6 +35,11 @@ function endpoints(feature: CurveFeatureRef): [PointFeatureRef, PointFeatureRef]
         { kind: "curve-point", curveId: feature.curveId, feature: "start" },
         { kind: "curve-point", curveId: feature.curveId, feature: "end" },
     ];
+}
+
+function expectPoint(actual: readonly [number, number], expected: readonly [number, number]): void {
+    expect(actual[0]).toBeCloseTo(expected[0], 9);
+    expect(actual[1]).toBeCloseTo(expected[1], 9);
 }
 
 describe("whiteboard smart geometry phase 3 model", () => {
@@ -148,5 +155,40 @@ describe("whiteboard smart geometry phase 3 model", () => {
         });
         expect(styled.items[0]).toMatchObject({ kind: "sketch-path", pen: { namedColor: "red", lineWidth: 7 } });
         expect("path" in styled.items[0]).toBe(false);
+    });
+
+    test("uniformly scales and rotates smart and baked selections canonically", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0], [4, 2]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const mixed = {
+            ...created.document,
+            items: [
+                ...created.document.items,
+                { kind: "baked" as const, element: { id: "baked", kind: "dot" as const, at: [2, 3] as const } },
+            ],
+        };
+        const scaled = scaleWhiteboardItems(mixed, ["smart", "baked"], [0, 0], 2);
+        expect(scaled.document).toBeDefined();
+        const scaledScene = resolveWhiteboardDocument(scaled.document!).elements;
+        if (scaledScene[0].kind !== "path" || scaledScene[1].kind !== "dot") throw new Error("missing scaled selection");
+        scaledScene[0].path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [8, 0], [8, 4]][index] as [number, number])
+        );
+        expectPoint(scaledScene[1].at, [4, 6]);
+
+        const rotated = rotateWhiteboardItems(mixed, ["smart", "baked"], [2, 1], 90);
+        expect(rotated.document).toBeDefined();
+        const rotatedScene = resolveWhiteboardDocument(rotated.document!).elements;
+        if (rotatedScene[0].kind !== "path" || rotatedScene[1].kind !== "dot") throw new Error("missing rotated selection");
+        rotatedScene[0].path.nodes.forEach((point, index) =>
+            expectPoint(point, [[3, -1], [3, 3], [1, 3]][index] as [number, number])
+        );
+        expectPoint(rotatedScene[1].at, [0, 1]);
     });
 });

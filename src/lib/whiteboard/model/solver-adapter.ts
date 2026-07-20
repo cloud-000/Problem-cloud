@@ -15,6 +15,7 @@ export interface DocumentSolveRequest {
     affected: PointFeatureRef[];
     drivers: Array<{ feature: PointFeatureRef; target: Pair; weight?: number }>;
     stays?: PointFeatureRef[];
+    initialPoints?: Readonly<Record<string, Pair>>;
     mode: "preview" | "commit" | "validate";
 }
 
@@ -122,6 +123,7 @@ export function solveWhiteboardDocument(
     }));
     const result = solver.solve({
         graph: documentToSolverGraph(document),
+        ...(request.initialPoints ? { initialPoints: request.initialPoints } : {}),
         affected: request.affected.map((ref) => ({
             kind: "point" as const,
             pointId: requiredPointId(document, ref),

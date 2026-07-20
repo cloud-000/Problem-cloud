@@ -434,7 +434,7 @@
                 cursor: "nesw-resize",
             },
         ];
-        if (canResizeY) {
+        if (!store.selectionContainsSmartItems && canResizeY) {
             handles.push(
                 {
                     position: "n",
@@ -454,7 +454,7 @@
                 },
             );
         }
-        if (canResizeX) {
+        if (!store.selectionContainsSmartItems && canResizeX) {
             handles.push(
                 {
                     position: "e",

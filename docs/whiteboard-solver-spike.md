@@ -91,14 +91,20 @@ The implementation uses a damped nonlinear least-squares loop:
    elimination.
 7. Accept only objective-reducing steps; reduce damping after acceptance and
    increase it after rejection.
-8. Validate persisted hard residuals independently from driver/stay preferences.
-9. Estimate active degrees of freedom from the numerical Jacobian rank of hard
+8. If the preference solve remains outside tolerance, run a feasibility-only
+   projection from that candidate using persisted constraints alone.
+9. Validate persisted hard residuals independently from driver/stay preferences.
+10. Estimate active degrees of freedom from the numerical Jacobian rank of hard
    constraints plus drivers; stays are excluded from the rank.
 
-Persisted constraints are multiplied by `1e4` in the optimization objective so
-they dominate pointer/stay preferences. A driver defaults to relative weight
-`1`; a stay defaults to `1e-3`. This is not a persisted strength system—drivers
-and stays exist only in the request.
+Persisted constraints use the same base weight as the pointer driver in the
+initial preference solve, which produces a pointer/stay-aware candidate without
+making the dense normal equations unnecessarily ill-conditioned. A
+feasibility-only projection then
+makes persisted constraints the true priority whenever that candidate remains
+outside tolerance. A driver defaults to relative weight `1`; a stay defaults to
+`1e-3`. This is not a persisted strength system—drivers and stays exist only in
+the request.
 
 ### Residuals
 
@@ -140,10 +146,10 @@ Defaults selected by the spike:
 | Preview normalized hard tolerance | `1e-5` | Allows a lower iteration cap without treating small interactive error as a conflict. Commit still revalidates at `1e-7`. |
 | Direction-degenerate normalized length | `1e-9` | Rejects undefined directions before normalization. |
 | Relative numerical-Jacobian step | `1e-6` | Stable in ordinary and million-coordinate translation tests when multiplied by local component scale. |
-| Preview iteration cap | `24` | Covers the measured interactive chains without a nondeterministic wall-clock cutoff. |
-| Commit/validate iteration cap | `80` | Provides extra convergence room for atomic validation. |
+| Preview iteration cap | `24` per phase | Covers the measured interactive chains without a nondeterministic wall-clock cutoff. |
+| Commit/validate iteration cap | `80` per phase | Provides extra convergence room for the preference solve and, when needed, hard-feasibility projection. |
 | Initial damping | `1e-3` | Stable across the test corpus. |
-| Hard-constraint objective multiplier | `1e4` | Makes persisted geometry dominate temporary preferences while keeping dense equations finite. |
+| Preference-pass hard multiplier | `1` | Balances the initial candidate with the pointer driver; the separate feasibility pass provides strict priority. |
 
 The solver intentionally has no elapsed-time abort. An iteration cap is
 deterministic; a wall-clock abort would make identical solves differ by machine

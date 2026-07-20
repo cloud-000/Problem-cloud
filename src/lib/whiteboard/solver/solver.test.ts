@@ -194,6 +194,39 @@ describe("DampedLeastSquaresSolver individual constraints", () => {
 });
 
 describe("DampedLeastSquaresSolver connected behavior", () => {
+    test("keeps a parallel drag under the pointer without a release jump", () => {
+        const value = graph(
+            { a: [0, 0], b: [4, 0], c: [0, 5], d: [2, 9] },
+            [
+                { id: "ab", start: "a", end: "b" },
+                { id: "cd", start: "c", end: "d" },
+            ],
+            [{ id: "parallel", kind: "parallel", a: "ab", b: "cd" }],
+        );
+        const preferences = {
+            affected: [{ kind: "point", pointId: "b" }],
+            drivers: [{ pointId: "b", target: [4, 3] }],
+            stays: [
+                { pointId: "a" },
+                { pointId: "c" },
+                { pointId: "d" },
+            ],
+        } satisfies Pick<SolveRequest, "affected" | "drivers" | "stays">;
+        const preview = solver.solve(request(value, { ...preferences, mode: "preview" }));
+        const result = solver.solve(request(value, {
+            ...preferences,
+            initialPoints: preview.pointUpdates,
+            mode: "commit",
+        }));
+
+        expectSatisfied(preview, "parallel");
+        expectSatisfied(result, "parallel");
+        expect(result.status).toBe("under-constrained");
+        expect(distance(point(preview, "b"), [4, 3])).toBeLessThan(0.01);
+        expect(distance(point(result, "b"), [4, 3])).toBeLessThan(0.01);
+        expect(distance(point(preview, "b"), point(result, "b"))).toBeLessThan(0.001);
+    });
+
     test("solves multiple connected constraints with drag drivers", () => {
         const value = graph(
             { a: [0.2, 0.1], b: [3.1, 0.2], c: [0.1, 3.8] },

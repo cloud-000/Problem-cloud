@@ -69,6 +69,8 @@ import {
     removeConstraint,
     removeLengthDimension,
     resolveWhiteboardDocument,
+    rotateWhiteboardItems,
+    scaleWhiteboardItems,
     solveWhiteboardDocument,
     switchDirectionalRelationConstraint,
     translateWhiteboardItems,
@@ -88,6 +90,7 @@ function documentSnapshot(document: WhiteboardDocument): WhiteboardDocument {
 export type WhiteboardToolKind = ToolKind | "pan";
 
 type StyledToolKind = Exclude<ToolKind, "select" | "eraser">;
+type SmartSelectionTransform = Extract<SelectionTransformGesture, { kind: "resize" } | { kind: "rotate" }>;
 
 const DEFAULT_TOOL_PENS: Record<StyledToolKind, Pen> = {
     pen: { lineWidth: 3, dash: "solid", opacity: 1 },
@@ -147,10 +150,18 @@ export class WhiteboardStore {
         feature: PointFeatureRef;
         pointerOffset: readonly [number, number];
         candidate: SnapRelationProposal | null;
+        seed?: Readonly<Record<string, readonly [number, number]>>;
     } | null = null;
     #smartTranslation: {
         base: WhiteboardDocument;
         start: readonly [number, number];
+        itemIds: string[];
+    } | null = null;
+    #smartTransform: {
+        base: WhiteboardDocument;
+        start: readonly [number, number];
+        pointerOffset: readonly [number, number];
+        gesture: SmartSelectionTransform;
         itemIds: string[];
     } | null = null;
     #suppressSnapCommit = false;
@@ -233,6 +244,26 @@ export class WhiteboardStore {
         additiveFeatureSelection = false,
     ): void {
         const point = "point" in p ? p.point : p;
+        if (
+            selectionTransform &&
+            (selectionTransform.kind === "resize" || selectionTransform.kind === "rotate") &&
+            this.selection.length > 0 &&
+            this.#selectionHasSmartItems(this.selection)
+        ) {
+            this.#smartTransform = {
+                base: documentSnapshot(this.document),
+                start: point,
+                pointerOffset: selectionTransform.kind === "resize"
+                    ? [point[0] - selectionTransform.handle[0], point[1] - selectionTransform.handle[1]]
+                    : [0, 0],
+                gesture: selectionTransform,
+                itemIds: [...this.selection],
+            };
+            this.preview = this.scene;
+            this.selectedConstraintId = null;
+            this.selectedDimensionId = null;
+            return;
+        }
         const directMoveIds = !selectionTransform && this.toolKind === "select" && !this.lineContinuation
             ? (() => {
                   const hit = hitTest(this.scene, point, this.tolerance);
@@ -269,6 +300,7 @@ export class WhiteboardStore {
                 feature: smartFeature,
                 pointerOffset: [point[0] - at[0], point[1] - at[1]],
                 candidate: null,
+                seed: undefined,
             };
             this.preview = this.scene;
             this.selectedConstraintId = null;
@@ -282,6 +314,10 @@ export class WhiteboardStore {
         this.#suppressSnapCommit = false;
     }
     pointerMove(p: PointerInput, shiftKey = false, suppressSnap = false): void {
+        if (this.#smartTransform) {
+            this.#previewSmartTransform("point" in p ? p.point : p, shiftKey);
+            return;
+        }
         if (this.#smartTranslation) {
             this.#previewSmartTranslation("point" in p ? p.point : p);
             return;
@@ -300,6 +336,11 @@ export class WhiteboardStore {
     }
     pointerMoves(points: readonly PointerInput[], shiftKey = false, suppressSnap = false): void {
         if (points.length === 0) return;
+        if (this.#smartTransform) {
+            const last = points[points.length - 1];
+            this.#previewSmartTransform("point" in last ? last.point : last, shiftKey);
+            return;
+        }
         if (this.#smartTranslation) {
             const last = points[points.length - 1];
             this.#previewSmartTranslation("point" in last ? last.point : last);
@@ -324,6 +365,10 @@ export class WhiteboardStore {
         pendingMoves: readonly PointerInput[] = [],
         suppressSnap = false,
     ): void {
+        if (this.#smartTransform) {
+            this.#commitSmartTransform("point" in p ? p.point : p, shiftKey);
+            return;
+        }
         if (this.#smartTranslation) {
             this.#commitSmartTranslation("point" in p ? p.point : p);
             return;
@@ -344,6 +389,7 @@ export class WhiteboardStore {
     cancel(): void {
         this.#smartDrag = null;
         this.#smartTranslation = null;
+        this.#smartTransform = null;
         this.snapProposal = null;
         this.clearFeatureSelection();
         this.#dispatch(this.#tool.onCancel());
@@ -357,6 +403,10 @@ export class WhiteboardStore {
 
     #selectionHasSmartItems(itemIds: readonly string[] = this.selection): boolean {
         return this.document.items.some((item) => item.kind !== "baked" && itemIds.includes(item.id));
+    }
+
+    get selectionContainsSmartItems(): boolean {
+        return this.#selectionHasSmartItems();
     }
 
     #selectForDirectMove(itemIds: string[]): void {
@@ -398,6 +448,68 @@ export class WhiteboardStore {
         if (result.document && JSON.stringify(result.document) !== JSON.stringify(drag.base)) {
             this.applyDocument(result.document);
         }
+    }
+
+    #smartTransformResult(
+        point: readonly [number, number],
+        snapRotation: boolean,
+        mode: "preview" | "commit",
+    ): GeometryOperationResult {
+        const transform = this.#smartTransform;
+        if (!transform) {
+            return { status: "failed", conflictingConstraintIds: [], diagnostic: "no smart transform is active" };
+        }
+        if (transform.gesture.kind === "rotate") {
+            const pivot = transform.gesture.pivot;
+            const startAngle = Math.atan2(
+                transform.start[1] - pivot[1],
+                transform.start[0] - pivot[0],
+            );
+            const pointerAngle = Math.atan2(point[1] - pivot[1], point[0] - pivot[0]);
+            let degrees = (pointerAngle - startAngle) * 180 / Math.PI;
+            if (snapRotation) degrees = Math.round(degrees / 15) * 15;
+            return rotateWhiteboardItems(transform.base, transform.itemIds, pivot, degrees, mode);
+        }
+
+        const { anchor, handle, axes, minimumScale } = transform.gesture;
+        const startX = handle[0] - anchor[0];
+        const startY = handle[1] - anchor[1];
+        const adjustedX = point[0] - transform.pointerOffset[0] - anchor[0];
+        const adjustedY = point[1] - transform.pointerOffset[1] - anchor[1];
+        const activeX = axes.x && Math.abs(startX) > 1e-12;
+        const activeY = axes.y && Math.abs(startY) > 1e-12;
+        let factor = 1;
+        if (activeX && activeY) {
+            const lengthSquared = startX * startX + startY * startY;
+            factor = (adjustedX * startX + adjustedY * startY) / lengthSquared;
+        } else if (activeX) factor = adjustedX / startX;
+        else if (activeY) factor = adjustedY / startY;
+        const minimum = Math.max(minimumScale[0], minimumScale[1]);
+        return scaleWhiteboardItems(
+            transform.base,
+            transform.itemIds,
+            anchor,
+            Math.max(minimum, factor),
+            mode,
+        );
+    }
+
+    #previewSmartTransform(point: readonly [number, number], snapRotation: boolean): void {
+        const result = this.#smartTransformResult(point, snapRotation, "preview");
+        this.#setSolverResult(result);
+        this.preview = result.document ? resolveWhiteboardDocument(result.document) : this.scene;
+    }
+
+    #commitSmartTransform(point: readonly [number, number], snapRotation: boolean): void {
+        const transform = this.#smartTransform;
+        if (!transform) return;
+        const result = this.#smartTransformResult(point, snapRotation, "commit");
+        this.#smartTransform = null;
+        this.preview = null;
+        this.#setSolverResult(result);
+        if (result.document && JSON.stringify(result.document) !== JSON.stringify(transform.base)) {
+            this.applyDocument(result.document);
+        } else if (result.diagnostic) console.info(`[Whiteboard] ${result.diagnostic}`);
     }
 
     #markerFeature(itemId: string): PointFeatureRef | null {
@@ -456,8 +568,10 @@ export class WhiteboardStore {
         const solved = solveWhiteboardDocument(this.#smartDrag.base, {
             affected: [this.#smartDrag.feature],
             drivers: [{ feature: this.#smartDrag.feature, target }],
+            ...(this.#smartDrag.seed ? { initialPoints: this.#smartDrag.seed } : {}),
             mode: "preview",
         });
+        if (solved.document) this.#smartDrag.seed = solved.pointUpdates;
         this.#setSolverResult(solved);
         this.preview = solved.document ? resolveWhiteboardDocument(solved.document) : this.scene;
         this.snapProposal = candidate ? { from: rawTarget, to: candidate.to } : null;
@@ -471,6 +585,7 @@ export class WhiteboardStore {
         const solved = solveWhiteboardDocument(drag.base, {
             affected: [drag.feature],
             drivers: [{ feature: drag.feature, target: candidate?.to ?? rawTarget }],
+            ...(drag.seed ? { initialPoints: drag.seed } : {}),
             mode: "commit",
         });
         this.#setSolverResult(solved);

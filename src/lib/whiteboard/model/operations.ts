@@ -1,5 +1,5 @@
 import { newId } from "../../asy/scene/factory";
-import { translateElement } from "../../asy/engine/geometry";
+import { rotateElement, scaleElementBy, translateElement } from "../../asy/engine/geometry";
 import type { Pair, Pen, Scene, SceneElement } from "../../asy/scene/types";
 import { pointFeaturePointId, pointFeaturePosition } from "./features";
 import { isPointFeature, type RelationKind } from "./relations";
@@ -10,6 +10,7 @@ import type {
     FeatureRef,
     LengthDimension,
     PointFeatureRef,
+    SketchCurve,
     SketchPathItem,
     WhiteboardDocument,
     WhiteboardItem,
@@ -598,6 +599,112 @@ export function translateWhiteboardItems(
             : item
     );
     return { ...result, document: { ...next, items } };
+}
+
+function transformWhiteboardItems(
+    document: WhiteboardDocument,
+    itemIds: readonly string[],
+    pointTarget: (point: Pair) => Pair,
+    bakedTransform: (element: SceneElement) => SceneElement,
+    radialTransform: (curve: Extract<SketchCurve, { kind: "circle" | "arc" }>) => SketchCurve,
+    mode: "preview" | "commit",
+): GeometryOperationResult {
+    const selected = new Set(itemIds);
+    const selectedSmartItems = document.items.filter((item) =>
+        item.kind !== "baked" && selected.has(item.id)
+    );
+    const pointIds = [...new Set(selectedSmartItems.flatMap((item) =>
+        smartItemPointIds(document, item)
+    ))].sort();
+    let next = document;
+    let result: GeometryOperationResult = successful(document);
+    if (pointIds.length > 0) {
+        const refs = pointIds.map((pointId) => ({ kind: "point" as const, pointId }));
+        const solved = solveWhiteboardDocument(document, {
+            affected: refs,
+            drivers: refs.map((feature) => ({
+                feature,
+                target: pointTarget(document.sketch.points[feature.pointId].at),
+            })),
+            mode,
+        });
+        result = operationFromSolve(solved);
+        if (!solved.document) return result;
+        next = solved.document;
+    }
+
+    const selectedCurveIds = new Set(selectedSmartItems.flatMap((item) =>
+        item.kind === "sketch-curve" ? [item.curveId] : []
+    ));
+    const curves = Object.fromEntries(Object.entries(next.sketch.curves).map(([id, curve]) => [
+        id,
+        selectedCurveIds.has(id) && (curve.kind === "circle" || curve.kind === "arc")
+            ? radialTransform(curve)
+            : curve,
+    ]));
+    const items = next.items.map((item) =>
+        item.kind === "baked" && selected.has(item.element.id)
+            ? { ...item, element: bakedTransform(item.element) }
+            : item
+    );
+    return { ...result, document: { ...next, items, sketch: { ...next.sketch, curves } } };
+}
+
+/** Uniformly scale a smart/mixed selection while preserving its constraint component. */
+export function scaleWhiteboardItems(
+    document: WhiteboardDocument,
+    itemIds: readonly string[],
+    anchor: Pair,
+    factor: number,
+    mode: "preview" | "commit" = "commit",
+): GeometryOperationResult {
+    if (!Number.isFinite(factor) || factor <= 0) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "scale must be finite and positive" };
+    }
+    return transformWhiteboardItems(
+        document,
+        itemIds,
+        (point) => [
+            anchor[0] + (point[0] - anchor[0]) * factor,
+            anchor[1] + (point[1] - anchor[1]) * factor,
+        ],
+        (element) => scaleElementBy(element, anchor, [factor, factor]),
+        (curve) => ({ ...curve, radius: curve.radius * factor }),
+        mode,
+    );
+}
+
+/** Rotate a smart/mixed selection while preserving its constraint component. */
+export function rotateWhiteboardItems(
+    document: WhiteboardDocument,
+    itemIds: readonly string[],
+    pivot: Pair,
+    degrees: number,
+    mode: "preview" | "commit" = "commit",
+): GeometryOperationResult {
+    if (!Number.isFinite(degrees)) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "rotation must be finite" };
+    }
+    const radians = degrees * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    return transformWhiteboardItems(
+        document,
+        itemIds,
+        (point) => {
+            const dx = point[0] - pivot[0];
+            const dy = point[1] - pivot[1];
+            return [
+                pivot[0] + dx * cosine - dy * sine,
+                pivot[1] + dx * sine + dy * cosine,
+            ];
+        },
+        (element) => rotateElement(element, pivot, degrees),
+        (curve) => curve.kind === "arc"
+            ? { ...curve, startAngle: curve.startAngle + radians }
+            : curve,
+        mode,
+    );
 }
 
 export function updateSmartPresentationStyle(

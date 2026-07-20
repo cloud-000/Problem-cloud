@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
 import type { Scene } from "$lib/asy/scene";
-import { createSmartPath, createSmartPointMarker, emptyWhiteboardDocument, type CurveFeatureRef } from "$lib/whiteboard/model";
+import {
+    addRelationConstraint,
+    createSmartPath,
+    createSmartPointMarker,
+    emptyWhiteboardDocument,
+    type CurveFeatureRef,
+} from "$lib/whiteboard/model";
 
 const runtimeMock = (bunTest as unknown as {
     mock: { module(id: string, factory: () => unknown): void };
@@ -14,6 +20,11 @@ const state = Object.assign(<T>(value: T): T => value, {
 Object.assign(globalThis, { $state: state });
 
 const { WhiteboardStore } = await import("./whiteboard.svelte");
+
+function expectPoint(actual: readonly [number, number], expected: readonly [number, number]): void {
+    expect(actual[0]).toBeCloseTo(expected[0], 9);
+    expect(actual[1]).toBeCloseTo(expected[1], 9);
+}
 
 describe("WhiteboardStore selection gestures", () => {
     test("switching tools clears the current object selection", () => {
@@ -336,5 +347,115 @@ describe("WhiteboardStore selection gestures", () => {
         store.undo();
         expect(store.document.items[0]).not.toHaveProperty("pen");
         expect(store.canUndo).toBe(false);
+    });
+
+    test("commits a constrained parallel vertex drag instead of rejecting its residual", () => {
+        const first = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "first",
+        );
+        const second = createSmartPath(
+            first.document,
+            [[0, 5], [2, 9]],
+            false,
+            undefined,
+            undefined,
+            "second",
+        );
+        const firstItem = second.document.items.find((item) => item.kind === "sketch-path" && item.id === "first");
+        const secondItem = second.document.items.find((item) => item.kind === "sketch-path" && item.id === "second");
+        if (!firstItem || firstItem.kind !== "sketch-path" || !secondItem || secondItem.kind !== "sketch-path") {
+            throw new Error("missing smart lines");
+        }
+        const related = addRelationConstraint(second.document, "parallel", [
+            { kind: "curve", curveId: firstItem.uses[0].curveId },
+            { kind: "curve", curveId: secondItem.uses[0].curveId },
+        ]).document;
+        if (!related) throw new Error("parallel relation was not created");
+        const store = new WhiteboardStore(related);
+        store.selection = ["first"];
+        const firstLine = store.scene.elements.find((element) => element.id === "first");
+        if (firstLine?.kind !== "path") throw new Error("missing resolved first line");
+        const handle = firstLine.path.nodes[1];
+        const target = [handle[0], handle[1] + 3] as const;
+
+        store.pointerDown(handle, { kind: "vertex", elementId: "first", nodeIndex: 1, handle }, true);
+        store.pointerMove(target, false, true);
+        const previewLine = store.displayScene.elements.find((element) => element.id === "first");
+        if (previewLine?.kind !== "path") throw new Error("missing preview first line");
+        const previewEndpoint = previewLine.path.nodes[1];
+        expect(Math.hypot(previewEndpoint[0] - target[0], previewEndpoint[1] - target[1])).toBeLessThan(0.01);
+        store.pointerUp(target, false, [], true);
+
+        const lines = store.scene.elements;
+        if (lines[0].kind !== "path" || lines[1].kind !== "path") throw new Error("missing resolved lines");
+        const vector = (nodes: readonly (readonly [number, number])[]) => [
+            nodes[1][0] - nodes[0][0],
+            nodes[1][1] - nodes[0][1],
+        ] as const;
+        const a = vector(lines[0].path.nodes);
+        const b = vector(lines[1].path.nodes);
+        const cross = (a[0] * b[1] - a[1] * b[0]) / (Math.hypot(...a) * Math.hypot(...b));
+        expect(Math.abs(cross)).toBeLessThanOrEqual(1e-7);
+        expect(Math.hypot(
+            lines[0].path.nodes[1][0] - previewEndpoint[0],
+            lines[0].path.nodes[1][1] - previewEndpoint[1],
+        )).toBeLessThan(0.001);
+        expect(store.solverDiagnostic).not.toContain("hard constraints exceed");
+        expect(store.canUndo).toBe(true);
+    });
+
+    test("routes smart and mixed resize and rotation through canonical document transforms", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0], [4, 2]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const mixed = {
+            ...created.document,
+            items: [
+                ...created.document.items,
+                { kind: "baked" as const, element: { id: "baked", kind: "dot" as const, at: [2, 3] as const } },
+            ],
+        };
+        const resized = new WhiteboardStore(mixed);
+        resized.selection = ["smart", "baked"];
+        expect(resized.selectionContainsSmartItems).toBe(true);
+        resized.pointerDown([4, 2], {
+            kind: "resize",
+            anchor: [0, 0],
+            handle: [4, 2],
+            axes: { x: true, y: true },
+            minimumScale: [0.1, 0.1],
+        });
+        resized.pointerMove([8, 4]);
+        resized.pointerUp([8, 4]);
+        const resizedScene = resized.scene.elements;
+        if (resizedScene[0].kind !== "path" || resizedScene[1].kind !== "dot") throw new Error("missing resized selection");
+        resizedScene[0].path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [8, 0], [8, 4]][index] as [number, number])
+        );
+        expectPoint(resizedScene[1].at, [4, 6]);
+        expect(resized.canUndo).toBe(true);
+
+        const rotated = new WhiteboardStore(mixed);
+        rotated.selection = ["smart", "baked"];
+        rotated.pointerDown([2, 3], { kind: "rotate", pivot: [2, 1] });
+        rotated.pointerMove([0, 1]);
+        rotated.pointerUp([0, 1]);
+        const rotatedScene = rotated.scene.elements;
+        if (rotatedScene[0].kind !== "path" || rotatedScene[1].kind !== "dot") throw new Error("missing rotated selection");
+        rotatedScene[0].path.nodes.forEach((point, index) =>
+            expectPoint(point, [[3, -1], [3, 3], [1, 3]][index] as [number, number])
+        );
+        expectPoint(rotatedScene[1].at, [0, 1]);
+        expect(rotated.canUndo).toBe(true);
     });
 });
