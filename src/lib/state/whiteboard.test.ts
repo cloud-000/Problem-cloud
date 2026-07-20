@@ -459,3 +459,340 @@ describe("WhiteboardStore selection gestures", () => {
         expect(rotated.canUndo).toBe(true);
     });
 });
+
+// Characterization tests: these pin the store's *current* end-to-end behavior
+// (creation per tool, selection/deletion, smart-gesture undo, and asy
+// round-trip) so a behavior-preserving refactor of WhiteboardStore has a net.
+// They document what the code does today, not an ideal.
+describe("WhiteboardStore characterization — creation per tool", () => {
+    /** Perform the minimal committing gesture for `tool`, returning the store. */
+    const creations: Array<{
+        tool: "pen" | "line" | "rectangle" | "arc" | "point" | "label";
+        expectedKind: string;
+        /** True where the store lifts the committed geometry into a smart item. */
+        smart: boolean;
+        draw: (store: InstanceType<typeof WhiteboardStore>) => void;
+    }> = [
+        {
+            tool: "pen",
+            expectedKind: "dot",
+            smart: false,
+            draw: (store) => {
+                store.pointerDown([1, 2]);
+                store.pointerUp([1, 2]);
+            },
+        },
+        {
+            tool: "line",
+            expectedKind: "path",
+            smart: true,
+            draw: (store) => {
+                store.pointerDown([0, 0]);
+                store.pointerMove([4, 0]);
+                store.pointerUp([4, 0]);
+            },
+        },
+        {
+            tool: "rectangle",
+            expectedKind: "path",
+            smart: true,
+            draw: (store) => {
+                store.pointerDown([0, 0]);
+                store.pointerMove([4, 3]);
+                store.pointerUp([4, 3]);
+            },
+        },
+        {
+            tool: "arc",
+            expectedKind: "arc",
+            smart: false,
+            draw: (store) => {
+                store.pointerDown([0, 0]); // center
+                store.pointerDown([2, 0]); // radius
+                store.pointerDown([0, 3]); // start angle
+                store.pointerDown([-4, 0]); // end angle -> commit
+            },
+        },
+        {
+            tool: "point",
+            expectedKind: "dot",
+            smart: true,
+            draw: (store) => {
+                store.pointerDown([1, 2]); // point tool commits on down
+            },
+        },
+        {
+            tool: "label",
+            expectedKind: "label",
+            smart: false,
+            draw: (store) => {
+                store.promptLabel = () => "$P$";
+                store.pointerDown([1, 1]);
+            },
+        },
+    ];
+
+    for (const { tool, expectedKind, smart, draw } of creations) {
+        test(`${tool} creates one element as a single undoable history entry`, () => {
+            const store = new WhiteboardStore();
+            store.setTool(tool);
+
+            draw(store);
+
+            // The gesture committed exactly one element into the document.
+            expect(store.scene.elements).toHaveLength(1);
+            expect(store.scene.elements[0].kind).toBe(expectedKind);
+            // Current behavior: line/rectangle/point are lifted to smart items,
+            // while pen/arc/label stay baked.
+            const item = store.document.items[0];
+            expect(item.kind === "baked").toBe(!smart);
+            expect(store.canUndo).toBe(true);
+            expect(store.canRedo).toBe(false);
+
+            // Exactly one undo returns to the empty document.
+            store.undo();
+            expect(store.scene.elements).toHaveLength(0);
+            expect(store.canUndo).toBe(false);
+            expect(store.canRedo).toBe(true);
+
+            // Redo restores the created element.
+            store.redo();
+            expect(store.scene.elements).toHaveLength(1);
+            expect(store.scene.elements[0].kind).toBe(expectedKind);
+            expect(store.canUndo).toBe(true);
+        });
+    }
+});
+
+describe("WhiteboardStore characterization — selection and deletion", () => {
+    test("clicking a baked element selects it and deleteSelected removes it as one undo step", () => {
+        const store = new WhiteboardStore({
+            elements: [
+                { id: "a", kind: "dot", at: [0, 0] },
+                { id: "b", kind: "dot", at: [5, 5] },
+            ],
+        });
+
+        // Pointer-driven click selection (select is the default tool).
+        store.pointerDown([0, 0]);
+        store.pointerUp([0, 0]);
+        expect(store.selection).toEqual(["a"]);
+
+        store.deleteSelected();
+        expect(store.scene.elements.map(({ id }) => id)).toEqual(["b"]);
+        expect(store.selection).toEqual([]);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(store.scene.elements.map(({ id }) => id)).toEqual(["a", "b"]);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("selectAll then deleteSelected clears the board in a single undoable step", () => {
+        const store = new WhiteboardStore({
+            elements: [
+                { id: "a", kind: "dot", at: [0, 0] },
+                { id: "b", kind: "dot", at: [5, 5] },
+            ],
+        });
+
+        store.selectAll();
+        expect(store.selection).toEqual(["a", "b"]);
+
+        store.deleteSelected();
+        expect(store.scene.elements).toHaveLength(0);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(store.scene.elements).toHaveLength(2);
+        expect(store.canUndo).toBe(false);
+    });
+});
+
+describe("WhiteboardStore characterization — smart gesture undo", () => {
+    test("a solver-resolved smart vertex drag commits once and undoes to the original geometry", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "seg",
+        );
+        const store = new WhiteboardStore(created.document);
+        store.selection = ["seg"];
+        const line = store.scene.elements.find(({ id }) => id === "seg");
+        if (line?.kind !== "path") throw new Error("missing resolved smart segment");
+        const handle = line.path.nodes[1];
+        const target = [handle[0], handle[1] + 3] as const;
+
+        store.pointerDown(handle, { kind: "vertex", elementId: "seg", nodeIndex: 1, handle }, true);
+        store.pointerMove(target, false, true);
+        store.pointerUp(target, false, [], true);
+
+        const dragged = store.scene.elements[0];
+        if (dragged.kind !== "path") throw new Error("missing dragged smart segment");
+        expect(dragged.path.nodes[1][0]).toBeCloseTo(4, 6);
+        expect(dragged.path.nodes[1][1]).toBeCloseTo(3, 6);
+        expect(store.preview).toBeNull();
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        const restored = store.scene.elements[0];
+        if (restored.kind !== "path") throw new Error("missing restored smart segment");
+        expect(restored.path.nodes[1][0]).toBeCloseTo(4, 9);
+        expect(restored.path.nodes[1][1]).toBeCloseTo(0, 9);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("a smart whole-item translation commits once and undoes to the original geometry", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "seg",
+        );
+        const store = new WhiteboardStore(created.document);
+        store.selection = ["seg"];
+
+        store.pointerDown([0, 0], { kind: "move" });
+        store.pointerMove([2, 3]);
+        store.pointerUp([2, 3]);
+
+        const moved = store.scene.elements[0];
+        if (moved.kind !== "path") throw new Error("missing moved smart segment");
+        expectPoint(moved.path.nodes[0], [2, 3]);
+        expectPoint(moved.path.nodes[1], [6, 3]);
+        expect(store.preview).toBeNull();
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        const restored = store.scene.elements[0];
+        if (restored.kind !== "path") throw new Error("missing restored smart segment");
+        expectPoint(restored.path.nodes[0], [0, 0]);
+        expectPoint(restored.path.nodes[1], [4, 0]);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("a smart resize and a smart rotation each commit once and undo to the original geometry", () => {
+        const source = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0], [4, 2]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+
+        const resized = new WhiteboardStore(source.document);
+        resized.selection = ["smart"];
+        resized.pointerDown([4, 2], {
+            kind: "resize",
+            anchor: [0, 0],
+            handle: [4, 2],
+            axes: { x: true, y: true },
+            minimumScale: [0.1, 0.1],
+        });
+        resized.pointerMove([8, 4]);
+        resized.pointerUp([8, 4]);
+        const resizedPath = resized.scene.elements[0];
+        if (resizedPath.kind !== "path") throw new Error("missing resized smart path");
+        resizedPath.path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [8, 0], [8, 4]][index] as [number, number])
+        );
+        expect(resized.canUndo).toBe(true);
+        resized.undo();
+        const resizeRestored = resized.scene.elements[0];
+        if (resizeRestored.kind !== "path") throw new Error("missing restored resized path");
+        resizeRestored.path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [4, 0], [4, 2]][index] as [number, number])
+        );
+        expect(resized.canUndo).toBe(false);
+
+        const rotated = new WhiteboardStore(source.document);
+        rotated.selection = ["smart"];
+        rotated.pointerDown([4, 0], { kind: "rotate", pivot: [0, 0] });
+        rotated.pointerMove([0, 4]);
+        rotated.pointerUp([0, 4]);
+        const rotatedPath = rotated.scene.elements[0];
+        if (rotatedPath.kind !== "path") throw new Error("missing rotated smart path");
+        // A +90° rotation about the origin maps (x, y) -> (-y, x).
+        rotatedPath.path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [0, 4], [-2, 4]][index] as [number, number])
+        );
+        expect(rotated.canUndo).toBe(true);
+        rotated.undo();
+        const rotateRestored = rotated.scene.elements[0];
+        if (rotateRestored.kind !== "path") throw new Error("missing restored rotated path");
+        rotateRestored.path.nodes.forEach((point, index) =>
+            expectPoint(point, [[0, 0], [4, 0], [4, 2]][index] as [number, number])
+        );
+        expect(rotated.canUndo).toBe(false);
+    });
+});
+
+describe("WhiteboardStore characterization — relation and dimension as single undo steps", () => {
+    test("applyRelation and editDimension each push exactly one history entry", () => {
+        const created = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [3, 4]], false);
+        const item = created.document.items[0];
+        if (item.kind !== "sketch-path") throw new Error("missing smart path");
+        const curve: CurveFeatureRef = { kind: "curve", curveId: item.uses[0].curveId };
+        const store = new WhiteboardStore(created.document);
+
+        // applyRelation is one undo step.
+        store.selectFeature(curve);
+        expect(store.applyRelation("horizontal")).toBe(true);
+        expect(store.canUndo).toBe(true);
+
+        // addLengthDimension is a second, independent undo step. The horizontal
+        // relation above already snapped the segment flat, so its current length
+        // is the x-projection (3), not the original 3-4-5 hypotenuse (5).
+        store.selectFeature(curve);
+        expect(store.addLengthDimension("driving")).toBe(true);
+        const dimensionId = store.selectedDimensionId!;
+        expect(store.dimensionGlyphs[0].value).toBeCloseTo(3);
+
+        // editDimension is a third undo step; one undo reverts only the edit.
+        expect(store.editDimension(dimensionId, 10)).toBe(true);
+        expect(store.dimensionGlyphs[0].value).toBeCloseTo(10);
+        store.undo();
+        expect(store.dimensionGlyphs[0].value).toBeCloseTo(3);
+
+        // Peeling back the remaining two steps returns to a constraint-free doc.
+        store.undo();
+        expect(store.document.dimensions).toBeUndefined();
+        store.undo();
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+        expect(store.canUndo).toBe(false);
+    });
+});
+
+describe("WhiteboardStore characterization — asy round-trip", () => {
+    test("toAsy output reloads via loadAsy and re-serializes identically", () => {
+        const source = new WhiteboardStore();
+        source.setTool("line");
+        source.pointerDown([0, 0]);
+        source.pointerMove([4, 2]);
+        source.pointerUp([4, 2]);
+        source.setTool("point");
+        source.pointerDown([6, 1]);
+
+        const asy = source.toAsy();
+        expect(asy.length).toBeGreaterThan(0);
+
+        const reloaded = new WhiteboardStore();
+        reloaded.loadAsy(asy);
+
+        // The round trip is idempotent at the asy layer.
+        expect(reloaded.toAsy()).toBe(asy);
+        // The projected scene carries the same number of elements.
+        expect(reloaded.scene.elements).toHaveLength(source.scene.elements.length);
+        // loadAsy is a single undoable step back to the empty board.
+        expect(reloaded.canUndo).toBe(true);
+        reloaded.undo();
+        expect(reloaded.scene.elements).toHaveLength(0);
+        expect(reloaded.canUndo).toBe(false);
+    });
+});
