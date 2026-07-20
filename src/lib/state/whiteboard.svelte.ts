@@ -4,7 +4,11 @@
  * at once (e.g. a scratch overlay plus a "trace this diagram" board).
  *
  * It bridges the three pure-TS layers to the Svelte view:
- *   - document / selection / tool are reactive `$state`
+ *   - selection / tool are reactive `$state`
+ *   - the document, its snapshot history, undo/redo, and the Scene projection
+ *     delegate to DocumentController (`$lib/whiteboard/document-controller.svelte`);
+ *     the store exposes `document` / `scene` / `canUndo` / `canRedo` via getters
+ *     and only resets its own view state after an undo/redo jumps the document
  *   - edits flow through the engine tools and are recorded in snapshot history
  *   - pen/tool defaults, inspector properties, and property edits delegate to
  *     StyleModel (`$lib/whiteboard/style.svelte`)
@@ -28,6 +32,7 @@ import {
     restoreDocument,
     sceneFromAsy,
 } from "$lib/whiteboard/persistence";
+import { DocumentController } from "$lib/whiteboard/document-controller.svelte";
 import { StyleModel, type WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
     createTool,
@@ -42,7 +47,6 @@ import {
     type StrokeProcessingOptions,
     type PointerInput,
 } from "$lib/asy/engine";
-import { History } from "$lib/asy/engine";
 import {
     emptyWhiteboardDocument,
     addCoincidentConstraint,
@@ -91,7 +95,6 @@ export type { WhiteboardToolKind };
 type SmartSelectionTransform = Extract<SelectionTransformGesture, { kind: "resize" } | { kind: "rotate" }>;
 
 export class WhiteboardStore {
-    document = $state<WhiteboardDocument>(emptyWhiteboardDocument());
     toolKind = $state<WhiteboardToolKind>("select");
     selection = $state<string[]>([]);
     /** Candidate selection while a marquee drag is in progress. */
@@ -110,8 +113,6 @@ export class WhiteboardStore {
     selectedDimensionId = $state<string | null>(null);
     solverDiagnostic = $state<string | null>(null);
     conflictingConstraintIds = $state<string[]>([]);
-    canUndo = $state(false);
-    canRedo = $state(false);
 
     /** Hit-test / commit tolerance in asy-space; the view keeps this in sync
      *  with its current px->asy scale. */
@@ -126,7 +127,7 @@ export class WhiteboardStore {
     /** Supplied by the view so the label tool can prompt for text. */
     promptLabel?: (at: readonly [number, number]) => string | null;
 
-    #history = new History<WhiteboardDocument>();
+    #documents = new DocumentController();
     #tool: Tool = createTool("select");
     #style: StyleModel;
     #smartDrag: {
@@ -174,16 +175,29 @@ export class WhiteboardStore {
                 self.document = next;
             },
             applyDocument: (next) => self.applyDocument(next),
-            pushBaseline: (baseline) => {
-                self.#history.push(baseline);
-                self.#syncFlags();
-            },
+            pushBaseline: (baseline) => self.#documents.pushBaseline(baseline),
         });
+    }
+
+    /** The editable source of truth (owned by DocumentController). */
+    get document(): WhiteboardDocument {
+        return this.#documents.document;
+    }
+    set document(next: WhiteboardDocument) {
+        this.#documents.document = next;
+    }
+
+    /** Undo/redo availability, reflected by the command card (owned by DocumentController). */
+    get canUndo(): boolean {
+        return this.#documents.canUndo;
+    }
+    get canRedo(): boolean {
+        return this.#documents.canRedo;
     }
 
     /** Concrete compatibility IR for tools, rendering, hit-testing, and export. */
     get scene(): Scene {
-        return resolveWhiteboardDocument(this.document);
+        return this.#documents.scene;
     }
 
     /** The scene the view should render (preview wins while dragging). */
@@ -834,48 +848,28 @@ export class WhiteboardStore {
     }
 
     applyDocument(next: WhiteboardDocument): void {
-        this.#history.push(documentSnapshot(this.document));
-        this.document = next;
-        this.#syncFlags();
+        this.#documents.applyDocument(next);
     }
 
     undo(): void {
-        const prev = this.#history.undo(documentSnapshot(this.document));
-        if (prev) {
-            this.document = prev;
-            this.selection = [];
-            this.preview = null;
-            this.selectionPreview = null;
-            this.lineContinuation = null;
-            this.arcGuide = null;
-            this.selectedConstraintId = null;
-            this.selectedDimensionId = null;
-            this.featureSelection = [];
-            this.snapProposal = null;
-        }
-        this.#syncFlags();
+        if (this.#documents.undo()) this.#resetViewStateAfterHistory();
     }
 
     redo(): void {
-        const next = this.#history.redo(documentSnapshot(this.document));
-        if (next) {
-            this.document = next;
-            this.selection = [];
-            this.preview = null;
-            this.selectionPreview = null;
-            this.lineContinuation = null;
-            this.arcGuide = null;
-            this.selectedConstraintId = null;
-            this.selectedDimensionId = null;
-            this.featureSelection = [];
-            this.snapProposal = null;
-        }
-        this.#syncFlags();
+        if (this.#documents.redo()) this.#resetViewStateAfterHistory();
     }
 
-    #syncFlags(): void {
-        this.canUndo = this.#history.canUndo;
-        this.canRedo = this.#history.canRedo;
+    /** Clear transient view state after an undo/redo jumps the document. */
+    #resetViewStateAfterHistory(): void {
+        this.selection = [];
+        this.preview = null;
+        this.selectionPreview = null;
+        this.lineContinuation = null;
+        this.arcGuide = null;
+        this.selectedConstraintId = null;
+        this.selectedDimensionId = null;
+        this.featureSelection = [];
+        this.snapProposal = null;
     }
 
     // --- editing convenience --------------------------------------------------

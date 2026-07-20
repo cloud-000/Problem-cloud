@@ -19,10 +19,10 @@ when you touch adjacent code, move it *toward* the target, never away.
 
 | Area | Status | Notes |
 |---|---|---|
-| Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `state/whiteboard.svelte.ts` already holds `document = $state(...)` and projects the Scene. |
+| Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `DocumentController` (`whiteboard/document-controller.svelte`) holds `document = $state(...)`, owns the history, and projects the Scene; the store exposes it via getters. |
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
 | Tools commit `BakedItem`s; **no** Scene→Document reconciliation (§4) | **Target** | The forbidden seam (`reconcileResolvedScene`, `#smartToolCommit`, `#conjoinCreatedFeatures`) still exists in the store. Shrink it; don't extend it. |
-| Store carved into named collaborators (`ARCHITECTURE.md` §5) | DocumentController · ConstraintService · InteractionController** | `WhiteboardStore` is still a single large file. Extract along the seams as you touch them. |
+| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Partly** | Extracted: PersistenceIO, StyleModel, DocumentController. Remaining in the store: ConstraintService · InteractionController. Extract along the seams as you touch them. |
 | One explicit pointer-down ownership branch (§3.1) | **Partly** | The store branches on `#smartTransform`/`#smartTranslation`/`#smartDrag` today; consolidate toward the single hit-test decision. |
 
 When a "Target" rule and the current code disagree, the code is the debt, not
