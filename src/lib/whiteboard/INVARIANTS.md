@@ -10,6 +10,26 @@ assume it is violated.
 
 ---
 
+## Current vs. target
+
+This blueprint describes the **target** model. The code is mid-migration toward
+it, so some rules are already enforced and some are the direction of travel. Do
+not assume the code matches a rule just because it is written here — check, and
+when you touch adjacent code, move it *toward* the target, never away.
+
+| Area | Status | Notes |
+|---|---|---|
+| Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `state/whiteboard.svelte.ts` already holds `document = $state(...)` and projects the Scene. |
+| Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
+| Tools commit `BakedItem`s; **no** Scene→Document reconciliation (§4) | **Target** | The forbidden seam (`reconcileResolvedScene`, `#smartToolCommit`, `#conjoinCreatedFeatures`) still exists in the store. Shrink it; don't extend it. |
+| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Target** | `WhiteboardStore` is still a single large file. Extract along the seams as you touch them. |
+| One explicit pointer-down ownership branch (§3.1) | **Partly** | The store branches on `#smartTransform`/`#smartTranslation`/`#smartDrag` today; consolidate toward the single hit-test decision. |
+
+When a "Target" rule and the current code disagree, the code is the debt, not
+the rule.
+
+---
+
 ## 0. Prime directives
 
 1. **The `WhiteboardDocument` is the only editable model.** Every user-visible
