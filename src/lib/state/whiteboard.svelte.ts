@@ -4,7 +4,9 @@
  * at once (e.g. a scratch overlay plus a "trace this diagram" board).
  *
  * It bridges the three pure-TS layers to the Svelte view:
- *   - selection / tool are reactive `$state`
+ *   - `toolKind` and transient view state (preview/guides/snap) are reactive
+ *     `$state`; item/feature/marquee selection delegates to SelectionModel
+ *     (`$lib/whiteboard/selection.svelte`) and is exposed via getters/setters
  *   - the document, its snapshot history, undo/redo, and the Scene projection
  *     delegate to DocumentController (`$lib/whiteboard/document-controller.svelte`);
  *     the store exposes `document` / `scene` / `canUndo` / `canRedo` via getters
@@ -33,6 +35,7 @@ import {
     sceneFromAsy,
 } from "$lib/whiteboard/persistence";
 import { DocumentController } from "$lib/whiteboard/document-controller.svelte";
+import { SelectionModel, type Marquee } from "$lib/whiteboard/selection.svelte";
 import { StyleModel, type WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
     createTool,
@@ -60,12 +63,10 @@ import {
     createSmartPointMarker,
     deleteWhiteboardItems,
     editDrivingLengthDimension,
-    featureKey,
     lengthDimensionValue,
     lengthDimensionsForSelection,
     migrateSceneToWhiteboardDocument,
     nearestPointFeature,
-    nearestSegmentFeature,
     pathNodeFeature,
     pointFeaturePointId,
     pointFeaturePosition,
@@ -96,12 +97,8 @@ type SmartSelectionTransform = Extract<SelectionTransformGesture, { kind: "resiz
 
 export class WhiteboardStore {
     toolKind = $state<WhiteboardToolKind>("select");
-    selection = $state<string[]>([]);
-    /** Candidate selection while a marquee drag is in progress. */
-    selectionPreview = $state<string[] | null>(null);
     /** Transient render override during a drag (rubber-band / live move). */
     preview = $state<Scene | null>(null);
-    marquee = $state<{ start: readonly [number, number]; end: readonly [number, number] } | null>(null);
     /** Active path continuation offered immediately after a line is drawn. */
     lineContinuation = $state<LineContinuation | null>(null);
     /** Transient construction guide for the active arc tool. */
@@ -109,7 +106,6 @@ export class WhiteboardStore {
     /** Visible inference feedback; never persisted or exported. */
     snapProposal = $state<{ from: readonly [number, number]; to: readonly [number, number] } | null>(null);
     selectedConstraintId = $state<string | null>(null);
-    featureSelection = $state<FeatureRef[]>([]);
     selectedDimensionId = $state<string | null>(null);
     solverDiagnostic = $state<string | null>(null);
     conflictingConstraintIds = $state<string[]>([]);
@@ -129,6 +125,7 @@ export class WhiteboardStore {
 
     #documents = new DocumentController();
     #tool: Tool = createTool("select");
+    #selection: SelectionModel;
     #style: StyleModel;
     #smartDrag: {
         base: WhiteboardDocument;
@@ -158,6 +155,24 @@ export class WhiteboardStore {
                 : migrateSceneToWhiteboardDocument(initial);
         }
         const self = this;
+        this.#selection = new SelectionModel({
+            get document() {
+                return self.document;
+            },
+            get sceneUnitsPerPixel() {
+                return self.sceneUnitsPerPixel;
+            },
+            clearConstraintSelection() {
+                self.selectedConstraintId = null;
+            },
+            clearDimensionSelection() {
+                self.selectedDimensionId = null;
+            },
+            clearSolverFeedback() {
+                self.solverDiagnostic = null;
+                self.conflictingConstraintIds = [];
+            },
+        });
         this.#style = new StyleModel({
             get toolKind() {
                 return self.toolKind;
@@ -185,6 +200,33 @@ export class WhiteboardStore {
     }
     set document(next: WhiteboardDocument) {
         this.#documents.document = next;
+    }
+
+    // Selection state lives in SelectionModel; these forward so tool/interaction
+    // code (and the view) keep reading/writing `store.selection` etc. unchanged.
+    get selection(): string[] {
+        return this.#selection.selection;
+    }
+    set selection(next: string[]) {
+        this.#selection.selection = next;
+    }
+    get selectionPreview(): string[] | null {
+        return this.#selection.selectionPreview;
+    }
+    set selectionPreview(next: string[] | null) {
+        this.#selection.selectionPreview = next;
+    }
+    get marquee(): Marquee | null {
+        return this.#selection.marquee;
+    }
+    set marquee(next: Marquee | null) {
+        this.#selection.marquee = next;
+    }
+    get featureSelection(): FeatureRef[] {
+        return this.#selection.featureSelection;
+    }
+    set featureSelection(next: FeatureRef[]) {
+        this.#selection.featureSelection = next;
     }
 
     /** Undo/redo availability, reflected by the command card (owned by DocumentController). */
@@ -268,7 +310,7 @@ export class WhiteboardStore {
             selectionTransform &&
             (selectionTransform.kind === "resize" || selectionTransform.kind === "rotate") &&
             this.selection.length > 0 &&
-            this.#selectionHasSmartItems(this.selection)
+            this.#selection.selectionHasSmartItems(this.selection)
         ) {
             this.#smartTransform = {
                 base: documentSnapshot(this.document),
@@ -297,9 +339,9 @@ export class WhiteboardStore {
         const smartFeature = selectionTransform?.kind === "vertex"
             ? pathNodeFeature(this.document, selectionTransform.elementId, selectionTransform.nodeIndex)
             : movingIds?.length === 1
-              ? this.#markerFeature(movingIds[0])
+              ? this.#selection.markerFeature(movingIds[0])
               : null;
-        if (movingIds && !smartFeature && this.#selectionHasSmartItems(movingIds)) {
+        if (movingIds && !smartFeature && this.#selection.selectionHasSmartItems(movingIds)) {
             if (directMoveIds) this.#selectForDirectMove(directMoveIds);
             this.#smartTranslation = {
                 base: documentSnapshot(this.document),
@@ -416,17 +458,11 @@ export class WhiteboardStore {
     }
 
     clearFeatureSelection(): void {
-        this.featureSelection = [];
-        this.solverDiagnostic = null;
-        this.conflictingConstraintIds = [];
-    }
-
-    #selectionHasSmartItems(itemIds: readonly string[] = this.selection): boolean {
-        return this.document.items.some((item) => item.kind !== "baked" && itemIds.includes(item.id));
+        this.#selection.clearFeatureSelection();
     }
 
     get selectionContainsSmartItems(): boolean {
-        return this.#selectionHasSmartItems();
+        return this.#selection.containsSmartItems;
     }
 
     #selectForDirectMove(itemIds: string[]): void {
@@ -530,15 +566,6 @@ export class WhiteboardStore {
         if (result.document && JSON.stringify(result.document) !== JSON.stringify(transform.base)) {
             this.applyDocument(result.document);
         } else if (result.diagnostic) console.info(`[Whiteboard] ${result.diagnostic}`);
-    }
-
-    #markerFeature(itemId: string): PointFeatureRef | null {
-        const item = this.document.items.find((candidate) =>
-            candidate.kind === "sketch-point-marker" && candidate.id === itemId
-        );
-        return item?.kind === "sketch-point-marker"
-            ? { kind: "point", pointId: item.pointId }
-            : null;
     }
 
     #smartDragTarget(point: readonly [number, number]): readonly [number, number] {
@@ -1101,27 +1128,15 @@ export class WhiteboardStore {
     }
 
     selectFeature(feature: FeatureRef, additive = false): void {
-        const key = featureKey(feature);
-        if (!additive) this.featureSelection = [feature];
-        else if (this.featureSelection.some((selected) => featureKey(selected) === key)) {
-            this.featureSelection = this.featureSelection.filter((selected) => featureKey(selected) !== key);
-        } else this.featureSelection = [...this.featureSelection, feature];
-        this.selectedConstraintId = null;
-        this.selectedDimensionId = null;
+        this.#selection.selectFeature(feature, additive);
     }
 
     selectCurveFeatureForItem(itemId: string, additive = false): void {
-        const item = this.document.items.find((candidate) => candidate.kind !== "baked" && candidate.id === itemId);
-        const curveId = item?.kind === "sketch-path" ? item.uses[0]?.curveId
-            : item?.kind === "sketch-curve" ? item.curveId : undefined;
-        if (curveId && this.document.sketch.curves[curveId]?.kind === "segment") {
-            this.selectFeature({ kind: "curve", curveId }, additive);
-        }
+        this.#selection.selectCurveFeatureForItem(itemId, additive);
     }
 
     selectCurveFeatureAt(itemId: string, at: readonly [number, number], additive = false): void {
-        const feature = nearestSegmentFeature(this.document, at, 12 * this.sceneUnitsPerPixel, itemId);
-        if (feature) this.selectFeature(feature.ref, additive);
+        this.#selection.selectCurveFeatureAt(itemId, at, additive);
     }
 
     selectFeatureAtItem(
@@ -1130,16 +1145,7 @@ export class WhiteboardStore {
         additive = false,
         additiveBase?: readonly FeatureRef[],
     ): void {
-        // Pointer-down may either preserve feature selection (same item) or clear
-        // it (another item). Always continue Shift-click from the pointer-down
-        // snapshot so both paths have identical additive behavior.
-        if (additive && additiveBase) this.featureSelection = [...additiveBase];
-        const marker = this.#markerFeature(itemId);
-        if (marker) {
-            this.selectFeature(marker, additive);
-            return;
-        }
-        this.selectCurveFeatureAt(itemId, at, additive);
+        this.#selection.selectFeatureAtItem(itemId, at, additive, additiveBase);
     }
 
     #setSolverResult(result: GeometryOperationResult): void {
