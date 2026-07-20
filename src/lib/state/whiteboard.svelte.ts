@@ -14,6 +14,8 @@
  *   - edits flow through the engine tools and are recorded in snapshot history
  *   - pen/tool defaults, inspector properties, and property edits delegate to
  *     StyleModel (`$lib/whiteboard/style.svelte`)
+ *   - relations, dimensions, and solver invocation delegate to ConstraintService
+ *     (`$lib/whiteboard/constraint-service.svelte`)
  *   - `toAsy` / `loadAsy` / `persist` / `restore` delegate to PersistenceIO
  *     (`$lib/whiteboard/persistence`); the store keeps only the reactive glue.
  *
@@ -38,6 +40,11 @@ import { DocumentController } from "$lib/whiteboard/document-controller.svelte";
 import { SelectionModel, type Marquee } from "$lib/whiteboard/selection.svelte";
 import { StyleModel, type WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
+    ConstraintService,
+    type ConstraintGlyph,
+    type DimensionGlyph,
+} from "$lib/whiteboard/constraint-service.svelte";
+import {
     createTool,
     hitTest,
     type Tool,
@@ -53,31 +60,20 @@ import {
 import {
     emptyWhiteboardDocument,
     addCoincidentConstraint,
-    addLengthDimension,
-    addRelationConstraint,
-    applicableRelationActions,
-    contextualRelationActions,
     appendSmartPathNode,
     closeSmartPath,
     createSmartPath,
     createSmartPointMarker,
     deleteWhiteboardItems,
-    editDrivingLengthDimension,
-    lengthDimensionValue,
-    lengthDimensionsForSelection,
     migrateSceneToWhiteboardDocument,
     nearestPointFeature,
     pathNodeFeature,
     pointFeaturePointId,
     pointFeaturePosition,
     reconcileResolvedScene,
-    removeConstraint,
-    removeLengthDimension,
     resolveWhiteboardDocument,
     rotateWhiteboardItems,
     scaleWhiteboardItems,
-    solveWhiteboardDocument,
-    switchDirectionalRelationConstraint,
     translateWhiteboardItems,
     type FeatureRef,
     type GeometryOperationResult,
@@ -105,11 +101,6 @@ export class WhiteboardStore {
     arcGuide = $state<ArcGuide | null>(null);
     /** Visible inference feedback; never persisted or exported. */
     snapProposal = $state<{ from: readonly [number, number]; to: readonly [number, number] } | null>(null);
-    selectedConstraintId = $state<string | null>(null);
-    selectedDimensionId = $state<string | null>(null);
-    solverDiagnostic = $state<string | null>(null);
-    conflictingConstraintIds = $state<string[]>([]);
-
     /** Hit-test / commit tolerance in asy-space; the view keeps this in sync
      *  with its current px->asy scale. */
     tolerance = 0.5;
@@ -127,6 +118,7 @@ export class WhiteboardStore {
     #tool: Tool = createTool("select");
     #selection: SelectionModel;
     #style: StyleModel;
+    #constraints: ConstraintService;
     #smartDrag: {
         base: WhiteboardDocument;
         feature: PointFeatureRef;
@@ -163,15 +155,29 @@ export class WhiteboardStore {
                 return self.sceneUnitsPerPixel;
             },
             clearConstraintSelection() {
-                self.selectedConstraintId = null;
+                self.#constraints.clearConstraintSelection();
             },
             clearDimensionSelection() {
-                self.selectedDimensionId = null;
+                self.#constraints.clearDimensionSelection();
             },
             clearSolverFeedback() {
-                self.solverDiagnostic = null;
-                self.conflictingConstraintIds = [];
+                self.#constraints.clearSolverFeedback();
             },
+        });
+        this.#constraints = new ConstraintService({
+            get document() {
+                return self.document;
+            },
+            get featureSelection() {
+                return self.featureSelection;
+            },
+            get selection() {
+                return self.selection;
+            },
+            set selection(next) {
+                self.selection = next;
+            },
+            applyDocument: (next) => self.applyDocument(next),
         });
         this.#style = new StyleModel({
             get toolKind() {
@@ -227,6 +233,33 @@ export class WhiteboardStore {
     }
     set featureSelection(next: FeatureRef[]) {
         this.#selection.featureSelection = next;
+    }
+
+    // Constraint/dimension selection and solver feedback stay reactive inside
+    // ConstraintService; the public store surface remains unchanged.
+    get selectedConstraintId(): string | null {
+        return this.#constraints.selectedConstraintId;
+    }
+    set selectedConstraintId(next: string | null) {
+        this.#constraints.selectedConstraintId = next;
+    }
+    get selectedDimensionId(): string | null {
+        return this.#constraints.selectedDimensionId;
+    }
+    set selectedDimensionId(next: string | null) {
+        this.#constraints.selectedDimensionId = next;
+    }
+    get solverDiagnostic(): string | null {
+        return this.#constraints.solverDiagnostic;
+    }
+    set solverDiagnostic(next: string | null) {
+        this.#constraints.solverDiagnostic = next;
+    }
+    get conflictingConstraintIds(): string[] {
+        return this.#constraints.conflictingConstraintIds;
+    }
+    set conflictingConstraintIds(next: string[]) {
+        this.#constraints.conflictingConstraintIds = next;
     }
 
     /** Undo/redo availability, reflected by the command card (owned by DocumentController). */
@@ -486,7 +519,7 @@ export class WhiteboardStore {
             "preview",
         );
         this.preview = result.document ? resolveWhiteboardDocument(result.document) : this.scene;
-        this.#setSolverResult(result);
+        this.#constraints.recordSolverResult(result);
     }
 
     #commitSmartTranslation(point: readonly [number, number]): void {
@@ -500,7 +533,7 @@ export class WhiteboardStore {
         );
         this.#smartTranslation = null;
         this.preview = null;
-        this.#setSolverResult(result);
+        this.#constraints.recordSolverResult(result);
         if (result.document && JSON.stringify(result.document) !== JSON.stringify(drag.base)) {
             this.applyDocument(result.document);
         }
@@ -552,7 +585,7 @@ export class WhiteboardStore {
 
     #previewSmartTransform(point: readonly [number, number], snapRotation: boolean): void {
         const result = this.#smartTransformResult(point, snapRotation, "preview");
-        this.#setSolverResult(result);
+        this.#constraints.recordSolverResult(result);
         this.preview = result.document ? resolveWhiteboardDocument(result.document) : this.scene;
     }
 
@@ -562,7 +595,7 @@ export class WhiteboardStore {
         const result = this.#smartTransformResult(point, snapRotation, "commit");
         this.#smartTransform = null;
         this.preview = null;
-        this.#setSolverResult(result);
+        this.#constraints.recordSolverResult(result);
         if (result.document && JSON.stringify(result.document) !== JSON.stringify(transform.base)) {
             this.applyDocument(result.document);
         } else if (result.diagnostic) console.info(`[Whiteboard] ${result.diagnostic}`);
@@ -612,14 +645,13 @@ export class WhiteboardStore {
         const candidate = this.#smartDragCandidate(rawTarget, suppressSnap);
         this.#smartDrag.candidate = candidate;
         const target = candidate?.to ?? rawTarget;
-        const solved = solveWhiteboardDocument(this.#smartDrag.base, {
+        const solved = this.#constraints.solveDocument(this.#smartDrag.base, {
             affected: [this.#smartDrag.feature],
             drivers: [{ feature: this.#smartDrag.feature, target }],
             ...(this.#smartDrag.seed ? { initialPoints: this.#smartDrag.seed } : {}),
             mode: "preview",
         });
         if (solved.document) this.#smartDrag.seed = solved.pointUpdates;
-        this.#setSolverResult(solved);
         this.preview = solved.document ? resolveWhiteboardDocument(solved.document) : this.scene;
         this.snapProposal = candidate ? { from: rawTarget, to: candidate.to } : null;
     }
@@ -629,13 +661,12 @@ export class WhiteboardStore {
         const drag = this.#smartDrag;
         const rawTarget = this.#smartDragTarget(point);
         const candidate = this.#smartDragCandidate(rawTarget, suppressSnap);
-        const solved = solveWhiteboardDocument(drag.base, {
+        const solved = this.#constraints.solveDocument(drag.base, {
             affected: [drag.feature],
             drivers: [{ feature: drag.feature, target: candidate?.to ?? rawTarget }],
             ...(drag.seed ? { initialPoints: drag.seed } : {}),
             mode: "commit",
         });
-        this.#setSolverResult(solved);
         this.#smartDrag = null;
         this.preview = null;
         this.snapProposal = null;
@@ -644,7 +675,7 @@ export class WhiteboardStore {
             return;
         }
         const committed = candidate
-            ? addCoincidentConstraint(solved.document, drag.feature, candidate.target, "inferred")
+            ? this.#constraints.addCoincident(solved.document, drag.feature, candidate.target, "inferred")
             : solved.document;
         if (committed && JSON.stringify(committed) !== JSON.stringify(drag.base)) this.applyDocument(committed);
     }
@@ -967,8 +998,7 @@ export class WhiteboardStore {
 
     deleteSelected(): void {
         if (this.selectedDimensionId) {
-            const next = removeLengthDimension(this.document, this.selectedDimensionId);
-            if (next !== this.document) this.applyDocument(next);
+            this.#constraints.removeDimension(this.selectedDimensionId);
             this.selectedDimensionId = null;
             return;
         }
@@ -1003,128 +1033,32 @@ export class WhiteboardStore {
         this.arcGuide = null;
     }
 
-    get constraintGlyphs(): Array<{
-        id: string;
-        at: readonly [number, number];
-        a: readonly [number, number];
-        b: readonly [number, number];
-        selected: boolean;
-    }> {
-        return Object.values(this.document.sketch.constraints).flatMap((constraint) => {
-            if (!constraint.enabled) return [];
-            let a: readonly [number, number] | null = null;
-            let b: readonly [number, number] | null = null;
-            if (constraint.kind === "coincident" || constraint.kind === "distance") {
-                a = pointFeaturePosition(this.document, constraint.a);
-                b = pointFeaturePosition(this.document, constraint.b);
-            } else if (constraint.kind === "fixed-point") {
-                a = pointFeaturePosition(this.document, constraint.point);
-                b = a;
-            } else if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
-                const refs = this.#curvePointRefs(constraint.curveId);
-                a = refs ? pointFeaturePosition(this.document, refs[0]) : null;
-                b = refs ? pointFeaturePosition(this.document, refs[1]) : null;
-            } else if (
-                constraint.kind === "parallel" || constraint.kind === "perpendicular" ||
-                constraint.kind === "equal-length" || constraint.kind === "angle"
-            ) {
-                a = this.#curveMidpoint(constraint.a);
-                b = this.#curveMidpoint(constraint.b);
-            } else return [];
-            if (!a || !b) return [];
-            return [{
-                id: constraint.id,
-                at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as const,
-                a,
-                b,
-                selected: this.selectedConstraintId === constraint.id,
-            }];
-        });
+    get constraintGlyphs(): ConstraintGlyph[] {
+        return this.#constraints.constraintGlyphs;
     }
 
-    #curvePointRefs(curveId: string): [PointFeatureRef, PointFeatureRef] | null {
-        const curve = this.document.sketch.curves[curveId];
-        return curve?.kind === "segment" ? [
-            { kind: "curve-point", curveId, feature: "start" },
-            { kind: "curve-point", curveId, feature: "end" },
-        ] : null;
-    }
-
-    #curveMidpoint(curveId: string): readonly [number, number] | null {
-        const refs = this.#curvePointRefs(curveId);
-        if (!refs) return null;
-        const a = pointFeaturePosition(this.document, refs[0]);
-        const b = pointFeaturePosition(this.document, refs[1]);
-        return a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;
-    }
-
-    get dimensionGlyphs(): Array<{
-        id: string;
-        a: readonly [number, number];
-        b: readonly [number, number];
-        at: readonly [number, number];
-        value: number;
-        mode: "driving" | "reference";
-        selected: boolean;
-    }> {
-        return Object.values(this.document.dimensions ?? {}).flatMap((dimension) => {
-            const a = pointFeaturePosition(this.document, dimension.a);
-            const b = pointFeaturePosition(this.document, dimension.b);
-            const value = lengthDimensionValue(this.document, dimension.id);
-            if (!a || !b || value === null) return [];
-            const offset = dimension.labelOffset ?? [0, 0];
-            return [{
-                id: dimension.id,
-                a,
-                b,
-                at: [(a[0] + b[0]) / 2 + offset[0], (a[1] + b[1]) / 2 + offset[1]],
-                value,
-                mode: dimension.mode,
-                selected: this.selectedDimensionId === dimension.id,
-            }];
-        });
+    get dimensionGlyphs(): DimensionGlyph[] {
+        return this.#constraints.dimensionGlyphs;
     }
 
     get applicableRelationActions() {
-        return applicableRelationActions(this.document, this.featureSelection);
+        return this.#constraints.applicableRelationActions;
     }
 
     get contextualRelationActions() {
-        return contextualRelationActions(this.document, this.featureSelection);
+        return this.#constraints.contextualRelationActions;
     }
 
-    get selectedFeatureGeometry(): {
-        points: Array<readonly [number, number]>;
-        segments: Array<{ a: readonly [number, number]; b: readonly [number, number] }>;
-    } {
-        const points: Array<readonly [number, number]> = [];
-        const segments: Array<{ a: readonly [number, number]; b: readonly [number, number] }> = [];
-        for (const feature of this.featureSelection) {
-            if (feature.kind !== "curve") {
-                const at = pointFeaturePosition(this.document, feature);
-                if (at) points.push(at);
-                continue;
-            }
-            const refs = this.#curvePointRefs(feature.curveId);
-            const a = refs ? pointFeaturePosition(this.document, refs[0]) : null;
-            const b = refs ? pointFeaturePosition(this.document, refs[1]) : null;
-            if (a && b) segments.push({ a, b });
-        }
-        return { points, segments };
+    get selectedFeatureGeometry() {
+        return this.#constraints.selectedFeatureGeometry;
     }
 
     get canDimensionSelection(): boolean {
-        if (this.featureSelection.length === 1 && this.featureSelection[0].kind === "curve") {
-            return this.document.sketch.curves[this.featureSelection[0].curveId]?.kind === "segment";
-        }
-        return this.featureSelection.length === 2 && this.featureSelection.every((feature) => feature.kind !== "curve");
+        return this.#constraints.canDimensionSelection;
     }
 
     get selectedFeatureDimensions() {
-        return lengthDimensionsForSelection(this.document, this.featureSelection).flatMap((dimension) => {
-            const value = lengthDimensionValue(this.document, dimension.id);
-            return value === null ? [] : [{ ...dimension, value }];
-        });
+        return this.#constraints.selectedFeatureDimensions;
     }
 
     selectFeature(feature: FeatureRef, additive = false): void {
@@ -1148,95 +1082,36 @@ export class WhiteboardStore {
         this.#selection.selectFeatureAtItem(itemId, at, additive, additiveBase);
     }
 
-    #setSolverResult(result: GeometryOperationResult): void {
-        this.solverDiagnostic = result.diagnostic ?? (result.status === "under-constrained"
-            ? `Geometry remains under-constrained${result.degreesOfFreedom === undefined ? "" : ` (${result.degreesOfFreedom} DOF)`}`
-            : null);
-        this.conflictingConstraintIds = [...result.conflictingConstraintIds];
-    }
-
     applyRelation(kind: RelationKind): boolean {
-        const result = addRelationConstraint(documentSnapshot(this.document), kind, this.featureSelection);
-        this.#setSolverResult(result);
-        if (!result.document || JSON.stringify(result.document) === JSON.stringify(documentSnapshot(this.document))) return false;
-        this.applyDocument(result.document);
-        return true;
+        return this.#constraints.applyRelation(kind);
     }
 
     toggleRelation(kind: RelationKind): boolean {
-        const active = this.contextualRelationActions.find((action) => action.kind === kind)?.constraintId;
-        if (active) return this.removeRelationConstraint(active);
-        if (kind === "horizontal" || kind === "vertical") {
-            const opposite = kind === "horizontal" ? "vertical" : "horizontal";
-            const replaced = this.contextualRelationActions.find((action) => action.kind === opposite)?.constraintId;
-            if (replaced) {
-                const result = switchDirectionalRelationConstraint(
-                    documentSnapshot(this.document),
-                    kind,
-                    this.featureSelection,
-                    replaced,
-                );
-                this.#setSolverResult(result);
-                if (!result.document) return false;
-                this.applyDocument(result.document);
-                return true;
-            }
-        }
-        return this.applyRelation(kind);
+        return this.#constraints.toggleRelation(kind);
     }
 
     removeRelationConstraint(constraintId: string): boolean {
-        const next = removeConstraint(this.document, constraintId);
-        if (next === this.document) return false;
-        this.applyDocument(next);
-        if (this.selectedConstraintId === constraintId) this.selectedConstraintId = null;
-        this.solverDiagnostic = null;
-        this.conflictingConstraintIds = [];
-        return true;
+        return this.#constraints.removeRelationConstraint(constraintId);
     }
 
     addLengthDimension(mode: "driving" | "reference"): boolean {
-        const result = addLengthDimension(documentSnapshot(this.document), this.featureSelection, mode);
-        this.#setSolverResult(result);
-        if (!result.document) return false;
-        const newId = Object.keys(result.document.dimensions ?? {}).find((id) => !this.document.dimensions?.[id]);
-        this.applyDocument(result.document);
-        this.selectedDimensionId = newId ?? null;
-        this.selectedConstraintId = null;
-        return true;
+        return this.#constraints.addLengthDimension(mode);
     }
 
     removeDimension(dimensionId: string): boolean {
-        const next = removeLengthDimension(this.document, dimensionId);
-        if (next === this.document) return false;
-        this.applyDocument(next);
-        if (this.selectedDimensionId === dimensionId) this.selectedDimensionId = null;
-        this.solverDiagnostic = null;
-        this.conflictingConstraintIds = [];
-        return true;
+        return this.#constraints.removeDimension(dimensionId);
     }
 
     editDimension(dimensionId: string, value: number): boolean {
-        const result = editDrivingLengthDimension(documentSnapshot(this.document), dimensionId, value);
-        this.#setSolverResult(result);
-        if (!result.document) return false;
-        this.applyDocument(result.document);
-        this.selectedDimensionId = dimensionId;
-        return true;
+        return this.#constraints.editDimension(dimensionId, value);
     }
 
     selectDimension(id: string | null): void {
-        this.selectedDimensionId = id && this.document.dimensions?.[id] ? id : null;
-        if (this.selectedDimensionId) {
-            this.selectedConstraintId = null;
-            this.selection = [];
-        }
+        this.#constraints.selectDimension(id);
     }
 
     selectConstraint(id: string | null): void {
-        this.selectedConstraintId = id && this.document.sketch.constraints[id] ? id : null;
-        if (this.selectedConstraintId) this.selection = [];
-        if (this.selectedConstraintId) this.selectedDimensionId = null;
+        this.#constraints.selectConstraint(id);
     }
 
     updateSnapProposal(at: readonly [number, number], suppressSnap = false): void {

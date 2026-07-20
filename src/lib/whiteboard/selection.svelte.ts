@@ -10,8 +10,8 @@
  * Boundary: selection is not the source of truth (INVARIANTS §0) — this class
  * neither applies transactions nor reads the Scene as truth. Where selecting a
  * feature must also drop a stale constraint/dimension selection or solver
- * feedback (all still store-owned until ConstraintService is carved out), it
- * asks the host to clear them rather than reaching across concerns itself.
+ * feedback (owned by ConstraintService), it asks the host to clear them rather
+ * than reaching across concerns itself.
  */
 
 import {
