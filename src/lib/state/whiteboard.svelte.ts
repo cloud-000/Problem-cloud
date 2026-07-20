@@ -6,13 +6,13 @@
  * It bridges the three pure-TS layers to the Svelte view:
  *   - document / selection / tool / pen are reactive `$state`
  *   - edits flow through the engine tools and are recorded in snapshot history
- *   - `toAsy` / `loadAsy` use the codec; `persist` / `restore` use localStorage
+ *   - `toAsy` / `loadAsy` / `persist` / `restore` delegate to PersistenceIO
+ *     (`$lib/whiteboard/persistence`); the store keeps only the reactive glue.
  *
- * SSR caveat (per repo conventions): never mutate at module load; all
- * localStorage access is `browser`-guarded.
+ * SSR caveat (per repo conventions): never mutate at module load; the
+ * `browser`-guard for localStorage lives in PersistenceIO.
  */
 
-import { browser } from "$app/environment";
 import type { Pen, Scene } from "$lib/asy/scene/types";
 import { isStraightPathVertexEditable } from "$lib/asy/scene";
 import {
@@ -26,7 +26,12 @@ import {
     type EditorPropertyValue,
     type ResolvedEditorProperty,
 } from "$lib/asy/editor-properties";
-import { parse, serialize } from "$lib/asy/codec";
+import {
+    documentToAsy,
+    persistDocument,
+    restoreDocument,
+    sceneFromAsy,
+} from "$lib/whiteboard/persistence";
 import {
     createTool,
     hitTest,
@@ -61,7 +66,6 @@ import {
     migrateSceneToWhiteboardDocument,
     nearestPointFeature,
     nearestSegmentFeature,
-    parsePersistedWhiteboardDocument,
     pathNodeFeature,
     pointFeaturePointId,
     pointFeaturePosition,
@@ -1357,15 +1361,17 @@ export class WhiteboardStore {
         this.snapProposal = null;
     }
 
-    // --- asy codec ------------------------------------------------------------
+    // --- persistence I/O (delegates to PersistenceIO) -------------------------
+    // Reactive glue only; the codec + localStorage logic lives in
+    // `$lib/whiteboard/persistence`. See ARCHITECTURE.md §5.
 
     toAsy(): string {
-        return serialize(resolveWhiteboardDocument(documentSnapshot(this.document)));
+        return documentToAsy(documentSnapshot(this.document));
     }
 
     /** Replace the scene with the result of parsing asy (undoable). */
     loadAsy(asy: string): void {
-        this.apply(parse(asy).scene);
+        this.apply(sceneFromAsy(asy));
         this.selection = [];
         this.selectionPreview = null;
         this.lineContinuation = null;
@@ -1373,28 +1379,14 @@ export class WhiteboardStore {
     }
 
     static fromAsy(asy: string): WhiteboardStore {
-        return new WhiteboardStore(parse(asy).scene);
+        return new WhiteboardStore(sceneFromAsy(asy));
     }
 
-    // --- persistence (localStorage, browser-only) -----------------------------
-
     persist(key: string): void {
-        if (!browser) return;
-        try {
-            localStorage.setItem(key, JSON.stringify(documentSnapshot(this.document)));
-        } catch {
-            // best-effort; a full/blocked store must not break editing
-        }
+        persistDocument(key, documentSnapshot(this.document));
     }
 
     static restore(key: string): WhiteboardDocument | null {
-        if (!browser) return null;
-        try {
-            const raw = localStorage.getItem(key);
-            if (!raw) return null;
-            return parsePersistedWhiteboardDocument(JSON.parse(raw));
-        } catch {
-            return null;
-        }
+        return restoreDocument(key);
     }
 }
