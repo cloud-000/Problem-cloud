@@ -4,8 +4,10 @@
  * at once (e.g. a scratch overlay plus a "trace this diagram" board).
  *
  * It bridges the three pure-TS layers to the Svelte view:
- *   - document / selection / tool / pen are reactive `$state`
+ *   - document / selection / tool are reactive `$state`
  *   - edits flow through the engine tools and are recorded in snapshot history
+ *   - pen/tool defaults, inspector properties, and property edits delegate to
+ *     StyleModel (`$lib/whiteboard/style.svelte`)
  *   - `toAsy` / `loadAsy` / `persist` / `restore` delegate to PersistenceIO
  *     (`$lib/whiteboard/persistence`); the store keeps only the reactive glue.
  *
@@ -15,16 +17,10 @@
 
 import type { Pen, Scene } from "$lib/asy/scene/types";
 import { isStraightPathVertexEditable } from "$lib/asy/scene";
-import {
-    EDITOR_PROPERTY_DEFINITIONS,
-    penColorHex,
-    penWithColor,
-    resolveElementProperties,
-    toolPropertyIds,
-    writeElementProperty,
-    type EditorPropertyId,
-    type EditorPropertyValue,
-    type ResolvedEditorProperty,
+import type {
+    EditorPropertyId,
+    EditorPropertyValue,
+    ResolvedEditorProperty,
 } from "$lib/asy/editor-properties";
 import {
     documentToAsy,
@@ -32,12 +28,12 @@ import {
     restoreDocument,
     sceneFromAsy,
 } from "$lib/whiteboard/persistence";
+import { StyleModel, type WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
     createTool,
     hitTest,
     type Tool,
     type ToolContext,
-    type ToolKind,
     type ToolResult,
     type SelectionTransformGesture,
     type LineContinuation,
@@ -78,7 +74,6 @@ import {
     solveWhiteboardDocument,
     switchDirectionalRelationConstraint,
     translateWhiteboardItems,
-    updateSmartPresentationStyle,
     type FeatureRef,
     type GeometryOperationResult,
     type RelationKind,
@@ -91,28 +86,13 @@ function documentSnapshot(document: WhiteboardDocument): WhiteboardDocument {
     return $state.snapshot(document) as WhiteboardDocument;
 }
 
-export type WhiteboardToolKind = ToolKind | "pan";
+export type { WhiteboardToolKind };
 
-type StyledToolKind = Exclude<ToolKind, "select" | "eraser">;
 type SmartSelectionTransform = Extract<SelectionTransformGesture, { kind: "resize" } | { kind: "rotate" }>;
-
-const DEFAULT_TOOL_PENS: Record<StyledToolKind, Pen> = {
-    pen: { lineWidth: 3, dash: "solid", opacity: 1 },
-    line: { lineWidth: 3, dash: "solid", opacity: 1 },
-    rectangle: { lineWidth: 3, dash: "solid", opacity: 1 },
-    arc: { lineWidth: 3, dash: "solid", opacity: 1 },
-    point: { lineWidth: 3, opacity: 1 },
-    label: { fontSize: 14, opacity: 1 },
-};
 
 export class WhiteboardStore {
     document = $state<WhiteboardDocument>(emptyWhiteboardDocument());
     toolKind = $state<WhiteboardToolKind>("select");
-    strokeColor = $state("#000000");
-    toolPens = $state<Record<StyledToolKind, Pen>>(structuredClone(DEFAULT_TOOL_PENS));
-    rectangleFillEnabled = $state(false);
-    rectangleFillPen = $state<Pen>({ namedColor: "gray", opacity: 0.2 });
-    eraserSize = $state(8);
     selection = $state<string[]>([]);
     /** Candidate selection while a marquee drag is in progress. */
     selectionPreview = $state<string[] | null>(null);
@@ -148,7 +128,7 @@ export class WhiteboardStore {
 
     #history = new History<WhiteboardDocument>();
     #tool: Tool = createTool("select");
-    #propertyBaseline: WhiteboardDocument | null = null;
+    #style: StyleModel;
     #smartDrag: {
         base: WhiteboardDocument;
         feature: PointFeatureRef;
@@ -176,6 +156,29 @@ export class WhiteboardStore {
                 ? initial
                 : migrateSceneToWhiteboardDocument(initial);
         }
+        const self = this;
+        this.#style = new StyleModel({
+            get toolKind() {
+                return self.toolKind;
+            },
+            get selection() {
+                return self.selection;
+            },
+            get scene() {
+                return self.scene;
+            },
+            get document() {
+                return self.document;
+            },
+            set document(next) {
+                self.document = next;
+            },
+            applyDocument: (next) => self.applyDocument(next),
+            pushBaseline: (baseline) => {
+                self.#history.push(baseline);
+                self.#syncFlags();
+            },
+        });
     }
 
     /** Concrete compatibility IR for tools, rendering, hit-testing, and export. */
@@ -190,15 +193,21 @@ export class WhiteboardStore {
 
     /** Compatibility facade for callers that previously read/wrote one shared pen. */
     get pen(): Pen {
-        return this.#activePen();
+        return this.#style.pen;
     }
 
     set pen(value: Pen) {
-        if (value.namedColor || value.color) this.strokeColor = penColorHex(value);
-        if (this.#isStyledTool(this.toolKind)) {
-            const { namedColor: _namedColor, color: _color, ...settings } = value;
-            this.toolPens[this.toolKind] = { ...this.toolPens[this.toolKind], ...settings };
-        }
+        this.#style.pen = value;
+    }
+
+    /** Stroke color the toolbar swatch reflects (owned by StyleModel). */
+    get strokeColor(): string {
+        return this.#style.strokeColor;
+    }
+
+    /** Eraser radius the view cursor mirrors (owned by StyleModel). */
+    get eraserSize(): number {
+        return this.#style.eraserSize;
     }
 
     get inspectorTitle(): string {
@@ -211,14 +220,7 @@ export class WhiteboardStore {
     }
 
     get inspectorProperties(): ResolvedEditorProperty[] {
-        const selected = this.scene.elements.filter(({ id }) => this.selection.includes(id));
-        if (selected.length > 0) return resolveElementProperties(selected);
-        if (this.toolKind === "pan") return [];
-        return toolPropertyIds(this.toolKind).map((id) => ({
-            ...EDITOR_PROPERTY_DEFINITIONS[id],
-            value: this.#readToolProperty(id),
-            mixed: false,
-        }));
+        return this.#style.inspectorProperties;
     }
 
     setTool(kind: WhiteboardToolKind): void {
@@ -613,11 +615,11 @@ export class WhiteboardStore {
         > = {},
     ): ToolContext {
         return {
-            pen: $state.snapshot(this.#activePen()) as Pen,
-            fillPen: this.toolKind === "rectangle" && this.rectangleFillEnabled
-                ? ($state.snapshot(this.rectangleFillPen) as Pen)
+            pen: $state.snapshot(this.#style.activePen(this.toolKind)) as Pen,
+            fillPen: this.toolKind === "rectangle" && this.#style.rectangleFillEnabled
+                ? ($state.snapshot(this.#style.rectangleFillPen) as Pen)
                 : undefined,
-            eraserRadius: this.eraserSize,
+            eraserRadius: this.#style.eraserSize,
             tolerance: this.tolerance,
             penTapTolerance: this.penTapTolerance,
             strokeProcessing: { ...this.strokeProcessing },
@@ -879,128 +881,19 @@ export class WhiteboardStore {
     // --- editing convenience --------------------------------------------------
 
     setInspectorProperty(id: EditorPropertyId, value: EditorPropertyValue): void {
-        if (this.selection.length === 0) {
-            this.#writeToolProperty(id, value);
-            return;
-        }
-        const baseDocument = this.#propertyBaseline ?? documentSnapshot(this.document);
-        const baseScene = resolveWhiteboardDocument(baseDocument);
-        let next = baseDocument;
-        for (const element of baseScene.elements) {
-            if (!this.selection.includes(element.id)) continue;
-            const updated = writeElementProperty(element, id, value);
-            const item = next.items.find((candidate) =>
-                (candidate.kind === "baked" ? candidate.element.id : candidate.id) === element.id
-            );
-            if (item?.kind === "baked") {
-                next = {
-                    ...next,
-                    items: next.items.map((candidate) => candidate === item
-                        ? { ...candidate, element: updated }
-                        : candidate),
-                };
-            } else next = updateSmartPresentationStyle(next, element.id, updated);
-        }
-        if (this.#propertyBaseline) this.document = next;
-        else if (JSON.stringify(next) !== JSON.stringify(baseDocument)) this.applyDocument(next);
+        this.#style.setInspectorProperty(id, value);
     }
 
     beginPropertyEdit(): void {
-        if (this.selection.length > 0 && !this.#propertyBaseline) {
-            this.#propertyBaseline = documentSnapshot(this.document);
-        }
+        this.#style.beginPropertyEdit();
     }
 
     commitPropertyEdit(): void {
-        if (!this.#propertyBaseline) return;
-        const baseline = this.#propertyBaseline;
-        this.#propertyBaseline = null;
-        if (JSON.stringify(baseline) !== JSON.stringify(documentSnapshot(this.document))) {
-            this.#history.push(baseline);
-            this.#syncFlags();
-        }
+        this.#style.commitPropertyEdit();
     }
 
     cancelPropertyEdit(): void {
-        if (!this.#propertyBaseline) return;
-        this.document = this.#propertyBaseline;
-        this.#propertyBaseline = null;
-    }
-
-    #isStyledTool(kind: WhiteboardToolKind): kind is StyledToolKind {
-        return kind !== "select" && kind !== "eraser" && kind !== "pan";
-    }
-
-    #activePen(): Pen {
-        const settings = this.#isStyledTool(this.toolKind)
-            ? this.toolPens[this.toolKind]
-            : DEFAULT_TOOL_PENS.pen;
-        return penWithColor(settings, this.strokeColor);
-    }
-
-    #readToolProperty(id: EditorPropertyId): EditorPropertyValue {
-        const pen = this.#activePen();
-        switch (id) {
-            case "strokeColor": return this.strokeColor;
-            case "fillEnabled": return this.rectangleFillEnabled;
-            case "fillColor": return penColorHex(this.rectangleFillPen);
-            case "lineWidth": return pen.lineWidth ?? 3;
-            case "dash": return typeof pen.dash === "string" ? pen.dash : "solid";
-            case "strokeOpacity": return pen.opacity ?? 1;
-            case "fillOpacity": return this.rectangleFillPen.opacity ?? 0.2;
-            case "fontSize": return pen.fontSize ?? 14;
-            case "pointSize": return pen.lineWidth ?? 3;
-            case "eraserSize": return this.eraserSize;
-            case "labelText": return "";
-            case "radius":
-            case "semiMajorAxis":
-            case "semiMinorAxis":
-            case "eccentricity":
-            case "startAngle":
-            case "arcAngle": return 0;
-        }
-    }
-
-    #writeToolProperty(id: EditorPropertyId, value: EditorPropertyValue): void {
-        if (id === "strokeColor") {
-            this.strokeColor = String(value);
-            return;
-        }
-        if (id === "fillEnabled") {
-            this.rectangleFillEnabled = Boolean(value);
-            return;
-        }
-        if (id === "fillColor") {
-            this.rectangleFillPen = penWithColor(this.rectangleFillPen, String(value));
-            return;
-        }
-        if (id === "fillOpacity") {
-            this.rectangleFillPen = { ...this.rectangleFillPen, opacity: Number(value) };
-            return;
-        }
-        if (id === "eraserSize") {
-            this.eraserSize = Number(value);
-            return;
-        }
-        if (
-            id === "radius" ||
-            id === "semiMajorAxis" ||
-            id === "semiMinorAxis" ||
-            id === "eccentricity" ||
-            id === "startAngle" ||
-            id === "arcAngle"
-        ) return;
-        if (!this.#isStyledTool(this.toolKind)) return;
-        const patch: Partial<Pen> = id === "lineWidth" || id === "pointSize"
-            ? { lineWidth: Number(value) }
-            : id === "dash"
-              ? { dash: value as Pen["dash"] }
-              : id === "strokeOpacity"
-                ? { opacity: Number(value) }
-                : id === "fontSize"
-                  ? { fontSize: Number(value) }
-                  : {};
-        this.toolPens[this.toolKind] = { ...this.toolPens[this.toolKind], ...patch };
+        this.#style.cancelPropertyEdit();
     }
 
     deletePathVertex(elementId: string, nodeIndex: number): void {
