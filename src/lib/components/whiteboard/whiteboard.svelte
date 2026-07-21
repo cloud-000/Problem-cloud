@@ -40,6 +40,7 @@
         type WhiteboardRenderSnapshot,
     } from "./render";
     import { clampToolbarPosition } from "./constraint-toolbar";
+    import { Camera } from "./camera.svelte";
     import ZoomControls from "./zoom-controls.svelte";
 
     let {
@@ -80,9 +81,35 @@
         class?: string;
     } = $props();
 
-    let width = $state(0);
-    let height = $state(0);
-    let pixelRatio = $state(1);
+    /** The viewport: the only place screen ↔ asy-space conversion happens. */
+    const camera = new Camera({
+        get scale() {
+            return scale;
+        },
+        set scale(value: number) {
+            scale = value;
+        },
+        get panX() {
+            return panX;
+        },
+        set panX(value: number) {
+            panX = value;
+        },
+        get panY() {
+            return panY;
+        },
+        set panY(value: number) {
+            panY = value;
+        },
+        get minimumZoom() {
+            return minimumZoom;
+        },
+        get surface() {
+            return surface;
+        },
+    });
+    const project = (point: Pair): Pair => camera.project(point);
+
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
     type TransformCursor =
@@ -116,7 +143,6 @@
     let featureClickStart: { screen: Pair; selection: typeof store.featureSelection } | null = null;
     let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
-    let pinchStart: { distance: number; scale: number; world: Pair } | null = null;
     const penSamples = new PointerSampleBatcher<PointerSample>(
         (points) => {
             if (interaction === "draw" && store.toolKind === "pen") store.pointerMoves(points);
@@ -125,11 +151,6 @@
         (handle) => cancelAnimationFrame(handle),
     );
 
-    const origin = $derived<[number, number]>([width / 2 + panX, height / 2 + panY]);
-    const minimumScale = $derived(Math.max(8, Math.min(400, (minimumZoom / 100) * 40)));
-    const project = $derived.by<(point: Pair) => Pair>(
-        () => (p: Pair) => [origin[0] + p[0] * scale, origin[1] - p[1] * scale],
-    );
     const activeSelection = $derived(store.selectionPreview ?? store.selection);
     const selectedIds = $derived(new SvelteSet(activeSelection));
     const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
@@ -168,12 +189,12 @@
             : [0, 0] as Pair;
         const position = clampToolbarPosition(
             { left: autoPosition.left + offset[0], top: autoPosition.top + offset[1] },
-            { width, height },
+            { width: camera.width, height: camera.height },
             { width: constraintToolbarWidth || 320, height: constraintToolbarHeight || 40 },
         );
         return {
             ...position,
-            menuAbove: position.top + constraintToolbarHeight + 190 > height,
+            menuAbove: position.top + constraintToolbarHeight + 190 > camera.height,
             autoPosition,
             offset,
         };
@@ -233,7 +254,7 @@
                 left: constraintToolbarDrag.positionStart[0] + event.clientX - constraintToolbarDrag.clientStart[0],
                 top: constraintToolbarDrag.positionStart[1] + event.clientY - constraintToolbarDrag.clientStart[1],
             },
-            { width, height },
+            { width: camera.width, height: camera.height },
             { width: constraintToolbarWidth || 320, height: constraintToolbarHeight || 40 },
         );
         constraintToolbarPlacement = {
@@ -596,7 +617,7 @@
             }
             return {
                 center: project(construction.center),
-                radius: Math.abs(construction.radius * scale),
+                radius: camera.toScreenLength(Math.abs(construction.radius)),
                 handles,
                 editHandles: [] as ArcHandle[],
                 elementId: null,
@@ -720,7 +741,7 @@
         return {
             center: project(center),
             radius: selectedArcElement.kind === "arc"
-                ? Math.abs(selectedArcElement.radius * scale)
+                ? camera.toScreenLength(Math.abs(selectedArcElement.radius))
                 : undefined,
             points,
             handles: editHandles,
@@ -756,13 +777,13 @@
     });
 
     function syncToolScale() {
-        store.tolerance = 8 / scale;
-        store.penTapTolerance = 2 / scale;
-        store.sceneUnitsPerPixel = 1 / scale;
+        store.tolerance = camera.toAsyLength(8);
+        store.penTapTolerance = camera.toAsyLength(2);
+        store.sceneUnitsPerPixel = camera.toAsyLength(1);
         store.strokeProcessing = {
             ...store.strokeProcessing,
-            sampleSpacing: 1.5 / scale,
-            simplifyTolerance: 0.75 / scale,
+            sampleSpacing: camera.toAsyLength(1.5),
+            simplifyTolerance: camera.toAsyLength(0.75),
         };
     }
 
@@ -772,7 +793,7 @@
             typeof window !== "undefined" ? window.prompt("Label (LaTeX, e.g. $A$):") : null;
 
         surface = node;
-        pixelRatio = window.devicePixelRatio || 1;
+        camera.syncPixelRatio();
         attachedStore.promptLabel = promptLabel;
         return () => {
             penSamples.cancel();
@@ -782,15 +803,10 @@
         };
     };
 
-    function localPoint(clientX: number, clientY: number): [number, number] {
-        const rect = surface?.getBoundingClientRect();
-        return rect ? [clientX - rect.left, clientY - rect.top] : [0, 0];
-    }
+    const localPoint = (clientX: number, clientY: number): Pair =>
+        camera.localPoint(clientX, clientY);
 
-    function toAsyAt(clientX: number, clientY: number): Pair {
-        const [px, py] = localPoint(clientX, clientY);
-        return [(px - origin[0]) / scale, (origin[1] - py) / scale];
-    }
+    const toAsyAt = (clientX: number, clientY: number): Pair => camera.toAsy(clientX, clientY);
 
     function pointerSample(e: PointerEvent): PointerSample {
         const pressure = e.pointerType === "pen" && Number.isFinite(e.pressure) && e.pressure > 0
@@ -825,8 +841,6 @@
         const touches = [...activeTouches.values()];
         if (touches.length < 2) return;
         const [a, b] = touches;
-        const midX = (a.clientX + b.clientX) / 2;
-        const midY = (a.clientY + b.clientY) / 2;
         penSamples.cancel();
         store.cancel();
         interaction = "pinch";
@@ -834,26 +848,13 @@
         selectedArcControl = null;
         hoveredArcControl = null;
         pointerId = null;
-        pinchStart = {
-            distance: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
-            scale,
-            world: toAsyAt(midX, midY),
-        };
+        camera.beginPinch(a, b);
     }
 
     function updatePinch() {
-        if (!pinchStart || activeTouches.size < 2) return;
+        if (activeTouches.size < 2) return;
         const [a, b] = [...activeTouches.values()];
-        const midClientX = (a.clientX + b.clientX) / 2;
-        const midClientY = (a.clientY + b.clientY) / 2;
-        const [midX, midY] = localPoint(midClientX, midClientY);
-        const distance = Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY));
-        scale = Math.max(
-            minimumScale,
-            Math.min(400, pinchStart.scale * (distance / pinchStart.distance)),
-        );
-        panX = midX - width / 2 - pinchStart.world[0] * scale;
-        panY = midY - height / 2 + pinchStart.world[1] * scale;
+        camera.updatePinch(a, b);
     }
 
     function onPointerDown(e: PointerEvent) {
@@ -878,7 +879,7 @@
         penSamples.cancel();
         if (navigation && (e.button === 1 || store.toolKind === "pan" || spacePressed)) {
             interaction = "pan";
-            panStart = { clientX: e.clientX, clientY: e.clientY, x: panX, y: panY };
+            panStart = { clientX: e.clientX, clientY: e.clientY, x: camera.panX, y: camera.panY };
             return;
         }
 
@@ -946,7 +947,7 @@
                 elementId: arcGuide.elementId,
                 control,
                 handle,
-                minimumRadius: 12 / scale,
+                minimumRadius: camera.toAsyLength(12),
             }, e.altKey);
             return;
         }
@@ -979,9 +980,9 @@
             const handle = resizeHandle;
             if (handle && selectionGeometryBounds) {
                 const extentXpx =
-                    (selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]) * scale;
+                    camera.toScreenLength(selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]);
                 const extentYpx =
-                    (selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]) * scale;
+                    camera.toScreenLength(selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]);
                 interaction = "transform";
                 transformCursor = handle.cursor;
                 syncToolScale();
@@ -1026,7 +1027,7 @@
         }
 
         if (e.button === 0 && store.toolKind === "select" && store.featureSelection.length > 0) {
-            const element = hitTest(store.scene, toAsyAt(e.clientX, e.clientY), 8 / scale);
+            const element = hitTest(store.scene, toAsyAt(e.clientX, e.clientY), camera.toAsyLength(8));
             if (!element) {
                 store.clearFeatureSelection();
                 lengthMenuOpen = false;
@@ -1051,7 +1052,7 @@
     function onDoubleClick(e: MouseEvent) {
         if (store.toolKind !== "select") return;
         const at = toAsyAt(e.clientX, e.clientY);
-        const element = hitTest(store.scene, at, 8 / scale);
+        const element = hitTest(store.scene, at, camera.toAsyLength(8));
         if (element) store.selectCurveFeatureAt(element.id, at, e.shiftKey);
     }
 
@@ -1111,8 +1112,8 @@
         hoveredArcControl = null;
         if (e.pointerId !== pointerId) return;
         if (interaction === "pan" && panStart) {
-            panX = panStart.x + e.clientX - panStart.clientX;
-            panY = panStart.y + e.clientY - panStart.clientY;
+            camera.panX = panStart.x + e.clientX - panStart.clientX;
+            camera.panY = panStart.y + e.clientY - panStart.clientY;
         } else if (interaction === "draw" || interaction === "transform") {
             const samples = interaction === "draw" && store.toolKind === "pen" &&
                 typeof e.getCoalescedEvents === "function"
@@ -1133,7 +1134,7 @@
         if (wasPinching) {
             if (activeTouches.size < 2) {
                 interaction = "idle";
-                pinchStart = null;
+                camera.endPinch();
             }
             return;
         }
@@ -1157,7 +1158,7 @@
             );
             if (moved <= 3) {
                 const at = toAsyAt(e.clientX, e.clientY);
-                const element = hitTest(store.scene, at, 8 / scale);
+                const element = hitTest(store.scene, at, camera.toAsyLength(8));
                 if (element) {
                     store.selectFeatureAtItem(element.id, at, e.shiftKey, featureClickStart.selection);
                 }
@@ -1181,7 +1182,7 @@
         }
         pointerId = null;
         panStart = null;
-        pinchStart = null;
+        camera.endPinch();
         transformCursor = null;
         featureClickStart = null;
         hoveredVertex = null;
@@ -1257,70 +1258,20 @@
     }
 
     function onWindowResize() {
-        pixelRatio = window.devicePixelRatio || 1;
-    }
-
-    function zoomAt(clientX: number, clientY: number, factor: number) {
-        const world = toAsyAt(clientX, clientY);
-        const [px, py] = localPoint(clientX, clientY);
-        scale = Math.max(minimumScale, Math.min(400, scale * factor));
-        panX = px - width / 2 - world[0] * scale;
-        panY = py - height / 2 + world[1] * scale;
-    }
-
-    function zoomBy(factor: number) {
-        const rect = surface?.getBoundingClientRect();
-        if (rect) zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
-    }
-
-    function zoomTo(percentage: number) {
-        const targetScale = Math.max(minimumScale, Math.min(400, (percentage / 100) * 40));
-        zoomBy(targetScale / scale);
+        camera.syncPixelRatio();
     }
 
     function fitScene() {
-        const bounds = sceneBounds(store.scene);
-        if (!bounds || width <= 0 || height <= 0) return;
-
-        const sceneWidth = bounds.max[0] - bounds.min[0];
-        const sceneHeight = bounds.max[1] - bounds.min[1];
-        const availableWidth = Math.max(1, width - 64);
-        const availableHeight = Math.max(1, height - 64);
-        const widthScale = sceneWidth > 1e-9 ? availableWidth / sceneWidth : Infinity;
-        const heightScale = sceneHeight > 1e-9 ? availableHeight / sceneHeight : Infinity;
-        const fittedScale = Math.min(widthScale, heightScale);
-
-        scale = Number.isFinite(fittedScale)
-            ? Math.max(minimumScale, Math.min(400, fittedScale))
-            : 40;
-        const centerX = (bounds.min[0] + bounds.max[0]) / 2;
-        const centerY = (bounds.min[1] + bounds.max[1]) / 2;
-        panX = -centerX * scale;
-        panY = centerY * scale;
+        camera.fitScene(sceneBounds(store.scene));
     }
 
-    function resetViewport() {
-        scale = 40;
-        panX = 0;
-        panY = 0;
-    }
-
-    const zoomPercentage = $derived(Math.round((scale / 40) * 100));
+    const zoomPercentage = $derived(camera.zoomPercentage);
     const canFitScene = $derived(sceneBounds(store.scene) !== null);
 
     function onWheel(e: WheelEvent) {
         e.preventDefault();
         if (!navigation) return;
-        // Trackpad scroll pans. Pinch gestures arrive as ctrl-wheel; discrete
-        // mouse-wheel events zoom. Every zoom stays anchored under the cursor.
-        const discreteWheel = e.deltaMode !== WheelEvent.DOM_DELTA_PIXEL ||
-            (Math.abs(e.deltaY) >= 80 && Math.abs(e.deltaX) < 1);
-        if (e.ctrlKey || e.metaKey || discreteWheel) {
-            zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-240, Math.min(240, e.deltaY)) * 0.002));
-        } else {
-            panX -= e.deltaX;
-            panY -= e.deltaY;
-        }
+        camera.wheel(e);
     }
 
     const marqueeRect = $derived.by(() => {
@@ -1350,17 +1301,12 @@
 
     $effect(() => {
         const canvas = surface;
-        if (!canvas || width <= 0 || height <= 0) return;
+        if (!canvas || camera.width <= 0 || camera.height <= 0) return;
 
         void Theme.theme;
         const displayScene = $state.snapshot(store.displayScene) as Scene;
         const committedScene = $state.snapshot(store.scene) as Scene;
-        const viewport = {
-            width,
-            height,
-            scale,
-            origin: [origin[0], origin[1]] as Pair,
-        };
+        const viewport = camera.viewport;
         const palette = currentPalette();
         const runtimeSnapshot: WhiteboardRenderSnapshot = {
             scene: displayScene,
@@ -1416,8 +1362,9 @@
             })),
         };
 
-        const backingWidth = Math.max(1, Math.round(width * pixelRatio));
-        const backingHeight = Math.max(1, Math.round(height * pixelRatio));
+        const pixelRatio = camera.pixelRatio;
+        const backingWidth = Math.max(1, Math.round(camera.width * pixelRatio));
+        const backingHeight = Math.max(1, Math.round(camera.height * pixelRatio));
         if (canvas.width !== backingWidth) canvas.width = backingWidth;
         if (canvas.height !== backingHeight) canvas.height = backingHeight;
         registerCanvasSnapshot(canvas, { ...runtimeSnapshot, scene: committedScene });
@@ -1442,17 +1389,17 @@
         transparent ? "bg-transparent" : "bg-surface-container-lowest",
         className,
     )}
-    bind:clientWidth={width}
-    bind:clientHeight={height}
+    bind:clientWidth={camera.width}
+    bind:clientHeight={camera.height}
 >
     {#if navigation}
         <div class="absolute bottom-3 right-3 z-10">
             <ZoomControls
                 percentage={zoomPercentage}
-                onZoomOut={() => zoomBy(1 / 1.2)}
-                onZoomIn={() => zoomBy(1.2)}
-                onZoomTo={zoomTo}
-                onFitScene={resetViewportControl ? resetViewport : fitScene}
+                onZoomOut={() => camera.zoomBy(1 / 1.2)}
+                onZoomIn={() => camera.zoomBy(1.2)}
+                onZoomTo={(percentage) => camera.zoomTo(percentage)}
+                onFitScene={resetViewportControl ? () => camera.resetViewport() : fitScene}
                 canFitScene={resetViewportControl || canFitScene}
                 minimumPercentage={minimumZoom}
                 resetViewport={resetViewportControl}
