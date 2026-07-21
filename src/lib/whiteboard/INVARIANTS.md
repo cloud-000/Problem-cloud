@@ -23,7 +23,9 @@ travel" is the debt, not the rule.
 | Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `DocumentController` (`whiteboard/document-controller.svelte`) holds `document = $state(...)`, owns the history, and projects the Scene; the store exposes it via getters. |
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
 | Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the single `liftCommit` step in `whiteboard/commit-lift.ts` (called from `InteractionController.#dispatch`). `conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
-| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | All six are extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`), ConstraintService (`whiteboard/constraint-service.svelte`), InteractionController (`whiteboard/interaction.svelte`, which delegates Pipeline B to `whiteboard/smart-gestures.svelte` and the commit lift to `whiteboard/commit-lift.ts`). The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
+| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | The collaborators are extracted: PersistenceIO (`whiteboard/persistence.ts`, a function module: `documentToAsy` / `sceneFromAsy` / `persistDocument` / `restoreDocument`), `StyleModel` (`style.svelte.ts`), `DocumentController` (`document-controller.svelte.ts`), `SelectionModel` (`selection.svelte.ts`), `ConstraintService` (`constraint-service.svelte.ts`), and `InteractionController` (`interaction.svelte.ts`), which delegates Pipeline B to `SmartGestureController` (`smart-gestures.svelte.ts`) and the commit lift to `commit-lift.ts`. The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
+| View carved into named units; `whiteboard.svelte` is wiring only | **Enforced today** | `Camera` (`components/whiteboard/camera.svelte.ts`) owns the viewport and every screen ⇄ asy conversion; `buildOverlay` (`overlay-model.ts`, pure TS) owns all screen-space affordance geometry; `PointerInputController` (`pointer-input.svelte.ts`) owns DOM pointer plumbing and the one pointer-down hit branch; `KeyboardShortcutController` (`shortcuts.svelte.ts`) owns the active-surface claim and the editing keys; `render.ts` draws. The component declares props, constructs those units as host objects over its own `$state`, and renders DOM overlays. |
+| Overlay geometry is a pure, testable projection — not component-local math | **Enforced today** | `overlay-model.ts` imports no Svelte and no DOM; the Camera's `project`/`toScreenLength` and text measurement are injected into `buildOverlay`, and `overlay-model.test.ts` exercises it headless. Overlays reach only the canvas and DOM hit-testing — `export.ts` renders the projected Scene alone, so no overlay reaches asy/SVG/PNG. |
 | One explicit pointer-down ownership branch (§3.1) | **Enforced today** | `InteractionController.#routePointerDown` is the single decision: one hit-test returns a `PointerRoute`, and the chosen pipeline is stored as one `ActiveGesture` value. `pointerMove`/`pointerUp` switch on that discriminant — they never re-probe nullable gesture fields, and nothing switches pipeline mid-gesture. |
 | No seam-era dead code; no orphaned exports | **Enforced today** | The all-baked-document helpers the seam needed (`isBakedDocument`, `updateBakedElements`) are deleted, so no operation can take a `Scene` as the document's item list. Every remaining `export` under `asy/`, `whiteboard/`, and the store is imported by production code or a test; internal-only helpers (`validateScene`, `documentToSolverGraph`, `RELATION_ACTIONS`) are module-private. |
 
@@ -62,6 +64,19 @@ Everything below is a consequence of these four.
 - **The view holds no model logic.** Components map pointer/DOM events to store
   calls and render the projected Scene. Coordinate mapping (screen ↔ asy-space)
   is view-owned; everything downstream is asy-space.
+- **`components/whiteboard/overlay-model.ts` is pure TS too.** No Svelte, no
+  DOM: `buildOverlay` receives the projected Scene, the store's read models, and
+  the Camera's `project` / `toScreenLength` as injected functions, and returns a
+  plain value. DOM-only capabilities are injected (`measureLabelWidth`, with the
+  pure `estimateLabelWidth` fallback). It may import *types* from `render.ts`,
+  never its drawing code. Overlay geometry derived inline in a `.svelte` file is
+  a layering bug, not a shortcut.
+- **Only `Camera` converts screen ↔ asy-space.** `camera.svelte.ts` owns pan,
+  zoom, pinch, and every pixel↔unit conversion (`project`, `localPoint`,
+  `toAsy`, `toAsyLength`, `toScreenLength`). No other file multiplies or divides
+  by `scale`, and no other file reads `getBoundingClientRect()` to place
+  geometry. Callers that need a conversion take it from the Camera or receive it
+  injected.
 
 ---
 
@@ -100,7 +115,7 @@ Everything below is a consequence of these four.
   commits a **`ToolCommit`** — a delta (`add` · `replace` · `erase` ·
   `extend-path` / `close-path`), never a Scene. `ToolResult.preview` is
   render-only; `ToolResult.commit` is lifted to exactly one Document transaction
-  by the store's `#liftCommit`. A tool must describe *what it changed*; deriving
+  by `liftCommit` in `whiteboard/commit-lift.ts`. A tool must describe *what it changed*; deriving
   that by diffing a Scene against the projection is the retired seam (§4).
 - **Smart gestures go through `operations.ts` + the solver**, producing a single
   Document transaction on release. Preview solves during the drag are transient.
@@ -150,17 +165,19 @@ cell.
 | Dimension (length/radius/angle) | `whiteboard/model/operations.ts` + `types.ts` (`LengthDimension`) |
 | Feature selection semantics | `whiteboard/model/features.ts` |
 | Document validation / migration | `whiteboard/model/validation.ts` / `document.ts` |
-| Pointer routing / a new gesture kind | `whiteboard/interaction.svelte.ts` (`#routePointerDown` + the `ActiveGesture` union) |
+| Pointer routing / a new gesture kind (the §3.1 pipeline branch) | `whiteboard/interaction.svelte.ts` (`#routePointerDown` + the `ActiveGesture` union). This is the *store-layer* branch over asy-space points; the DOM-layer mapping is a separate row below |
 | Pipeline B mechanics (translate / resize / rotate / smart-feature drag) | `whiteboard/smart-gestures.svelte.ts` (`SmartGestureController`: preview + commit solves; the `SmartGesture` arms of `ActiveGesture`) |
 | Lifting a `ToolCommit` to a Document transaction | `whiteboard/commit-lift.ts` (pure `Document → Document`: `liftCommit` and the smart/baked partition, plus `snapCreationPreview`) |
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
 | Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` (pure TS: `buildOverlay`) |
+| A **new overlay affordance** (another handle, guide, badge, or dimension chrome) | Shape it in `overlay-model.ts` (a field on `WhiteboardOverlay`, computed in `buildOverlay`), draw it in `render.ts`, and — if it is grabbable — add its arm to `PointerHit` in `pointer-input.svelte.ts`. Never compute its pixels in a `.svelte` file, and never persist it into the Document or an export |
 | Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns the DOM overlays |
 | Canvas keyboard shortcuts / which surface answers them | `components/whiteboard/shortcuts.svelte.ts` (`KeyboardShortcutController`: the module-level active-surface claim, the held-space modifier, and the editing keys) |
 | Contextual constraint toolbar (placement, drag, relation/dimension actions) | `components/whiteboard/constraint-toolbar.svelte`, with its pure placement math in `constraint-toolbar.ts`. Placement is a two-stage pipeline: `auto` (selection anchors only) → `position` (drag offset applied, clamped to the board). The drag writes the offset and may read `auto`; it must **never** read `position`, or the placement feeds back on itself. |
-| Screen ↔ asy-space viewport math | `components/whiteboard/camera.svelte.ts` (`Camera`) |
+| Screen ↔ asy-space viewport math | `components/whiteboard/camera.svelte.ts` (`Camera`) — the only converter (§1) |
+| Camera/viewport *behavior* (pan, wheel/pinch zoom, zoom limits, fit-scene, reset) | `components/whiteboard/camera.svelte.ts`. `scale`/`panX`/`panY` remain `$bindable()` props on `whiteboard.svelte`, reached through the `CameraHost` accessors — the component stores them, the Camera decides them |
 | Toolbar / inspector / command UI | `components/whiteboard/*.svelte` (see `DOCS.md`) |
 | SVG/PNG/asy export | `components/whiteboard/export.ts` (renders the *projected* Scene) |
 
@@ -173,6 +190,14 @@ started.
 ## 6. Anti-patterns (do not do)
 
 - ❌ Storing screen/pixel coordinates below the view.
+- ❌ Deriving overlay geometry inline in a component — a `$derived` in a
+  `.svelte` file that computes handle rects, glyph positions, or guide points.
+  It belongs in `buildOverlay` (`overlay-model.ts`), where it is testable.
+- ❌ Converting pixels ↔ scene units anywhere but `Camera`: multiplying by
+  `scale`, or reading `getBoundingClientRect()` to place geometry, outside
+  `camera.svelte.ts`.
+- ❌ Putting overlay/presentation state (handles, glyphs, guides, selection
+  chrome) into the Document, the Scene, or an export. Overlays are terminal.
 - ❌ Caching resolved geometry on smart items, or reading it back as truth.
 - ❌ Editing a Scene and merging it into the Document (§4).
 - ❌ Putting geometry/solver math in the store or a component.

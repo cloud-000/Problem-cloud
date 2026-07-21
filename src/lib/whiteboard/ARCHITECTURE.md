@@ -30,7 +30,11 @@ independently `bun test`-able (and extractable to a package later).
 ├─ src/lib/state/whiteboard.svelte.ts  ── orchestration (Svelte runes) ──────┤
 │  WhiteboardStore: wires the core to the view, holds reactive state          │
 ├─ src/lib/components/whiteboard/  ── view (Svelte) ─────────────────────────┤
-│  whiteboard.svelte · render.ts · toolbars · cards · export                  │
+│  camera.svelte.ts     the only screen ⇄ asy-space conversion (§2.4)         │
+│  overlay-model.ts     Scene + camera → OverlayModel (pure TS, `buildOverlay`)│
+│  pointer-input.svelte.ts / shortcuts.svelte.ts   DOM events → store calls    │
+│  render.ts            Scene + OverlayModel → Canvas                          │
+│  whiteboard.svelte · toolbars · cards · constraint-toolbar · export          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,6 +94,44 @@ from flattened geometry, so the Document must be primary; the flattened geometry
 is cheap to recompute, so it must be derived. Making the Scene editable was the
 original mistake — it created a second source of truth that had to be
 reconciled.
+
+### 2.4 `OverlayModel` — the screen-space projection
+
+The Scene answers *"what geometry?"*, but the editor also has to draw things that
+are **not geometry**: the selection box, resize/rotation/vertex handles, the arc
+construction guide, snap proposals, constraint glyphs, and dimension labels.
+Those are *presentation geometry* — they exist in **screen space**, at pixel
+sizes that must not scale with zoom, and they belong to no document.
+
+The chain is:
+
+```
+   WhiteboardDocument ──resolve()──▶ Scene ──project(camera)──▶ OverlayModel ──▶ Canvas
+        (truth)                    (projection)                (presentation)
+```
+
+Three rules make this a boundary rather than a habit:
+
+- **`Camera` is the sole screen ⇄ asy boundary.** `camera.svelte.ts` owns pan,
+  zoom, pinch, and every pixel↔unit conversion (`project`, `toAsy`,
+  `toAsyLength`, `toScreenLength`). Nothing else multiplies or divides by
+  `scale`. Everything below the view is asy-space (y-up); the Camera is where
+  that stops being true.
+- **The OverlayModel is pure.** `overlay-model.ts` is plain TypeScript with no
+  Svelte and no DOM: `buildOverlay(input)` takes the projected Scene, the store's
+  read models, and the Camera's `project` / `toScreenLength` as **injected
+  functions**, and returns a plain value. Even text measurement — the one real
+  DOM capability it needs — is injected as `measureLabelWidth`, with a pure
+  fallback (`estimateLabelWidth`). That is what makes it unit-testable and why
+  overlay geometry is never derived inline in a component.
+- **Overlays are one-way and terminal.** They read the Document (through the
+  Scene and the store's derived read models) and are consumed only by the canvas
+  and by DOM hit-testing. An overlay never appears in the Document, in the
+  Scene, or in any export — `export.ts` renders the projected Scene alone, so
+  asy / SVG / PNG output carries no handle, glyph, guide, or dimension chrome.
+
+`OverlayModel` is to the view what `Scene` is to the core: a derived, read-only
+projection, one step further down.
 
 ---
 
@@ -167,7 +209,9 @@ concern owns the whole file:
 
 | Collaborator | Owns |
 |---|---|
-| **InteractionController** | pointer → pipeline routing and the two-pipeline boundary (§3); Pipeline B mechanics live in `SmartGestureController`, the `ToolCommit` lift in `commit-lift.ts` |
+| **InteractionController** (`interaction.svelte.ts`) | the pointer-down ownership branch and the two-pipeline boundary (§3.1); holds the active gesture and drives Pipeline A's `Tool` |
+| **SmartGestureController** (`smart-gestures.svelte.ts`) | Pipeline B mechanics — smart-feature drag, translate / rotate / resize: preview solves during the drag, one commit solve on release |
+| **commit lift** (`commit-lift.ts`) | the single, pure `ToolCommit → Document` step (`liftCommit`) plus snap inference; the only place a tool commit becomes a mutation (§3.2) |
 | **SelectionModel** | item selection, feature selection, marquee |
 | **DocumentController** | apply transactions · undo/redo · projection cache |
 | **ConstraintService** | relations, dimensions, solver invocation |
@@ -191,6 +235,14 @@ right collaborator, and exposes derived read models (glyphs, inspector title).
 - **Transaction** — a pure `Document → Document` operation; one undo step.
 - **Pipeline A / B** — the Tool and smart-gesture input paths. §3.
 - **Codec** — `Scene ⇄ Asymptote text`.
+- **Camera** — the view's viewport: pan/zoom state and the *only* screen ⇄
+  asy-space conversion. §2.4
+- **Overlay model** — `buildOverlay(...)`, the pure screen-space projection of
+  the Scene plus editor affordances; never exported, never in the Document. §2.4
+- **Presentation geometry** — pixel-space chrome (handles, glyphs, guides,
+  dimension labels) that belongs to the overlay, not to any document. §2.4
+- **Lift** — `liftCommit`, turning a tool's `ToolCommit` delta into exactly one
+  Document transaction. §3.2
 
 ---
 
