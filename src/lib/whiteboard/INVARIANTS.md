@@ -12,10 +12,11 @@ assume it is violated.
 
 ## Current vs. target
 
-This blueprint describes the **target** model. The code is mid-migration toward
-it, so some rules are already enforced and some are the direction of travel. Do
-not assume the code matches a rule just because it is written here — check, and
-when you touch adjacent code, move it *toward* the target, never away.
+The migration is **complete**: every structural rule in this blueprint is
+enforced by the code today, so this table is now a *regression* record rather
+than a plan. Each row names the file that holds the rule up — if you change that
+file, you own the row. A change that puts any row back into "direction of
+travel" is the debt, not the rule.
 
 | Area | Status | Notes |
 |---|---|---|
@@ -24,9 +25,7 @@ when you touch adjacent code, move it *toward* the target, never away.
 | Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the store's single `#liftCommit` step. `#conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
 | Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | All six are extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`), ConstraintService (`whiteboard/constraint-service.svelte`), InteractionController (`whiteboard/interaction.svelte`). The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
 | One explicit pointer-down ownership branch (§3.1) | **Enforced today** | `InteractionController.#routePointerDown` is the single decision: one hit-test returns a `PointerRoute`, and the chosen pipeline is stored as one `ActiveGesture` value. `pointerMove`/`pointerUp` switch on that discriminant — they never re-probe nullable gesture fields, and nothing switches pipeline mid-gesture. |
-
-When a "Target" rule and the current code disagree, the code is the debt, not
-the rule.
+| No seam-era dead code; no orphaned exports | **Enforced today** | The all-baked-document helpers the seam needed (`isBakedDocument`, `updateBakedElements`) are deleted, so no operation can take a `Scene` as the document's item list. Every remaining `export` under `asy/`, `whiteboard/`, and the store is imported by production code or a test; internal-only helpers (`validateScene`, `documentToSolverGraph`, `RELATION_ACTIONS`) are module-private. |
 
 ---
 

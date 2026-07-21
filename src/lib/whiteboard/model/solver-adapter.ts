@@ -29,7 +29,7 @@ function requiredPointId(document: WhiteboardDocument, ref: PointFeatureRef): st
     return id;
 }
 
-export function documentToSolverGraph(document: WhiteboardDocument): SolverGraph {
+function documentToSolverGraph(document: WhiteboardDocument): SolverGraph {
     const points = Object.fromEntries(Object.keys(document.sketch.points).sort().map((id) => [
         id,
         { id, at: document.sketch.points[id].at },

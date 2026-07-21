@@ -213,10 +213,6 @@ export class StyleModel {
     get rectangleFillPen(): Pen {
         return this.state.rectangleFillPen;
     }
-    get toolPens(): Record<StyledToolKind, Pen> {
-        return this.state.toolPens;
-    }
-
     /** The pen a given tool draws with (used to build the ToolContext). */
     activePen(toolKind: WhiteboardToolKind): Pen {
         return activePen(this.state, toolKind);

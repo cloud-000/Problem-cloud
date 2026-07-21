@@ -19,7 +19,7 @@ export interface ContextualRelationAction extends RelationAction {
     constraintId?: string;
 }
 
-export const RELATION_ACTIONS: Readonly<Record<RelationKind, RelationAction>> = {
+const RELATION_ACTIONS: Readonly<Record<RelationKind, RelationAction>> = {
     horizontal: { kind: "horizontal", label: "Horizontal" },
     vertical: { kind: "vertical", label: "Vertical" },
     parallel: { kind: "parallel", label: "Parallel" },

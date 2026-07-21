@@ -31,14 +31,3 @@ export function createTool(kind: ToolKind): Tool {
             return new EraserTool();
     }
 }
-
-export const TOOL_KINDS: ToolKind[] = [
-    "select",
-    "pen",
-    "line",
-    "rectangle",
-    "arc",
-    "point",
-    "label",
-    "eraser",
-];

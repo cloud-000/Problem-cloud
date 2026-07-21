@@ -89,7 +89,8 @@ function sceneElement(value: unknown): boolean {
     }
 }
 
-export function validateScene(value: unknown): ValidationResult {
+/** Internal: the V1 (unversioned `Scene`) shape check used by the migration path. */
+function validateScene(value: unknown): ValidationResult {
     const errors: string[] = [];
     if (!record(value)) return { valid: false, errors: ["scene must be an object"] };
     if (!Array.isArray(value.elements)) errors.push("scene.elements must be an array");
