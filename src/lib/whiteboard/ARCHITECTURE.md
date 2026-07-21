@@ -124,9 +124,9 @@ switch.
 
 A Tool does not commit a Scene. It commits a **`ToolCommit`** — a description of
 what the gesture changed (`add` · `replace` · `erase` · `extend-path` /
-`close-path`) — which the store **lifts** to one Document transaction at a single
-defined step (`#liftCommit`), so its output enters the Document like everything
-else. What the lift produces depends on the tool:
+`close-path`) — which is **lifted** to one Document transaction at a single
+defined step (`liftCommit`, in `whiteboard/commit-lift.ts`), so its output enters
+the Document like everything else. What the lift produces depends on the tool:
 
 - **line · rectangle · point** → a **smart** sketch item (`createSmartPath` /
   `createSmartPointMarker`), with snap-inferred coincidence, so drawn geometry is
@@ -167,7 +167,7 @@ concern owns the whole file:
 
 | Collaborator | Owns |
 |---|---|
-| **InteractionController** | pointer → pipeline routing and the two-pipeline boundary (§3) |
+| **InteractionController** | pointer → pipeline routing and the two-pipeline boundary (§3); Pipeline B mechanics live in `SmartGestureController`, the `ToolCommit` lift in `commit-lift.ts` |
 | **SelectionModel** | item selection, feature selection, marquee |
 | **DocumentController** | apply transactions · undo/redo · projection cache |
 | **ConstraintService** | relations, dimensions, solver invocation |

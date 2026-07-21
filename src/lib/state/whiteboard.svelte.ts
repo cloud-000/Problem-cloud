@@ -49,6 +49,7 @@ import {
     type DimensionGlyph,
 } from "$lib/whiteboard/constraint-service.svelte";
 import { InteractionController } from "$lib/whiteboard/interaction.svelte";
+import { replaceBakedElements } from "$lib/whiteboard/commit-lift";
 import {
     type SelectionTransformGesture,
     type LineContinuation,
@@ -405,7 +406,7 @@ export class WhiteboardStore {
         } else {
             const cyclic = element.path.cyclic && nodes.length >= 3;
             const joinCount = cyclic ? nodes.length : nodes.length - 1;
-            this.applyDocument(this.#interaction.replaceBakedElements([
+            this.applyDocument(replaceBakedElements(this.document, [
                 {
                     ...element,
                     path: {

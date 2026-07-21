@@ -22,8 +22,8 @@ travel" is the debt, not the rule.
 |---|---|---|
 | Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `DocumentController` (`whiteboard/document-controller.svelte`) holds `document = $state(...)`, owns the history, and projects the Scene; the store exposes it via getters. |
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
-| Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the store's single `#liftCommit` step. `#conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
-| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | All six are extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`), ConstraintService (`whiteboard/constraint-service.svelte`), InteractionController (`whiteboard/interaction.svelte`). The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
+| Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the single `liftCommit` step in `whiteboard/commit-lift.ts` (called from `InteractionController.#dispatch`). `conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
+| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | All six are extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`), ConstraintService (`whiteboard/constraint-service.svelte`), InteractionController (`whiteboard/interaction.svelte`, which delegates Pipeline B to `whiteboard/smart-gestures.svelte` and the commit lift to `whiteboard/commit-lift.ts`). The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
 | One explicit pointer-down ownership branch (§3.1) | **Enforced today** | `InteractionController.#routePointerDown` is the single decision: one hit-test returns a `PointerRoute`, and the chosen pipeline is stored as one `ActiveGesture` value. `pointerMove`/`pointerUp` switch on that discriminant — they never re-probe nullable gesture fields, and nothing switches pipeline mid-gesture. |
 | No seam-era dead code; no orphaned exports | **Enforced today** | The all-baked-document helpers the seam needed (`isBakedDocument`, `updateBakedElements`) are deleted, so no operation can take a `Scene` as the document's item list. Every remaining `export` under `asy/`, `whiteboard/`, and the store is imported by production code or a test; internal-only helpers (`validateScene`, `documentToSolverGraph`, `RELATION_ACTIONS`) are module-private. |
 
@@ -124,8 +124,8 @@ in review — their presence means the two-source-of-truth model is creeping bac
   state what it changed;
 - widening `ToolResult.commit` back to a `Scene`, or a Tool whose `commit` is
   meant to become the authoritative Scene rather than a `ToolCommit` delta;
-- adding a second lift site: `#liftCommit` is the *only* place a `ToolCommit`
-  becomes a Document mutation.
+- adding a second lift site: `commit-lift.ts`'s `liftCommit` is the *only* place
+  a `ToolCommit` becomes a Document mutation.
 
 The correct shape is always: **tool emits a `ToolCommit` → lift it to one Document
 transaction → apply it → re-project the Scene.**
@@ -151,6 +151,8 @@ cell.
 | Feature selection semantics | `whiteboard/model/features.ts` |
 | Document validation / migration | `whiteboard/model/validation.ts` / `document.ts` |
 | Pointer routing / a new gesture kind | `whiteboard/interaction.svelte.ts` (`#routePointerDown` + the `ActiveGesture` union) |
+| Pipeline B mechanics (translate / resize / rotate / smart-feature drag) | `whiteboard/smart-gestures.svelte.ts` (`SmartGestureController`: preview + commit solves; the `SmartGesture` arms of `ActiveGesture`) |
+| Lifting a `ToolCommit` to a Document transaction | `whiteboard/commit-lift.ts` (pure `Document → Document`: `liftCommit` and the smart/baked partition, plus `snapCreationPreview`) |
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
