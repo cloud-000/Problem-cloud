@@ -155,7 +155,9 @@ cell.
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
 | Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` (pure TS: `buildOverlay`) |
-| Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns keyboard shortcuts and the DOM overlays |
+| Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns the DOM overlays |
+| Canvas keyboard shortcuts / which surface answers them | `components/whiteboard/shortcuts.svelte.ts` (`KeyboardShortcutController`: the module-level active-surface claim, the held-space modifier, and the editing keys) |
+| Contextual constraint toolbar (placement, drag, relation/dimension actions) | `components/whiteboard/constraint-toolbar.svelte`, with its pure placement math in `constraint-toolbar.ts`. Placement is a two-stage pipeline: `auto` (selection anchors only) → `position` (drag offset applied, clamped to the board). The drag writes the offset and may read `auto`; it must **never** read `position`, or the placement feeds back on itself. |
 | Screen ↔ asy-space viewport math | `components/whiteboard/camera.svelte.ts` (`Camera`) |
 | Toolbar / inspector / command UI | `components/whiteboard/*.svelte` (see `DOCS.md`) |
 | SVG/PNG/asy export | `components/whiteboard/export.ts` (renders the *projected* Scene) |
