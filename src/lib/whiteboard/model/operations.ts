@@ -826,30 +826,3 @@ export function deleteWhiteboardItems(
     return next;
 }
 
-/** Reconcile Scene-based baked tools without flattening any surviving smart item. */
-export function reconcileResolvedScene(
-    document: WhiteboardDocument,
-    scene: Scene,
-): WhiteboardDocument {
-    const resolved = resolveWhiteboardDocument(document);
-    const smartById = new Map<string, WhiteboardItem>();
-    document.items.forEach((item) => {
-        if (item.kind !== "baked") smartById.set(item.id, item);
-    });
-    const resolvedById = new Map(resolved.elements.map((element) => [element.id, element]));
-    const items: WhiteboardItem[] = [];
-    for (const element of scene.elements) {
-        const smart = smartById.get(element.id);
-        if (smart) {
-            if (JSON.stringify(element) !== JSON.stringify(resolvedById.get(element.id))) {
-                throw new Error(`Scene operation attempted to mutate smart item ${element.id}`);
-            }
-            items.push(smart);
-        } else {
-            items.push({ kind: "baked", element });
-        }
-    }
-    const survivingIds = new Set(items.map((item) => item.kind === "baked" ? item.element.id : item.id));
-    const removedSmart = [...smartById.keys()].filter((id) => !survivingIds.has(id));
-    return deleteWhiteboardItems({ ...document, items }, removedSmart);
-}

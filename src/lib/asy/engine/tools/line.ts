@@ -35,10 +35,10 @@ export class LineTool implements Tool {
         return this.commitSegment(scene, start, p, ctx);
     }
 
-    private commitSegment(scene: Scene, start: Pair, end: Pair, ctx: ToolContext): ToolResult {
+    private commitSegment(_scene: Scene, start: Pair, end: Pair, ctx: ToolContext): ToolResult {
         const path = createPath(makePath([start, end]), ctx.pen);
         return {
-            commit: addElement(scene, path),
+            commit: { kind: "add", elements: [path] },
             selection: [path.id],
             preview: null,
             nextTool: "select",

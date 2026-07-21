@@ -162,6 +162,78 @@ describe("WhiteboardStore selection gestures", () => {
         expect(store.scene.elements[1]).toMatchObject({ kind: "dot", at: [12, 13] });
     });
 
+    // Replaces the retired model-level `reconcileResolvedScene` test: a Pipeline A
+    // (tool) edit of a baked element inside a mixed document must not disturb the
+    // smart item. Under the old Scene→Document merge this was enforced by
+    // re-deriving the item list from the committed Scene and throwing on drift;
+    // now the commit is a `replace` delta lifted to a targeted transaction, so the
+    // smart item is never even read.
+    test("a baked-only drag in a mixed document leaves the smart item and sketch untouched", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const document = {
+            ...created.document,
+            items: [
+                ...created.document.items,
+                { kind: "baked" as const, element: { id: "baked", kind: "dot" as const, at: [10, 10] as const } },
+            ],
+        };
+        const store = new WhiteboardStore(document);
+        const smartBefore = structuredClone(store.document.items[0]);
+        const sketchBefore = structuredClone(store.document.sketch);
+
+        store.pointerDown([10, 10]);
+        store.pointerMove([12, 13]);
+        store.pointerUp([12, 13]);
+
+        expect(store.scene.elements.find(({ id }) => id === "baked")).toMatchObject({
+            kind: "dot",
+            at: [12, 13],
+        });
+        expect(store.document.items[0]).toEqual(smartBefore);
+        expect(store.document.sketch).toEqual(sketchBefore);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(store.scene.elements.find(({ id }) => id === "baked")).toMatchObject({ at: [10, 10] });
+        expect(store.canUndo).toBe(false);
+    });
+
+    // The eraser's `erase` delta must delete smart items too, not just baked ones
+    // (the old reconcile inferred this from a smart item going missing from the
+    // committed Scene). Deleting a smart item must also clean up its sketch graph.
+    test("erasing a smart item deletes it and its sketch geometry as one undo step", () => {
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [4, 0]],
+            false,
+            undefined,
+            undefined,
+            "smart",
+        );
+        const store = new WhiteboardStore(created.document);
+        store.setTool("eraser");
+
+        store.pointerDown([2, 0]);
+        store.pointerUp([2, 0]);
+
+        expect(store.scene.elements).toHaveLength(0);
+        expect(store.document.items).toHaveLength(0);
+        expect(Object.keys(store.document.sketch.curves)).toHaveLength(0);
+        expect(Object.keys(store.document.sketch.points)).toHaveLength(0);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(store.scene.elements).toHaveLength(1);
+        expect(store.canUndo).toBe(false);
+    });
+
     test("feature actions, relation creation, and driving dimension edits are each atomic", () => {
         const created = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [3, 4]], false);
         const item = created.document.items[0];

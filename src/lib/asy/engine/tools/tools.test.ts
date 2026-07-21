@@ -1,12 +1,58 @@
 import { describe, expect, test } from "bun:test";
-import { createTool, type ToolContext } from "./index";
+import { createTool, type ToolCommit, type ToolContext } from "./index";
 import { History } from "../history";
 import { DEFAULT_STROKE_PROCESSING_OPTIONS } from "../simplify";
 import { emptyScene } from "../../scene/factory";
 import { createArc, createCircle, createEllipticalArc, createPath, makePath } from "../../scene/factory";
 import { elementBounds } from "../../scene/bounds";
 import { pathCommands } from "../../scene/path-geometry";
-import type { Pair, Scene } from "../../scene/types";
+import type { Pair, Scene, SceneElement } from "../../scene/types";
+
+/**
+ * Tools now describe their commit as a `ToolCommit` delta rather than a whole
+ * Scene (see whiteboard `ARCHITECTURE.md` §4). `committed` extracts the elements
+ * an add/replace gesture carries (the only kinds these assertions inspect), and
+ * `sceneAfter` reconstructs the resulting Scene so multi-step tests can keep
+ * feeding each committed state into the next gesture.
+ */
+function committed(commit: ToolCommit | undefined): SceneElement[] {
+    if (commit?.kind === "add" || commit?.kind === "replace") return [...commit.elements];
+    throw new Error(`expected an add/replace commit, got ${commit?.kind ?? "none"}`);
+}
+
+function sceneAfter(before: Scene, commit: ToolCommit | undefined): Scene {
+    if (!commit) return before;
+    switch (commit.kind) {
+        case "add":
+            return { ...before, elements: [...before.elements, ...commit.elements] };
+        case "replace": {
+            const byId = new Map(commit.elements.map((element) => [element.id, element]));
+            return { ...before, elements: before.elements.map((element) => byId.get(element.id) ?? element) };
+        }
+        case "erase": {
+            const removed = new Set(commit.elementIds);
+            return { ...before, elements: before.elements.filter((element) => !removed.has(element.id)) };
+        }
+        case "extend-path":
+            return {
+                ...before,
+                elements: before.elements.map((element) =>
+                    element.id === commit.elementId && element.kind === "path"
+                        ? { ...element, path: { ...element.path, nodes: [...element.path.nodes, commit.node], joins: [...element.path.joins, "--" as const] } }
+                        : element
+                ),
+            };
+        case "close-path":
+            return {
+                ...before,
+                elements: before.elements.map((element) =>
+                    element.id === commit.elementId && element.kind === "path"
+                        ? { ...element, path: { ...element.path, cyclic: true, joins: [...element.path.joins, "--" as const] } }
+                        : element
+                ),
+            };
+    }
+}
 
 const ctx: ToolContext = {
     pen: { namedColor: "red" },
@@ -24,7 +70,7 @@ describe("PointTool", () => {
     test("commits a dot on click", () => {
         const tool = createTool("point");
         const r = tool.onPointerDown(emptyScene(), [1, 2], ctx);
-        expect(r.commit?.elements).toMatchObject([{ kind: "dot", at: [1, 2], pen: { namedColor: "red" } }]);
+        expect(committed(r.commit)).toMatchObject([{ kind: "dot", at: [1, 2], pen: { namedColor: "red" } }]);
         expect(r.selection).toHaveLength(1);
     });
 });
@@ -38,12 +84,12 @@ describe("LineTool", () => {
         expect(mv.preview?.elements).toHaveLength(1);
         expect(mv.commit).toBeUndefined();
         const up = tool.onPointerUp(s, [3, 3], ctx);
-        expect(up.commit?.elements).toMatchObject([
+        expect(committed(up.commit)).toMatchObject([
             { kind: "path", path: { nodes: [[0, 0], [3, 3]], cyclic: false } },
         ]);
         expect(up.nextTool).toBe("select");
         expect(up.lineContinuation).toEqual({
-            elementId: up.commit?.elements[0].id,
+            elementId: committed(up.commit)[0].id,
             nodeIndex: 1,
         });
     });
@@ -62,12 +108,12 @@ describe("LineTool", () => {
         ]);
 
         const placed = tool.onPointerDown(s, [3, 2], ctx);
-        expect(placed.commit?.elements).toMatchObject([
+        expect(committed(placed.commit)).toMatchObject([
             { kind: "path", path: { nodes: [[0, 0], [3, 2]], cyclic: false } },
         ]);
         expect(placed.nextTool).toBe("select");
         expect(placed.lineContinuation).toEqual({
-            elementId: placed.commit?.elements[0].id,
+            elementId: committed(placed.commit)[0].id,
             nodeIndex: 1,
         });
     });
@@ -91,7 +137,7 @@ describe("RectangleTool", () => {
         ]);
 
         const up = tool.onPointerUp(scene, [4, 6], ctx);
-        expect(up.commit?.elements).toMatchObject([
+        expect(committed(up.commit)).toMatchObject([
             {
                 kind: "path",
                 path: {
@@ -102,7 +148,7 @@ describe("RectangleTool", () => {
                 pen: { namedColor: "red" },
             },
         ]);
-        expect(up.selection).toEqual([up.commit?.elements[0].id]);
+        expect(up.selection).toEqual([committed(up.commit)[0].id]);
         expect(up.nextTool).toBe("select");
     });
 
@@ -111,7 +157,7 @@ describe("RectangleTool", () => {
         const fillCtx = { ...ctx, fillPen: { namedColor: "yellow", opacity: 0.25 } };
         tool.onPointerDown(emptyScene(), [0, 0], fillCtx);
         const result = tool.onPointerUp(emptyScene(), [2, 1], fillCtx);
-        expect(result.commit?.elements[0]).toMatchObject({
+        expect(committed(result.commit)[0]).toMatchObject({
             kind: "path",
             fillPen: { namedColor: "yellow", opacity: 0.25 },
         });
@@ -137,8 +183,8 @@ describe("PenTool", () => {
 
         const up = tool.onPointerUp(scene, [1, 2], styled);
 
-        expect(up.commit?.elements).toHaveLength(1);
-        expect(up.commit?.elements).toMatchObject([
+        expect(committed(up.commit)).toHaveLength(1);
+        expect(committed(up.commit)).toMatchObject([
             {
                 kind: "dot",
                 at: [1, 2],
@@ -158,17 +204,17 @@ describe("PenTool", () => {
         stroke.onPointerDown(scene, [0, 0], ctx);
         const strokeCommit = stroke.onPointerUp(scene, [0.06, 0], ctx, [[0.03, 0]]).commit;
 
-        expect(tapCommit?.elements).toHaveLength(1);
-        expect(tapCommit?.elements[0].kind).toBe("dot");
-        expect(strokeCommit?.elements).toHaveLength(1);
-        expect(strokeCommit?.elements[0].kind).toBe("fill");
+        expect(committed(tapCommit)).toHaveLength(1);
+        expect(committed(tapCommit)[0].kind).toBe("dot");
+        expect(committed(strokeCommit)).toHaveLength(1);
+        expect(committed(strokeCommit)[0].kind).toBe("fill");
     });
 
     test("a tap commit is one undoable history step", () => {
         const before = emptyScene();
         const tool = createTool("pen");
         tool.onPointerDown(before, [0, 0], ctx);
-        const after = tool.onPointerUp(before, [0, 0], ctx).commit!;
+        const after = sceneAfter(before, tool.onPointerUp(before, [0, 0], ctx).commit);
         const history = new History<Scene>();
         history.push(before);
 
@@ -198,7 +244,7 @@ describe("PenTool", () => {
         tool.onPointerDown(s, [0, 0], ctx);
         for (const x of [1, 2, 3, 4]) tool.onPointerMove(s, [x, 0.01], ctx);
         const up = tool.onPointerUp(s, [5, 0], ctx);
-        const el = up.commit!.elements[0];
+        const el = committed(up.commit)[0];
         expect(el.kind).toBe("fill");
         if (el.kind !== "fill") return;
         expect(el.path.cyclic).toBe(true);
@@ -233,14 +279,14 @@ describe("PenTool", () => {
         const scene = emptyScene();
         tool.onPointerDown(scene, [0, 0], ctx);
         const commit = tool.onPointerUp(scene, [3, 1], ctx, [[1, 0.2], [2, 0.1]]);
-        const committed = commit.commit?.elements[0];
+        const committedElement = committed(commit.commit)[0];
 
         const reference = createTool("pen");
         reference.onPointerDown(scene, [0, 0], ctx);
         reference.onPointerMoves?.(scene, [[1, 0.2], [2, 0.1]], ctx);
-        const expected = reference.onPointerUp(scene, [3, 1], ctx).commit?.elements[0];
-        expect(committed?.kind).toBe("fill");
-        expect(committed?.kind === "fill" ? committed.path : null).toEqual(
+        const expected = committed(reference.onPointerUp(scene, [3, 1], ctx).commit)[0];
+        expect(committedElement?.kind).toBe("fill");
+        expect(committedElement?.kind === "fill" ? committedElement.path : null).toEqual(
             expected?.kind === "fill" ? expected.path : null,
         );
     });
@@ -263,7 +309,7 @@ describe("PenTool", () => {
         const preview = tool.onPointerMove(scene, [3, 1], ctx);
         const commit = tool.onPointerUp(scene, [3, 1], ctx);
         const previewElement = preview.preview?.elements[0];
-        const commitElement = commit.commit?.elements[0];
+        const commitElement = committed(commit.commit)[0];
 
         expect(previewElement?.kind).toBe("fill");
         expect(commitElement?.kind).toBe("fill");
@@ -292,7 +338,7 @@ describe("PenTool", () => {
         );
         const commit = tool.onPointerUp(scene, [2, 1], custom);
         const previewElement = preview?.preview?.elements[0];
-        const commitElement = commit.commit?.elements[0];
+        const commitElement = committed(commit.commit)[0];
 
         expect(previewElement?.kind).toBe("fill");
         expect(commitElement?.kind).toBe("fill");
@@ -316,7 +362,7 @@ describe("PenTool", () => {
             };
             tool.onPointerDown(scene, [0, 0], options);
             tool.onPointerMoves?.(scene, [[1, 0], [1, 1]], options);
-            return tool.onPointerUp(scene, [1, 1], options).commit?.elements[0];
+            return committed(tool.onPointerUp(scene, [1, 1], options).commit)[0];
         };
 
         const smooth = draw(91);
@@ -342,7 +388,7 @@ describe("PenTool", () => {
         const preview = tool.onPointerMove(scene, [4, 2.7], exact);
         const commit = tool.onPointerUp(scene, [4, 2.7], exact);
         const previewElement = preview.preview?.elements[0];
-        const commitElement = commit.commit?.elements[0];
+        const commitElement = committed(commit.commit)[0];
 
         expect(previewElement?.kind).toBe("path");
         expect(commitElement?.kind).toBe("path");
@@ -391,10 +437,10 @@ describe("ArcTool", () => {
             { kind: "arc", center: [0, 0], radius: 2, angle1: 90, angle2: 180 },
         ]);
         const commit = tool.onPointerDown(s, [-4, 0], ctx);
-        expect(commit.commit?.elements).toMatchObject([
+        expect(committed(commit.commit)).toMatchObject([
             { kind: "arc", center: [0, 0], radius: 2, angle1: 90, angle2: 180 },
         ]);
-        expect(commit.selection).toEqual([commit.commit?.elements[0].id]);
+        expect(commit.selection).toEqual([committed(commit.commit)[0].id]);
         expect(commit.nextTool).toBe("select");
         expect(commit.arcGuide).toBeNull();
     });
@@ -406,7 +452,7 @@ describe("ArcTool", () => {
         tool.onPointerDown(s, [2, 0], ctx);
         tool.onPointerDown(s, [2, 0], ctx);
         const commit = tool.onPointerDown(s, [2, 0], ctx);
-        expect(commit.commit?.elements).toMatchObject([
+        expect(committed(commit.commit)).toMatchObject([
             { kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 360 },
         ]);
     });
@@ -430,7 +476,7 @@ describe("LabelTool", () => {
     test("uses promptLabel text", () => {
         const tool = createTool("label");
         const r = tool.onPointerDown(emptyScene(), [1, 1], ctx);
-        expect(r.commit?.elements).toMatchObject([{ kind: "label", text: "$P$", at: [1, 1] }]);
+        expect(committed(r.commit)).toMatchObject([{ kind: "label", text: "$P$", at: [1, 1] }]);
     });
 
     test("no text -> no element", () => {
@@ -443,15 +489,19 @@ describe("LabelTool", () => {
 describe("EraserTool", () => {
     test("drag erases hit elements, committed as one edit", () => {
         const point = createTool("point");
-        let scene = point.onPointerDown(emptyScene(), [0, 0], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [5, 5], ctx).commit!;
+        const empty = emptyScene();
+        let scene = sceneAfter(empty, point.onPointerDown(empty, [0, 0], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [5, 5], ctx).commit);
         expect(scene.elements).toHaveLength(2);
 
         const eraser = createTool("eraser");
         eraser.onPointerDown(scene, [0, 0], ctx); // erase first dot
         eraser.onPointerMove(scene, [5, 5], ctx); // erase second dot
         const up = eraser.onPointerUp(scene, [5, 5], ctx);
-        expect(up.commit?.elements).toHaveLength(0);
+        expect(up.commit).toEqual({
+            kind: "erase",
+            elementIds: [scene.elements[0].id, scene.elements[1].id],
+        });
     });
 
     test("erasing empty space commits nothing", () => {
@@ -471,13 +521,17 @@ describe("EraserTool", () => {
             sceneUnitsPerPixel: 0.1,
         };
         eraser.onPointerDown({ elements: [point] }, [0.6, 0], radiusCtx);
-        expect(eraser.onPointerUp({ elements: [point] }, [0.6, 0], radiusCtx).commit?.elements).toEqual([]);
+        expect(eraser.onPointerUp({ elements: [point] }, [0.6, 0], radiusCtx).commit).toEqual({
+            kind: "erase",
+            elementIds: [point.id],
+        });
     });
 });
 
 describe("SelectTool", () => {
     function sceneWithDot(at: Pair) {
-        return createTool("point").onPointerDown(emptyScene(), at, ctx).commit!;
+        const scene = emptyScene();
+        return sceneAfter(scene, createTool("point").onPointerDown(scene, at, ctx).commit);
     }
 
     function sceneWithMixedPath() {
@@ -513,19 +567,20 @@ describe("SelectTool", () => {
         ]);
 
         const result = tool.onPointerDown(scene, [4, 3], continuationCtx);
-        expect(result.commit?.elements).toHaveLength(1);
-        expect(result.commit?.elements).toMatchObject([
+        expect(result.commit).toEqual({ kind: "extend-path", elementId: line.id, node: [4, 3] });
+        expect(sceneAfter(scene, result.commit).elements).toMatchObject([
             { id: line.id, kind: "path", path: { nodes: [[0, 0], [2, 1], [4, 3]] } },
         ]);
         expect(result.selection).toEqual([line.id]);
         expect(result.lineContinuation).toEqual({ elementId: line.id, nodeIndex: 2 });
 
-        const extended = tool.onPointerDown(result.commit!, [5, 4], {
+        const afterFirst = sceneAfter(scene, result.commit);
+        const extended = tool.onPointerDown(afterFirst, [5, 4], {
             ...continuationCtx,
             lineContinuation: result.lineContinuation!,
         });
-        expect(extended.commit?.elements).toHaveLength(1);
-        expect(extended.commit?.elements).toMatchObject([
+        expect(extended.commit).toEqual({ kind: "extend-path", elementId: line.id, node: [5, 4] });
+        expect(sceneAfter(afterFirst, extended.commit).elements).toMatchObject([
             { id: line.id, kind: "path", path: { nodes: [[0, 0], [2, 1], [4, 3], [5, 4]] } },
         ]);
         expect(extended.lineContinuation).toEqual({ elementId: line.id, nodeIndex: 3 });
@@ -550,8 +605,8 @@ describe("SelectTool", () => {
         ]);
 
         const result = tool.onPointerDown(scene, [0.2, 0.1], continuationCtx);
-        expect(result.commit?.elements).toHaveLength(1);
-        expect(result.commit?.elements).toMatchObject([
+        expect(result.commit).toEqual({ kind: "close-path", elementId: path.id });
+        expect(sceneAfter(scene, result.commit).elements).toMatchObject([
             {
                 id: path.id,
                 kind: "path",
@@ -615,7 +670,7 @@ describe("SelectTool", () => {
         tool.onPointerDown(scene, [1, 1], ctx);
         tool.onPointerMove(scene, [4, 5], ctx);
         const up = tool.onPointerUp(scene, [4, 5], ctx);
-        expect(up.commit?.elements).toMatchObject([{ kind: "dot", at: [4, 5] }]);
+        expect(committed(up.commit)).toMatchObject([{ kind: "dot", at: [4, 5] }]);
     });
 
     test("whole-object move, resize, and rotation preserve mixed joins", () => {
@@ -628,7 +683,7 @@ describe("SelectTool", () => {
             selection: [movedSource.path.id],
         });
         move.onPointerMove(movedSource.scene, [2, 3], ctx);
-        const moved = move.onPointerUp(movedSource.scene, [2, 3], ctx).commit?.elements[0];
+        const moved = committed(move.onPointerUp(movedSource.scene, [2, 3], ctx).commit)[0];
         expect(moved?.kind === "path" ? moved.path.joins : []).toEqual(originalJoins);
         expect(moved?.kind === "path" ? moved.path.nodes[0] : null).toEqual([2, 3]);
 
@@ -646,8 +701,7 @@ describe("SelectTool", () => {
             },
         };
         resize.onPointerDown(resizedSource.scene, [3, 1], resizeCtx);
-        const resized = resize.onPointerUp(resizedSource.scene, [6, 2], resizeCtx)
-            .commit?.elements[0];
+        const resized = committed(resize.onPointerUp(resizedSource.scene, [6, 2], resizeCtx).commit)[0];
         expect(resized?.kind === "path" ? resized.path.joins : []).toEqual(originalJoins);
         expect(resized?.kind === "path" ? resized.path.nodes.at(-1) : null).toEqual([6, 0]);
 
@@ -659,8 +713,7 @@ describe("SelectTool", () => {
             selectionTransform: { kind: "rotate", pivot: [0, 0] },
         };
         rotate.onPointerDown(rotatedSource.scene, [1, 0], rotateCtx);
-        const rotated = rotate.onPointerUp(rotatedSource.scene, [0, 1], rotateCtx)
-            .commit?.elements[0];
+        const rotated = committed(rotate.onPointerUp(rotatedSource.scene, [0, 1], rotateCtx).commit)[0];
         expect(rotated?.kind === "path" ? rotated.path.joins : []).toEqual(originalJoins);
         if (rotated?.kind !== "path") return;
         expect(rotated.path.nodes[1][0]).toBeCloseTo(-1);
@@ -669,8 +722,9 @@ describe("SelectTool", () => {
 
     test("dragging empty space marquee-selects elements whose bounds it contains", () => {
         const point = createTool("point");
-        let scene = point.onPointerDown(emptyScene(), [1, 1], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [6, 6], ctx).commit!;
+        const empty = emptyScene();
+        let scene = sceneAfter(empty, point.onPointerDown(empty, [1, 1], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [6, 6], ctx).commit);
         const tool = createTool("select");
         tool.onPointerDown(scene, [0, 0], ctx);
         const preview = tool.onPointerMove(scene, [3, 3], ctx);
@@ -684,7 +738,7 @@ describe("SelectTool", () => {
     test("marquee selection excludes partial overlaps and includes fully covered bounds", () => {
         const rectangle = createTool("rectangle");
         rectangle.onPointerDown(emptyScene(), [1, 1], ctx);
-        const scene = rectangle.onPointerUp(emptyScene(), [5, 5], ctx).commit!;
+        const scene = sceneAfter(emptyScene(), rectangle.onPointerUp(emptyScene(), [5, 5], ctx).commit);
 
         const overlapping = createTool("select");
         overlapping.onPointerDown(scene, [0, 0], ctx);
@@ -702,22 +756,24 @@ describe("SelectTool", () => {
     });
 
     test("dragging one member of a selection moves the whole group", () => {
-        let scene = createTool("point").onPointerDown(emptyScene(), [1, 1], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [2, 2], ctx).commit!;
+        const empty = emptyScene();
+        let scene = sceneAfter(empty, createTool("point").onPointerDown(empty, [1, 1], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [2, 2], ctx).commit);
         const selection = scene.elements.map((element) => element.id);
         const tool = createTool("select");
         tool.onPointerDown(scene, [1, 1], { ...ctx, selection });
         tool.onPointerMove(scene, [4, 5], { ...ctx, selection });
         const up = tool.onPointerUp(scene, [4, 5], { ...ctx, selection });
-        expect(up.commit?.elements).toMatchObject([
+        expect(committed(up.commit)).toMatchObject([
             { kind: "dot", at: [4, 5] },
             { kind: "dot", at: [5, 6] },
         ]);
     });
 
     test("dragging from empty space inside the selection bounds moves the whole selection", () => {
-        let scene = createTool("point").onPointerDown(emptyScene(), [0, 0], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [4, 4], ctx).commit!;
+        const empty = emptyScene();
+        let scene = sceneAfter(empty, createTool("point").onPointerDown(empty, [0, 0], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [4, 4], ctx).commit);
         const selection = scene.elements.map((element) => element.id);
         const tool = createTool("select");
         const moveCtx: ToolContext = {
@@ -730,7 +786,7 @@ describe("SelectTool", () => {
         expect(down.selection).toEqual(selection);
         tool.onPointerMove(scene, [5, 6], moveCtx);
         const up = tool.onPointerUp(scene, [5, 6], moveCtx);
-        expect(up.commit?.elements).toMatchObject([
+        expect(committed(up.commit)).toMatchObject([
             { kind: "dot", at: [3, 4] },
             { kind: "dot", at: [7, 8] },
         ]);
@@ -790,7 +846,7 @@ describe("SelectTool", () => {
             tool.onPointerDown(scene, handle, transformCtx);
             expect(tool.onPointerMove(scene, target, transformCtx).commit).toBeUndefined();
             const result = tool.onPointerUp(scene, target, transformCtx);
-            expect(elementBounds(result.commit!.elements[0])).toEqual(expected);
+            expect(elementBounds(committed(result.commit)[0])).toEqual(expected);
         });
     }
 
@@ -811,7 +867,7 @@ describe("SelectTool", () => {
         };
         tool.onPointerDown(scene, [2, 2], transformCtx);
         const result = tool.onPointerUp(scene, [4, 6], transformCtx);
-        expect(elementBounds(result.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 6] });
+        expect(elementBounds(committed(result.commit)[0])).toEqual({ min: [0, 0], max: [4, 6] });
     });
 
     test("edge resize changes one dimension and Shift preserves the original ratio", () => {
@@ -829,13 +885,13 @@ describe("SelectTool", () => {
         const freeCtx: ToolContext = { ...ctx, selection: [shape.id], selectionTransform: gesture };
         free.onPointerDown(scene, [2, 1], freeCtx);
         const freeResult = free.onPointerUp(scene, [4, 3], freeCtx);
-        expect(elementBounds(freeResult.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 2] });
+        expect(elementBounds(committed(freeResult.commit)[0])).toEqual({ min: [0, 0], max: [4, 2] });
 
         const locked = createTool("select");
         const lockedCtx: ToolContext = { ...freeCtx, lockAspectRatio: true };
         locked.onPointerDown(scene, [2, 1], lockedCtx);
         const lockedResult = locked.onPointerUp(scene, [4, 1], lockedCtx);
-        expect(elementBounds(lockedResult.commit!.elements[0])).toEqual({ min: [0, -1], max: [4, 3] });
+        expect(elementBounds(committed(lockedResult.commit)[0])).toEqual({ min: [0, -1], max: [4, 3] });
     });
 
     test("aspect locking can be toggled during an active corner drag", () => {
@@ -862,7 +918,7 @@ describe("SelectTool", () => {
         }).preview!;
         expect(elementBounds(lockedPreview.elements[0])).toEqual({ min: [0, 0], max: [5, 5] });
         const result = tool.onPointerUp(scene, [4, 6], freeCtx);
-        expect(elementBounds(result.commit!.elements[0])).toEqual({ min: [0, 0], max: [4, 6] });
+        expect(elementBounds(committed(result.commit)[0])).toEqual({ min: [0, 0], max: [4, 6] });
     });
 
     test("anisotropic resize converts circles to editable ellipses", () => {
@@ -881,7 +937,7 @@ describe("SelectTool", () => {
         };
         const tool = createTool("select");
         tool.onPointerDown(scene, [2, 2], transformCtx);
-        expect(tool.onPointerUp(scene, [4, 6], transformCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(tool.onPointerUp(scene, [4, 6], transformCtx).commit)[0]).toMatchObject({
             kind: "ellipse",
             center: [2, 3],
             axisX: [2, 0],
@@ -908,7 +964,7 @@ describe("SelectTool", () => {
         };
         tool.onPointerDown(scene, [2.2, 0.1], transformCtx);
         const result = tool.onPointerUp(scene, [-2 + 0.2, 0.1], transformCtx);
-        expect(result.commit?.elements).toMatchObject([{ kind: "path", path: { nodes: [[0, 0], [0.5, 0]] } }]);
+        expect(committed(result.commit)).toMatchObject([{ kind: "path", path: { nodes: [[0, 0], [0.5, 0]] } }]);
     });
 
     test("dragging a line vertex moves only that endpoint and keeps the pointer offset", () => {
@@ -928,9 +984,8 @@ describe("SelectTool", () => {
         const tool = createTool("select");
         tool.onPointerDown(scene, [2.1, 1.2], transformCtx);
         const result = tool.onPointerUp(scene, [4.1, 3.2], transformCtx);
-        const nodes = result.commit?.elements[0].kind === "path"
-            ? result.commit.elements[0].path.nodes
-            : [];
+        const element = committed(result.commit)[0];
+        const nodes = element.kind === "path" ? element.path.nodes : [];
         expect(nodes[0]).toEqual([0, 0]);
         expect(nodes[1][0]).toBeCloseTo(4);
         expect(nodes[1][1]).toBeCloseTo(3);
@@ -957,9 +1012,10 @@ describe("SelectTool", () => {
     });
 
     test("a transform handle wins over move hit-testing and transforms the whole selection", () => {
-        let scene = createTool("point").onPointerDown(emptyScene(), [0, 0], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [2, 2], ctx).commit!;
-        scene = createTool("point").onPointerDown(scene, [8, 8], ctx).commit!;
+        const empty = emptyScene();
+        let scene = sceneAfter(empty, createTool("point").onPointerDown(empty, [0, 0], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [2, 2], ctx).commit);
+        scene = sceneAfter(scene, createTool("point").onPointerDown(scene, [8, 8], ctx).commit);
         const selection = scene.elements.slice(0, 2).map((element) => element.id);
         const transformCtx: ToolContext = {
             ...ctx,
@@ -976,7 +1032,13 @@ describe("SelectTool", () => {
         // The handle lies directly on a selected dot; transform routing must win.
         tool.onPointerDown(scene, [2, 2], transformCtx);
         const result = tool.onPointerUp(scene, [4, 4], transformCtx);
-        expect(result.commit?.elements).toMatchObject([
+        // The commit is a delta: only the two selected dots are re-emitted.
+        expect(committed(result.commit)).toMatchObject([
+            { kind: "dot", at: [0, 0] },
+            { kind: "dot", at: [4, 4] },
+        ]);
+        // The unselected third dot is untouched by the gesture.
+        expect(sceneAfter(scene, result.commit).elements).toMatchObject([
             { kind: "dot", at: [0, 0] },
             { kind: "dot", at: [4, 4] },
             { kind: "dot", at: [8, 8] },
@@ -997,9 +1059,8 @@ describe("SelectTool", () => {
         expect(preview.preview?.elements[0].kind).toBe("path");
         expect(preview.commit).toBeUndefined();
         const result = tool.onPointerUp(scene, [-1, 0], transformCtx);
-        const nodes = result.commit?.elements[0].kind === "path"
-            ? result.commit.elements[0].path.nodes
-            : [];
+        const element = committed(result.commit)[0];
+        const nodes = element.kind === "path" ? element.path.nodes : [];
         expect(nodes[0][0]).toBeCloseTo(1);
         expect(nodes[0][1]).toBeCloseTo(-1);
         expect(nodes[1][0]).toBeCloseTo(1);
@@ -1019,9 +1080,8 @@ describe("SelectTool", () => {
         tool.onPointerDown(scene, [2, 0], transformCtx);
         const angle = (20 * Math.PI) / 180;
         const result = tool.onPointerUp(scene, [2 * Math.cos(angle), 2 * Math.sin(angle)], transformCtx);
-        const first = result.commit?.elements[0].kind === "path"
-            ? result.commit.elements[0].path.nodes[0]
-            : [0, 0];
+        const rotatedElement = committed(result.commit)[0];
+        const first = rotatedElement.kind === "path" ? rotatedElement.path.nodes[0] : [0, 0];
         expect(first[0]).toBeCloseTo(Math.cos(Math.PI / 12));
         expect(first[1]).toBeCloseTo(Math.sin(Math.PI / 12));
     });
@@ -1043,7 +1103,7 @@ describe("SelectTool", () => {
         const tool = createTool("select");
         tool.onPointerDown(scene, [1.2, 1.1], transformCtx);
         expect(tool.onPointerMove(scene, [4.2, 5.1], transformCtx).commit).toBeUndefined();
-        expect(tool.onPointerUp(scene, [4.2, 5.1], transformCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(tool.onPointerUp(scene, [4.2, 5.1], transformCtx).commit)[0]).toMatchObject({
             kind: "arc",
             center: [4, 5],
             radius: 2,
@@ -1069,7 +1129,7 @@ describe("SelectTool", () => {
         const startTool = createTool("select");
         startTool.onPointerDown(scene, [2, 0], startCtx);
         const startResult = startTool.onPointerUp(scene, [Math.SQRT2, Math.SQRT2], startCtx);
-        expect(startResult.commit?.elements[0]).toMatchObject({
+        expect(committed(startResult.commit)[0]).toMatchObject({
             kind: "arc",
             radius: 2,
             angle1: 45,
@@ -1089,7 +1149,7 @@ describe("SelectTool", () => {
         const endTool = createTool("select");
         endTool.onPointerDown(scene, [0, 2], endCtx);
         const crossing = endTool.onPointerUp(scene, [Math.SQRT2, -Math.SQRT2], endCtx);
-        expect(crossing.commit?.elements[0]).toMatchObject({
+        expect(committed(crossing.commit)[0]).toMatchObject({
             kind: "arc",
             radius: 2,
             angle1: 0,
@@ -1121,7 +1181,7 @@ describe("SelectTool", () => {
             angle1: 20,
             angle2: 200,
         });
-        expect(tool.onPointerUp(scene, [0.1, 0], transformCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(tool.onPointerUp(scene, [0.1, 0], transformCtx).commit)[0]).toMatchObject({
             kind: "arc",
             radius: 0.5,
             angle1: 20,
@@ -1148,7 +1208,7 @@ describe("SelectTool", () => {
         tool.onPointerMove(scene, [0.8, 0], transformCtx);
         expect(tool.onPointerMove(scene, [0.92, 0], transformCtx).preview?.elements[0])
             .toMatchObject({ kind: "arc", radius: 1 });
-        expect(tool.onPointerUp(scene, [0.94, 0], transformCtx).commit?.elements[0])
+        expect(committed(tool.onPointerUp(scene, [0.94, 0], transformCtx).commit)[0])
             .toMatchObject({ kind: "arc", radius: 1 });
     });
 
@@ -1168,7 +1228,7 @@ describe("SelectTool", () => {
         };
         const resize = createTool("select");
         resize.onPointerDown(scene, [1, 1], resizeCtx);
-        const resized = resize.onPointerUp(scene, [3, 1], resizeCtx).commit!;
+        const resized = sceneAfter(scene, resize.onPointerUp(scene, [3, 1], resizeCtx).commit);
         expect(resized.elements[0]).toMatchObject({
             kind: "elliptical-arc",
             center: [1, 0],
@@ -1192,7 +1252,7 @@ describe("SelectTool", () => {
         };
         const endpoint = createTool("select");
         endpoint.onPointerDown(resized, [1, 1], endpointCtx);
-        expect(endpoint.onPointerUp(resized, [-1, 0], endpointCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(endpoint.onPointerUp(resized, [-1, 0], endpointCtx).commit)[0]).toMatchObject({
             kind: "elliptical-arc",
             center: [1, 0],
             axisX: [2, 0],
@@ -1218,7 +1278,7 @@ describe("SelectTool", () => {
         };
         const center = createTool("select");
         center.onPointerDown(scene, [2, 3], centerCtx);
-        expect(center.onPointerUp(scene, [4, 6], centerCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(center.onPointerUp(scene, [4, 6], centerCtx).commit)[0]).toMatchObject({
             kind: "elliptical-arc",
             center: [4, 6],
             axisX: [3, 1],
@@ -1237,7 +1297,7 @@ describe("SelectTool", () => {
         };
         const start = createTool("select");
         start.onPointerDown(scene, [5, 4], startCtx);
-        expect(start.onPointerUp(scene, [1, 5], startCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(start.onPointerUp(scene, [1, 5], startCtx).commit)[0]).toMatchObject({
             kind: "elliptical-arc",
             angle1: 90,
             angle2: 180,
@@ -1261,7 +1321,7 @@ describe("SelectTool", () => {
         };
         const focus = createTool("select");
         focus.onPointerDown(scene, [focalDistance, 0], focusCtx);
-        expect(focus.onPointerUp(scene, [0, 3], focusCtx).commit?.elements[0]).toMatchObject({
+        expect(committed(focus.onPointerUp(scene, [0, 3], focusCtx).commit)[0]).toMatchObject({
             kind: "elliptical-arc",
             axisX: [0, 4],
             axisY: [-Math.sqrt(7), 0],

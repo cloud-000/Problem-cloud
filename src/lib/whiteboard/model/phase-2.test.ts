@@ -11,7 +11,6 @@ import {
     emptyWhiteboardDocument,
     nearestPointFeature,
     pathNodeFeature,
-    reconcileResolvedScene,
     removeConstraint,
     resolveWhiteboardDocument,
     solveWhiteboardDocument,
@@ -121,31 +120,12 @@ describe("whiteboard smart geometry phase 2", () => {
         expect(validateWhiteboardDocument(closed).valid).toBe(true);
     });
 
-    test("keeps baked edits compatible in a mixed document and rejects smart flattening", () => {
-        const smart = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [1, 0]], false).document;
-        const mixed = {
-            ...smart,
-            items: [
-                { kind: "baked" as const, element: { id: "legacy", kind: "dot" as const, at: [3, 3] as const } },
-                ...smart.items,
-            ],
-        };
-        const resolved = resolveWhiteboardDocument(mixed);
-        const edited: Scene = {
-            ...resolved,
-            elements: resolved.elements.map((element) =>
-                element.id === "legacy" && element.kind === "dot" ? { ...element, at: [4, 5] } : element
-            ),
-        };
-        const reconciled = reconcileResolvedScene(mixed, edited);
-        expect(resolveWhiteboardDocument(reconciled).elements[0]).toMatchObject({ id: "legacy", at: [4, 5] });
-        expect(reconciled.items[1]).toEqual(mixed.items[1]);
-
-        const flattened = structuredClone(edited);
-        const smartElement = flattened.elements[1];
-        if (smartElement.kind === "path") smartElement.path.nodes[1] = [9, 9];
-        expect(() => reconcileResolvedScene(mixed, flattened)).toThrow("attempted to mutate smart item");
-    });
+    // The former "keeps baked edits compatible in a mixed document and rejects
+    // smart flattening" test covered `reconcileResolvedScene`, the Scene→Document
+    // merge retired in Phase 3. Tool commits are now lifted to targeted document
+    // transactions instead, so the equivalent guarantee — a baked edit in a mixed
+    // document leaves the smart item untouched — is asserted at the store layer
+    // in `state/whiteboard.test.ts`.
 
     test("deleting the last presentation removes orphan geometry and its relation atomically", () => {
         const first = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [1, 0]], false);

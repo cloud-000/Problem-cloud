@@ -104,7 +104,7 @@ rule. The boundary between them is a documented contract, not an accident.
 | Handles | creation & freehand: pen, line, rectangle, arc, point, label, eraser, marquee | constraint-driven edits: drag a smart feature, translate / rotate / resize a smart selection |
 | Contract | `Tool` state machine (`asy/engine/tools`) — `onPointerDown/Move/Up` return a `ToolResult` | `operations.ts` transactions + the `solver` |
 | Reads | the projected `Scene` (for hit-testing & rubber-band preview) | the Document's `SketchGraph` |
-| Writes on commit | **`BakedItem`s appended to the Document** | Document (points/params updated by the solver) |
+| Writes on commit | **a `ToolCommit` delta, lifted to one Document transaction** | Document (points/params updated by the solver) |
 
 ### 3.1 Ownership — who gets the gesture
 
@@ -122,25 +122,39 @@ switch.
 > transaction**, pushed to history as one undo step. The Scene is re-projected
 > afterward. **No pipeline ever writes the Scene.**
 
-A Tool that "commits a Scene" today instead **lifts** its committed geometry to
-`BakedItem`s at the pipeline edge (one defined step), so its output enters the
-Document like everything else. Previews are the only transient Scenes, and they
-are render-only (never stored, never history).
+A Tool does not commit a Scene. It commits a **`ToolCommit`** — a description of
+what the gesture changed (`add` · `replace` · `erase` · `extend-path` /
+`close-path`) — which the store **lifts** to one Document transaction at a single
+defined step (`#liftCommit`), so its output enters the Document like everything
+else. What the lift produces depends on the tool:
+
+- **line · rectangle · point** → a **smart** sketch item (`createSmartPath` /
+  `createSmartPointMarker`), with snap-inferred coincidence, so drawn geometry is
+  immediately constrainable.
+- **pen · arc · label** → **`BakedItem`s** appended.
+- **eraser** → `deleteWhiteboardItems`; **select** move/resize/rotate/vertex →
+  the changed baked elements replaced in place by id.
+
+Previews are the only transient Scenes, and they are render-only (never stored,
+never history).
 
 ---
 
-## 4. The seam we are removing
+## 4. The seam we removed
 
 Historically Pipeline A wrote to the `Scene` and a reconciliation step folded
 that back into the Document so freehand and smart items could coexist
-(`reconcileResolvedScene`, `#smartToolCommit`, `#conjoinCreatedFeatures`,
-`replaceBakedDocumentScene`). That Scene → Document merge is the single most
-fragile part of the feature and the reason mixed baked/smart edits are
-error-prone.
+(`reconcileResolvedScene`, `#smartToolCommit`, `replaceBakedDocumentScene`). That
+Scene → Document merge was the single most fragile part of the feature and the
+reason mixed baked/smart edits were error-prone: it rebuilt the whole item list
+from a Scene and had to re-derive which smart items survived, throwing when a
+smart item appeared to have drifted.
 
-Under this architecture it **does not exist**: tools emit Document items
-directly, so there is nothing to reconcile. Any code that reads a Scene, mutates
-it, and writes it back into the Document is a regression toward the old model.
+It **no longer exists** — those functions are deleted. Tools describe their
+commit as a `ToolCommit` delta and the store lifts it to a targeted transaction,
+so there is nothing to reconcile and an unchanged smart item is never even read.
+Any code that reads a Scene, mutates it, and writes it back into the Document is
+a regression toward the old model.
 
 ---
 

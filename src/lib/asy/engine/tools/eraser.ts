@@ -11,13 +11,14 @@ export class EraserTool implements Tool {
     readonly kind = "eraser" as const;
     private erasing = false;
     private working: Scene | null = null;
-    private changed = false;
+    /** Ids removed so far this gesture, in erase order; the committed delta. */
+    private removed: string[] = [];
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         const p = pointerPoint(input);
         this.erasing = true;
         this.working = scene;
-        this.changed = false;
+        this.removed = [];
         return this.eraseAt(p, ctx);
     }
 
@@ -30,16 +31,18 @@ export class EraserTool implements Tool {
     onPointerUp(): ToolResult {
         if (!this.erasing) return NO_RESULT;
         this.erasing = false;
-        const result: ToolResult = this.changed && this.working ? { commit: this.working } : { preview: null };
+        const result: ToolResult = this.removed.length > 0
+            ? { commit: { kind: "erase", elementIds: this.removed } }
+            : { preview: null };
         this.working = null;
-        this.changed = false;
+        this.removed = [];
         return result;
     }
 
     onCancel(): ToolResult {
         this.erasing = false;
         this.working = null;
-        this.changed = false;
+        this.removed = [];
         return { preview: null };
     }
 
@@ -52,7 +55,7 @@ export class EraserTool implements Tool {
         );
         if (!hit) return { preview: this.working };
         this.working = removeElementById(this.working, hit.id);
-        this.changed = true;
+        this.removed.push(hit.id);
         return { preview: this.working };
     }
 }

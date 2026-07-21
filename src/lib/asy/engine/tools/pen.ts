@@ -61,7 +61,7 @@ export class PenTool implements Tool {
             const dot = createDot(tapAt, ctx.pen);
             this.draftId = null;
             this.brushSize = 0;
-            return { commit: addElement(scene, dot), selection: [], preview: null };
+            return { commit: { kind: "add", elements: [dot] }, selection: [], preview: null };
         }
         if (!element) {
             this.draftId = null;
@@ -72,7 +72,7 @@ export class PenTool implements Tool {
         this.brushSize = 0;
         // Freehand is a continuous drawing tool: keep it active and leave the
         // finished stroke unselected so the next stroke can begin cleanly.
-        return { commit: addElement(scene, element), selection: [], preview: null };
+        return { commit: { kind: "add", elements: [element] }, selection: [], preview: null };
     }
 
     onCancel(): ToolResult {

@@ -5,7 +5,6 @@ import {
     emptyWhiteboardDocument,
     migrateSceneToWhiteboardDocument,
     parsePersistedWhiteboardDocument,
-    replaceBakedDocumentScene,
     resolveWhiteboardDocument,
     validateWhiteboardDocument,
     WHITEBOARD_SCHEMA_VERSION,
@@ -189,7 +188,7 @@ describe("whiteboard document foundation", () => {
         const history = new History<WhiteboardDocument>();
         const first = emptyWhiteboardDocument();
         const second = migrateSceneToWhiteboardDocument({ elements: [EVERY_ELEMENT_SCENE.elements[0]] });
-        const third = replaceBakedDocumentScene(second, { elements: [EVERY_ELEMENT_SCENE.elements[1]] });
+        const third = migrateSceneToWhiteboardDocument({ elements: [EVERY_ELEMENT_SCENE.elements[1]] });
         history.push(first);
         history.push(second);
 
@@ -198,15 +197,9 @@ describe("whiteboard document foundation", () => {
         expect(history.redo(first)).toEqual(second);
     });
 
-    test("never silently flattens a smart document through the Phase 1 scene operation", () => {
-        const smart: WhiteboardDocument = {
-            ...emptyWhiteboardDocument(),
-            items: [{ id: "marker", kind: "sketch-point-marker", pointId: "p" }],
-            sketch: {
-                ...emptyWhiteboardDocument().sketch,
-                points: { p: { id: "p", at: [0, 0] } },
-            },
-        };
-        expect(() => replaceBakedDocumentScene(smart, { elements: [] })).toThrow();
-    });
+    // The former "never silently flattens a smart document through the Phase 1
+    // scene operation" test guarded `replaceBakedDocumentScene`, deleted in
+    // Phase 3 along with the rest of the Scene→Document merge. Flattening is now
+    // structurally impossible: no operation takes a Scene as the document's item
+    // list, so there is no path left to guard.
 });

@@ -31,7 +31,7 @@ export class RectangleTool implements Tool {
         }
         const rectangle = this.createRectangle(start, p, ctx);
         return {
-            commit: addElement(scene, rectangle),
+            commit: { kind: "add", elements: [rectangle] },
             selection: [rectangle.id],
             nextTool: "select",
             preview: null,

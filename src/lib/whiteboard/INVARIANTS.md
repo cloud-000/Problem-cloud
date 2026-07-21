@@ -21,7 +21,7 @@ when you touch adjacent code, move it *toward* the target, never away.
 |---|---|---|
 | Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `DocumentController` (`whiteboard/document-controller.svelte`) holds `document = $state(...)`, owns the history, and projects the Scene; the store exposes it via getters. |
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
-| Tools commit `BakedItem`s; **no** Scene→Document reconciliation (§4) | **Target** | The forbidden seam (`reconcileResolvedScene`, `#smartToolCommit`, `#conjoinCreatedFeatures`) still exists in the store. Shrink it; don't extend it. |
+| Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the store's single `#liftCommit` step. `#conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
 | Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Partly** | Extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`; the store forwards `selection`/`selectionPreview`/`marquee`/`featureSelection` via getters), ConstraintService (`whiteboard/constraint-service.svelte`; the store forwards reactive selection/diagnostic state and relation/dimension operations). Remaining in the store: InteractionController. Extract along the seam as you touch it. |
 | One explicit pointer-down ownership branch (§3.1) | **Partly** | The store branches on `#smartTransform`/`#smartTranslation`/`#smartDrag` today; consolidate toward the single hit-test decision. |
 
@@ -97,10 +97,12 @@ Everything below is a consequence of these four.
   feature hit → Pipeline B (gesture + solver). Empty space / baked element /
   active creation tool → Pipeline A (Tool). No mid-gesture pipeline switch.
 - **Tools never touch the DOM and never write the Scene as truth.** A `Tool`
-  reads the projected Scene, returns `ToolResult` previews while dragging, and
-  on commit its geometry is **lifted to `BakedItem`s appended to the Document**.
-  `ToolResult.preview` is render-only; `ToolResult.commit` becomes a Document
-  transaction, not a stored Scene.
+  reads the projected Scene and returns `ToolResult` previews while dragging, but
+  commits a **`ToolCommit`** — a delta (`add` · `replace` · `erase` ·
+  `extend-path` / `close-path`), never a Scene. `ToolResult.preview` is
+  render-only; `ToolResult.commit` is lifted to exactly one Document transaction
+  by the store's `#liftCommit`. A tool must describe *what it changed*; deriving
+  that by diffing a Scene against the projection is the retired seam (§4).
 - **Smart gestures go through `operations.ts` + the solver**, producing a single
   Document transaction on release. Preview solves during the drag are transient.
 - **One gesture → one history entry.** Coalesce continuous edits (drag frames,
@@ -112,19 +114,22 @@ Everything below is a consequence of these four.
 ## 4. The forbidden seam (regression guard)
 
 The old model let Pipeline A edit a `Scene` and folded it back into the Document.
-That reconciliation is **removed**. Treat the following as red flags in review —
-their presence means the two-source-of-truth model is creeping back:
+That reconciliation is **removed** — `reconcileResolvedScene`, `#smartToolCommit`,
+and `replaceBakedDocumentScene` no longer exist. Treat the following as red flags
+in review — their presence means the two-source-of-truth model is creeping back:
 
 - reading `store.scene` / `resolveWhiteboardDocument(...)`, mutating the result,
   and passing it to `applyDocument` / a transaction;
-- new call sites of a Scene→Document merge (historically
-  `reconcileResolvedScene`, `#smartToolCommit`, `#conjoinCreatedFeatures`,
-  `replaceBakedDocumentScene`);
-- a Tool whose `commit` is meant to become the authoritative Scene rather than
-  Document items.
+- reintroducing a Scene→Document merge, or deriving a commit's effect by
+  **diffing a committed Scene against the projection** instead of having the tool
+  state what it changed;
+- widening `ToolResult.commit` back to a `Scene`, or a Tool whose `commit` is
+  meant to become the authoritative Scene rather than a `ToolCommit` delta;
+- adding a second lift site: `#liftCommit` is the *only* place a `ToolCommit`
+  becomes a Document mutation.
 
-The correct shape is always: **build a Document transaction → apply it →
-re-project the Scene.**
+The correct shape is always: **tool emits a `ToolCommit` → lift it to one Document
+transaction → apply it → re-project the Scene.**
 
 ---
 

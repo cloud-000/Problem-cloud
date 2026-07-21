@@ -7,14 +7,16 @@
  *   - `preview` — a transient scene to render *instead of* the committed scene
  *     while dragging (rubber-band creation, live move). Not pushed to history.
  *     `null` clears any active preview.
- *   - `commit`  — the new authoritative scene. The store pushes history + swaps.
+ *   - `commit`  — a `ToolCommit`: a *description* of what the gesture changed,
+ *     which the store lifts to one Document transaction. Tools never hand back
+ *     an authoritative Scene to be folded in.
  *   - `selection` — updated selected element ids.
  *   - `nextTool` — optionally activate a different tool after a committed edit.
  *   - `selectionPreview` — transient marquee membership before pointer release.
  * Any subset may be present; an empty result means "no change".
  */
 
-import type { Pair, Pen, Scene } from "../../scene/types";
+import type { Pair, Pen, Scene, SceneElement } from "../../scene/types";
 import type { StrokeProcessingOptions } from "../simplify";
 
 /** Pointer data retained for pressure/velocity-sensitive tools. */
@@ -135,8 +137,29 @@ export interface ToolContext {
     promptLabel?: (at: Pair) => string | null;
 }
 
+/**
+ * What a committed gesture changed, expressed as a Document-level intent rather
+ * than a whole authoritative Scene. The store LIFTS this to a single
+ * `WhiteboardDocument` transaction at the pipeline edge — there is no
+ * Scene→Document reconciliation (see whiteboard `ARCHITECTURE.md` §4):
+ *   - `add`     — new geometry; creation tools. The store bakes it, or (line /
+ *                 rectangle / point) lifts it to a smart sketch item.
+ *   - `replace` — existing baked elements re-emitted with new geometry; select
+ *                 move/resize/rotate/vertex/arc edits. Matched into the Document
+ *                 by id.
+ *   - `erase`   — elements the eraser removed, by id.
+ *   - `extend-path` / `close-path` — a connected line-continuation step onto the
+ *                 path just drawn (append a node / cyclize).
+ */
+export type ToolCommit =
+    | { kind: "add"; elements: readonly SceneElement[] }
+    | { kind: "replace"; elements: readonly SceneElement[] }
+    | { kind: "erase"; elementIds: readonly string[] }
+    | { kind: "extend-path"; elementId: string; node: Pair }
+    | { kind: "close-path"; elementId: string };
+
 export interface ToolResult {
-    commit?: Scene;
+    commit?: ToolCommit;
     preview?: Scene | null;
     selection?: string[];
     /** Tool to activate after this result commits. Creation tools can use this

@@ -1,4 +1,4 @@
-import type { ArcElement, EllipticalArcElement, Pair, Scene } from "../../scene/types";
+import type { ArcElement, EllipticalArcElement, Pair, Scene, SceneElement } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import { principalEllipseGeometry } from "../../scene/ellipse-geometry";
@@ -74,7 +74,7 @@ export class SelectTool implements Tool {
             if (distance(first, p) <= ctx.tolerance) {
                 if (source.path.nodes.length > 2) {
                     return {
-                        commit: this.closePath(scene, source.id),
+                        commit: { kind: "close-path", elementId: source.id },
                         selection: [source.id],
                         lineContinuation: null,
                         preview: null,
@@ -88,7 +88,7 @@ export class SelectTool implements Tool {
             }
             const nodeIndex = source.path.nodes.length;
             return {
-                commit: this.appendPathNode(scene, source.id, p),
+                commit: { kind: "extend-path", elementId: source.id, node: p },
                 selection: [source.id],
                 lineContinuation: { elementId: source.id, nodeIndex },
                 preview: null,
@@ -193,9 +193,10 @@ export class SelectTool implements Tool {
         const p = pointerPoint(input);
         if (this.transform && this.dragStart && this.base) {
             const transformed = this.transformScene(this.base, this.movingIds, p, ctx);
+            const ids = this.movingIds;
             this.reset();
             if (!transformed.changed) return { preview: null };
-            return { commit: transformed.scene, preview: null };
+            return { commit: { kind: "replace", elements: this.movedElements(transformed.scene, ids) }, preview: null };
         }
         if (this.movingIds.length && this.dragStart && this.base) {
             const dx = p[0] - this.dragStart[0];
@@ -205,7 +206,7 @@ export class SelectTool implements Tool {
             const moved = this.moved;
             this.reset();
             if (!moved) return { preview: null };
-            return { commit: this.translate(base, ids, dx, dy), preview: null };
+            return { commit: { kind: "replace", elements: this.movedElements(this.translate(base, ids, dx, dy), ids) }, preview: null };
         }
         if (this.marqueeStart && this.base) {
             const start = this.marqueeStart;
@@ -235,6 +236,12 @@ export class SelectTool implements Tool {
     private translate(scene: Scene, ids: string[], dx: number, dy: number): Scene {
         const selected = new Set(ids);
         return mapElements(scene, (el) => selected.has(el.id) ? translateElement(el, dx, dy) : el);
+    }
+
+    /** The gesture's changed elements, in draw order — the `replace` commit delta. */
+    private movedElements(scene: Scene, ids: string[]): SceneElement[] {
+        const wanted = new Set(ids);
+        return scene.elements.filter((element) => wanted.has(element.id));
     }
 
     private appendPathNode(scene: Scene, elementId: string, node: Pair): Scene {

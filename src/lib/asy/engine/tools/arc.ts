@@ -75,7 +75,7 @@ export class ArcTool implements Tool {
         const arc = createArc(center, this.radius, this.angle1, angle2, ctx.pen);
         this.reset();
         return {
-            commit: addElement(scene, arc),
+            commit: { kind: "add", elements: [arc] },
             selection: [arc.id],
             preview: null,
             arcGuide: null,

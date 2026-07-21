@@ -23,7 +23,7 @@
  * `browser`-guard for localStorage lives in PersistenceIO.
  */
 
-import type { Pen, Scene } from "$lib/asy/scene/types";
+import type { Pen, Scene, SceneElement } from "$lib/asy/scene/types";
 import { isStraightPathVertexEditable } from "$lib/asy/scene";
 import type {
     EditorPropertyId,
@@ -50,6 +50,7 @@ import {
     type Tool,
     type ToolContext,
     type ToolResult,
+    type ToolCommit,
     type SelectionTransformGesture,
     type LineContinuation,
     type ArcGuide,
@@ -70,7 +71,6 @@ import {
     pathNodeFeature,
     pointFeaturePointId,
     pointFeaturePosition,
-    reconcileResolvedScene,
     resolveWhiteboardDocument,
     rotateWhiteboardItems,
     scaleWhiteboardItems,
@@ -706,7 +706,6 @@ export class WhiteboardStore {
     }
 
     #dispatch(result: ToolResult): void {
-        const priorContinuation = this.lineContinuation;
         if (result.consoleMessage) console.info(result.consoleMessage);
         if (result.selection !== undefined) {
             this.selection = result.selection;
@@ -720,9 +719,8 @@ export class WhiteboardStore {
         }
         if (result.arcGuide !== undefined) this.arcGuide = result.arcGuide;
         if (result.commit !== undefined) {
-            const smartCommit = this.#smartToolCommit(result.commit, priorContinuation);
-            if (smartCommit) this.applyDocument(smartCommit);
-            else this.apply(result.commit);
+            const lifted = this.#liftCommit(result.commit);
+            if (lifted) this.applyDocument(lifted);
             this.preview = null;
             this.snapProposal = null;
             this.selectionPreview = null;
@@ -739,33 +737,43 @@ export class WhiteboardStore {
         }
     }
 
-    #smartToolCommit(scene: Scene, priorContinuation: LineContinuation | null): WhiteboardDocument | null {
-        if (this.toolKind === "select" && priorContinuation) {
-            const item = this.document.items.find((candidate) =>
-                candidate.kind === "sketch-path" && candidate.id === priorContinuation.elementId
-            );
-            if (item?.kind === "sketch-path") {
-                const committedPath = scene.elements.find((element) =>
-                    element.id === item.id && element.kind === "path"
+    /**
+     * Lift a committed tool gesture to ONE Document transaction at the pipeline
+     * edge. No Scene is ever treated as authoritative and folded back
+     * (ARCHITECTURE.md §4): the tool describes *what it changed* and this maps
+     * that intent to a document mutation. Creation with the line/rectangle/point
+     * tools is lifted to smart sketch items (with snap-inferred coincidence);
+     * every other creation, deletion, and baked transform stays baked.
+     */
+    #liftCommit(commit: ToolCommit): WhiteboardDocument | null {
+        switch (commit.kind) {
+            case "add":
+                return this.#liftAdd(commit.elements);
+            case "replace":
+                return this.#replaceBakedElements(commit.elements);
+            case "erase":
+                return deleteWhiteboardItems(this.document, [...commit.elementIds]);
+            case "extend-path": {
+                // Continuation only ever follows a line-tool smart path; a baked
+                // target has no smart continuation and is left untouched.
+                const item = this.document.items.find((candidate) =>
+                    candidate.kind === "sketch-path" && candidate.id === commit.elementId
                 );
-                if (committedPath?.kind !== "path") return null;
-                if (committedPath.path.cyclic && !item.cyclic) {
-                    return closeSmartPath(this.document, item.id);
-                }
-                if (committedPath.path.nodes.length === item.uses.length + 2) {
-                    const at = committedPath.path.nodes.at(-1)!;
-                    const appended = appendSmartPathNode(this.document, item.id, at);
-                    return this.#conjoinCreatedFeature(appended.document, appended.feature, this.document);
-                }
+                if (item?.kind !== "sketch-path") return null;
+                const appended = appendSmartPathNode(this.document, commit.elementId, commit.node);
+                return this.#conjoinCreatedFeature(appended.document, appended.feature, this.document);
             }
+            case "close-path":
+                return closeSmartPath(this.document, commit.elementId);
         }
+    }
 
-        const currentIds = this.scene.elements.map(({ id }) => id);
-        const added = scene.elements.find((element) => !currentIds.includes(element.id));
+    #liftAdd(elements: readonly SceneElement[]): WhiteboardDocument | null {
+        const added = elements[0];
         if (this.toolKind === "line" && added?.kind === "path") {
             const created = createSmartPath(
                 this.document,
-                added.path.nodes,
+                [...added.path.nodes],
                 false,
                 added.pen,
                 added.fillPen,
@@ -776,7 +784,7 @@ export class WhiteboardStore {
         if (this.toolKind === "rectangle" && added?.kind === "path") {
             const rawStart = added.path.nodes[0];
             const rawEnd = added.path.nodes[2];
-            if (!rawStart || !rawEnd) return null;
+            if (!rawStart || !rawEnd) return this.#appendBaked(elements);
             const snappedStart = this.#suppressSnapCommit
                 ? rawStart
                 : nearestPointFeature(this.document, rawStart, 8 * this.sceneUnitsPerPixel)?.at ?? rawStart;
@@ -808,7 +816,35 @@ export class WhiteboardStore {
             const created = createSmartPointMarker(this.document, added.at, added.pen, added.id);
             return this.#conjoinCreatedFeatures(created.document, created.endpointFeatures, this.document);
         }
-        return null;
+        return this.#appendBaked(elements);
+    }
+
+    /** Append raw geometry as baked items (pen · arc · label · imported ink). */
+    #appendBaked(elements: readonly SceneElement[]): WhiteboardDocument {
+        return {
+            ...this.document,
+            items: [
+                ...this.document.items,
+                ...elements.map((element) => ({ kind: "baked" as const, element })),
+            ],
+        };
+    }
+
+    /**
+     * Re-emit transformed baked elements in place, matched by id. Smart items
+     * are intercepted upstream by Pipeline B, so they are never present in a
+     * tool `replace` and are left untouched even if an id somehow collides.
+     */
+    #replaceBakedElements(elements: readonly SceneElement[]): WhiteboardDocument {
+        const byId = new Map(elements.map((element) => [element.id, element]));
+        return {
+            ...this.document,
+            items: this.document.items.map((item) =>
+                item.kind === "baked" && byId.has(item.element.id)
+                    ? { ...item, element: byId.get(item.element.id)! }
+                    : item
+            ),
+        };
     }
 
     #conjoinCreatedFeatures(
@@ -896,15 +932,6 @@ export class WhiteboardStore {
 
     // --- history --------------------------------------------------------------
 
-    /** Reconcile a legacy Scene operation without flattening canonical smart items. */
-    apply(next: Scene): void {
-        try {
-            this.applyDocument(reconcileResolvedScene(documentSnapshot(this.document), next));
-        } catch (error) {
-            console.info(`[Whiteboard] ${error instanceof Error ? error.message : "unsupported smart edit"}`);
-        }
-    }
-
     applyDocument(next: WhiteboardDocument): void {
         this.#documents.applyDocument(next);
     }
@@ -964,30 +991,23 @@ export class WhiteboardStore {
 
         const nodes = element.path.nodes.filter((_, index) => index !== nodeIndex);
         if (nodes.length < 2) {
-            this.apply({
-                ...this.scene,
-                elements: this.scene.elements.filter(({ id }) => id !== elementId),
-            });
+            // A baked path collapsing below two nodes is deleted outright.
+            this.applyDocument(deleteWhiteboardItems(this.document, [elementId]));
             this.selection = this.selection.filter((id) => id !== elementId);
         } else {
             const cyclic = element.path.cyclic && nodes.length >= 3;
             const joinCount = cyclic ? nodes.length : nodes.length - 1;
-            this.apply({
-                ...this.scene,
-                elements: this.scene.elements.map((candidate) =>
-                    candidate.id === elementId && candidate.kind === "path"
-                        ? {
-                              ...candidate,
-                              path: {
-                                  ...candidate.path,
-                                  nodes,
-                                  joins: Array.from({ length: joinCount }, () => "--" as const),
-                                  cyclic,
-                              },
-                          }
-                        : candidate,
-                ),
-            });
+            this.applyDocument(this.#replaceBakedElements([
+                {
+                    ...element,
+                    path: {
+                        ...element.path,
+                        nodes,
+                        joins: Array.from({ length: joinCount }, () => "--" as const),
+                        cyclic,
+                    },
+                },
+            ]));
         }
         this.preview = null;
         this.selectionPreview = null;
@@ -1139,7 +1159,7 @@ export class WhiteboardStore {
 
     /** Replace the scene with the result of parsing asy (undoable). */
     loadAsy(asy: string): void {
-        this.apply(sceneFromAsy(asy));
+        this.applyDocument(migrateSceneToWhiteboardDocument(sceneFromAsy(asy)));
         this.selection = [];
         this.selectionPreview = null;
         this.lineContinuation = null;

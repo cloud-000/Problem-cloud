@@ -35,20 +35,6 @@ export function isBakedDocument(document: WhiteboardDocument): boolean {
         Object.keys(document.sketch.constraints).length === 0;
 }
 
-/**
- * Phase 1 operation boundary for the existing Scene-based tools. Smart items are
- * deliberately rejected so a future document can never be flattened silently.
- */
-export function replaceBakedDocumentScene(
-    document: WhiteboardDocument,
-    scene: Scene,
-): WhiteboardDocument {
-    if (!isBakedDocument(document)) {
-        throw new Error("Scene replacement is only valid for an all-baked whiteboard document");
-    }
-    return migrateSceneToWhiteboardDocument(scene);
-}
-
 export function updateBakedElements(
     document: WhiteboardDocument,
     update: (elements: SceneElement[]) => SceneElement[],
