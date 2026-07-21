@@ -154,6 +154,7 @@ cell.
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
+| Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` (pure TS: `buildOverlay`) |
 | Pointer/DOM → store event mapping | `components/whiteboard/whiteboard.svelte` |
 | Toolbar / inspector / command UI | `components/whiteboard/*.svelte` (see `DOCS.md`) |
 | SVG/PNG/asy export | `components/whiteboard/export.ts` (renders the *projected* Scene) |

@@ -6,21 +6,9 @@
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { SvelteMap, SvelteSet } from "svelte/reactivity";
+    import { SvelteMap } from "svelte/reactivity";
     import type { Attachment } from "svelte/attachments";
-    import {
-        elementBounds,
-        isStraightPathVertexEditable,
-        positiveArcSweep,
-        principalEllipseGeometry,
-        sceneBounds,
-        type ArcElement,
-        type Bounds,
-        type EllipticalArcElement,
-        type Pair,
-        type Scene,
-        type SceneElement as SceneElementModel,
-    } from "$lib/asy/scene";
+    import { sceneBounds, type Pair, type Scene } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import type { RelationKind } from "$lib/whiteboard/model";
     import { hitTest, PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
@@ -32,13 +20,16 @@
         isRotationHandleAt,
         isArcGuideAt,
         isScreenPointInRect,
-        type RenderResizeHandle,
-        type RenderArcHandle,
-        type ScreenRect,
         type WhiteboardPalette,
-        type WhiteboardRenderOverlay,
         type WhiteboardRenderSnapshot,
     } from "./render";
+    import {
+        activeSelectedVertexOf,
+        buildOverlay,
+        type ArcControlRef,
+        type ResizeCursor,
+        type VertexRef,
+    } from "./overlay-model";
     import { clampToolbarPosition } from "./constraint-toolbar";
     import { Camera } from "./camera.svelte";
     import ZoomControls from "./zoom-controls.svelte";
@@ -112,14 +103,7 @@
 
     let pointerId = $state<number | null>(null);
     let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
-    type TransformCursor =
-        | "nwse-resize"
-        | "nesw-resize"
-        | "ew-resize"
-        | "ns-resize"
-        | "grab"
-        | "grabbing"
-        | "move";
+    type TransformCursor = ResizeCursor | "grab" | "grabbing" | "move";
     let transformCursor = $state<TransformCursor | null>(null);
     let eraserPointer = $state<Pair | null>(null);
     let spacePressed = $state(false);
@@ -151,21 +135,30 @@
         (handle) => cancelAnimationFrame(handle),
     );
 
-    const activeSelection = $derived(store.selectionPreview ?? store.selection);
-    const selectedIds = $derived(new SvelteSet(activeSelection));
-    const selectionIsPreview = $derived(store.selectionPreview !== null || store.preview !== null);
-    const constraintGlyphs = $derived(store.constraintGlyphs.map((glyph) => ({
-        id: glyph.id,
-        screen: [project(glyph.at)[0] + 12, project(glyph.at)[1] - 12] as Pair,
-        selected: glyph.selected,
-    })));
-    const dimensionGlyphs = $derived(store.dimensionGlyphs.map((glyph) => ({
-        ...glyph,
-        aScreen: project(glyph.a),
-        bScreen: project(glyph.b),
-        screen: project(glyph.at),
-    })));
-    const selectedDimension = $derived(dimensionGlyphs.find(({ selected }) => selected));
+    /** All screen-space overlay geometry, computed by the pure overlay model. */
+    const overlay = $derived(
+        buildOverlay({
+            displayScene: store.displayScene,
+            selection: store.selection,
+            selectionPreview: store.selectionPreview,
+            hasPreview: store.preview !== null,
+            toolKind: store.toolKind,
+            selectionContainsSmartItems: store.selectionContainsSmartItems,
+            constructionArcGuide: store.arcGuide,
+            marquee: store.marquee,
+            snapProposal: store.snapProposal,
+            constraintGlyphs: store.constraintGlyphs,
+            dimensionGlyphs: store.dimensionGlyphs,
+            selectedFeatureGeometry: store.selectedFeatureGeometry,
+            selectedVertex,
+            hoveredVertex,
+            selectedArcControl,
+            hoveredArcControl,
+            project,
+            toScreenLength: (units) => camera.toScreenLength(units),
+        }),
+    );
+    const selectedDimension = $derived(overlay.dimensions.find(({ selected }) => selected));
     const constraintToolbarSelectionKey = $derived(JSON.stringify(store.featureSelection));
     const constraintToolbarPosition = $derived.by(() => {
         if (store.toolKind !== "select" || store.featureSelection.length === 0) return null;
@@ -199,21 +192,13 @@
             offset,
         };
     });
-    const selectedSegmentMarkers = $derived(
-        store.selectedFeatureGeometry.segments.map((segment, index) => ({
-            label: index + 1,
-            screen: project([
-                (segment.a[0] + segment.b[0]) / 2,
-                (segment.a[1] + segment.b[1]) / 2,
-            ]),
-        })),
-    );
     const lineSelectionGuidance = $derived.by(() => {
-        if (store.featureSelection.length !== selectedSegmentMarkers.length) return null;
-        if (selectedSegmentMarkers.length === 1) {
+        const markers = overlay.selectedSegmentMarkers;
+        if (store.featureSelection.length !== markers.length) return null;
+        if (markers.length === 1) {
             return "Shift-click another smart line to compare segments";
         }
-        if (selectedSegmentMarkers.length === 2) return "Choose a relationship for these segments";
+        if (markers.length === 2) return "Choose a relationship for these segments";
         return null;
     });
 
@@ -275,506 +260,9 @@
         store.addLengthDimension(mode);
     }
 
-    type ResizePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-
-    interface VertexRef {
-        elementId: string;
-        nodeIndex: number;
-    }
-
-    type ArcControl = "center" | "start" | "end" | "radius" | "focus1" | "focus2";
-
-    interface ArcControlRef {
-        elementId: string;
-        control: ArcControl;
-    }
-
-    interface ResizeHandle extends RenderResizeHandle {
-        position: ResizePosition;
-        screen: Pair;
-        handle: Pair;
-        anchor: Pair;
-        axes: { x: boolean; y: boolean };
-        cursor: Extract<TransformCursor, `${string}-resize`>;
-    }
-
-    interface VertexHandle extends RenderResizeHandle {
-        screen: Pair;
-        handle: Pair;
-        elementId: string;
-        nodeIndex: number;
-        cursor: "move";
-        state: "default" | "hovered" | "selected";
-    }
-
-    interface ArcHandle extends RenderArcHandle {
-        handle: Pair;
-        elementId: string;
-    }
-
-    function screenRect(bounds: Bounds, padding = 0): ScreenRect {
-        const a = project(bounds.min);
-        const b = project(bounds.max);
-        return {
-            x: Math.min(a[0], b[0]) - padding,
-            y: Math.min(a[1], b[1]) - padding,
-            width: Math.abs(a[0] - b[0]) + padding * 2,
-            height: Math.abs(a[1] - b[1]) + padding * 2,
-        };
-    }
-
-    function elementScreenRect(element: SceneElementModel, padding = 0): ScreenRect | null {
-        if (element.kind === "label") {
-            const [x, y] = project(element.at);
-            const labelWidth = Math.max(14, element.text.replaceAll("$", "").length * 7.5);
-            return {
-                x: x - labelWidth / 2 - padding,
-                y: y - 9 - padding,
-                width: labelWidth + padding * 2,
-                height: 18 + padding * 2,
-            };
-        }
-        const bounds = elementBounds(element);
-        return bounds ? screenRect(bounds, padding) : null;
-    }
-
-    const selectionGeometryBounds = $derived.by<Bounds | null>(() => {
-        if (activeSelection.length === 0) return null;
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const element of store.displayScene.elements) {
-            if (!selectedIds.has(element.id)) continue;
-            const bounds = elementBounds(element);
-            if (!bounds) continue;
-            minX = Math.min(minX, bounds.min[0]);
-            minY = Math.min(minY, bounds.min[1]);
-            maxX = Math.max(maxX, bounds.max[0]);
-            maxY = Math.max(maxY, bounds.max[1]);
-        }
-        return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
-    });
-
-    /** Only all-straight paths expose per-node handles; ink stays whole-object-only. */
-    const selectedStraightVertexEditablePath = $derived.by(() => {
-        if (activeSelection.length !== 1) return null;
-        const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        return element?.kind === "path" && isStraightPathVertexEditable(element.path)
-            ? element
-            : null;
-    });
-
-    const selectedStraightPathHasMultipleSegments = $derived(
-        (selectedStraightVertexEditablePath?.path.joins.length ?? 0) > 1,
+    const activeSelectedVertex = $derived(
+        activeSelectedVertexOf(overlay.straightVertexEditablePath, selectedVertex),
     );
-
-    const selectedArcElement = $derived.by(() => {
-        if (
-            activeSelection.length !== 1 ||
-            store.selectionPreview !== null ||
-            store.toolKind !== "select"
-        ) return null;
-        const element = store.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        return element?.kind === "arc" || element?.kind === "elliptical-arc" ? element : null;
-    });
-
-    const activeSelectedVertex = $derived.by(() =>
-        selectedVertex &&
-        selectedStraightVertexEditablePath?.id === selectedVertex.elementId &&
-        selectedVertex.nodeIndex >= 0 &&
-        selectedVertex.nodeIndex < selectedStraightVertexEditablePath.path.nodes.length
-            ? selectedVertex
-            : null,
-    );
-
-    function isVertex(ref: VertexRef | null, elementId: string, nodeIndex: number): boolean {
-        return ref?.elementId === elementId && ref.nodeIndex === nodeIndex;
-    }
-
-    function isArcControl(
-        ref: ArcControlRef | null,
-        elementId: string,
-        control: ArcControl,
-    ): boolean {
-        return ref?.elementId === elementId && ref.control === control;
-    }
-
-    function arcPoint(center: Pair, radius: number, angle: number): Pair {
-        const radians = (angle * Math.PI) / 180;
-        return [
-            center[0] + radius * Math.cos(radians),
-            center[1] + radius * Math.sin(radians),
-        ];
-    }
-
-    function selectedArcPoint(
-        element: ArcElement | EllipticalArcElement,
-        angle: number,
-    ): Pair {
-        if (element.kind === "arc") return arcPoint(element.center, element.radius, angle);
-        const radians = (angle * Math.PI) / 180;
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        return [
-            element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
-            element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
-        ];
-    }
-
-    function geometryLabel(value: number): string {
-        return Number(value.toFixed(2)).toString();
-    }
-
-    const hasTransformExtent = $derived.by(() => {
-        if (!selectionGeometryBounds) return false;
-        const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
-        const dy = selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1];
-        return Math.hypot(dx, dy) > 1e-9;
-    });
-
-    const selectionRect = $derived.by(() => {
-        if (activeSelection.length === 0) return null;
-        if (
-            selectedStraightVertexEditablePath &&
-            !selectedStraightPathHasMultipleSegments &&
-            store.selectionPreview === null
-        ) return null;
-        if (selectionGeometryBounds && hasTransformExtent) {
-            return screenRect(selectionGeometryBounds, 6);
-        }
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const element of store.displayScene.elements) {
-            if (!selectedIds.has(element.id)) continue;
-            const rect = elementScreenRect(element, 6);
-            if (!rect) continue;
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.width);
-            maxY = Math.max(maxY, rect.y + rect.height);
-        }
-        return Number.isFinite(minX)
-            ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
-            : null;
-    });
-
-    const previewElementRects = $derived.by(() => {
-        if (store.selectionPreview === null) return [];
-        return store.displayScene.elements.flatMap((element) => {
-            if (!selectedIds.has(element.id)) return [];
-            const rect = elementScreenRect(element, 4);
-            return rect ? [rect] : [];
-        });
-    });
-
-    const resizeHandles = $derived.by<ResizeHandle[]>(() => {
-        if (
-            (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
-            !selectionRect ||
-            !selectionGeometryBounds ||
-            !hasTransformExtent ||
-            selectionIsPreview ||
-            store.toolKind !== "select"
-        ) return [];
-        const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
-        const { min, max } = selectionGeometryBounds;
-        const midX = (min[0] + max[0]) / 2;
-        const midY = (min[1] + max[1]) / 2;
-        const canResizeX = max[0] - min[0] > 1e-9;
-        const canResizeY = max[1] - min[1] > 1e-9;
-        const handles: ResizeHandle[] = [
-            {
-                position: "nw",
-                screen: [x, y],
-                handle: [min[0], max[1]],
-                anchor: [max[0], min[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nwse-resize",
-            },
-            {
-                position: "ne",
-                screen: [x + boxWidth, y],
-                handle: [max[0], max[1]],
-                anchor: [min[0], min[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nesw-resize",
-            },
-            {
-                position: "se",
-                screen: [x + boxWidth, y + boxHeight],
-                handle: [max[0], min[1]],
-                anchor: [min[0], max[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nwse-resize",
-            },
-            {
-                position: "sw",
-                screen: [x, y + boxHeight],
-                handle: [min[0], min[1]],
-                anchor: [max[0], max[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nesw-resize",
-            },
-        ];
-        if (!store.selectionContainsSmartItems && canResizeY) {
-            handles.push(
-                {
-                    position: "n",
-                    screen: [x + boxWidth / 2, y],
-                    handle: [midX, max[1]],
-                    anchor: [midX, min[1]],
-                    axes: { x: false, y: true },
-                    cursor: "ns-resize",
-                },
-                {
-                    position: "s",
-                    screen: [x + boxWidth / 2, y + boxHeight],
-                    handle: [midX, min[1]],
-                    anchor: [midX, max[1]],
-                    axes: { x: false, y: true },
-                    cursor: "ns-resize",
-                },
-            );
-        }
-        if (!store.selectionContainsSmartItems && canResizeX) {
-            handles.push(
-                {
-                    position: "e",
-                    screen: [x + boxWidth, y + boxHeight / 2],
-                    handle: [max[0], midY],
-                    anchor: [min[0], midY],
-                    axes: { x: true, y: false },
-                    cursor: "ew-resize",
-                },
-                {
-                    position: "w",
-                    screen: [x, y + boxHeight / 2],
-                    handle: [min[0], midY],
-                    anchor: [max[0], midY],
-                    axes: { x: true, y: false },
-                    cursor: "ew-resize",
-                },
-            );
-        }
-        return handles;
-    });
-
-    const vertexHandles = $derived.by<VertexHandle[]>(() => {
-        if (
-            !selectedStraightVertexEditablePath ||
-            selectionIsPreview ||
-            store.toolKind !== "select"
-        ) return [];
-        return selectedStraightVertexEditablePath.path.nodes.map((handle, nodeIndex) => ({
-            screen: project(handle),
-            handle,
-            elementId: selectedStraightVertexEditablePath.id,
-            nodeIndex,
-            cursor: "move",
-            state: isVertex(activeSelectedVertex, selectedStraightVertexEditablePath.id, nodeIndex)
-                ? "selected"
-                : isVertex(hoveredVertex, selectedStraightVertexEditablePath.id, nodeIndex)
-                  ? "hovered"
-                  : "default",
-        }));
-    });
-
-    const arcGuide = $derived.by(() => {
-        const construction = store.arcGuide;
-        if (construction) {
-            const radiusEnd = construction.angle1 !== undefined
-                ? arcPoint(construction.center, construction.radius, construction.angle1)
-                : construction.radiusPoint ?? construction.center;
-            const radiusLabelAt: Pair = [
-                construction.center[0] + (radiusEnd[0] - construction.center[0]) * 0.55,
-                construction.center[1] + (radiusEnd[1] - construction.center[1]) * 0.55,
-            ];
-            const handles: RenderArcHandle[] = [
-                { control: "center", screen: project(construction.center) },
-            ];
-            if (construction.angle1 !== undefined) {
-                handles.push({
-                    control: "start",
-                    screen: project(arcPoint(
-                        construction.center,
-                        construction.radius,
-                        construction.angle1,
-                    )),
-                });
-            }
-            if (construction.angle2 !== undefined) {
-                handles.push({
-                    control: "end",
-                    screen: project(arcPoint(
-                        construction.center,
-                        construction.radius,
-                        construction.angle2,
-                    )),
-                });
-            }
-            return {
-                center: project(construction.center),
-                radius: camera.toScreenLength(Math.abs(construction.radius)),
-                handles,
-                editHandles: [] as ArcHandle[],
-                elementId: null,
-                points: undefined,
-                radiusEditable: false,
-                measurements: construction.radius > 1e-9
-                    ? {
-                          axes: [{
-                              start: project(construction.center),
-                              end: project(radiusEnd),
-                              label: `r ${geometryLabel(construction.radius)}`,
-                              labelAt: project(radiusLabelAt),
-                          }],
-                      }
-                    : undefined,
-            };
-        }
-        if (!selectedArcElement) return null;
-
-        const start = selectedArcPoint(selectedArcElement, selectedArcElement.angle1);
-        const end = selectedArcPoint(selectedArcElement, selectedArcElement.angle2);
-        let startScreen = project(start);
-        let endScreen = project(end);
-        if (Math.hypot(startScreen[0] - endScreen[0], startScreen[1] - endScreen[1]) < 2) {
-            const radians = (selectedArcElement.angle1 * Math.PI) / 180;
-            const tangentWorld: Pair = selectedArcElement.kind === "arc"
-                ? [-Math.sin(radians), Math.cos(radians)]
-                : [
-                      -selectedArcElement.axisX[0] * Math.sin(radians) +
-                          selectedArcElement.axisY[0] * Math.cos(radians),
-                      -selectedArcElement.axisX[1] * Math.sin(radians) +
-                          selectedArcElement.axisY[1] * Math.cos(radians),
-                  ];
-            const tangentLength = Math.max(1e-9, Math.hypot(tangentWorld[0], tangentWorld[1]));
-            const tangent: Pair = [
-                (tangentWorld[0] / tangentLength) * 7,
-                -(tangentWorld[1] / tangentLength) * 7,
-            ];
-            startScreen = [startScreen[0] - tangent[0], startScreen[1] - tangent[1]];
-            endScreen = [endScreen[0] + tangent[0], endScreen[1] + tangent[1]];
-        }
-
-        const geometry = principalEllipseGeometry(selectedArcElement);
-        const semanticHandles: Array<{
-            control: Exclude<ArcControl, "radius">;
-            handle: Pair;
-            screen: Pair;
-        }> = [
-            { control: "center", handle: selectedArcElement.center, screen: project(selectedArcElement.center) },
-            { control: "start", handle: start, screen: startScreen },
-            { control: "end", handle: end, screen: endScreen },
-        ];
-        if (selectedArcElement.kind === "elliptical-arc" && geometry.eccentricity > 1e-4) {
-            semanticHandles.push(
-                { control: "focus1", handle: geometry.foci[0], screen: project(geometry.foci[0]) },
-                { control: "focus2", handle: geometry.foci[1], screen: project(geometry.foci[1]) },
-            );
-        }
-        const editHandles: ArcHandle[] = semanticHandles.map((handle) => ({
-            ...handle,
-            elementId: selectedArcElement.id,
-            state: isArcControl(selectedArcControl, selectedArcElement.id, handle.control)
-                ? "selected"
-                : isArcControl(hoveredArcControl, selectedArcElement.id, handle.control)
-                  ? "hovered"
-                  : "default",
-        }));
-        const points = selectedArcElement.kind === "elliptical-arc"
-            ? Array.from({ length: 65 }, (_, index) =>
-                  project(selectedArcPoint(selectedArcElement, (index / 64) * 360)),
-              )
-            : undefined;
-        const majorOffset: Pair = [
-            geometry.majorDirection[0] * geometry.semiMajor,
-            geometry.majorDirection[1] * geometry.semiMajor,
-        ];
-        const minorOffset: Pair = [
-            geometry.minorDirection[0] * geometry.semiMinor,
-            geometry.minorDirection[1] * geometry.semiMinor,
-        ];
-        const center = selectedArcElement.center;
-        const axes = selectedArcElement.kind === "arc"
-            ? [{
-                  start: project(center),
-                  end: project(start),
-                  label: `r ${geometryLabel(geometry.semiMajor)}`,
-                  labelAt: project([
-                      center[0] + (start[0] - center[0]) * 0.55,
-                      center[1] + (start[1] - center[1]) * 0.55,
-                  ]),
-              }]
-            : [
-                  {
-                      start: project([center[0] - majorOffset[0], center[1] - majorOffset[1]]),
-                      end: project([center[0] + majorOffset[0], center[1] + majorOffset[1]]),
-                      label: `a ${geometryLabel(geometry.semiMajor)}`,
-                      labelAt: project([
-                          center[0] + majorOffset[0] * 0.58,
-                          center[1] + majorOffset[1] * 0.58,
-                      ]),
-                  },
-                  {
-                      start: project([center[0] - minorOffset[0], center[1] - minorOffset[1]]),
-                      end: project([center[0] + minorOffset[0], center[1] + minorOffset[1]]),
-                      label: `b ${geometryLabel(geometry.semiMinor)}`,
-                      labelAt: project([
-                          center[0] + minorOffset[0] * 0.58,
-                          center[1] + minorOffset[1] * 0.58,
-                      ]),
-                  },
-              ];
-        const sweep = positiveArcSweep(selectedArcElement.angle1, selectedArcElement.angle2);
-        const angleMidpoint = selectedArcPoint(
-            selectedArcElement,
-            selectedArcElement.angle1 + sweep / 2,
-        );
-        const angleLabelAt = project([
-            center[0] + (angleMidpoint[0] - center[0]) * 0.38,
-            center[1] + (angleMidpoint[1] - center[1]) * 0.38,
-        ]);
-        return {
-            center: project(center),
-            radius: selectedArcElement.kind === "arc"
-                ? camera.toScreenLength(Math.abs(selectedArcElement.radius))
-                : undefined,
-            points,
-            handles: editHandles,
-            editHandles,
-            elementId: selectedArcElement.id,
-            radiusEditable: selectedArcElement.kind === "arc",
-            measurements: {
-                axes,
-                angleRays: [project(start), project(end)] as const,
-                angleLabel: `θ ${geometryLabel(sweep)}°`,
-                angleLabelAt,
-            },
-        };
-    });
-
-    const rotationControl = $derived.by(() => {
-        if (
-            (selectedStraightVertexEditablePath && !selectedStraightPathHasMultipleSegments) ||
-            !selectionRect ||
-            !selectionGeometryBounds ||
-            !hasTransformExtent ||
-            selectionIsPreview ||
-            store.toolKind !== "select"
-        ) return null;
-        return {
-            stemStart: [selectionRect.x + selectionRect.width / 2, selectionRect.y] as Pair,
-            screen: [selectionRect.x + selectionRect.width / 2, selectionRect.y - 24] as Pair,
-            pivot: [
-                (selectionGeometryBounds.min[0] + selectionGeometryBounds.max[0]) / 2,
-                (selectionGeometryBounds.min[1] + selectionGeometryBounds.max[1]) / 2,
-            ] as Pair,
-        };
-    });
 
     function syncToolScale() {
         store.tolerance = camera.toAsyLength(8);
@@ -897,13 +385,13 @@
         const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
         const pointerScreen: Pair = [pointerX, pointerY];
         const constraintGlyph = store.toolKind === "select"
-            ? constraintGlyphs.find((glyph) =>
+            ? overlay.constraintGlyphs.find((glyph) =>
                   Math.hypot(glyph.screen[0] - pointerX, glyph.screen[1] - pointerY) <= 10
               )
             : undefined;
         const dimensionGlyph = store.toolKind === "select"
-            ? dimensionGlyphs.find((glyph) =>
-                  Math.abs(glyph.screen[0] - pointerX) <= 28 && Math.abs(glyph.screen[1] - pointerY) <= 12
+            ? overlay.dimensions.find((glyph) =>
+                  Math.abs(glyph.label[0] - pointerX) <= 28 && Math.abs(glyph.label[1] - pointerY) <= 12
               )
             : undefined;
         if (e.button === 0 && dimensionGlyph) {
@@ -920,31 +408,31 @@
             interaction = "idle";
             return;
         }
-        const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
-        const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
-            arcGuide?.radiusEditable === true &&
-            isArcGuideAt(pointerScreen, arcGuide);
-        const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
-        const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
-        const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
+        const arcHandle = resizeHandleAt(pointerScreen, overlay.arcGuide?.editHandles ?? [], 6);
+        const overArcRadius = !arcHandle && overlay.arcGuide?.elementId !== null &&
+            overlay.arcGuide?.radiusEditable === true &&
+            isArcGuideAt(pointerScreen, overlay.arcGuide);
+        const vertexHandle = resizeHandleAt([pointerX, pointerY], overlay.vertexHandles, 6);
+        const resizeHandle = resizeHandleAt([pointerX, pointerY], overlay.resizeHandles);
+        const overRotation = isRotationHandleAt([pointerX, pointerY], overlay.rotationControl);
         if (
             e.button === 0 &&
             store.toolKind === "select" &&
-            arcGuide?.elementId &&
+            overlay.arcGuide?.elementId &&
             (arcHandle || overArcRadius)
         ) {
             const control = arcHandle?.control ?? "radius";
             const handle = arcHandle?.handle ?? toAsyAt(e.clientX, e.clientY);
             selectedVertex = null;
             hoveredVertex = null;
-            selectedArcControl = { elementId: arcGuide.elementId, control };
+            selectedArcControl = { elementId: overlay.arcGuide.elementId, control };
             hoveredArcControl = selectedArcControl;
             interaction = "transform";
             transformCursor = "move";
             syncToolScale();
             store.pointerDown(toAsyAt(e.clientX, e.clientY), {
                 kind: "arc",
-                elementId: arcGuide.elementId,
+                elementId: overlay.arcGuide.elementId,
                 control,
                 handle,
                 minimumRadius: camera.toAsyLength(12),
@@ -978,11 +466,11 @@
         }
         if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
             const handle = resizeHandle;
-            if (handle && selectionGeometryBounds) {
+            if (handle && overlay.selectionGeometryBounds) {
                 const extentXpx =
-                    camera.toScreenLength(selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0]);
+                    camera.toScreenLength(overlay.selectionGeometryBounds.max[0] - overlay.selectionGeometryBounds.min[0]);
                 const extentYpx =
-                    camera.toScreenLength(selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1]);
+                    camera.toScreenLength(overlay.selectionGeometryBounds.max[1] - overlay.selectionGeometryBounds.min[1]);
                 interaction = "transform";
                 transformCursor = handle.cursor;
                 syncToolScale();
@@ -999,21 +487,21 @@
                 return;
             }
         }
-        if (e.button === 0 && store.toolKind === "select" && overRotation && rotationControl) {
+        if (e.button === 0 && store.toolKind === "select" && overRotation && overlay.rotationControl) {
             interaction = "transform";
             transformCursor = "grabbing";
             syncToolScale();
             store.pointerDown(toAsyAt(e.clientX, e.clientY), {
                 kind: "rotate",
-                pivot: rotationControl.pivot,
+                pivot: overlay.rotationControl.pivot,
             }, e.altKey);
             return;
         }
         if (
             e.button === 0 &&
             store.toolKind === "select" &&
-            !selectionIsPreview &&
-            isScreenPointInRect(pointerScreen, selectionRect)
+            !overlay.selectionIsPreview &&
+            isScreenPointInRect(pointerScreen, overlay.selectionRect)
         ) {
             featureClickStart = {
                 screen: pointerScreen,
@@ -1084,10 +572,10 @@
                 return;
             }
             const pointerScreen: Pair = [pointerX, pointerY];
-            const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
-            const overArcRadius = !arcHandle && arcGuide?.elementId !== null &&
-                arcGuide?.radiusEditable === true &&
-                isArcGuideAt(pointerScreen, arcGuide);
+            const arcHandle = resizeHandleAt(pointerScreen, overlay.arcGuide?.editHandles ?? [], 6);
+            const overArcRadius = !arcHandle && overlay.arcGuide?.elementId !== null &&
+                overlay.arcGuide?.radiusEditable === true &&
+                isArcGuideAt(pointerScreen, overlay.arcGuide);
             hoveredArcControl = arcHandle
                 ? { elementId: arcHandle.elementId, control: arcHandle.control }
                 : null;
@@ -1096,14 +584,14 @@
                 transformCursor = "move";
                 return;
             }
-            const vertexHandle = resizeHandleAt([pointerX, pointerY], vertexHandles, 6);
+            const vertexHandle = resizeHandleAt([pointerX, pointerY], overlay.vertexHandles, 6);
             hoveredVertex = vertexHandle
                 ? { elementId: vertexHandle.elementId, nodeIndex: vertexHandle.nodeIndex }
                 : null;
-            const resizeHandle = resizeHandleAt([pointerX, pointerY], resizeHandles);
-            const overRotation = isRotationHandleAt([pointerX, pointerY], rotationControl);
-            const overSelectionBody = !selectionIsPreview &&
-                isScreenPointInRect(pointerScreen, selectionRect);
+            const resizeHandle = resizeHandleAt([pointerX, pointerY], overlay.resizeHandles);
+            const overRotation = isRotationHandleAt([pointerX, pointerY], overlay.rotationControl);
+            const overSelectionBody = !overlay.selectionIsPreview &&
+                isScreenPointInRect(pointerScreen, overlay.selectionRect);
             transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ??
                 (overRotation ? "grab" : overSelectionBody ? "move" : null);
             return;
@@ -1274,18 +762,6 @@
         camera.wheel(e);
     }
 
-    const marqueeRect = $derived.by(() => {
-        if (!store.marquee) return null;
-        const a = project(store.marquee.start);
-        const b = project(store.marquee.end);
-        return {
-            x: Math.min(a[0], b[0]),
-            y: Math.min(a[1], b[1]),
-            width: Math.abs(a[0] - b[0]),
-            height: Math.abs(a[1] - b[1]),
-        };
-    });
-
     function currentPalette(): WhiteboardPalette {
         const current = Theme.currentTheme;
         const light = Theme.themes.get("light");
@@ -1315,52 +791,9 @@
             transparent,
             palette,
         };
-        const overlay: WhiteboardRenderOverlay = {
-            selectedIds: new Set(activeSelection),
-            selectionIsPreview,
-            previewElementRects: previewElementRects.map((rect) => ({ ...rect })),
-            marqueeRect: marqueeRect ? { ...marqueeRect } : null,
-            selectionRect: selectionRect ? { ...selectionRect } : null,
-            rotationControl: rotationControl
-                ? { stemStart: rotationControl.stemStart, screen: rotationControl.screen }
-                : null,
-            resizeHandles: resizeHandles.map((handle) => ({ screen: handle.screen })),
-            vertexHandles: vertexHandles.map((handle) => ({
-                screen: handle.screen,
-                state: handle.state,
-            })),
-            arcGuide: arcGuide
-                ? {
-                      center: arcGuide.center,
-                      radius: arcGuide.radius,
-                      points: arcGuide.points,
-                      measurements: arcGuide.measurements,
-                      handles: arcGuide.handles.map((handle) => ({
-                          control: handle.control,
-                          screen: handle.screen,
-                          state: handle.state,
-                      })),
-                  }
-                : null,
-            snapProposal: store.snapProposal
-                ? { from: project(store.snapProposal.from), to: project(store.snapProposal.to) }
-                : null,
-            constraintGlyphs: constraintGlyphs.map((glyph) => ({ ...glyph })),
-            dimensions: dimensionGlyphs.map((glyph) => ({
-                id: glyph.id,
-                a: glyph.aScreen,
-                b: glyph.bScreen,
-                label: glyph.screen,
-                text: `${glyph.value.toFixed(2)}${glyph.mode === "reference" ? " ref" : ""}`,
-                mode: glyph.mode,
-                selected: glyph.selected,
-            })),
-            featurePoints: store.selectedFeatureGeometry.points.map(project),
-            featureSegments: store.selectedFeatureGeometry.segments.map((segment) => ({
-                a: project(segment.a),
-                b: project(segment.b),
-            })),
-        };
+        // `overlay` is already plain screen-space data (every coordinate is a
+        // freshly projected value), so it goes to the renderer as-is.
+        const renderOverlay = overlay;
 
         const pixelRatio = camera.pixelRatio;
         const backingWidth = Math.max(1, Math.round(camera.width * pixelRatio));
@@ -1370,7 +803,7 @@
         registerCanvasSnapshot(canvas, { ...runtimeSnapshot, scene: committedScene });
         const frame = requestAnimationFrame(() => {
             const context = canvas.getContext("2d");
-            if (context) renderWhiteboard(context, runtimeSnapshot, overlay, pixelRatio);
+            if (context) renderWhiteboard(context, runtimeSnapshot, renderOverlay, pixelRatio);
         });
         return () => cancelAnimationFrame(frame);
     });
@@ -1441,7 +874,7 @@
         ondblclick={onDoubleClick}
         onwheel={onWheel}
     ></canvas>
-    {#each selectedSegmentMarkers as marker (marker.label)}
+    {#each overlay.selectedSegmentMarkers as marker (marker.label)}
         <span
             class="pointer-events-none absolute z-20 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-surface-container-lowest bg-primary text-[10px] font-bold text-primary-foreground shadow-sm"
             style:left={`${marker.screen[0]}px`}
@@ -1597,8 +1030,8 @@
     {#if selectedDimension && selectedDimension.mode === "driving" && !lengthMenuOpen}
         <input
             class="absolute z-30 h-7 w-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary bg-background px-1 text-center text-xs shadow-sm outline-none focus:ring-2 focus:ring-ring"
-            style:left={`${selectedDimension.screen[0]}px`}
-            style:top={`${selectedDimension.screen[1]}px`}
+            style:left={`${selectedDimension.label[0]}px`}
+            style:top={`${selectedDimension.label[1]}px`}
             type="number"
             min="0"
             step="0.1"
