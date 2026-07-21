@@ -22,8 +22,8 @@ when you touch adjacent code, move it *toward* the target, never away.
 | Document is the field of record; `Scene` is a `resolveWhiteboardDocument` getter; `History<WhiteboardDocument>` | **Enforced today** | `DocumentController` (`whiteboard/document-controller.svelte`) holds `document = $state(...)`, owns the history, and projects the Scene; the store exposes it via getters. |
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
 | Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the store's single `#liftCommit` step. `#conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
-| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Partly** | Extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`; the store forwards `selection`/`selectionPreview`/`marquee`/`featureSelection` via getters), ConstraintService (`whiteboard/constraint-service.svelte`; the store forwards reactive selection/diagnostic state and relation/dimension operations). Remaining in the store: InteractionController. Extract along the seam as you touch it. |
-| One explicit pointer-down ownership branch (§3.1) | **Partly** | The store branches on `#smartTransform`/`#smartTranslation`/`#smartDrag` today; consolidate toward the single hit-test decision. |
+| Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | All six are extracted: PersistenceIO, StyleModel, DocumentController, SelectionModel (`whiteboard/selection.svelte`), ConstraintService (`whiteboard/constraint-service.svelte`), InteractionController (`whiteboard/interaction.svelte`). The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
+| One explicit pointer-down ownership branch (§3.1) | **Enforced today** | `InteractionController.#routePointerDown` is the single decision: one hit-test returns a `PointerRoute`, and the chosen pipeline is stored as one `ActiveGesture` value. `pointerMove`/`pointerUp` switch on that discriminant — they never re-probe nullable gesture fields, and nothing switches pipeline mid-gesture. |
 
 When a "Target" rule and the current code disagree, the code is the debt, not
 the rule.
@@ -151,6 +151,7 @@ cell.
 | Dimension (length/radius/angle) | `whiteboard/model/operations.ts` + `types.ts` (`LengthDimension`) |
 | Feature selection semantics | `whiteboard/model/features.ts` |
 | Document validation / migration | `whiteboard/model/validation.ts` / `document.ts` |
+| Pointer routing / a new gesture kind | `whiteboard/interaction.svelte.ts` (`#routePointerDown` + the `ActiveGesture` union) |
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |

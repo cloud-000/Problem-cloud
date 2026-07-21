@@ -532,6 +532,41 @@ describe("WhiteboardStore selection gestures", () => {
     });
 });
 
+// Pipeline ownership is decided once, on pointer-down (ARCHITECTURE.md §3.1);
+// these pin that a gesture cannot change pipelines once it has started.
+describe("WhiteboardStore pointer routing", () => {
+    test("an active creation tool owns a gesture that starts on a smart feature", () => {
+        const created = createSmartPointMarker(emptyWhiteboardDocument(), [0, 0]);
+        const store = new WhiteboardStore(created.document);
+        const pointsBefore = structuredClone(created.document.sketch.points);
+        store.setTool("pen");
+
+        store.pointerDown([0, 0]);
+        store.pointerMove([2, 2]);
+        store.pointerUp([2, 2]);
+
+        // Pipeline A ran: ink was added and the sketch point never moved.
+        expect(store.document.sketch.points).toEqual(pointsBefore);
+        expect(store.document.items.filter((item) => item.kind === "baked")).toHaveLength(1);
+    });
+
+    test("a marquee started in empty space stays a marquee when it crosses a smart feature", () => {
+        const created = createSmartPointMarker(emptyWhiteboardDocument(), [0, 0]);
+        const store = new WhiteboardStore(created.document);
+        const pointsBefore = structuredClone(created.document.sketch.points);
+
+        store.pointerDown([-4, -4]);
+        store.pointerMove([0, 0]);
+
+        expect(store.marquee).not.toBeNull();
+
+        store.pointerUp([2, 2]);
+
+        expect(store.document.sketch.points).toEqual(pointsBefore);
+        expect(store.selection).toEqual(store.scene.elements.map(({ id }) => id));
+    });
+});
+
 // Characterization tests: these pin the store's *current* end-to-end behavior
 // (creation per tool, selection/deletion, smart-gesture undo, and asy
 // round-trip) so a behavior-preserving refactor of WhiteboardStore has a net.
