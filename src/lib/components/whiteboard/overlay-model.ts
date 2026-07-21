@@ -106,6 +106,14 @@ export interface OverlayDimension {
  * need.
  */
 export interface WhiteboardOverlay extends WhiteboardRenderOverlay {
+    /**
+     * True while *either* kind of preview is in flight, since both must
+     * suppress transform affordances. Note this is deliberately broader than
+     * the condition behind `previewElementRects`, which highlights only a
+     * selection preview — a tool preview draws its own geometry. See
+     * `OverlayInput.hasPreview`.
+     */
+    selectionIsPreview: boolean;
     resizeHandles: OverlayResizeHandle[];
     vertexHandles: OverlayVertexHandle[];
     arcGuide: OverlayArcGuide | null;
@@ -119,12 +127,32 @@ export interface WhiteboardOverlay extends WhiteboardRenderOverlay {
     selectedSegmentMarkers: Array<{ label: number; screen: Pair }>;
 }
 
+/** Label font size `render.ts` falls back to when a label carries no pen. */
+const DEFAULT_LABEL_FONT_SIZE = 14;
+/** Narrowest a label's selection box may get, so short labels stay grabbable. */
+const MINIMUM_LABEL_WIDTH = 14;
+
+/**
+ * Width of a label when no measurer is injected (SSR, tests). A crude
+ * per-character average — `measureLabelWidth` exists precisely because this is
+ * wrong for anything but plain ASCII at the default size.
+ */
+export function estimateLabelWidth(text: string, fontSize: number): number {
+    return text.length * fontSize * (7.5 / DEFAULT_LABEL_FONT_SIZE);
+}
+
 export interface OverlayInput {
     /** The projected Scene, including any in-flight preview.  */
     displayScene: Scene;
     selection: readonly string[];
     selectionPreview: readonly string[] | null;
-    /** Whether a tool preview is in flight (`store.preview !== null`). */
+    /**
+     * Whether a *tool* preview is in flight (`store.preview !== null`) — an
+     * in-flight drawing that renders itself. Distinct from `selectionPreview`,
+     * which is a preview of *which elements would be selected* (marquee hover).
+     * Both suppress transform affordances; only the latter draws per-element
+     * rects. See `selectionIsPreview` vs `previewElementRects` on the output.
+     */
     hasPreview: boolean;
     toolKind: string;
     selectionContainsSmartItems: boolean;
@@ -154,6 +182,12 @@ export interface OverlayInput {
     project: (point: Pair) => Pair;
     /** scene-unit distance → screen pixels. */
     toScreenLength: (units: number) => number;
+    /**
+     * Rendered width of a label's text at `fontSize`, in pixels. Text metrics
+     * are a DOM capability, so the view injects this; returning `undefined`
+     * (no canvas available) falls back to `estimateLabelWidth`.
+     */
+    measureLabelWidth?: (text: string, fontSize: number) => number | undefined;
 }
 
 function isVertex(ref: VertexRef | null, elementId: string, nodeIndex: number): boolean {
@@ -215,12 +249,24 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
     function elementScreenRect(element: SceneElement, padding = 0): ScreenRect | null {
         if (element.kind === "label") {
             const [x, y] = project(element.at);
-            const labelWidth = Math.max(14, element.text.replaceAll("$", "").length * 7.5);
+            // `render.ts` draws a label as `fillText(text without "$", …)`,
+            // centred on `at` at `${fontSize}px sans-serif`. Measuring that
+            // exact string against that exact font makes the box match the ink
+            // instead of approximating it.
+            const text = element.text.replaceAll("$", "");
+            const fontSize = element.pen?.fontSize ?? DEFAULT_LABEL_FONT_SIZE;
+            const labelWidth = Math.max(
+                MINIMUM_LABEL_WIDTH,
+                input.measureLabelWidth?.(text, fontSize) ?? estimateLabelWidth(text, fontSize),
+            );
+            // Half-height scales with the font, reproducing the historical
+            // 9px/18px box at the default size.
+            const halfHeight = (fontSize / DEFAULT_LABEL_FONT_SIZE) * 9;
             return {
                 x: x - labelWidth / 2 - padding,
-                y: y - 9 - padding,
+                y: y - halfHeight - padding,
                 width: labelWidth + padding * 2,
-                height: 18 + padding * 2,
+                height: halfHeight * 2 + padding * 2,
             };
         }
         const bounds = elementBounds(element);
@@ -654,11 +700,10 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
         snapProposal: input.snapProposal
             ? { from: project(input.snapProposal.from), to: project(input.snapProposal.to) }
             : null,
-        constraintGlyphs: input.constraintGlyphs.map((glyph) => ({
-            id: glyph.id,
-            screen: [project(glyph.at)[0] + 12, project(glyph.at)[1] - 12] as Pair,
-            selected: glyph.selected,
-        })),
+        constraintGlyphs: input.constraintGlyphs.map((glyph) => {
+            const [x, y] = project(glyph.at);
+            return { id: glyph.id, screen: [x + 12, y - 12] as Pair, selected: glyph.selected };
+        }),
         dimensions: input.dimensionGlyphs.map((glyph) => ({
             id: glyph.id,
             a: project(glyph.a),

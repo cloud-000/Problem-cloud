@@ -352,11 +352,79 @@ describe("elements with no extent", () => {
             input({ displayScene: scene(label), selection: [label.id] }),
         );
 
-        // "AB" (the `$`s are stripped) → 2 * 7.5 = 15px wide, padded by 6.
+        // No measurer injected → estimateLabelWidth: "AB" is 2 * 7.5 = 15px.
         expect(overlay.selectionRect).toEqual({ x: 96.5, y: 75, width: 27, height: 30 });
         expect(overlay.selectionGeometryBounds).toEqual({ min: [1, 1], max: [1, 1] });
         expect(overlay.resizeHandles).toEqual([]);
         expect(overlay.rotationControl).toBeNull();
+    });
+
+    test("an injected measurer sizes the box to the ink, stripped of `$`", () => {
+        const seen: Array<[string, number]> = [];
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(label),
+                selection: [label.id],
+                measureLabelWidth: (text, fontSize) => {
+                    seen.push([text, fontSize]);
+                    return 40;
+                },
+            }),
+        );
+
+        // The `$`s never reach the measurer, and the default font size is 14.
+        expect(seen).toEqual([["AB", 14]]);
+        expect(overlay.selectionRect).toEqual({ x: 84, y: 75, width: 52, height: 30 });
+    });
+
+    test("a LaTeX-heavy label is no longer over-boxed by the per-character guess", () => {
+        const alpha: SceneElement = { id: "l", kind: "label", text: "$\\alpha$", at: [1, 1] };
+        const estimated = buildOverlay(
+            input({ displayScene: scene(alpha), selection: [alpha.id] }),
+        ).selectionRect;
+        const measured = buildOverlay(
+            input({
+                displayScene: scene(alpha),
+                selection: [alpha.id],
+                measureLabelWidth: () => 30,
+            }),
+        ).selectionRect;
+
+        // "\alpha" is 6 chars → the estimate claims 45px for 30px of ink.
+        expect(estimated?.width).toBe(45 + 12);
+        expect(measured?.width).toBe(30 + 12);
+    });
+
+    test("the box scales with a label's font size", () => {
+        const big: SceneElement = {
+            id: "l",
+            kind: "label",
+            text: "$A$",
+            at: [1, 1],
+            pen: { fontSize: 28 },
+        };
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(big),
+                selection: [big.id],
+                measureLabelWidth: (_text, fontSize) => fontSize,
+            }),
+        );
+
+        // Double the font → double the 9px half-height, so 36px + padding.
+        expect(overlay.selectionRect).toEqual({ x: 90, y: 66, width: 40, height: 48 });
+    });
+
+    test("the minimum width keeps a narrow label grabbable", () => {
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(label),
+                selection: [label.id],
+                measureLabelWidth: () => 2,
+            }),
+        );
+
+        expect(overlay.selectionRect?.width).toBe(14 + 12);
     });
 
     test("a point collapses to a zero-size box and offers no transform", () => {

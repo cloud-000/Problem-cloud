@@ -1,5 +1,25 @@
 <script module lang="ts">
     let activeShortcutSurface: HTMLCanvasElement | null = null;
+
+    /** Lazily created off-screen context used only for text metrics. */
+    let metricsContext: CanvasRenderingContext2D | null | undefined;
+
+    /**
+     * The width `render.ts` will actually paint for a label, so its selection
+     * box matches the ink. Must mirror the font that `drawElement` sets.
+     * Returns `undefined` with no DOM (SSR), letting the overlay model fall
+     * back to its estimate.
+     */
+    function measureLabelWidth(text: string, fontSize: number): number | undefined {
+        if (metricsContext === undefined) {
+            metricsContext = typeof document === "undefined"
+                ? null
+                : document.createElement("canvas").getContext("2d");
+        }
+        if (!metricsContext) return undefined;
+        metricsContext.font = `${fontSize}px sans-serif`;
+        return metricsContext.measureText(text).width;
+    }
 </script>
 
 <script lang="ts">
@@ -156,6 +176,7 @@
             hoveredArcControl,
             project,
             toScreenLength: (units) => camera.toScreenLength(units),
+            measureLabelWidth,
         }),
     );
     const selectedDimension = $derived(overlay.dimensions.find(({ selected }) => selected));
@@ -408,31 +429,33 @@
             interaction = "idle";
             return;
         }
-        const arcHandle = resizeHandleAt(pointerScreen, overlay.arcGuide?.editHandles ?? [], 6);
-        const overArcRadius = !arcHandle && overlay.arcGuide?.elementId !== null &&
-            overlay.arcGuide?.radiusEditable === true &&
-            isArcGuideAt(pointerScreen, overlay.arcGuide);
+        const arcGuide = overlay.arcGuide;
+        const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
+        // A construction guide (`elementId === null`) has no draggable radius.
+        const overArcRadius = !arcHandle && arcGuide !== null && arcGuide.elementId !== null &&
+            arcGuide.radiusEditable &&
+            isArcGuideAt(pointerScreen, arcGuide);
         const vertexHandle = resizeHandleAt([pointerX, pointerY], overlay.vertexHandles, 6);
         const resizeHandle = resizeHandleAt([pointerX, pointerY], overlay.resizeHandles);
         const overRotation = isRotationHandleAt([pointerX, pointerY], overlay.rotationControl);
         if (
             e.button === 0 &&
             store.toolKind === "select" &&
-            overlay.arcGuide?.elementId &&
+            arcGuide?.elementId &&
             (arcHandle || overArcRadius)
         ) {
             const control = arcHandle?.control ?? "radius";
             const handle = arcHandle?.handle ?? toAsyAt(e.clientX, e.clientY);
             selectedVertex = null;
             hoveredVertex = null;
-            selectedArcControl = { elementId: overlay.arcGuide.elementId, control };
+            selectedArcControl = { elementId: arcGuide.elementId, control };
             hoveredArcControl = selectedArcControl;
             interaction = "transform";
             transformCursor = "move";
             syncToolScale();
             store.pointerDown(toAsyAt(e.clientX, e.clientY), {
                 kind: "arc",
-                elementId: overlay.arcGuide.elementId,
+                elementId: arcGuide.elementId,
                 control,
                 handle,
                 minimumRadius: camera.toAsyLength(12),
@@ -464,28 +487,24 @@
             selectedArcControl = null;
             hoveredArcControl = null;
         }
-        if (e.button === 0 && store.toolKind === "select" && resizeHandle) {
-            const handle = resizeHandle;
-            if (handle && overlay.selectionGeometryBounds) {
-                const extentXpx =
-                    camera.toScreenLength(overlay.selectionGeometryBounds.max[0] - overlay.selectionGeometryBounds.min[0]);
-                const extentYpx =
-                    camera.toScreenLength(overlay.selectionGeometryBounds.max[1] - overlay.selectionGeometryBounds.min[1]);
-                interaction = "transform";
-                transformCursor = handle.cursor;
-                syncToolScale();
-                store.pointerDown(toAsyAt(e.clientX, e.clientY), {
-                    kind: "resize",
-                    anchor: handle.anchor,
-                    handle: handle.handle,
-                    axes: handle.axes,
-                    minimumScale: [
-                        extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
-                        extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,
-                    ],
-                }, e.altKey);
-                return;
-            }
+        const resizeBounds = overlay.selectionGeometryBounds;
+        if (e.button === 0 && store.toolKind === "select" && resizeHandle && resizeBounds) {
+            const extentXpx = camera.toScreenLength(resizeBounds.max[0] - resizeBounds.min[0]);
+            const extentYpx = camera.toScreenLength(resizeBounds.max[1] - resizeBounds.min[1]);
+            interaction = "transform";
+            transformCursor = resizeHandle.cursor;
+            syncToolScale();
+            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
+                kind: "resize",
+                anchor: resizeHandle.anchor,
+                handle: resizeHandle.handle,
+                axes: resizeHandle.axes,
+                minimumScale: [
+                    extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
+                    extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,
+                ],
+            }, e.altKey);
+            return;
         }
         if (e.button === 0 && store.toolKind === "select" && overRotation && overlay.rotationControl) {
             interaction = "transform";
@@ -572,10 +591,12 @@
                 return;
             }
             const pointerScreen: Pair = [pointerX, pointerY];
-            const arcHandle = resizeHandleAt(pointerScreen, overlay.arcGuide?.editHandles ?? [], 6);
-            const overArcRadius = !arcHandle && overlay.arcGuide?.elementId !== null &&
-                overlay.arcGuide?.radiusEditable === true &&
-                isArcGuideAt(pointerScreen, overlay.arcGuide);
+            const arcGuide = overlay.arcGuide;
+            const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
+            // A construction guide (`elementId === null`) has no draggable radius.
+            const overArcRadius = !arcHandle && arcGuide !== null && arcGuide.elementId !== null &&
+                arcGuide.radiusEditable &&
+                isArcGuideAt(pointerScreen, arcGuide);
             hoveredArcControl = arcHandle
                 ? { elementId: arcHandle.elementId, control: arcHandle.control }
                 : null;
