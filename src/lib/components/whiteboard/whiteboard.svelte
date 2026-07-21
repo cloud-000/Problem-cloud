@@ -26,32 +26,26 @@
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { SvelteMap } from "svelte/reactivity";
     import type { Attachment } from "svelte/attachments";
     import { sceneBounds, type Pair, type Scene } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import type { RelationKind } from "$lib/whiteboard/model";
-    import { hitTest, PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
     import { Theme } from "$lib/utils/Theme.svelte";
     import {
         registerCanvasSnapshot,
         renderWhiteboard,
-        resizeHandleAt,
-        isRotationHandleAt,
-        isArcGuideAt,
-        isScreenPointInRect,
         type WhiteboardPalette,
         type WhiteboardRenderSnapshot,
     } from "./render";
     import {
         activeSelectedVertexOf,
         buildOverlay,
-        type ArcControlRef,
-        type ResizeCursor,
         type VertexRef,
+        type WhiteboardOverlay,
     } from "./overlay-model";
     import { clampToolbarPosition } from "./constraint-toolbar";
     import { Camera } from "./camera.svelte";
+    import { PointerInputController } from "./pointer-input.svelte";
     import ZoomControls from "./zoom-controls.svelte";
 
     let {
@@ -121,16 +115,7 @@
     });
     const project = (point: Pair): Pair => camera.project(point);
 
-    let pointerId = $state<number | null>(null);
-    let interaction = $state<"idle" | "draw" | "transform" | "pan" | "pinch">("idle");
-    type TransformCursor = ResizeCursor | "grab" | "grabbing" | "move";
-    let transformCursor = $state<TransformCursor | null>(null);
-    let eraserPointer = $state<Pair | null>(null);
     let spacePressed = $state(false);
-    let selectedVertex = $state<VertexRef | null>(null);
-    let hoveredVertex = $state<VertexRef | null>(null);
-    let selectedArcControl = $state<ArcControlRef | null>(null);
-    let hoveredArcControl = $state<ArcControlRef | null>(null);
     let lengthMenuOpen = $state(false);
     let constraintToolbarWidth = $state(0);
     let constraintToolbarHeight = $state(0);
@@ -144,16 +129,38 @@
         clientStart: Pair;
         positionStart: Pair;
     } | null = null;
-    let featureClickStart: { screen: Pair; selection: typeof store.featureSelection } | null = null;
-    let panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
-    const activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
-    const penSamples = new PointerSampleBatcher<PointerSample>(
-        (points) => {
-            if (interaction === "draw" && store.toolKind === "pen") store.pointerMoves(points);
+    /** Pointer/DOM plumbing: capture, interaction mode, pinch, pen batching. */
+    const pointer = new PointerInputController({
+        get store() {
+            return store;
         },
-        (callback) => requestAnimationFrame(callback),
-        (handle) => cancelAnimationFrame(handle),
-    );
+        get camera() {
+            return camera;
+        },
+        get surface() {
+            return surface;
+        },
+        // Annotated because the overlay reads the controller's handle state,
+        // so inference would otherwise chase its own tail.
+        get overlay(): WhiteboardOverlay {
+            return overlay;
+        },
+        get navigation() {
+            return navigation;
+        },
+        get spacePressed() {
+            return spacePressed;
+        },
+        get activeSelectedVertex(): VertexRef | null {
+            return activeSelectedVertex;
+        },
+        onSurfaceActivated() {
+            activeShortcutSurface = surface;
+        },
+        closeLengthMenu() {
+            lengthMenuOpen = false;
+        },
+    });
 
     /** All screen-space overlay geometry, computed by the pure overlay model. */
     const overlay = $derived(
@@ -170,10 +177,10 @@
             constraintGlyphs: store.constraintGlyphs,
             dimensionGlyphs: store.dimensionGlyphs,
             selectedFeatureGeometry: store.selectedFeatureGeometry,
-            selectedVertex,
-            hoveredVertex,
-            selectedArcControl,
-            hoveredArcControl,
+            selectedVertex: pointer.selectedVertex,
+            hoveredVertex: pointer.hoveredVertex,
+            selectedArcControl: pointer.selectedArcControl,
+            hoveredArcControl: pointer.hoveredArcControl,
             project,
             toScreenLength: (units) => camera.toScreenLength(units),
             measureLabelWidth,
@@ -282,19 +289,8 @@
     }
 
     const activeSelectedVertex = $derived(
-        activeSelectedVertexOf(overlay.straightVertexEditablePath, selectedVertex),
+        activeSelectedVertexOf(overlay.straightVertexEditablePath, pointer.selectedVertex),
     );
-
-    function syncToolScale() {
-        store.tolerance = camera.toAsyLength(8);
-        store.penTapTolerance = camera.toAsyLength(2);
-        store.sceneUnitsPerPixel = camera.toAsyLength(1);
-        store.strokeProcessing = {
-            ...store.strokeProcessing,
-            sampleSpacing: camera.toAsyLength(1.5),
-            simplifyTolerance: camera.toAsyLength(0.75),
-        };
-    }
 
     const attachSurface: Attachment<HTMLCanvasElement> = (node) => {
         const attachedStore = store;
@@ -305,400 +301,12 @@
         camera.syncPixelRatio();
         attachedStore.promptLabel = promptLabel;
         return () => {
-            penSamples.cancel();
+            pointer.dispose();
             if (activeShortcutSurface === node) activeShortcutSurface = null;
             if (surface === node) surface = null;
             if (attachedStore.promptLabel === promptLabel) attachedStore.promptLabel = undefined;
         };
     };
-
-    const localPoint = (clientX: number, clientY: number): Pair =>
-        camera.localPoint(clientX, clientY);
-
-    const toAsyAt = (clientX: number, clientY: number): Pair => camera.toAsy(clientX, clientY);
-
-    function pointerSample(e: PointerEvent): PointerSample {
-        const pressure = e.pointerType === "pen" && Number.isFinite(e.pressure) && e.pressure > 0
-            ? Math.max(0, Math.min(1, e.pressure))
-            : undefined;
-        return {
-            point: toAsyAt(e.clientX, e.clientY),
-            timestamp: e.timeStamp,
-            pointerType: e.pointerType || "mouse",
-            ...(pressure === undefined ? {} : { pressure }),
-        };
-    }
-
-    function capture(id: number) {
-        try {
-            surface?.setPointerCapture(id);
-        } catch {
-            // Pointer capture is best-effort on some touch browsers.
-        }
-    }
-
-    function release(id: number) {
-        if (!surface?.hasPointerCapture(id)) return;
-        try {
-            surface.releasePointerCapture(id);
-        } catch {
-            // The browser may already have released it.
-        }
-    }
-
-    function beginPinch() {
-        const touches = [...activeTouches.values()];
-        if (touches.length < 2) return;
-        const [a, b] = touches;
-        penSamples.cancel();
-        store.cancel();
-        interaction = "pinch";
-        transformCursor = null;
-        selectedArcControl = null;
-        hoveredArcControl = null;
-        pointerId = null;
-        camera.beginPinch(a, b);
-    }
-
-    function updatePinch() {
-        if (activeTouches.size < 2) return;
-        const [a, b] = [...activeTouches.values()];
-        camera.updatePinch(a, b);
-    }
-
-    function onPointerDown(e: PointerEvent) {
-        if (!surface || (e.button !== 0 && e.button !== 1)) return;
-        activeShortcutSurface = surface;
-        e.preventDefault();
-        surface.focus();
-        if (store.toolKind === "eraser") eraserPointer = localPoint(e.clientX, e.clientY);
-        capture(e.pointerId);
-
-        if (e.pointerType === "touch") {
-            activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-            if (activeTouches.size >= 2) {
-                if (navigation) beginPinch();
-                return;
-            }
-        }
-
-        if (e.button === 1 && !navigation) return;
-
-        pointerId = e.pointerId;
-        penSamples.cancel();
-        if (navigation && (e.button === 1 || store.toolKind === "pan" || spacePressed)) {
-            interaction = "pan";
-            panStart = { clientX: e.clientX, clientY: e.clientY, x: camera.panX, y: camera.panY };
-            return;
-        }
-
-        if (e.button === 0 && store.toolKind === "select" && store.lineContinuation) {
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = null;
-            hoveredArcControl = null;
-            interaction = "draw";
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), undefined, e.altKey);
-            return;
-        }
-
-        const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
-        const pointerScreen: Pair = [pointerX, pointerY];
-        const constraintGlyph = store.toolKind === "select"
-            ? overlay.constraintGlyphs.find((glyph) =>
-                  Math.hypot(glyph.screen[0] - pointerX, glyph.screen[1] - pointerY) <= 10
-              )
-            : undefined;
-        const dimensionGlyph = store.toolKind === "select"
-            ? overlay.dimensions.find((glyph) =>
-                  Math.abs(glyph.label[0] - pointerX) <= 28 && Math.abs(glyph.label[1] - pointerY) <= 12
-              )
-            : undefined;
-        if (e.button === 0 && dimensionGlyph) {
-            store.selectDimension(dimensionGlyph.id);
-            interaction = "idle";
-            return;
-        }
-        if (e.button === 0 && constraintGlyph) {
-            store.selectConstraint(constraintGlyph.id);
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = null;
-            hoveredArcControl = null;
-            interaction = "idle";
-            return;
-        }
-        const arcGuide = overlay.arcGuide;
-        const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
-        // A construction guide (`elementId === null`) has no draggable radius.
-        const overArcRadius = !arcHandle && arcGuide !== null && arcGuide.elementId !== null &&
-            arcGuide.radiusEditable &&
-            isArcGuideAt(pointerScreen, arcGuide);
-        const vertexHandle = resizeHandleAt([pointerX, pointerY], overlay.vertexHandles, 6);
-        const resizeHandle = resizeHandleAt([pointerX, pointerY], overlay.resizeHandles);
-        const overRotation = isRotationHandleAt([pointerX, pointerY], overlay.rotationControl);
-        if (
-            e.button === 0 &&
-            store.toolKind === "select" &&
-            arcGuide?.elementId &&
-            (arcHandle || overArcRadius)
-        ) {
-            const control = arcHandle?.control ?? "radius";
-            const handle = arcHandle?.handle ?? toAsyAt(e.clientX, e.clientY);
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = { elementId: arcGuide.elementId, control };
-            hoveredArcControl = selectedArcControl;
-            interaction = "transform";
-            transformCursor = "move";
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
-                kind: "arc",
-                elementId: arcGuide.elementId,
-                control,
-                handle,
-                minimumRadius: camera.toAsyLength(12),
-            }, e.altKey);
-            return;
-        }
-        if (e.button === 0 && store.toolKind === "select" && vertexHandle) {
-            selectedVertex = {
-                elementId: vertexHandle.elementId,
-                nodeIndex: vertexHandle.nodeIndex,
-            };
-            hoveredVertex = selectedVertex;
-            selectedArcControl = null;
-            hoveredArcControl = null;
-            interaction = "transform";
-            transformCursor = vertexHandle.cursor;
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
-                kind: "vertex",
-                elementId: vertexHandle.elementId,
-                nodeIndex: vertexHandle.nodeIndex,
-                handle: vertexHandle.handle,
-            }, e.altKey, e.shiftKey);
-            return;
-        }
-        if (e.button === 0) {
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = null;
-            hoveredArcControl = null;
-        }
-        const resizeBounds = overlay.selectionGeometryBounds;
-        if (e.button === 0 && store.toolKind === "select" && resizeHandle && resizeBounds) {
-            const extentXpx = camera.toScreenLength(resizeBounds.max[0] - resizeBounds.min[0]);
-            const extentYpx = camera.toScreenLength(resizeBounds.max[1] - resizeBounds.min[1]);
-            interaction = "transform";
-            transformCursor = resizeHandle.cursor;
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
-                kind: "resize",
-                anchor: resizeHandle.anchor,
-                handle: resizeHandle.handle,
-                axes: resizeHandle.axes,
-                minimumScale: [
-                    extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
-                    extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,
-                ],
-            }, e.altKey);
-            return;
-        }
-        if (e.button === 0 && store.toolKind === "select" && overRotation && overlay.rotationControl) {
-            interaction = "transform";
-            transformCursor = "grabbing";
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), {
-                kind: "rotate",
-                pivot: overlay.rotationControl.pivot,
-            }, e.altKey);
-            return;
-        }
-        if (
-            e.button === 0 &&
-            store.toolKind === "select" &&
-            !overlay.selectionIsPreview &&
-            isScreenPointInRect(pointerScreen, overlay.selectionRect)
-        ) {
-            featureClickStart = {
-                screen: pointerScreen,
-                selection: [...store.featureSelection],
-            };
-            interaction = "transform";
-            transformCursor = "move";
-            syncToolScale();
-            store.pointerDown(toAsyAt(e.clientX, e.clientY), { kind: "move" }, e.altKey, e.shiftKey);
-            return;
-        }
-
-        if (e.button === 0 && store.toolKind === "select" && store.featureSelection.length > 0) {
-            const element = hitTest(store.scene, toAsyAt(e.clientX, e.clientY), camera.toAsyLength(8));
-            if (!element) {
-                store.clearFeatureSelection();
-                lengthMenuOpen = false;
-            }
-        }
-
-        interaction = "draw";
-        if (e.button === 0 && store.toolKind === "select") {
-            featureClickStart = {
-                screen: pointerScreen,
-                selection: [...store.featureSelection],
-            };
-        }
-        syncToolScale();
-        store.pointerDown(
-            store.toolKind === "pen" ? pointerSample(e) : toAsyAt(e.clientX, e.clientY),
-            undefined,
-            e.altKey,
-        );
-    }
-
-    function onDoubleClick(e: MouseEvent) {
-        if (store.toolKind !== "select") return;
-        const at = toAsyAt(e.clientX, e.clientY);
-        const element = hitTest(store.scene, at, camera.toAsyLength(8));
-        if (element) store.selectCurveFeatureAt(element.id, at, e.shiftKey);
-    }
-
-    function onPointerMove(e: PointerEvent) {
-        eraserPointer = store.toolKind === "eraser" ? localPoint(e.clientX, e.clientY) : null;
-        if (activeTouches.has(e.pointerId)) {
-            activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-        }
-        if (interaction === "pinch") {
-            updatePinch();
-            return;
-        }
-        if (interaction === "idle") {
-            const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
-            if (["line", "rectangle", "point"].includes(store.toolKind)) {
-                syncToolScale();
-                store.updateSnapProposal(toAsyAt(e.clientX, e.clientY), e.altKey);
-            }
-            if (
-                store.lineContinuation ||
-                (store.toolKind === "line" && store.preview !== null) ||
-                (store.toolKind === "arc" && store.arcGuide !== null)
-            ) {
-                hoveredVertex = null;
-                hoveredArcControl = null;
-                transformCursor = null;
-                syncToolScale();
-                store.pointerMove(toAsyAt(e.clientX, e.clientY), e.shiftKey, e.altKey);
-                return;
-            }
-            const pointerScreen: Pair = [pointerX, pointerY];
-            const arcGuide = overlay.arcGuide;
-            const arcHandle = resizeHandleAt(pointerScreen, arcGuide?.editHandles ?? [], 6);
-            // A construction guide (`elementId === null`) has no draggable radius.
-            const overArcRadius = !arcHandle && arcGuide !== null && arcGuide.elementId !== null &&
-                arcGuide.radiusEditable &&
-                isArcGuideAt(pointerScreen, arcGuide);
-            hoveredArcControl = arcHandle
-                ? { elementId: arcHandle.elementId, control: arcHandle.control }
-                : null;
-            if (arcHandle || overArcRadius) {
-                hoveredVertex = null;
-                transformCursor = "move";
-                return;
-            }
-            const vertexHandle = resizeHandleAt([pointerX, pointerY], overlay.vertexHandles, 6);
-            hoveredVertex = vertexHandle
-                ? { elementId: vertexHandle.elementId, nodeIndex: vertexHandle.nodeIndex }
-                : null;
-            const resizeHandle = resizeHandleAt([pointerX, pointerY], overlay.resizeHandles);
-            const overRotation = isRotationHandleAt([pointerX, pointerY], overlay.rotationControl);
-            const overSelectionBody = !overlay.selectionIsPreview &&
-                isScreenPointInRect(pointerScreen, overlay.selectionRect);
-            transformCursor = vertexHandle?.cursor ?? resizeHandle?.cursor ??
-                (overRotation ? "grab" : overSelectionBody ? "move" : null);
-            return;
-        }
-        hoveredVertex = null;
-        hoveredArcControl = null;
-        if (e.pointerId !== pointerId) return;
-        if (interaction === "pan" && panStart) {
-            camera.panX = panStart.x + e.clientX - panStart.clientX;
-            camera.panY = panStart.y + e.clientY - panStart.clientY;
-        } else if (interaction === "draw" || interaction === "transform") {
-            const samples = interaction === "draw" && store.toolKind === "pen" &&
-                typeof e.getCoalescedEvents === "function"
-                ? e.getCoalescedEvents()
-                : [];
-            if (interaction === "draw" && store.toolKind === "pen") {
-                penSamples.add((samples.length > 0 ? samples : [e]).map(pointerSample));
-            } else {
-                store.pointerMoves([toAsyAt(e.clientX, e.clientY)], e.shiftKey, e.altKey);
-            }
-        }
-    }
-
-    function onPointerUp(e: PointerEvent) {
-        const wasPinching = interaction === "pinch";
-        activeTouches.delete(e.pointerId);
-        release(e.pointerId);
-        if (wasPinching) {
-            if (activeTouches.size < 2) {
-                interaction = "idle";
-                camera.endPinch();
-            }
-            return;
-        }
-        if (e.pointerId !== pointerId) return;
-        if (interaction === "draw" || interaction === "transform") {
-            const point = interaction === "draw" && store.toolKind === "pen"
-                ? pointerSample(e)
-                : toAsyAt(e.clientX, e.clientY);
-            if (interaction === "draw" && store.toolKind === "pen") {
-                const flushed = penSamples.flushWith((points) =>
-                    store.pointerUp(point, e.shiftKey, points, e.altKey)
-                );
-                if (!flushed) store.pointerUp(point, e.shiftKey, [], e.altKey);
-            } else store.pointerUp(point, e.shiftKey, [], e.altKey);
-        }
-        if (store.toolKind === "select" && featureClickStart) {
-            const [pointerX, pointerY] = localPoint(e.clientX, e.clientY);
-            const moved = Math.hypot(
-                pointerX - featureClickStart.screen[0],
-                pointerY - featureClickStart.screen[1],
-            );
-            if (moved <= 3) {
-                const at = toAsyAt(e.clientX, e.clientY);
-                const element = hitTest(store.scene, at, camera.toAsyLength(8));
-                if (element) {
-                    store.selectFeatureAtItem(element.id, at, e.shiftKey, featureClickStart.selection);
-                }
-            }
-        }
-        featureClickStart = null;
-        pointerId = null;
-        panStart = null;
-        transformCursor = null;
-        hoveredVertex = activeSelectedVertex;
-        interaction = "idle";
-    }
-
-    function onPointerCancel(e: PointerEvent) {
-        activeTouches.delete(e.pointerId);
-        release(e.pointerId);
-        if (e.pointerId !== pointerId && interaction !== "pinch") return;
-        if (interaction === "draw" || interaction === "transform") {
-            penSamples.cancel();
-            store.cancel();
-        }
-        pointerId = null;
-        panStart = null;
-        camera.endPinch();
-        transformCursor = null;
-        featureClickStart = null;
-        hoveredVertex = null;
-        selectedArcControl = null;
-        hoveredArcControl = null;
-        interaction = "idle";
-    }
 
     function onKeyDown(e: KeyboardEvent) {
         const target = e.target;
@@ -713,26 +321,15 @@
             e.preventDefault();
             spacePressed = true;
         } else if (e.key === "Escape") {
-            penSamples.cancel();
+            pointer.cancelPenBatch();
             store.cancel();
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = null;
-            hoveredArcControl = null;
-            if (interaction === "draw" || interaction === "transform") {
-                if (pointerId !== null) release(pointerId);
-                pointerId = null;
-                transformCursor = null;
-                interaction = "idle";
-            }
+            pointer.clearHandleSelection();
+            pointer.abortGesture();
         } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
             e.preventDefault();
-            penSamples.cancel();
+            pointer.cancelPenBatch();
             store.cancel();
-            selectedVertex = null;
-            hoveredVertex = null;
-            selectedArcControl = null;
-            hoveredArcControl = null;
+            pointer.clearHandleSelection();
             store.selectAll();
         } else if (e.key === "Delete" || e.key === "Backspace") {
             if (activeSelectedVertex) {
@@ -741,10 +338,7 @@
                     activeSelectedVertex.elementId,
                     activeSelectedVertex.nodeIndex,
                 );
-                selectedVertex = null;
-                hoveredVertex = null;
-                selectedArcControl = null;
-                hoveredArcControl = null;
+                pointer.clearHandleSelection();
             } else if (store.selectedConstraintId) {
                 e.preventDefault();
                 store.deleteSelectedConstraint();
@@ -869,7 +463,7 @@
         tabindex="0"
         class={cn(
             "block h-full w-full touch-none select-none outline-none",
-            interaction === "pan"
+            pointer.mode === "pan"
                 ? "cursor-grabbing"
                 : navigation && (store.toolKind === "pan" || spacePressed)
                   ? "cursor-grab"
@@ -879,20 +473,13 @@
                       ? "cursor-none"
                     : "cursor-crosshair",
         )}
-        style:cursor={transformCursor}
-        onpointerdown={onPointerDown}
-        onpointermove={onPointerMove}
-        onpointerup={onPointerUp}
-        onpointercancel={onPointerCancel}
-        onpointerleave={() => {
-            if (interaction === "idle") {
-                eraserPointer = null;
-                transformCursor = null;
-                hoveredVertex = null;
-                hoveredArcControl = null;
-            }
-        }}
-        ondblclick={onDoubleClick}
+        style:cursor={pointer.transformCursor}
+        onpointerdown={(e) => pointer.pointerDown(e)}
+        onpointermove={(e) => pointer.pointerMove(e)}
+        onpointerup={(e) => pointer.pointerUp(e)}
+        onpointercancel={(e) => pointer.pointerCancel(e)}
+        onpointerleave={() => pointer.pointerLeave()}
+        ondblclick={(e) => pointer.doubleClick(e)}
         onwheel={onWheel}
     ></canvas>
     {#each overlay.selectedSegmentMarkers as marker (marker.label)}
@@ -1072,11 +659,11 @@
             {store.solverDiagnostic}
         </div>
     {/if}
-    {#if store.toolKind === "eraser" && eraserPointer}
+    {#if store.toolKind === "eraser" && pointer.eraserPointer}
         <div
             class="pointer-events-none absolute z-20 rounded-full border border-foreground/70 bg-background/20 shadow-sm"
-            style:left={`${eraserPointer[0] - store.eraserSize}px`}
-            style:top={`${eraserPointer[1] - store.eraserSize}px`}
+            style:left={`${pointer.eraserPointer[0] - store.eraserSize}px`}
+            style:top={`${pointer.eraserPointer[1] - store.eraserSize}px`}
             style:width={`${store.eraserSize * 2}px`}
             style:height={`${store.eraserSize * 2}px`}
             aria-hidden="true"

@@ -155,7 +155,8 @@ cell.
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
 | Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` (pure TS: `buildOverlay`) |
-| Pointer/DOM → store event mapping | `components/whiteboard/whiteboard.svelte` |
+| Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns keyboard shortcuts and the DOM overlays |
+| Screen ↔ asy-space viewport math | `components/whiteboard/camera.svelte.ts` (`Camera`) |
 | Toolbar / inspector / command UI | `components/whiteboard/*.svelte` (see `DOCS.md`) |
 | SVG/PNG/asy export | `components/whiteboard/export.ts` (renders the *projected* Scene) |
 
