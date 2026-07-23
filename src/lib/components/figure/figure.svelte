@@ -2,12 +2,11 @@
     import { untrack } from "svelte";
     import { scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
+    import { browser } from "$app/environment";
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Modal } from "$lib/components/modal";
-    import { Whiteboard, WhiteboardCompactControls } from "$lib/components/whiteboard";
-    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
 
     let {
@@ -40,28 +39,82 @@
 
     // MathStatement keys image segments, so a changed source remounts Figure.
     const persistKey = annotationKey(untrack(() => imageSrc));
-    const board = new WhiteboardStore(WhiteboardStore.restore(persistKey) ?? undefined);
     let lightboxScale = $state(40);
     let lightboxPanX = $state(0);
     let lightboxPanY = $state(0);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+    /**
+     * The whiteboard drags in the sketch engine and constraint solver — ~180 KB
+     * that a Figure only needs once someone actually annotates. Because Figure
+     * is reachable from the app shell (MathStatement -> the Coach panel), a
+     * static import put all of it in the initial bundle of every route. Keep
+     * these imports dynamic.
+     */
+    type WhiteboardView = typeof import("$lib/components/whiteboard");
+    type WhiteboardState = typeof import("$lib/state/whiteboard.svelte");
+
+    let wb = $state<WhiteboardView | null>(null);
+    let board = $state<InstanceType<WhiteboardState["WhiteboardStore"]> | null>(null);
+    let loading: Promise<void> | null = null;
+
+    function loadWhiteboard(): Promise<void> {
+        loading ??= (async () => {
+            const [components, state] = await Promise.all([
+                import("$lib/components/whiteboard"),
+                import("$lib/state/whiteboard.svelte"),
+            ]);
+            const { WhiteboardStore } = state;
+            board = new WhiteboardStore(WhiteboardStore.restore(persistKey) ?? undefined);
+            wb = components;
+        })();
+        return loading;
+    }
+
+    /**
+     * Whether this figure has annotations worth rendering under the thumbnail.
+     * Read straight off the raw payload: asking the store would mean loading the
+     * very module we are deferring. `items` is the document's element list, and
+     * the persisted shape is a plain `WhiteboardDocument` (see persistence.ts).
+     */
+    function hasStoredAnnotations(): boolean {
+        if (!browser) return false;
+        try {
+            const raw = localStorage.getItem(persistKey);
+            if (!raw) return false;
+            return (JSON.parse(raw) as { items?: unknown[] }).items?.length ? true : false;
+        } catch {
+            return false;
+        }
+    }
+
+    // An already-annotated figure has to show its annotations without a click,
+    // so it pays for the module after hydration — off the critical path, and
+    // only on pages that actually have one.
     $effect(() => {
-        void board.document;
+        if (hasStoredAnnotations()) void loadWhiteboard();
+    });
+
+    $effect(() => {
+        const store = board;
+        if (!store) return;
+        void store.document;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => board.persist(persistKey), 400);
+        saveTimer = setTimeout(() => store.persist(persistKey), 400);
         return () => {
             clearTimeout(saveTimer);
-            board.persist(persistKey);
+            store.persist(persistKey);
         };
     });
 
     function openLightbox() {
-        board.setTool("pen");
         lightboxScale = 40;
         lightboxPanX = 0;
         lightboxPanY = 0;
+        // Open now, draw when the engine lands — a first click should not wait
+        // on a network fetch to show the enlarged image.
         expanded = true;
+        void loadWhiteboard().then(() => board?.setTool("pen"));
     }
 
     function closeLightbox() {
@@ -95,7 +148,8 @@
                     style={inverted ? INVERT_STYLE : ""}
                     class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
                 />
-                {#if board.scene.elements.length > 0}
+                {#if wb && board && board.scene.elements.length > 0}
+                    {@const Whiteboard = wb.Whiteboard}
                     <span class="pointer-events-none absolute inset-0" inert>
                         <Whiteboard
                             store={board}
@@ -171,23 +225,27 @@
             />
         </div>
 
-        <Whiteboard
-            store={board}
-            showGrid={false}
-            transparent
-            navigation
-            minimumZoom={50}
-            resetViewportControl
-            bind:scale={lightboxScale}
-            bind:panX={lightboxPanX}
-            bind:panY={lightboxPanY}
-            class="absolute inset-0"
-        />
+        {#if wb && board}
+            {@const Whiteboard = wb.Whiteboard}
+            {@const CompactControls = wb.WhiteboardCompactControls}
+            <Whiteboard
+                store={board}
+                showGrid={false}
+                transparent
+                navigation
+                minimumZoom={50}
+                resetViewportControl
+                bind:scale={lightboxScale}
+                bind:panX={lightboxPanX}
+                bind:panY={lightboxPanY}
+                class="absolute inset-0"
+            />
 
-        <WhiteboardCompactControls
-            store={board}
-            class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
-        />
+            <CompactControls
+                store={board}
+                class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
+            />
+        {/if}
     </div>
     <Button
         variant="ghost"
