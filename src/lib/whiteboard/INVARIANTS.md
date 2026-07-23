@@ -24,7 +24,7 @@ travel" is the debt, not the rule.
 | Pure-TS core purity + downward-only deps (`asy/` ⊥ `whiteboard/`) | **Enforced today** | The core has zero Svelte/DOM imports. |
 | Tools commit a `ToolCommit` delta; **no** Scene→Document reconciliation (§4) | **Enforced today** | `reconcileResolvedScene`, `#smartToolCommit`, and `replaceBakedDocumentScene` are deleted. `ToolResult.commit` is a `ToolCommit`, lifted by the single `liftCommit` step in `whiteboard/commit-lift.ts` (called from `InteractionController.#dispatch`). `conjoinCreatedFeatures` remains, but only as snap inference *inside* the lift — it reads the Document, never a Scene. |
 | Store carved into named collaborators (`ARCHITECTURE.md` §5) | **Enforced today** | The collaborators are extracted: PersistenceIO (`whiteboard/persistence.ts`, a function module: `documentToAsy` / `sceneFromAsy` / `persistDocument` / `restoreDocument`), `StyleModel` (`style.svelte.ts`), `DocumentController` (`document-controller.svelte.ts`), `SelectionModel` (`selection.svelte.ts`), `ConstraintService` (`constraint-service.svelte.ts`), and `InteractionController` (`interaction.svelte.ts`), which delegates Pipeline B to `SmartGestureController` (`smart-gestures.svelte.ts`) and the commit lift to `commit-lift.ts`. The store forwards to them via getters/setters and holds only transient view state (`preview`/`snapProposal`/`lineContinuation`/`arcGuide`/`toolKind`) plus derived read models. New behavior belongs in a collaborator, not the store. |
-| View carved into named units; `whiteboard.svelte` is wiring only | **Enforced today** | `Camera` (`components/whiteboard/camera.svelte.ts`) owns the viewport and every screen ⇄ asy conversion; `buildOverlay` (`overlay-model.ts`, pure TS) owns all screen-space affordance geometry; `PointerInputController` (`pointer-input.svelte.ts`) owns DOM pointer plumbing and the one pointer-down hit branch; `KeyboardShortcutController` (`shortcuts.svelte.ts`) owns the active-surface claim and the editing keys; `render.ts` draws. The component declares props, constructs those units as host objects over its own `$state`, and renders DOM overlays. |
+| View carved into named units; `whiteboard.svelte` is wiring only | **Enforced today** | `Camera` (`components/whiteboard/camera.svelte.ts`) owns the viewport and every screen ⇄ asy conversion; `buildOverlay` (`overlay-model.ts` **and its `overlay/` sibling builders**, e.g. `overlay/arc-guide.ts`, pure TS) owns all screen-space affordance geometry, assembled at the single `buildOverlay` entry point; `PointerInputController` (`pointer-input.svelte.ts`) owns DOM pointer plumbing and the one pointer-down hit branch; `KeyboardShortcutController` (`shortcuts.svelte.ts`) owns the active-surface claim and the editing keys; `render.ts` draws. The component declares props, constructs those units as host objects over its own `$state`, and renders DOM overlays. |
 | Overlay geometry is a pure, testable projection — not component-local math | **Enforced today** | `overlay-model.ts` imports no Svelte and no DOM; the Camera's `project`/`toScreenLength` and text measurement are injected into `buildOverlay`, and `overlay-model.test.ts` exercises it headless. Overlays reach only the canvas and DOM hit-testing — `export.ts` renders the projected Scene alone, so no overlay reaches asy/SVG/PNG. |
 | One explicit pointer-down ownership branch (§3.1) | **Enforced today** | `InteractionController.#routePointerDown` is the single decision: one hit-test returns a `PointerRoute`, and the chosen pipeline is stored as one `ActiveGesture` value. `pointerMove`/`pointerUp` switch on that discriminant — they never re-probe nullable gesture fields, and nothing switches pipeline mid-gesture. |
 | No seam-era dead code; no orphaned exports | **Enforced today** | The all-baked-document helpers the seam needed (`isBakedDocument`, `updateBakedElements`) are deleted, so no operation can take a `Scene` as the document's item list. Every remaining `export` under `asy/`, `whiteboard/`, and the store is imported by production code or a test; internal-only helpers (`validateScene`, `documentToSolverGraph`, `RELATION_ACTIONS`) are module-private. |
@@ -64,13 +64,16 @@ Everything below is a consequence of these four.
 - **The view holds no model logic.** Components map pointer/DOM events to store
   calls and render the projected Scene. Coordinate mapping (screen ↔ asy-space)
   is view-owned; everything downstream is asy-space.
-- **`components/whiteboard/overlay-model.ts` is pure TS too.** No Svelte, no
-  DOM: `buildOverlay` receives the projected Scene, the store's read models, and
-  the Camera's `project` / `toScreenLength` as injected functions, and returns a
-  plain value. DOM-only capabilities are injected (`measureLabelWidth`, with the
-  pure `estimateLabelWidth` fallback). It may import *types* from `render.ts`,
-  never its drawing code. Overlay geometry derived inline in a `.svelte` file is
-  a layering bug, not a shortcut.
+- **`components/whiteboard/overlay-model.ts` and its `overlay/` sibling builders
+  are pure TS too.** No Svelte, no DOM: `buildOverlay` receives the projected
+  Scene, the store's read models, and the Camera's `project` / `toScreenLength`
+  as injected functions, and returns a plain value. It may delegate cohesive
+  sub-projections to siblings under `overlay/` (e.g. `overlay/arc-guide.ts`'s
+  `buildArcGuide`), but `buildOverlay` stays the single assembly point and the
+  siblings import no Svelte/DOM either. DOM-only capabilities are injected
+  (`measureLabelWidth`, with the pure `estimateLabelWidth` fallback). They may
+  import *types* from `render.ts`, never its drawing code. Overlay geometry
+  derived inline in a `.svelte` file is a layering bug, not a shortcut.
 - **Only `Camera` converts screen ↔ asy-space.** `camera.svelte.ts` owns pan,
   zoom, pinch, and every pixel↔unit conversion (`project`, `localPoint`,
   `toAsy`, `toAsyLength`, `toScreenLength`). No other file multiplies or divides
@@ -171,8 +174,8 @@ cell.
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
-| Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` (pure TS: `buildOverlay`) |
-| A **new overlay affordance** (another handle, guide, badge, or dimension chrome) | Shape it in `overlay-model.ts` (a field on `WhiteboardOverlay`, computed in `buildOverlay`), draw it in `render.ts`, and — if it is grabbable — add its arm to `PointerHit` in `pointer-input.svelte.ts`. Never compute its pixels in a `.svelte` file, and never persist it into the Document or an export |
+| Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` **and its `overlay/` sibling builders** (pure TS), assembled by `buildOverlay`. The arc/ellipse guide lives in `overlay/arc-guide.ts` (`buildArcGuide`) |
+| A **new overlay affordance** (another handle, guide, badge, or dimension chrome) | Shape it in `overlay-model.ts` — or a cohesive sibling under `overlay/` that `buildOverlay` assembles — as a field on `WhiteboardOverlay` computed in `buildOverlay`, draw it in `render.ts`, and — if it is grabbable — add its arm to `PointerHit` in `pointer-input.svelte.ts`. Never compute its pixels in a `.svelte` file, and never persist it into the Document or an export |
 | Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns the DOM overlays |
 | Canvas keyboard shortcuts / which surface answers them | `components/whiteboard/shortcuts.svelte.ts` (`KeyboardShortcutController`: the module-level active-surface claim, the held-space modifier, and the editing keys) |
 | Contextual constraint toolbar (placement, drag, relation/dimension actions) | `components/whiteboard/constraint-toolbar.svelte`, with its pure placement math in `constraint-toolbar.ts`. Placement is a two-stage pipeline: `auto` (selection anchors only) → `position` (drag offset applied, clamped to the board). The drag writes the offset and may read `auto`; it must **never** read `position`, or the placement feeds back on itself. |
