@@ -13,7 +13,6 @@
  */
 import {
     elementBounds,
-    isStraightPathVertexEditable,
     type Bounds,
     type Pair,
     type PathElement,
@@ -22,6 +21,8 @@ import {
 } from "$lib/asy/scene";
 import type { ArcGuide } from "$lib/asy/engine";
 import { buildArcGuide } from "./overlay/arc-guide";
+import { buildSelectionTransform } from "./overlay/selection-transform";
+export { activeSelectedVertexOf } from "./overlay/selection-transform";
 import type {
     RenderArcGuide,
     RenderArcHandle,
@@ -194,65 +195,6 @@ export interface OverlayInput {
     measureLabelWidth?: (text: string, fontSize: number) => number | undefined;
 }
 
-function isVertex(ref: VertexRef | null, elementId: string, nodeIndex: number): boolean {
-    return ref?.elementId === elementId && ref.nodeIndex === nodeIndex;
-}
-
-/**
- * The four corners (in node order) of a rectangle path, or `null` if the path
- * is not a rectangle: exactly four nodes with a right angle at every corner.
- * Orientation is free — this is what lets a rotated rectangle be recognized.
- */
-function rectangleCorners(nodes: readonly Pair[]): [Pair, Pair, Pair, Pair] | null {
-    if (nodes.length !== 4) return null;
-    for (let index = 0; index < 4; index++) {
-        const previous = nodes[(index + 3) % 4];
-        const current = nodes[index];
-        const next = nodes[(index + 1) % 4];
-        const inX = current[0] - previous[0];
-        const inY = current[1] - previous[1];
-        const outX = next[0] - current[0];
-        const outY = next[1] - current[1];
-        const inLength = Math.hypot(inX, inY);
-        const outLength = Math.hypot(outX, outY);
-        if (inLength < 1e-9 || outLength < 1e-9) return null;
-        if (Math.abs((inX * outX + inY * outY) / (inLength * outLength)) > 1e-3) return null;
-    }
-    return [nodes[0], nodes[1], nodes[2], nodes[3]];
-}
-
-/** True when an edge direction sits within ~0.5° of an axis (OBB ≡ AABB). */
-function isAxisAlignedEdge(from: Pair, to: Pair): boolean {
-    const degrees = Math.abs((Math.atan2(to[1] - from[1], to[0] - from[0]) * 180) / Math.PI) % 90;
-    return degrees < 0.5 || degrees > 89.5;
-}
-
-/**
- * Inflate a screen-space rectangle outward by `pad` pixels along its own two
- * perpendicular edge directions, so the selection box clears the ink evenly at
- * any orientation. Corners are in order c0→c1→c2→c3 (c2 opposite c0).
- */
-function inflateScreenRectangle(
-    corners: [Pair, Pair, Pair, Pair],
-    pad: number,
-): [Pair, Pair, Pair, Pair] {
-    const uX = corners[1][0] - corners[0][0];
-    const uY = corners[1][1] - corners[0][1];
-    const vX = corners[3][0] - corners[0][0];
-    const vY = corners[3][1] - corners[0][1];
-    const uLength = Math.hypot(uX, uY) || 1;
-    const vLength = Math.hypot(vX, vY) || 1;
-    const uxN = uX / uLength;
-    const uyN = uY / uLength;
-    const vxN = vX / vLength;
-    const vyN = vY / vLength;
-    const signs: ReadonlyArray<readonly [number, number]> = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-    return signs.map(([su, sv], index) => [
-        corners[index][0] + (su * uxN + sv * vxN) * pad,
-        corners[index][1] + (su * uyN + sv * vyN) * pad,
-    ] as Pair) as [Pair, Pair, Pair, Pair];
-}
-
 export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
     const { project } = input;
 
@@ -298,101 +240,23 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
         return bounds ? screenRect(bounds, padding) : null;
     }
 
-    const selectionGeometryBounds = ((): Bounds | null => {
-        if (activeSelection.length === 0) return null;
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const element of input.displayScene.elements) {
-            if (!selectedIds.has(element.id)) continue;
-            const bounds = elementBounds(element);
-            if (!bounds) continue;
-            minX = Math.min(minX, bounds.min[0]);
-            minY = Math.min(minY, bounds.min[1]);
-            maxX = Math.max(maxX, bounds.max[0]);
-            maxY = Math.max(maxY, bounds.max[1]);
-        }
-        return Number.isFinite(minX) ? { min: [minX, minY], max: [maxX, maxY] } : null;
-    })();
-
-    /** Only all-straight paths expose per-node handles; ink stays whole-object-only. */
-    const straightVertexEditablePath = ((): PathElement | null => {
-        if (activeSelection.length !== 1) return null;
-        const element = input.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        return element?.kind === "path" && isStraightPathVertexEditable(element.path)
-            ? element
-            : null;
-    })();
-
-    const straightPathHasMultipleSegments =
-        (straightVertexEditablePath?.path.joins.length ?? 0) > 1;
-
-    const hasTransformExtent = ((): boolean => {
-        if (!selectionGeometryBounds) return false;
-        const dx = selectionGeometryBounds.max[0] - selectionGeometryBounds.min[0];
-        const dy = selectionGeometryBounds.max[1] - selectionGeometryBounds.min[1];
-        return Math.hypot(dx, dy) > 1e-9;
-    })();
-
-    /**
-     * A single selected, *rotated* smart rectangle whose selection box should
-     * hug its orientation. Restricted to smart selections (the rectangle tool's
-     * output) so only corner-uniform resize applies — baked axis-scaling has no
-     * oriented meaning — and skipped when axis-aligned, where the AABB path
-     * already produces the identical box.
-     */
-    const orientedRectangle = ((): {
-        cornersAsy: [Pair, Pair, Pair, Pair];
-        inflated: [Pair, Pair, Pair, Pair];
-    } | null => {
-        if (
-            activeSelection.length !== 1 ||
-            input.selectionPreview !== null ||
-            input.toolKind !== "select" ||
-            !input.selectionContainsSmartItems ||
-            !hasTransformExtent
-        ) return null;
-        const element = input.displayScene.elements.find(({ id }) => id === activeSelection[0]);
-        if (element?.kind !== "path" || !isStraightPathVertexEditable(element.path)) return null;
-        const corners = rectangleCorners(element.path.nodes);
-        if (!corners || isAxisAlignedEdge(corners[0], corners[1])) return null;
-        const screenCorners = [
-            project(corners[0]),
-            project(corners[1]),
-            project(corners[2]),
-            project(corners[3]),
-        ] as [Pair, Pair, Pair, Pair];
-        return { cornersAsy: corners, inflated: inflateScreenRectangle(screenCorners, 6) };
-    })();
-
-    const selectionRect = ((): ScreenRect | null => {
-        if (activeSelection.length === 0) return null;
-        if (
-            straightVertexEditablePath &&
-            !straightPathHasMultipleSegments &&
-            input.selectionPreview === null
-        ) return null;
-        if (selectionGeometryBounds && hasTransformExtent) {
-            return screenRect(selectionGeometryBounds, 6);
-        }
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const element of input.displayScene.elements) {
-            if (!selectedIds.has(element.id)) continue;
-            const rect = elementScreenRect(element, 6);
-            if (!rect) continue;
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.width);
-            maxY = Math.max(maxY, rect.y + rect.height);
-        }
-        return Number.isFinite(minX)
-            ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
-            : null;
-    })();
+    const {
+        selectionGeometryBounds,
+        straightVertexEditablePath,
+        selectionRect,
+        selectionQuad,
+        resizeHandles,
+        vertexHandles,
+        rotationControl,
+    } = buildSelectionTransform({
+        input,
+        activeSelection,
+        selectedIds,
+        selectionIsPreview,
+        project,
+        screenRect,
+        elementScreenRect,
+    });
 
     const previewElementRects = ((): ScreenRect[] => {
         if (input.selectionPreview === null) return [];
@@ -403,184 +267,7 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
         });
     })();
 
-    const resizeHandles = ((): OverlayResizeHandle[] => {
-        if (
-            (straightVertexEditablePath && !straightPathHasMultipleSegments) ||
-            !selectionRect ||
-            !selectionGeometryBounds ||
-            !hasTransformExtent ||
-            selectionIsPreview ||
-            input.toolKind !== "select"
-        ) return [];
-        if (orientedRectangle) {
-            // Four corner handles at the rotated corners; each is a uniform
-            // scale about the diagonally opposite corner (smart selections only
-            // ever expose corner handles, so no oriented edge handle is needed).
-            const cornerPosition = ["nw", "ne", "se", "sw"] as const;
-            const cornerCursor = ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize"] as const;
-            return orientedRectangle.cornersAsy.map((corner, index) => ({
-                position: cornerPosition[index],
-                screen: orientedRectangle.inflated[index],
-                handle: corner,
-                anchor: orientedRectangle.cornersAsy[(index + 2) % 4],
-                axes: { x: true, y: true },
-                cursor: cornerCursor[index],
-            }));
-        }
-        const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
-        const { min, max } = selectionGeometryBounds;
-        const midX = (min[0] + max[0]) / 2;
-        const midY = (min[1] + max[1]) / 2;
-        const canResizeX = max[0] - min[0] > 1e-9;
-        const canResizeY = max[1] - min[1] > 1e-9;
-        const handles: OverlayResizeHandle[] = [
-            {
-                position: "nw",
-                screen: [x, y],
-                handle: [min[0], max[1]],
-                anchor: [max[0], min[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nwse-resize",
-            },
-            {
-                position: "ne",
-                screen: [x + boxWidth, y],
-                handle: [max[0], max[1]],
-                anchor: [min[0], min[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nesw-resize",
-            },
-            {
-                position: "se",
-                screen: [x + boxWidth, y + boxHeight],
-                handle: [max[0], min[1]],
-                anchor: [min[0], max[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nwse-resize",
-            },
-            {
-                position: "sw",
-                screen: [x, y + boxHeight],
-                handle: [min[0], min[1]],
-                anchor: [max[0], max[1]],
-                axes: { x: canResizeX, y: canResizeY },
-                cursor: "nesw-resize",
-            },
-        ];
-        if (!input.selectionContainsSmartItems && canResizeY) {
-            handles.push(
-                {
-                    position: "n",
-                    screen: [x + boxWidth / 2, y],
-                    handle: [midX, max[1]],
-                    anchor: [midX, min[1]],
-                    axes: { x: false, y: true },
-                    cursor: "ns-resize",
-                },
-                {
-                    position: "s",
-                    screen: [x + boxWidth / 2, y + boxHeight],
-                    handle: [midX, min[1]],
-                    anchor: [midX, max[1]],
-                    axes: { x: false, y: true },
-                    cursor: "ns-resize",
-                },
-            );
-        }
-        if (!input.selectionContainsSmartItems && canResizeX) {
-            handles.push(
-                {
-                    position: "e",
-                    screen: [x + boxWidth, y + boxHeight / 2],
-                    handle: [max[0], midY],
-                    anchor: [min[0], midY],
-                    axes: { x: true, y: false },
-                    cursor: "ew-resize",
-                },
-                {
-                    position: "w",
-                    screen: [x, y + boxHeight / 2],
-                    handle: [min[0], midY],
-                    anchor: [max[0], midY],
-                    axes: { x: true, y: false },
-                    cursor: "ew-resize",
-                },
-            );
-        }
-        return handles;
-    })();
-
-    const vertexHandles = ((): OverlayVertexHandle[] => {
-        if (
-            !straightVertexEditablePath ||
-            selectionIsPreview ||
-            input.toolKind !== "select"
-        ) return [];
-        const path = straightVertexEditablePath;
-        const activeSelectedVertex = activeSelectedVertexOf(path, input.selectedVertex);
-        return path.path.nodes.map((handle, nodeIndex) => ({
-            screen: project(handle),
-            handle,
-            elementId: path.id,
-            nodeIndex,
-            cursor: "move" as const,
-            state: isVertex(activeSelectedVertex, path.id, nodeIndex)
-                ? "selected"
-                : isVertex(input.hoveredVertex, path.id, nodeIndex)
-                  ? "hovered"
-                  : "default",
-        }));
-    })();
-
     const arcGuide = buildArcGuide(input, activeSelection);
-
-    const rotationControl = ((): OverlayRotationControl | null => {
-        if (
-            (straightVertexEditablePath && !straightPathHasMultipleSegments) ||
-            !selectionRect ||
-            !selectionGeometryBounds ||
-            !hasTransformExtent ||
-            selectionIsPreview ||
-            input.toolKind !== "select"
-        ) return null;
-        if (orientedRectangle) {
-            const { inflated, cornersAsy } = orientedRectangle;
-            const centerX = (inflated[0][0] + inflated[1][0] + inflated[2][0] + inflated[3][0]) / 4;
-            const centerY = (inflated[0][1] + inflated[1][1] + inflated[2][1] + inflated[3][1]) / 4;
-            // Anchor the stem to the visually topmost edge (smallest screen y).
-            let stemStart = inflated[0];
-            let bestY = Infinity;
-            for (let index = 0; index < 4; index++) {
-                const a = inflated[index];
-                const b = inflated[(index + 1) % 4];
-                const mid: Pair = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-                if (mid[1] < bestY) {
-                    bestY = mid[1];
-                    stemStart = mid;
-                }
-            }
-            const outX = stemStart[0] - centerX;
-            const outY = stemStart[1] - centerY;
-            const outLength = Math.hypot(outX, outY) || 1;
-            return {
-                stemStart,
-                screen: [stemStart[0] + (outX / outLength) * 24, stemStart[1] + (outY / outLength) * 24],
-                // Diagonal midpoint == the rectangle's true center of rotation.
-                pivot: [
-                    (cornersAsy[0][0] + cornersAsy[2][0]) / 2,
-                    (cornersAsy[0][1] + cornersAsy[2][1]) / 2,
-                ],
-            };
-        }
-        return {
-            stemStart: [selectionRect.x + selectionRect.width / 2, selectionRect.y],
-            screen: [selectionRect.x + selectionRect.width / 2, selectionRect.y - 24],
-            pivot: [
-                (selectionGeometryBounds.min[0] + selectionGeometryBounds.max[0]) / 2,
-                (selectionGeometryBounds.min[1] + selectionGeometryBounds.max[1]) / 2,
-            ],
-        };
-    })();
 
     const marqueeRect = ((): ScreenRect | null => {
         if (!input.marquee) return null;
@@ -610,7 +297,7 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
         previewElementRects,
         marqueeRect,
         selectionRect,
-        selectionQuad: orientedRectangle?.inflated ?? null,
+        selectionQuad,
         rotationControl,
         resizeHandles,
         vertexHandles,
@@ -641,21 +328,4 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
         straightVertexEditablePath,
         selectedSegmentMarkers,
     };
-}
-
-/**
- * The selected vertex, but only while it still points at an existing node of
- * `path`. Exported because the component keeps the selected-vertex state and
- * needs the same validity rule for delete/hover.
- */
-export function activeSelectedVertexOf(
-    path: PathElement | null,
-    selectedVertex: VertexRef | null,
-): VertexRef | null {
-    return selectedVertex &&
-        path?.id === selectedVertex.elementId &&
-        selectedVertex.nodeIndex >= 0 &&
-        selectedVertex.nodeIndex < path.path.nodes.length
-        ? selectedVertex
-        : null;
 }

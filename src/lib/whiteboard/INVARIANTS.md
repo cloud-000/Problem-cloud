@@ -69,7 +69,8 @@ Everything below is a consequence of these four.
   Scene, the store's read models, and the Camera's `project` / `toScreenLength`
   as injected functions, and returns a plain value. It may delegate cohesive
   sub-projections to siblings under `overlay/` (e.g. `overlay/arc-guide.ts`'s
-  `buildArcGuide`), but `buildOverlay` stays the single assembly point and the
+  `buildArcGuide` and `overlay/selection-transform.ts`'s
+  `buildSelectionTransform`), but `buildOverlay` stays the single assembly point and the
   siblings import no Svelte/DOM either. DOM-only capabilities are injected
   (`measureLabelWidth`, with the pure `estimateLabelWidth` fallback). They may
   import *types* from `render.ts`, never its drawing code. Overlay geometry
@@ -174,7 +175,7 @@ cell.
 | Wiring a core capability to the UI | `state/whiteboard.svelte.ts` (thin: forward to a collaborator) |
 | Reactive read model (glyphs, inspector) | store `$derived` getters, computed from the Document |
 | Canvas drawing | `components/whiteboard/render.ts` |
-| Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` **and its `overlay/` sibling builders** (pure TS), assembled by `buildOverlay`. The arc/ellipse guide lives in `overlay/arc-guide.ts` (`buildArcGuide`) |
+| Screen-space overlay geometry (selection box, handles, arc guide, glyph placement) | `components/whiteboard/overlay-model.ts` **and its `overlay/` sibling builders** (pure TS), assembled by `buildOverlay`. The arc/ellipse guide lives in `overlay/arc-guide.ts` (`buildArcGuide`); the selection-transform family (selection box/quad, resize & vertex handles, rotation control) lives in `overlay/selection-transform.ts` (`buildSelectionTransform`, which also owns `activeSelectedVertexOf`, re-exported from `overlay-model.ts`) |
 | A **new overlay affordance** (another handle, guide, badge, or dimension chrome) | Shape it in `overlay-model.ts` — or a cohesive sibling under `overlay/` that `buildOverlay` assembles — as a field on `WhiteboardOverlay` computed in `buildOverlay`, draw it in `render.ts`, and — if it is grabbable — add its arm to `PointerHit` in `pointer-input.svelte.ts`. Never compute its pixels in a `.svelte` file, and never persist it into the Document or an export |
 | Pointer/DOM → store event mapping | `components/whiteboard/pointer-input.svelte.ts` (`PointerInputController`: capture, interaction mode, pinch, pen batching, and the one pointer-down hit branch); the component only owns the DOM overlays |
 | Canvas keyboard shortcuts / which surface answers them | `components/whiteboard/shortcuts.svelte.ts` (`KeyboardShortcutController`: the module-level active-surface claim, the held-space modifier, and the editing keys) |
