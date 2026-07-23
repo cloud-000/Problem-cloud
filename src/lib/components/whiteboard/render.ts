@@ -138,6 +138,8 @@ export interface WhiteboardRenderOverlay {
     previewElementRects: ScreenRect[];
     marqueeRect: ScreenRect | null;
     selectionRect: ScreenRect | null;
+    /** Oriented selection outline (rotated rectangle); replaces `selectionRect` when set. */
+    selectionQuad?: [Pair, Pair, Pair, Pair] | null;
     rotationControl: RenderRotationControl | null;
     resizeHandles: RenderResizeHandle[];
     vertexHandles: RenderVertexHandle[];
@@ -540,7 +542,19 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.setLineDash([5, 4]);
         strokeRect(context, overlay.marqueeRect);
     }
-    if (overlay.selectionRect) {
+    if (overlay.selectionQuad) {
+        context.globalAlpha = 1;
+        context.lineWidth = 1.5;
+        context.setLineDash([]);
+        const quad = overlay.selectionQuad;
+        context.beginPath();
+        context.moveTo(quad[0][0], quad[0][1]);
+        context.lineTo(quad[1][0], quad[1][1]);
+        context.lineTo(quad[2][0], quad[2][1]);
+        context.lineTo(quad[3][0], quad[3][1]);
+        context.closePath();
+        context.stroke();
+    } else if (overlay.selectionRect) {
         context.globalAlpha = 1;
         context.lineWidth = 1.5;
         context.setLineDash(overlay.selectionIsPreview ? [6, 4] : []);

@@ -73,6 +73,17 @@ describe("commit lift: one ToolCommit -> one Document transaction", () => {
         expect(rectangleItem.cyclic).toBe(true);
         expect(rectangleItem.uses).toHaveLength(4);
         expect(Object.keys(rectangle.sketch.points)).toHaveLength(4);
+        // A rectangle ships with its defining right angles: three perpendicular
+        // constraints between consecutive segments (the fourth is implied).
+        const perpendiculars = Object.values(rectangle.sketch.constraints).flatMap((constraint) =>
+            constraint.kind === "perpendicular" ? [[constraint.a, constraint.b]] : [],
+        );
+        const segmentIds = rectangleItem.uses.map((use) => use.curveId);
+        expect(perpendiculars).toEqual([
+            [segmentIds[0], segmentIds[1]],
+            [segmentIds[1], segmentIds[2]],
+            [segmentIds[2], segmentIds[3]],
+        ]);
 
         const point = lift(empty, { kind: "add", elements: [createDot([2, 2])] }, {
             toolKind: "point",

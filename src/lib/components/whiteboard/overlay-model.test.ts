@@ -73,6 +73,52 @@ describe("selection box", () => {
         });
     });
 
+    test("a rotated smart rectangle gets an oriented selection box tracking its angle", () => {
+        // A unit-square rotated ~26.6°: perpendicular edges, no axis alignment.
+        const rectangle = createPath(makePath([[0, 0], [2, 1], [1, 3], [-1, 2]], { cyclic: true }));
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(rectangle),
+                selection: [rectangle.id],
+                selectionContainsSmartItems: true,
+            }),
+        );
+
+        const quad = overlay.selectionQuad;
+        expect(quad).not.toBeNull();
+        if (!quad) throw new Error("expected an oriented selection quad");
+        expect(quad).toHaveLength(4);
+        // The outline is a genuine rectangle: adjacent edges are perpendicular.
+        const edge = (i: number): Pair => [quad[(i + 1) % 4][0] - quad[i][0], quad[(i + 1) % 4][1] - quad[i][1]];
+        for (let i = 0; i < 4; i++) {
+            const a = edge(i);
+            const b = edge((i + 1) % 4);
+            expect(a[0] * b[0] + a[1] * b[1]).toBeCloseTo(0, 6);
+        }
+        // ...and it is actually rotated (no purely horizontal/vertical edge).
+        expect(quad.some((_, i) => Math.abs(edge(i)[0]) > 1e-6 && Math.abs(edge(i)[1]) > 1e-6)).toBe(true);
+
+        // Four corner resize handles anchored to the diagonally-opposite corner.
+        expect(overlay.resizeHandles).toHaveLength(4);
+        expect(overlay.resizeHandles[0].handle).toEqual([0, 0]);
+        expect(overlay.resizeHandles[0].anchor).toEqual([1, 3]);
+        expect(overlay.rotationControl).not.toBeNull();
+    });
+
+    test("an axis-aligned smart rectangle keeps the axis-aligned selection box", () => {
+        const rectangle = createPath(makePath([[0, 0], [4, 0], [4, 2], [0, 2]], { cyclic: true }));
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(rectangle),
+                selection: [rectangle.id],
+                selectionContainsSmartItems: true,
+            }),
+        );
+
+        expect(overlay.selectionQuad).toBeNull();
+        expect(overlay.selectionRect).not.toBeNull();
+    });
+
     test("multi selection unions every selected element's bounds", () => {
         const circle = createCircle([1, 1], 1);
         const dot = createDot([3, 0]);

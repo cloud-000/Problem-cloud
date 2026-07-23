@@ -19,6 +19,7 @@ import type { ToolCommit } from "$lib/asy/engine";
 import type { WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
     addCoincidentConstraint,
+    addDefaultRectangleConstraints,
     appendSmartPathNode,
     closeSmartPath,
     createSmartPath,
@@ -133,8 +134,12 @@ export function liftAdd(
             added.fillPen,
             added.id,
         );
+        // The rectangle's defining right angles ride along with it: author them
+        // while the shape is still perfectly square (constraints are satisfied),
+        // then let snap inference solve any endpoint coincidence on top.
+        const constrained = addDefaultRectangleConstraints(created.document, created.itemId);
         return conjoinCreatedFeatures(
-            created.document,
+            constrained,
             [created.endpointFeatures[0], created.endpointFeatures[2]].filter(
                 (feature): feature is PointFeatureRef => feature !== undefined,
             ),

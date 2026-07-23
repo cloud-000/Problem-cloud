@@ -172,7 +172,9 @@ the Document like everything else. What the lift produces depends on the tool:
 
 - **line · rectangle · point** → a **smart** sketch item (`createSmartPath` /
   `createSmartPointMarker`), with snap-inferred coincidence, so drawn geometry is
-  immediately constrainable.
+  immediately constrainable. The rectangle additionally ships with three
+  `perpendicular` constraints (`addDefaultRectangleConstraints`) — its defining
+  right angles — so it stays rectangular under rotate/resize.
 - **pen · arc · label** → **`BakedItem`s** appended.
 - **eraser** → `deleteWhiteboardItems`; **select** move/resize/rotate/vertex →
   the changed baked elements replaced in place by id.

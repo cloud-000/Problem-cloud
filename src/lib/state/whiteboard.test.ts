@@ -8,6 +8,8 @@ import {
     emptyWhiteboardDocument,
     type CurveFeatureRef,
 } from "$lib/whiteboard/model";
+import { buildOverlay } from "$lib/components/whiteboard/overlay-model";
+import type { Pair } from "$lib/asy/scene";
 
 const runtimeMock = (bunTest as unknown as {
     mock: { module(id: string, factory: () => unknown): void };
@@ -901,5 +903,98 @@ describe("WhiteboardStore characterization — asy round-trip", () => {
         reloaded.undo();
         expect(reloaded.scene.elements).toHaveLength(0);
         expect(reloaded.canUndo).toBe(false);
+    });
+});
+
+describe("WhiteboardStore rectangle constraints + oriented selection box", () => {
+    const project = (point: Pair): Pair => [point[0], -point[1]];
+
+    function overlayFor(store: InstanceType<typeof WhiteboardStore>) {
+        return buildOverlay({
+            displayScene: store.displayScene,
+            selection: store.selection,
+            selectionPreview: store.selectionPreview,
+            hasPreview: store.preview !== null,
+            toolKind: store.toolKind,
+            selectionContainsSmartItems: store.selectionContainsSmartItems,
+            constructionArcGuide: store.arcGuide,
+            marquee: store.marquee,
+            snapProposal: store.snapProposal,
+            constraintGlyphs: store.constraintGlyphs,
+            dimensionGlyphs: store.dimensionGlyphs,
+            selectedFeatureGeometry: store.selectedFeatureGeometry,
+            selectedVertex: null,
+            hoveredVertex: null,
+            selectedArcControl: null,
+            hoveredArcControl: null,
+            project,
+            toScreenLength: (units: number) => units,
+        });
+    }
+
+    function drawRectangle(store: InstanceType<typeof WhiteboardStore>): void {
+        store.setTool("rectangle");
+        store.pointerDown([0, 0]);
+        store.pointerMove([4, 2]);
+        store.pointerUp([4, 2]);
+    }
+
+    test("drawing a rectangle authors three perpendicular constraints as one undo step", () => {
+        const store = new WhiteboardStore();
+        drawRectangle(store);
+
+        expect(store.toolKind).toBe("select");
+        expect(store.document.items[0]?.kind).toBe("sketch-path");
+        const perpendiculars = Object.values(store.document.sketch.constraints)
+            .filter((constraint) => constraint.kind === "perpendicular");
+        expect(perpendiculars).toHaveLength(3);
+
+        // The whole rectangle — geometry and its constraints — is one undo step.
+        expect(store.canUndo).toBe(true);
+        store.undo();
+        expect(store.document.items).toHaveLength(0);
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("rotating a rectangle stays rectangular and orients the selection box in one step", () => {
+        const store = new WhiteboardStore();
+        drawRectangle(store);
+        // Axis-aligned: the overlay uses the plain AABB selection box.
+        expect(overlayFor(store).selectionQuad).toBeNull();
+        expect(overlayFor(store).selectionRect).not.toBeNull();
+
+        // Rotate 30° about the rectangle's center (2, 1) via Pipeline B.
+        const angle = Math.PI / 6;
+        const end: Pair = [2 + Math.cos(angle), 1 + Math.sin(angle)];
+        store.pointerDown([3, 1], { kind: "rotate", pivot: [2, 1] });
+        store.pointerMove(end);
+        store.pointerUp(end);
+
+        // The perpendicular constraints survive the transform...
+        expect(
+            Object.values(store.document.sketch.constraints)
+                .filter((constraint) => constraint.kind === "perpendicular"),
+        ).toHaveLength(3);
+
+        // ...and the overlay now hugs the rectangle's orientation.
+        const overlay = overlayFor(store);
+        const quad = overlay.selectionQuad;
+        expect(quad).not.toBeNull();
+        if (!quad) throw new Error("expected an oriented selection quad");
+        expect(overlay.resizeHandles).toHaveLength(4);
+        const edge = (index: number): Pair => [
+            quad[(index + 1) % 4][0] - quad[index][0],
+            quad[(index + 1) % 4][1] - quad[index][1],
+        ];
+        expect(
+            quad.some((_, index) => Math.abs(edge(index)[0]) > 1e-6 && Math.abs(edge(index)[1]) > 1e-6),
+        ).toBe(true);
+
+        // Rotation is a single undo step back to the axis-aligned rectangle.
+        expect(store.canUndo).toBe(true);
+        store.undo();
+        expect(store.document.items).toHaveLength(1);
+        expect(overlayFor(store).selectionQuad).toBeNull();
     });
 });

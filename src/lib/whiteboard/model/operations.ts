@@ -128,6 +128,40 @@ export function createSmartPath(
     return { document: next, itemId, endpointFeatures };
 }
 
+/**
+ * Author a rectangle's defining right angles: three `perpendicular` constraints
+ * between the four consecutive segments of a cyclic 4-segment smart path. Three
+ * (not four) exactly removes the 3 rotational/shear degrees of freedom that make
+ * a quad a rectangle — the fourth right angle is implied, so adding it would
+ * over-constrain. The rectangle is already square at creation, so the
+ * constraints are satisfied as authored (no solve needed); they bind on the next
+ * rotate/resize, keeping the shape rectangular. A no-op for any other path.
+ */
+export function addDefaultRectangleConstraints(
+    document: WhiteboardDocument,
+    itemId: string,
+): WhiteboardDocument {
+    const item = document.items.find(
+        (candidate): candidate is SketchPathItem =>
+            candidate.kind === "sketch-path" && candidate.id === itemId,
+    );
+    if (!item || !item.cyclic || item.uses.length !== 4) return document;
+    const curveIds = item.uses.map((use) => use.curveId);
+    const constraints = { ...document.sketch.constraints };
+    for (let index = 0; index < 3; index++) {
+        const id = newId();
+        constraints[id] = {
+            id,
+            kind: "perpendicular",
+            enabled: true,
+            origin: "inferred",
+            a: curveIds[index],
+            b: curveIds[index + 1],
+        };
+    }
+    return { ...document, sketch: { ...document.sketch, constraints } };
+}
+
 export function createSmartPointMarker(
     document: WhiteboardDocument,
     at: Pair,
