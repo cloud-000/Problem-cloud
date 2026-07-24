@@ -80,10 +80,20 @@ export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 
  * in asy-space (the view derives it from its px->asy scale).
  */
 export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement | null {
+    // First pass: check if any dot/label is within tolerance - if so, prefer it
+    // This ensures point selection works even when the point is on a curve.
+    for (let i = scene.elements.length - 1; i >= 0; i--) {
+        const el = scene.elements[i];
+        if (el.kind === "dot" || el.kind === "label") {
+            const d = distance(p, el.at);
+            console.log(`[hit-test] dot/label ${el.id} at ${el.at}, click at ${p}, distance: ${d}, tolerance: ${d <= tolerance}`);
+            if (d <= tolerance) return el;
+        }
+    }
+
+    // Second pass: normal hit-test for other elements
     let best: SceneElement | null = null;
     let bestDist = Infinity;
-    // Back-to-front: prefer elements drawn later (visually on top). Ties go to
-    // the topmost element; only a strictly closer element overrides it.
     for (let i = scene.elements.length - 1; i >= 0; i--) {
         const el = scene.elements[i];
         const d = distanceToElement(p, el, Math.max(tolerance / 4, 1e-4));
@@ -92,5 +102,6 @@ export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement 
             bestDist = d;
         }
     }
+    console.log(`[hit-test] final result: ${best?.kind} ${best?.id}, distance: ${bestDist}`);
     return best;
 }
