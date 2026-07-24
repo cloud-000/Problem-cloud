@@ -97,7 +97,14 @@
     <header class="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5">
         <div class="min-w-0">
             <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Properties</p>
-            <h2 class="truncate text-sm font-semibold capitalize">{store.inspectorTitle}</h2>
+            <div class="flex items-center gap-1.5">
+                <h2 class="truncate text-sm font-semibold capitalize">{store.inspectorTitle}</h2>
+                {#if store.inspectorClosed}
+                    <span class="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        Closed
+                    </span>
+                {/if}
+            </div>
         </div>
         {#if onClose}
             <Button variant="ghost" size="icon-xs" aria-label="Close properties" onclick={onClose}>

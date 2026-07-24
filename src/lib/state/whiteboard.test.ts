@@ -55,6 +55,25 @@ function overlayFor(store: InstanceType<typeof WhiteboardStore>) {
 }
 
 describe("WhiteboardStore selection gestures", () => {
+    test("reports when the selected arc is closed", () => {
+        const closed = new WhiteboardStore({
+            elements: [{ id: "closed", kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 360 }],
+        });
+        closed.selection = ["closed"];
+        expect(closed.inspectorTitle).toBe("arc");
+        expect(closed.inspectorClosed).toBe(true);
+
+        const open = new WhiteboardStore({
+            elements: [{ id: "open", kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 359.59 }],
+        });
+        open.selection = ["open"];
+        expect(open.inspectorClosed).toBe(false);
+
+        open.setTool("arc");
+        open.arcGuide = { center: [0, 0], radius: 2, angle1: 0, angle2: 360 };
+        expect(open.inspectorClosed).toBe(true);
+    });
+
     test("switching tools clears the current object selection", () => {
         const store = new WhiteboardStore({
             elements: [{ id: "selected", kind: "dot", at: [0, 0] }],

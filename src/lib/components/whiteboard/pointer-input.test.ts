@@ -138,6 +138,29 @@ function harness() {
 }
 
 describe("PointerInputController pointer-down routing", () => {
+    test("four canvas clicks can close an arc at its construction endpoint", () => {
+        const scope = harness();
+        scope.store.setTool("arc");
+        const click = (point: Pair) => {
+            const event = pressAt(point);
+            scope.controller.pointerDown(event);
+            scope.controller.pointerUp(event);
+        };
+
+        click([400, 300]); // center
+        click([500, 300]); // radius
+        click([500, 300]); // start
+
+        scope.controller.pointerMove(pressAt([500, 300]));
+        expect(scope.store.inspectorClosed).toBe(true);
+
+        click([500, 300]); // end
+
+        const created = scope.store.scene.elements.at(-1);
+        expect(created).toMatchObject({ kind: "arc", angle1: 0, angle2: 360 });
+        expect(scope.store.inspectorClosed).toBe(true);
+    });
+
     test("pressing a vertex handle selects that vertex and opens a transform", () => {
         const scope = harness();
         const handle = scope.overlay().vertexHandles[0];

@@ -28,7 +28,7 @@
  */
 
 import type { Pen, Scene } from "$lib/asy/scene/types";
-import { isStraightPathVertexEditable } from "$lib/asy/scene";
+import { isStraightPathVertexEditable, positiveArcSweep } from "$lib/asy/scene";
 import type {
     EditorPropertyId,
     EditorPropertyValue,
@@ -279,6 +279,20 @@ export class WhiteboardStore {
             if (element) return element.kind === "fill" ? "Filled path" : element.kind.replaceAll("-", " ");
         }
         return this.toolKind === "pan" ? "Pan" : this.toolKind[0].toUpperCase() + this.toolKind.slice(1);
+    }
+
+    get inspectorClosed(): boolean {
+        if (
+            this.toolKind === "arc" &&
+            this.arcGuide?.angle1 !== undefined &&
+            this.arcGuide.angle2 !== undefined
+        ) {
+            return positiveArcSweep(this.arcGuide.angle1, this.arcGuide.angle2) === 360;
+        }
+        if (this.selection.length !== 1) return false;
+        const element = this.scene.elements.find(({ id }) => id === this.selection[0]);
+        return (element?.kind === "arc" || element?.kind === "elliptical-arc") &&
+            positiveArcSweep(element.angle1, element.angle2) === 360;
     }
 
     get inspectorProperties(): ResolvedEditorProperty[] {

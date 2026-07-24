@@ -457,6 +457,49 @@ describe("ArcTool", () => {
         ]);
     });
 
+    test("snaps a nearly complete arc to a visible full circle during preview and commit", () => {
+        const tool = createTool("arc");
+        const scene = emptyScene();
+        const onRim = (degrees: number): Pair => [
+            100 * Math.cos((degrees * Math.PI) / 180),
+            100 * Math.sin((degrees * Math.PI) / 180),
+        ];
+        tool.onPointerDown(scene, [0, 0], ctx);
+        tool.onPointerDown(scene, [100, 0], ctx);
+        tool.onPointerDown(scene, [100, 0], ctx);
+
+        const preview = tool.onPointerMove(scene, onRim(-3), ctx);
+        expect(preview.preview?.elements[0]).toMatchObject({
+            kind: "arc",
+            angle1: 0,
+            angle2: 360,
+        });
+        expect(preview.arcGuide).toMatchObject({ angle1: 0, angle2: 360 });
+
+        const result = tool.onPointerDown(scene, onRim(-3), ctx);
+        expect(committed(result.commit)[0]).toMatchObject({
+            kind: "arc",
+            angle1: 0,
+            angle2: 360,
+        });
+    });
+
+    test("shows the closed preview when the endpoint approaches from the short-sweep side", () => {
+        const tool = createTool("arc");
+        const scene = emptyScene();
+        const onRim = (degrees: number): Pair => [
+            100 * Math.cos((degrees * Math.PI) / 180),
+            100 * Math.sin((degrees * Math.PI) / 180),
+        ];
+        tool.onPointerDown(scene, [0, 0], ctx);
+        tool.onPointerDown(scene, [100, 0], ctx);
+        tool.onPointerDown(scene, [100, 0], ctx);
+
+        const preview = tool.onPointerMove(scene, onRim(0.2), ctx);
+        expect(preview.arcGuide).toMatchObject({ angle1: 0, angle2: 360 });
+        expect(preview.preview?.elements[0]).toMatchObject({ angle1: 0, angle2: 360 });
+    });
+
     test("a tiny radius cancels construction and Escape clears its guide", () => {
         const s = emptyScene();
         const tiny = createTool("arc");

@@ -91,6 +91,13 @@ export function principalEllipseGeometry(
 export const COINCIDENT_SWEEP_DEGREES = 1e-4;
 
 /**
+ * Remaining gap (degrees) within which an open arc endpoint snaps shut into a
+ * full turn. Shared by arc creation and endpoint editing so both gestures feel
+ * identical near the seam.
+ */
+export const FULL_TURN_SNAP_DEGREES = 8;
+
+/**
  * The one place a pair of arc angles becomes a drawn sweep in `(0, 360]`.
  *
  * Every consumer — render, export, hit-test, the overlay guide, the inspector,

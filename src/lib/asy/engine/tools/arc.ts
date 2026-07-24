@@ -1,5 +1,6 @@
 import type { Pair, Scene } from "../../scene/types";
 import { createArc } from "../../scene/factory";
+import { FULL_TURN_SNAP_DEGREES } from "../../scene/ellipse-geometry";
 import { distance, normalizeDeg, snapConstructionScalar } from "../geometry";
 import { addElement, NO_RESULT, pointerPoint, type PointerInput, type Tool, type ToolContext, type ToolResult } from "./types";
 
@@ -29,6 +30,15 @@ export class ArcTool implements Tool {
         this.previousRawRadius = rawRadius;
         this.radiusSnapTarget = snapped.target;
         return snapped.value;
+    }
+
+    private snappedEndAngle(pointerAngle: number, tolerance: number): number {
+        const sweep = normalizeDeg(pointerAngle - this.angle1);
+        const endpointGap = 2 * Math.abs(this.radius) *
+            Math.sin((Math.min(sweep, 360 - sweep) * Math.PI) / 360);
+        return endpointGap <= tolerance || sweep >= 360 - FULL_TURN_SNAP_DEGREES
+            ? this.angle1 + 360
+            : pointerAngle;
     }
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
@@ -62,16 +72,7 @@ export class ArcTool implements Tool {
         // phase 3 -> commit
         const center = this.center!;
         const pointerAngle = angleOf(center, p);
-        const projectedEnd: Pair = [
-            center[0] + this.radius * Math.cos((pointerAngle * Math.PI) / 180),
-            center[1] + this.radius * Math.sin((pointerAngle * Math.PI) / 180),
-        ];
-        const angle2 = distance(projectedEnd, [
-            center[0] + this.radius * Math.cos((this.angle1 * Math.PI) / 180),
-            center[1] + this.radius * Math.sin((this.angle1 * Math.PI) / 180),
-        ]) <= ctx.tolerance
-            ? this.angle1 + 360
-            : pointerAngle;
+        const angle2 = this.snappedEndAngle(pointerAngle, ctx.tolerance);
         const arc = createArc(center, this.radius, this.angle1, angle2, ctx.pen);
         this.reset();
         return {
@@ -97,7 +98,7 @@ export class ArcTool implements Tool {
             };
         }
         if (this.phase === 3) {
-            const angle2 = angleOf(this.center!, p);
+            const angle2 = this.snappedEndAngle(angleOf(this.center!, p), ctx.tolerance);
             return {
                 preview: addElement(scene, createArc(
                     this.center!, this.radius, this.angle1, angle2, ctx.pen,

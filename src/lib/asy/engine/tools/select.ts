@@ -3,6 +3,7 @@ import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import {
     COINCIDENT_SWEEP_DEGREES,
+    FULL_TURN_SNAP_DEGREES,
     positiveArcSweep,
     principalEllipseGeometry,
 } from "../../scene/ellipse-geometry";
@@ -25,13 +26,6 @@ import {
     type ToolContext,
     type ToolResult,
 } from "./types";
-
-/**
- * Remaining gap (degrees) within which a dragged endpoint snaps an *open* arc
- * shut into a full circle. Closing is sticky, reopening is not — see the
- * `closesFullTurn` comment in `transformScene`.
- */
-const FULL_TURN_SNAP_DEGREES = 8;
 
 function arcParameterAngle(element: ArcElement | EllipticalArcElement, point: Pair): number | null {
     const dx = point[0] - element.center[0];
