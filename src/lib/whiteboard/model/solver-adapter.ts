@@ -86,6 +86,37 @@ function documentToSolverGraph(document: WhiteboardDocument): SolverGraph {
                     at: constraint.at,
                 });
                 break;
+            case "point-on-curve": {
+                const point = requiredPointId(document, constraint.point);
+                const curve = document.sketch.curves[constraint.curveId];
+                if (!curve) throw new Error(`point-on-curve references missing curve ${constraint.curveId}`);
+                if (curve.kind === "segment") {
+                    constraints.push({ id, kind: "point-on-line", point, a: curve.start, b: curve.end });
+                } else if (curve.kind === "arc") {
+                    constraints.push({ id, kind: "point-on-circle", point, center: curve.center, rim: curve.start });
+                } else {
+                    throw new Error(`point-on-curve on a ${curve.kind} is outside the point/segment solver adapter`);
+                }
+                break;
+            }
+            case "tangent": {
+                const a = document.sketch.curves[constraint.a];
+                const b = document.sketch.curves[constraint.b];
+                const segment = a?.kind === "segment" ? a : b?.kind === "segment" ? b : null;
+                const arc = a?.kind === "arc" ? a : b?.kind === "arc" ? b : null;
+                if (!segment || !arc) {
+                    throw new Error("tangent requires one segment and one arc in the point/segment solver adapter");
+                }
+                constraints.push({
+                    id,
+                    kind: "tangent-line-circle",
+                    a: segment.start,
+                    b: segment.end,
+                    center: arc.center,
+                    rim: arc.start,
+                });
+                break;
+            }
             case "radial-distance":
                 throw new Error(`${constraint.kind} is outside the point/segment solver adapter`);
         }

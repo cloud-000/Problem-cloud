@@ -93,7 +93,8 @@ export class SelectionModel {
         const item = document.items.find((candidate) => candidate.kind !== "baked" && candidate.id === itemId);
         const curveId = item?.kind === "sketch-path" ? item.uses[0]?.curveId
             : item?.kind === "sketch-curve" ? item.curveId : undefined;
-        if (curveId && document.sketch.curves[curveId]?.kind === "segment") {
+        const kind = curveId ? document.sketch.curves[curveId]?.kind : undefined;
+        if (curveId && (kind === "segment" || kind === "arc")) {
             this.selectFeature({ kind: "curve", curveId }, additive);
         }
     }

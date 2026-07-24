@@ -37,6 +37,56 @@ draw(circle((0,0), 1), red+dashed);`;
             >
             <button
                 class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => store.loadAsy("draw(arc((0,0), 2, 0, 90));")}>Load Arc</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => store.loadAsy("draw(arc((0,0), 2, 0, 90));\ndraw((-2,2)--(2,2));")}>Load Arc + Line</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => store.loadAsy("draw(arc((0,0), 2, 0, 90));\ndot((1,3));")}>Load Arc + Point</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => {
+                    const doc = store.document;
+                    const arc = Object.values(doc.sketch.curves).find((c) => c.kind === "arc");
+                    const seg = Object.values(doc.sketch.curves).find((c) => c.kind === "segment");
+                    if (arc && seg) {
+                        store.featureSelection = [
+                            { kind: "curve", curveId: arc.id },
+                            { kind: "curve", curveId: seg.id },
+                        ];
+                    }
+                }}>Select Arc+Line Features</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => {
+                    const doc = store.document;
+                    const arc = Object.values(doc.sketch.curves).find((c) => c.kind === "arc");
+                    const point = Object.values(doc.sketch.points).find(
+                        (p) => p.id !== arc?.center && p.id !== arc?.start && p.id !== arc?.end,
+                    );
+                    if (arc && point) {
+                        store.featureSelection = [
+                            { kind: "point", pointId: point.id },
+                            { kind: "curve", curveId: arc.id },
+                        ];
+                    }
+                }}>Select Point+Arc Features</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => store.applyRelation("tangent")}>Apply Tangent</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+                onclick={() => store.applyRelation("point-on-curve")}>Apply Point-on-curve</button
+            >
+            <button
+                class="rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
                 onclick={dumpAsy}>Show asy →</button
             >
         </div>

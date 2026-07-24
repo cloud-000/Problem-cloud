@@ -141,6 +141,11 @@ export function buildArcGuide(
 
     const selectedArcElement = selectedArcElementFor(input, activeSelection);
     if (!selectedArcElement) return null;
+    // A smart arc's radius derives from its `start` point, so it exposes no
+    // standalone radius ring — only the center/start/end point handles, which
+    // drag through Pipeline B. A baked arc keeps its editable radius ring.
+    const radiusEditable =
+        selectedArcElement.kind === "arc" && !input.selectionContainsSmartItems;
 
     const start = selectedArcPoint(selectedArcElement, selectedArcElement.angle1);
     const end = selectedArcPoint(selectedArcElement, selectedArcElement.angle2);
@@ -252,7 +257,7 @@ export function buildArcGuide(
         handles: editHandles,
         editHandles,
         elementId: selectedArcElement.id,
-        radiusEditable: selectedArcElement.kind === "arc",
+        radiusEditable,
         measurements: {
             axes,
             angleRays: [project(start), project(end)] as const,

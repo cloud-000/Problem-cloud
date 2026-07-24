@@ -52,7 +52,7 @@ function lift(
 }
 
 describe("commit lift: one ToolCommit -> one Document transaction", () => {
-    test("add lifts line/rectangle/point to smart items and pen/arc/label to baked", () => {
+    test("add lifts line/rectangle/point to smart items and pen/label to baked", () => {
         const empty = emptyWhiteboardDocument();
 
         const line = lift(empty, { kind: "add", elements: [pathElement([[0, 0], [4, 0]])] }, {
@@ -92,7 +92,6 @@ describe("commit lift: one ToolCommit -> one Document transaction", () => {
 
         const baked: [string, SceneElement][] = [
             ["pen", pathElement([[0, 0], [1, 1], [2, 0]])],
-            ["arc", createArc([0, 0], 2, 0, 90)],
             ["label", createLabel("$x$", [1, 1])],
         ];
         for (const [toolKind, element] of baked) {
@@ -103,6 +102,37 @@ describe("commit lift: one ToolCommit -> one Document transaction", () => {
             expect(next.items[0]).toEqual({ kind: "baked", element });
             expect(next.sketch).toEqual(empty.sketch);
         }
+    });
+
+    test("arc lifts to a smart arc of three points, but a full circle stays baked", () => {
+        const empty = emptyWhiteboardDocument();
+
+        // A partial arc (90° here) becomes a smart sketch-curve whose center and
+        // two rim endpoints are real, independently draggable sketch points.
+        const arc = lift(empty, { kind: "add", elements: [createArc([0, 0], 2, 0, 90)] }, {
+            toolKind: "arc",
+        });
+        expect(kinds(arc)).toEqual(["sketch-curve"]);
+        expect(Object.keys(arc.sketch.points)).toHaveLength(3);
+        const curves = Object.values(arc.sketch.curves);
+        expect(curves).toHaveLength(1);
+        if (curves[0].kind !== "arc") throw new Error("expected an arc curve");
+        // The projection reproduces the original geometry (radius from `start`,
+        // CCW sweep `start`→`end`).
+        const resolved = resolveWhiteboardDocument(arc).elements[0];
+        if (resolved.kind !== "arc") throw new Error("expected a resolved arc");
+        expect(resolved.center).toEqual([0, 0]);
+        expect(resolved.radius).toBeCloseTo(2, 9);
+        expect(resolved.angle1).toBeCloseTo(0, 9);
+        expect(resolved.angle2).toBeCloseTo(90, 9);
+
+        // A full turn's rim endpoints would coincide, so it can't be a three-point
+        // smart arc — it stays baked.
+        const full = createArc([0, 0], 2, 0, 360);
+        const fullLift = lift(empty, { kind: "add", elements: [full] }, { toolKind: "arc" });
+        expect(kinds(fullLift)).toEqual(["baked"]);
+        expect(fullLift.items[0]).toEqual({ kind: "baked", element: full });
+        expect(fullLift.sketch).toEqual(empty.sketch);
     });
 
     test("replace swaps baked elements in place by id and leaves smart items alone", () => {

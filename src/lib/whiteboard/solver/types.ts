@@ -71,6 +71,36 @@ export type SolverConstraint =
           a: SegmentId;
           b: SegmentId;
           angle: number;
+      })
+    | (ConstraintBase & {
+          /** `point` lies on the infinite line through `a`→`b`. */
+          kind: "point-on-line";
+          point: PointId;
+          a: PointId;
+          b: PointId;
+      })
+    | (ConstraintBase & {
+          /**
+           * `point` lies on the circle centered at `center` with radius
+           * `|rim − center|` — the point-based form of a circle, so no scalar
+           * radius entity is needed (a smart arc supplies `center` and `rim`).
+           */
+          kind: "point-on-circle";
+          point: PointId;
+          center: PointId;
+          rim: PointId;
+      })
+    | (ConstraintBase & {
+          /**
+           * The line through `a`→`b` is tangent to the circle centered at
+           * `center` with radius `|rim − center|`: distance(center, line) equals
+           * the radius.
+           */
+          kind: "tangent-line-circle";
+          a: PointId;
+          b: PointId;
+          center: PointId;
+          rim: PointId;
       });
 
 export interface SolverGraph {

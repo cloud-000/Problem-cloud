@@ -40,6 +40,7 @@ import {
 } from "$lib/whiteboard/smart-gestures.svelte";
 import type { StyleModel, WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
+    arcControlFeature,
     pathNodeFeature,
     pointFeaturePosition,
     type PointFeatureRef,
@@ -268,6 +269,17 @@ export class InteractionController {
             this.#selection.selectionHasSmartItems(selection)
         ) {
             return { pipeline: "transform", gesture: selectionTransform, itemIds: [...selection] };
+        }
+        // A smart arc's center/start/end handle drags that real sketch point via
+        // Pipeline B; a baked arc's handle falls through to the tool (select.ts
+        // owns baked arc/ellipse control edits).
+        if (selectionTransform?.kind === "arc") {
+            const feature = arcControlFeature(
+                this.#host.document,
+                selectionTransform.elementId,
+                selectionTransform.control,
+            );
+            if (feature) return { pipeline: "drag-feature", feature, directMoveIds: null };
         }
         const directMoveIds =
             !selectionTransform && this.#host.toolKind === "select" && !this.#host.lineContinuation

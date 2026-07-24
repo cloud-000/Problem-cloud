@@ -105,6 +105,12 @@
             description: "Dark Souls-style health bar mapping player rating outcomes.",
             href: "/testing-features/rating-life-bar",
         },
+        {
+            icon: "shapes",
+            name: "Whiteboard",
+            description: "A geometric whiteboard",
+            href: "/testing-features/whiteboard"
+        }
     ];
 </script>
 

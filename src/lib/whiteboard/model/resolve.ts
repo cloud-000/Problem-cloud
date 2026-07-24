@@ -87,13 +87,23 @@ function resolveItem(document: WhiteboardDocument, index: number): SceneElement 
         };
     }
     if (item.fillPen) throw new Error(`arc presentation ${item.id} cannot have a fill pen`);
+    const start = document.sketch.points[curve.start]?.at;
+    const end = document.sketch.points[curve.end]?.at;
+    if (!start || !end) throw new Error(`arc ${curve.id} has an unresolved endpoint`);
+    // Radius comes from `start` (the point on the drawn circle); `end` supplies
+    // only its angle. The arc is the CCW sweep `start`→`end`, so the Scene's
+    // positive-sweep angle convention reproduces it directly (`render.ts`
+    // `projectedArc` / codec `arc(c, r, a1, a2)`).
+    const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+    const angle1 = Math.atan2(start[1] - center[1], start[0] - center[0]) * 180 / Math.PI;
+    const angle2 = Math.atan2(end[1] - center[1], end[0] - center[0]) * 180 / Math.PI;
     return {
         id: item.id,
         kind: "arc",
         center,
-        radius: curve.radius,
-        angle1: curve.startAngle * 180 / Math.PI,
-        angle2: (curve.startAngle + curve.sweepAngle) * 180 / Math.PI,
+        radius,
+        angle1,
+        angle2,
         ...style,
     };
 }

@@ -100,6 +100,12 @@ function constraintPointIds(graph: SolverGraph, constraint: SolverConstraint): P
                 ...segmentPointIds(graph, constraint.a),
                 ...segmentPointIds(graph, constraint.b),
             ]);
+        case "point-on-line":
+            return sortedUnique([constraint.point, constraint.a, constraint.b]);
+        case "point-on-circle":
+            return sortedUnique([constraint.point, constraint.center, constraint.rim]);
+        case "tangent-line-circle":
+            return sortedUnique([constraint.a, constraint.b, constraint.center, constraint.rim]);
     }
 }
 
@@ -141,6 +147,21 @@ function validateRequest(request: SolveRequest, config: SolverConfig): string | 
         } else if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
             if (!graph.segments[constraint.segment]) {
                 return `constraint ${constraint.id} references a missing segment`;
+            }
+        } else if (constraint.kind === "point-on-line") {
+            if (!graph.points[constraint.point] || !graph.points[constraint.a] || !graph.points[constraint.b]) {
+                return `constraint ${constraint.id} references a missing point`;
+            }
+        } else if (constraint.kind === "point-on-circle") {
+            if (!graph.points[constraint.point] || !graph.points[constraint.center] || !graph.points[constraint.rim]) {
+                return `constraint ${constraint.id} references a missing point`;
+            }
+        } else if (constraint.kind === "tangent-line-circle") {
+            if (
+                !graph.points[constraint.a] || !graph.points[constraint.b] ||
+                !graph.points[constraint.center] || !graph.points[constraint.rim]
+            ) {
+                return `constraint ${constraint.id} references a missing point`;
             }
         } else {
             if (!graph.segments[constraint.a] || !graph.segments[constraint.b]) {
@@ -354,6 +375,35 @@ function constraintResiduals(
             if (constraint.kind === "parallel") return [a[0] * b[1] - a[1] * b[0]];
             if (constraint.kind === "perpendicular") return [dot];
             return [(Math.acos(dot) - constraint.angle) / Math.PI];
+        }
+        case "point-on-line": {
+            // Signed perpendicular distance from `point` to the line a→b,
+            // normalized by the line length (floored to stay finite when the two
+            // line points are nearly coincident).
+            const p = point(constraint.point);
+            const a = point(constraint.a);
+            const b = point(constraint.b);
+            const dx = b[0] - a[0];
+            const dy = b[1] - a[1];
+            const length = Math.max(Math.hypot(dx, dy), degeneracyTolerance * scale);
+            const cross = (p[0] - a[0]) * dy - (p[1] - a[1]) * dx;
+            return [cross / length / scale];
+        }
+        case "point-on-circle": {
+            const radius = vectorLength(vectorBetween(point(constraint.center), point(constraint.rim)));
+            const distance = vectorLength(vectorBetween(point(constraint.center), point(constraint.point)));
+            return [(distance - radius) / scale];
+        }
+        case "tangent-line-circle": {
+            const c = point(constraint.center);
+            const a = point(constraint.a);
+            const b = point(constraint.b);
+            const dx = b[0] - a[0];
+            const dy = b[1] - a[1];
+            const length = Math.max(Math.hypot(dx, dy), degeneracyTolerance * scale);
+            const distance = Math.abs((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / length;
+            const radius = vectorLength(vectorBetween(c, point(constraint.rim)));
+            return [(distance - radius) / scale];
         }
     }
 }

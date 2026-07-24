@@ -58,8 +58,13 @@ It holds three kinds of state:
     a *reference* into the sketch graph plus presentation style.
 - **`sketch: SketchGraph`** — the parametric substrate: `points`, scalar
   `parameters`, `curves` (segment / circle / arc), and `constraints`
-  (coincident, horizontal, parallel, distance, angle, …). Smart items get their
-  geometry from here; baked items do not touch it.
+  (coincident, horizontal, parallel, distance, angle, point-on-curve, tangent,
+  …). Smart items get their
+  geometry from here; baked items do not touch it. A **segment** and an **arc**
+  are defined entirely by *points* — an arc by its center plus two rim endpoints,
+  with radius (`|center − start|`) and both angles **derived** at resolve time —
+  so their endpoints are ordinary drag/snap/constraint targets. A **circle**
+  still carries a scalar radius, since its rim is not a point.
 - **`dimensions`** — driving/reference length·radius·angle annotations.
 
 All mutation of the whiteboard is a mutation of *this* object, produced by the
@@ -152,8 +157,13 @@ rule. The boundary between them is a documented contract, not an accident.
 
 Decided once, on **pointer-down**, by a hit-test:
 
-- pointer hits a **smart feature** (a sketch point, a curve, an ellipse axis) → **Pipeline B**.
+- pointer hits a **smart feature** (a sketch point, a curve, an ellipse axis, or a
+  **smart arc's center/start/end handle**) → **Pipeline B**.
 - pointer hits **empty space, a baked element, or a creation tool is active** → **Pipeline A**.
+
+A *baked* arc's handles still go to Pipeline A (the select tool edits its
+`center`/`radius`/angles as raw geometry); only a **smart** arc's handles resolve
+to sketch points and take Pipeline B (`arcControlFeature`).
 
 This is the *only* branch. There is no third path and no mid-gesture pipeline
 switch.
@@ -170,12 +180,14 @@ what the gesture changed (`add` · `replace` · `erase` · `extend-path` /
 defined step (`liftCommit`, in `whiteboard/commit-lift.ts`), so its output enters
 the Document like everything else. What the lift produces depends on the tool:
 
-- **line · rectangle · point** → a **smart** sketch item (`createSmartPath` /
-  `createSmartPointMarker`), with snap-inferred coincidence, so drawn geometry is
-  immediately constrainable. The rectangle additionally ships with three
-  `perpendicular` constraints (`addDefaultRectangleConstraints`) — its defining
-  right angles — so it stays rectangular under rotate/resize.
-- **pen · arc · label** → **`BakedItem`s** appended.
+- **line · rectangle · point · arc** → a **smart** sketch item (`createSmartPath` /
+  `createSmartPointMarker` / `createSmartArc`), with snap-inferred coincidence, so
+  drawn geometry is immediately constrainable. The rectangle additionally ships
+  with three `perpendicular` constraints (`addDefaultRectangleConstraints`) — its
+  defining right angles — so it stays rectangular under rotate/resize.
+- **pen · label** → **`BakedItem`s** appended. A **full-circle arc** also stays
+  baked: a smart arc is three *distinct* points, so a 360° sweep (whose rim
+  endpoints coincide) has no three-point form.
 - **eraser** → `deleteWhiteboardItems`; **select** move/resize/rotate/vertex →
   the changed baked elements replaced in place by id.
 

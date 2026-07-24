@@ -191,6 +191,60 @@ describe("DampedLeastSquaresSolver individual constraints", () => {
             point(result, "d"),
         )).toBeCloseTo(Math.PI / 3, 6);
     });
+
+    test("point on line", () => {
+        // p starts off the x-axis line a→b; only p is free, so it drops onto y = 0.
+        const result = solver.solve(request(
+            graph(
+                { a: [0, 0], b: [10, 0], p: [3, 3] },
+                [],
+                [{ id: "on-line", kind: "point-on-line", point: "p", a: "a", b: "b" }],
+            ),
+            { affected: [{ kind: "point", pointId: "p" }], stays: [{ pointId: "a" }, { pointId: "b" }] },
+        ));
+
+        expectSatisfied(result, "on-line");
+        expect(point(result, "p")[1]).toBeCloseTo(0, 6);
+    });
+
+    test("point on circle", () => {
+        // The circle is fixed by staying its center and rim (radius 10); p must
+        // land on it, so its distance from the center becomes the radius.
+        const result = solver.solve(request(
+            graph(
+                { c: [0, 0], rim: [10, 0], p: [5, 5] },
+                [],
+                [{ id: "on-circle", kind: "point-on-circle", point: "p", center: "c", rim: "rim" }],
+            ),
+            { affected: [{ kind: "point", pointId: "p" }], stays: [{ pointId: "c" }, { pointId: "rim" }] },
+        ));
+
+        expectSatisfied(result, "on-circle");
+        expect(distance(point(result, "c"), point(result, "p"))).toBeCloseTo(10, 5);
+    });
+
+    test("tangent line and circle", () => {
+        // A horizontal line at y = 5 above a fixed radius-3 circle drops to y = 3,
+        // where distance(center, line) equals the radius.
+        const result = solver.solve(request(
+            graph(
+                { c: [0, 0], rim: [3, 0], a: [-4, 5], b: [4, 5] },
+                [],
+                [{ id: "tangent", kind: "tangent-line-circle", a: "a", b: "b", center: "c", rim: "rim" }],
+            ),
+            {
+                affected: [{ kind: "point", pointId: "a" }, { kind: "point", pointId: "b" }],
+                stays: [{ pointId: "c" }, { pointId: "rim" }],
+            },
+        ));
+
+        expectSatisfied(result, "tangent");
+        const pa = point(result, "a");
+        const pb = point(result, "b");
+        const length = distance(pa, pb);
+        const centerToLine = Math.abs((0 - pa[0]) * (pb[1] - pa[1]) - (0 - pa[1]) * (pb[0] - pa[0])) / length;
+        expect(centerToLine).toBeCloseTo(3, 6);
+    });
 });
 
 describe("DampedLeastSquaresSolver connected behavior", () => {

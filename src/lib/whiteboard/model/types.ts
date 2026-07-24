@@ -25,10 +25,18 @@ export type SketchCurve =
     | {
           id: CurveId;
           kind: "arc";
+          /**
+           * A smart arc is defined by three real sketch points — its center and
+           * two rim endpoints — so the endpoints are independently draggable,
+           * snap-attachable, and (later) constrainable. The drawn radius is
+           * `|center − start|`; `end` supplies only the swept-to angle (it may
+           * sit off that circle until a point-on-circle constraint pins it). The
+           * arc is the CCW sweep from `start`'s angle to `end`'s angle, matching
+           * the Scene `arc` element's angle convention.
+           */
           center: PointId;
-          radius: number;
-          startAngle: number;
-          sweepAngle: number;
+          start: PointId;
+          end: PointId;
       };
 
 export type PointFeatureRef =
@@ -55,6 +63,10 @@ export type Constraint = {
           display: "radius" | "diameter";
       }
     | { kind: "angle"; a: CurveId; b: CurveId; value: ParameterId }
+    // `point` lies on `curveId` — a segment's line, or a circle/arc's circle.
+    | { kind: "point-on-curve"; point: PointFeatureRef; curveId: CurveId }
+    // The two curves are tangent (an arc/circle and a segment's supporting line).
+    | { kind: "tangent"; a: CurveId; b: CurveId }
 );
 
 export interface SketchGraph {

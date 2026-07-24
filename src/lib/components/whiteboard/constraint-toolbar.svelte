@@ -88,6 +88,8 @@
         "equal-length": "=",
         "fixed-point": "⌖",
         distance: "↔",
+        "point-on-curve": "◉",
+        tangent: "◠",
     };
 
     function toggleContextRelation(kind: RelationKind) {

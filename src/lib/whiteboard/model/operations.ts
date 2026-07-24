@@ -2,7 +2,7 @@ import { newId } from "../../asy/scene/factory";
 import { rotateElement, scaleElementBy, translateElement } from "../../asy/engine/geometry";
 import type { Pair, Pen, Scene, SceneElement } from "../../asy/scene/types";
 import { pointFeaturePointId, pointFeaturePosition } from "./features";
-import { isPointFeature, type RelationKind } from "./relations";
+import { isPointFeature, pointOnCurvePair, tangentPair, type RelationKind } from "./relations";
 import { resolveWhiteboardDocument } from "./resolve";
 import { solveWhiteboardDocument } from "./solver-adapter";
 import type {
@@ -11,6 +11,7 @@ import type {
     LengthDimension,
     PointFeatureRef,
     SketchCurve,
+    SketchCurveItem,
     SketchPathItem,
     WhiteboardDocument,
     WhiteboardItem,
@@ -30,10 +31,16 @@ function successful(document: WhiteboardDocument): GeometryOperationResult {
 
 function pointRefsForCurve(document: WhiteboardDocument, curveId: string): PointFeatureRef[] {
     const curve = document.sketch.curves[curveId];
-    return curve?.kind === "segment" ? [
+    if (curve?.kind === "segment") return [
         { kind: "curve-point", curveId, feature: "start" },
         { kind: "curve-point", curveId, feature: "end" },
-    ] : [];
+    ];
+    if (curve?.kind === "arc") return [
+        { kind: "curve-point", curveId, feature: "center" },
+        { kind: "curve-point", curveId, feature: "start" },
+        { kind: "curve-point", curveId, feature: "end" },
+    ];
+    return [];
 }
 
 function pointRefsForFeatures(document: WhiteboardDocument, features: readonly FeatureRef[]): PointFeatureRef[] {
@@ -183,6 +190,58 @@ export function createSmartPointMarker(
     };
 }
 
+/**
+ * Author a smart arc from its three defining points (center + two rim
+ * endpoints). The drawn radius is `|center − start|` and the sweep runs CCW from
+ * `start`'s angle to `end`'s angle (`resolve.ts`); `end` may sit off that circle
+ * until a future point-on-circle constraint pins it. All three points are real
+ * sketch points, so they are independently draggable and snap-attachable, and
+ * the returned `endpointFeatures` let the lift infer coincidence on each.
+ */
+export function createSmartArc(
+    document: WhiteboardDocument,
+    center: Pair,
+    start: Pair,
+    end: Pair,
+    pen?: Pen,
+    strokeEnabled?: boolean,
+    itemId = newId(),
+): CreationResult {
+    const created = withPoints(document, [center, start, end]);
+    const [centerId, startId, endId] = created.pointIds;
+    const curveId = newId();
+    const curve: SketchCurve = {
+        id: curveId,
+        kind: "arc",
+        center: centerId,
+        start: startId,
+        end: endId,
+    };
+    const item: SketchCurveItem = {
+        id: itemId,
+        kind: "sketch-curve",
+        curveId,
+        ...(pen ? { pen } : {}),
+        ...(strokeEnabled !== undefined ? { strokeEnabled } : {}),
+    };
+    return {
+        document: {
+            ...created.document,
+            items: [...created.document.items, item],
+            sketch: {
+                ...created.document.sketch,
+                curves: { ...created.document.sketch.curves, [curveId]: curve },
+            },
+        },
+        itemId,
+        endpointFeatures: [
+            { kind: "curve-point", curveId, feature: "center" },
+            { kind: "curve-point", curveId, feature: "start" },
+            { kind: "curve-point", curveId, feature: "end" },
+        ],
+    };
+}
+
 export function appendSmartPathNode(
     document: WhiteboardDocument,
     itemId: string,
@@ -317,6 +376,14 @@ function relationConstraint(
             parameter: { id: parameterId, value: Math.hypot(b[0] - a[0], b[1] - a[1]) },
         };
     }
+    if (kind === "point-on-curve" && features.length === 2) {
+        const pair = pointOnCurvePair(document, features);
+        return pair ? { constraint: { ...base, kind, point: pair.point, curveId: pair.curve.curveId } } : null;
+    }
+    if (kind === "tangent" && features.length === 2) {
+        const pair = tangentPair(document, features);
+        return pair ? { constraint: { ...base, kind, a: pair.arc.curveId, b: pair.segment.curveId } } : null;
+    }
     return null;
 }
 
@@ -335,6 +402,12 @@ function sameConstraint(a: Constraint, b: Constraint): boolean {
     if (a.kind === "distance" && b.kind === "distance") {
         return (JSON.stringify(a.a) === JSON.stringify(b.a) && JSON.stringify(a.b) === JSON.stringify(b.b)) ||
             (JSON.stringify(a.a) === JSON.stringify(b.b) && JSON.stringify(a.b) === JSON.stringify(b.a));
+    }
+    if (a.kind === "point-on-curve" && b.kind === "point-on-curve") {
+        return JSON.stringify(a.point) === JSON.stringify(b.point) && a.curveId === b.curveId;
+    }
+    if (a.kind === "tangent" && b.kind === "tangent") {
+        return (a.a === b.a && a.b === b.b) || (a.a === b.b && a.b === b.a);
     }
     return false;
 }
@@ -594,7 +667,9 @@ function smartItemPointIds(document: WhiteboardDocument, item: WhiteboardItem): 
     return curveIds.flatMap((curveId) => {
         const curve = document.sketch.curves[curveId];
         if (!curve) return [];
-        return curve.kind === "segment" ? [curve.start, curve.end] : [curve.center];
+        if (curve.kind === "segment") return [curve.start, curve.end];
+        if (curve.kind === "arc") return [curve.center, curve.start, curve.end];
+        return [curve.center];
     });
 }
 
@@ -703,7 +778,9 @@ export function scaleWhiteboardItems(
             anchor[1] + (point[1] - anchor[1]) * factor,
         ],
         (element) => scaleElementBy(element, anchor, [factor, factor]),
-        (curve) => ({ ...curve, radius: curve.radius * factor }),
+        // A smart arc's radius/angles derive from its three points, which
+        // `pointTarget` already scales — only a circle's scalar radius needs it.
+        (curve) => curve.kind === "circle" ? { ...curve, radius: curve.radius * factor } : curve,
         mode,
     );
 }
@@ -734,9 +811,10 @@ export function rotateWhiteboardItems(
             ];
         },
         (element) => rotateElement(element, pivot, degrees),
-        (curve) => curve.kind === "arc"
-            ? { ...curve, startAngle: curve.startAngle + radians }
-            : curve,
+        // Both a smart arc (three points) and a circle (center point + scalar
+        // radius) rotate entirely through `pointTarget` moving their points: the
+        // arc's angles re-derive and a circle's radius is rotation-invariant.
+        (curve) => curve,
         mode,
     );
 }
@@ -798,6 +876,10 @@ function referencedPointIds(document: WhiteboardDocument): Set<string> {
         if (curve.kind === "segment") {
             ids.add(curve.start);
             ids.add(curve.end);
+        } else if (curve.kind === "arc") {
+            ids.add(curve.center);
+            ids.add(curve.start);
+            ids.add(curve.end);
         } else ids.add(curve.center);
     }
     for (const item of document.items) {
@@ -838,8 +920,10 @@ export function deleteWhiteboardItems(
             case "parallel":
             case "perpendicular":
             case "equal-length":
-            case "angle": return Boolean(curves[constraint.a] && curves[constraint.b]);
+            case "angle":
+            case "tangent": return Boolean(curves[constraint.a] && curves[constraint.b]);
             case "radial-distance": return Boolean(curves[constraint.curveId]);
+            case "point-on-curve": return featureExists(constraint.point) && Boolean(curves[constraint.curveId]);
         }
     }));
     const dimensions = Object.fromEntries(Object.entries(document.dimensions ?? {}).filter(([, dimension]) =>

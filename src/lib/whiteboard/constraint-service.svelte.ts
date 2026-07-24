@@ -124,8 +124,8 @@ export class ConstraintService {
                 b = a;
             } else if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
                 const refs = this.#curvePointRefs(constraint.curveId);
-                a = refs ? pointFeaturePosition(document, refs[0]) : null;
-                b = refs ? pointFeaturePosition(document, refs[1]) : null;
+                a = refs[0] ? pointFeaturePosition(document, refs[0]) : null;
+                b = refs[1] ? pointFeaturePosition(document, refs[1]) : null;
             } else if (
                 constraint.kind === "parallel" || constraint.kind === "perpendicular" ||
                 constraint.kind === "equal-length" || constraint.kind === "angle"
@@ -139,22 +139,33 @@ export class ConstraintService {
                 at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
                 a,
                 b,
+                kind: constraint.kind,
                 selected: this.selectedConstraintId === constraint.id,
             }];
         });
     }
 
-    #curvePointRefs(curveId: string): [PointFeatureRef, PointFeatureRef] | null {
+    #curvePointRefs(curveId: string): PointFeatureRef[] {
         const curve = this.#host.document.sketch.curves[curveId];
-        return curve?.kind === "segment" ? [
-            { kind: "curve-point", curveId, feature: "start" },
-            { kind: "curve-point", curveId, feature: "end" },
-        ] : null;
+        if (curve?.kind === "segment") {
+            return [
+                { kind: "curve-point", curveId, feature: "start" },
+                { kind: "curve-point", curveId, feature: "end" },
+            ];
+        }
+        if (curve?.kind === "arc") {
+            return [
+                { kind: "point", pointId: curve.center },
+                { kind: "point", pointId: curve.start },
+                { kind: "point", pointId: curve.end },
+            ];
+        }
+        return [];
     }
 
     #curveMidpoint(curveId: string): Pair | null {
         const refs = this.#curvePointRefs(curveId);
-        if (!refs) return null;
+        if (refs.length < 2) return null;
         const a = pointFeaturePosition(this.#host.document, refs[0]);
         const b = pointFeaturePosition(this.#host.document, refs[1]);
         return a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;
@@ -163,10 +174,15 @@ export class ConstraintService {
     get dimensionGlyphs(): DimensionGlyph[] {
         const document = this.#host.document;
         return Object.values(document.dimensions ?? {}).flatMap((dimension) => {
-            const a = pointFeaturePosition(document, dimension.a);
-            const b = pointFeaturePosition(document, dimension.b);
+            let a: Pair | null = null;
+            let b: Pair | null = null;
+            if (dimension.kind === "length") {
+                a = pointFeaturePosition(document, dimension.a);
+                b = pointFeaturePosition(document, dimension.b);
+            } else return [];
+            if (!a || !b) return [];
             const value = lengthDimensionValue(document, dimension.id);
-            if (!a || !b || value === null) return [];
+            if (value === null) return [];
             const offset = dimension.labelOffset ?? [0, 0];
             return [{
                 id: dimension.id,
@@ -201,9 +217,16 @@ export class ConstraintService {
                 continue;
             }
             const refs = this.#curvePointRefs(feature.curveId);
-            const a = refs ? pointFeaturePosition(this.#host.document, refs[0]) : null;
-            const b = refs ? pointFeaturePosition(this.#host.document, refs[1]) : null;
-            if (a && b) segments.push({ a, b });
+            if (refs.length === 2) {
+                const a = pointFeaturePosition(this.#host.document, refs[0]);
+                const b = pointFeaturePosition(this.#host.document, refs[1]);
+                if (a && b) segments.push({ a, b });
+            } else {
+                for (const ref of refs) {
+                    const at = pointFeaturePosition(this.#host.document, ref);
+                    if (at) points.push(at);
+                }
+            }
         }
         return { points, segments };
     }

@@ -227,6 +227,14 @@ function validateReferences(document: WhiteboardDocument, errors: string[]): voi
                     errors.push(`${context} references missing parameter ${constraint.value}`);
                 }
                 break;
+            case "point-on-curve":
+                pointFeature(constraint.point, document, errors, `${context}.point`);
+                curveRef(document, constraint.curveId, ["segment", "circle", "arc"], errors, context);
+                break;
+            case "tangent":
+                curveRef(document, constraint.a, ["segment", "arc"], errors, `${context}.a`);
+                curveRef(document, constraint.b, ["segment", "arc"], errors, `${context}.b`);
+                break;
         }
     }
 }
@@ -289,10 +297,18 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
         if (curve.kind === "segment") {
             if (typeof curve.start !== "string" || typeof curve.end !== "string" ||
                 !candidate.sketch.points[curve.start] || !candidate.sketch.points[curve.end]) errors.push(`curve ${id} has invalid endpoints`);
-        } else if (curve.kind === "circle" || curve.kind === "arc") {
+        } else if (curve.kind === "circle") {
             if (typeof curve.center !== "string" || !candidate.sketch.points[curve.center] ||
-                !finite(curve.radius) || curve.radius < 0 ||
-                (curve.kind === "arc" && (!finite(curve.startAngle) || !finite(curve.sweepAngle)))) {
+                !finite(curve.radius) || curve.radius < 0) {
+                errors.push(`curve ${id} is invalid`);
+            }
+        } else if (curve.kind === "arc") {
+            // A smart arc is three real points; its radius/angles are derived.
+            if (
+                typeof curve.center !== "string" || !candidate.sketch.points[curve.center] ||
+                typeof curve.start !== "string" || !candidate.sketch.points[curve.start] ||
+                typeof curve.end !== "string" || !candidate.sketch.points[curve.end]
+            ) {
                 errors.push(`curve ${id} is invalid`);
             }
         } else errors.push(`curve ${id} has unsupported kind`);
@@ -332,6 +348,16 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
             case "radial-distance":
                 if (typeof constraint.curveId !== "string" || typeof constraint.value !== "string" ||
                     (constraint.display !== "radius" && constraint.display !== "diameter")) {
+                    errors.push(`constraint ${id} is invalid`);
+                }
+                break;
+            case "point-on-curve":
+                if (constraint.point === undefined || typeof constraint.curveId !== "string") {
+                    errors.push(`constraint ${id} is invalid`);
+                }
+                break;
+            case "tangent":
+                if (typeof constraint.a !== "string" || typeof constraint.b !== "string") {
                     errors.push(`constraint ${id} is invalid`);
                 }
                 break;

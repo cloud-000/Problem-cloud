@@ -30,6 +30,11 @@ function curvePointId(
         if (feature === "end") return curve.end;
         return null;
     }
+    if (curve.kind === "arc") {
+        if (feature === "center") return curve.center;
+        if (feature === "start") return curve.start;
+        return curve.end;
+    }
     return feature === "center" ? curve.center : null;
 }
 
@@ -47,20 +52,32 @@ export function pointFeaturePosition(
     document: WhiteboardDocument,
     ref: PointFeatureRef,
 ): Pair | null {
+    // Every point feature — including an arc's center/start/end — now resolves to
+    // a real sketch point, so a single registry lookup suffices.
     const pointId = pointFeaturePointId(document, ref);
-    if (pointId) return document.sketch.points[pointId]?.at ?? null;
-    if (ref.kind !== "curve-point") return null;
-    const curve = document.sketch.curves[ref.curveId];
-    if (!curve || curve.kind !== "arc" || ref.feature === "center") return null;
-    const center = document.sketch.points[curve.center]?.at;
-    if (!center) return null;
-    const angle = ref.feature === "start"
-        ? curve.startAngle
-        : curve.startAngle + curve.sweepAngle;
-    return [
-        center[0] + curve.radius * Math.cos(angle),
-        center[1] + curve.radius * Math.sin(angle),
-    ];
+    return pointId ? document.sketch.points[pointId]?.at ?? null : null;
+}
+
+/**
+ * The draggable sketch-point feature behind one of a smart arc's edit handles
+ * (`center` / `start` / `end`), or `null` when the item is not a smart arc or
+ * the control is a baked-only handle (`radius` / `focus1` / `focus2`). This is
+ * the arc analogue of `pathNodeFeature`: it lets the pointer-down router send an
+ * arc-handle grab into Pipeline B (INVARIANTS §3.1).
+ */
+export function arcControlFeature(
+    document: WhiteboardDocument,
+    itemId: string,
+    control: string,
+): PointFeatureRef | null {
+    if (control !== "center" && control !== "start" && control !== "end") return null;
+    const item = document.items.find(
+        (candidate) => candidate.kind === "sketch-curve" && candidate.id === itemId,
+    );
+    if (!item || item.kind !== "sketch-curve") return null;
+    const curve = document.sketch.curves[item.curveId];
+    if (!curve || curve.kind !== "arc") return null;
+    return { kind: "curve-point", curveId: item.curveId, feature: control };
 }
 
 function itemIdsForCurve(document: WhiteboardDocument, curveId: string): string[] {
@@ -99,6 +116,25 @@ export function discoverPointFeatures(document: WhiteboardDocument): DiscoveredP
                     at,
                     pointId,
                     kind: "endpoint",
+                    itemIds,
+                    zIndex,
+                });
+            }
+        } else if (curve.kind === "arc") {
+            // A smart arc surfaces all three of its real points, so they can be
+            // dragged, snapped to, and attached to like any endpoint/center.
+            const arcFeatures = [
+                { feature: "center", pointId: curve.center, kind: "center" },
+                { feature: "start", pointId: curve.start, kind: "endpoint" },
+                { feature: "end", pointId: curve.end, kind: "endpoint" },
+            ] as const;
+            for (const { feature, pointId, kind } of arcFeatures) {
+                const at = document.sketch.points[pointId]?.at;
+                if (at) features.push({
+                    ref: { kind: "curve-point", curveId, feature },
+                    at,
+                    pointId,
+                    kind,
                     itemIds,
                     zIndex,
                 });
@@ -184,19 +220,30 @@ export function nearestSegmentFeature(
     itemId?: string,
 ): { ref: { kind: "curve"; curveId: string }; distance: number } | null {
     const candidates = Object.values(document.sketch.curves).flatMap((curve) => {
-        if (curve.kind !== "segment") return [];
         if (itemId && !itemIdsForCurve(document, curve.id).includes(itemId)) return [];
-        const start = document.sketch.points[curve.start]?.at;
-        const end = document.sketch.points[curve.end]?.at;
-        if (!start || !end) return [];
-        const dx = end[0] - start[0];
-        const dy = end[1] - start[1];
-        const lengthSquared = dx * dx + dy * dy;
-        const t = lengthSquared <= 1e-20 ? 0 : Math.max(0, Math.min(1,
-            ((at[0] - start[0]) * dx + (at[1] - start[1]) * dy) / lengthSquared,
-        ));
-        const distance = Math.hypot(at[0] - (start[0] + t * dx), at[1] - (start[1] + t * dy));
-        return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
+        if (curve.kind === "segment") {
+            const start = document.sketch.points[curve.start]?.at;
+            const end = document.sketch.points[curve.end]?.at;
+            if (!start || !end) return [];
+            const dx = end[0] - start[0];
+            const dy = end[1] - start[1];
+            const lengthSquared = dx * dx + dy * dy;
+            const t = lengthSquared <= 1e-20 ? 0 : Math.max(0, Math.min(1,
+                ((at[0] - start[0]) * dx + (at[1] - start[1]) * dy) / lengthSquared,
+            ));
+            const distance = Math.hypot(at[0] - (start[0] + t * dx), at[1] - (start[1] + t * dy));
+            return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
+        }
+        if (curve.kind === "arc") {
+            const center = document.sketch.points[curve.center]?.at;
+            const start = document.sketch.points[curve.start]?.at;
+            if (!center || !start) return [];
+            const r = Math.hypot(start[0] - center[0], start[1] - center[1]);
+            const distToCenter = Math.hypot(at[0] - center[0], at[1] - center[1]);
+            const distance = Math.abs(distToCenter - r);
+            return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
+        }
+        return [];
     });
     candidates.sort((a, b) => a.distance - b.distance || a.ref.curveId.localeCompare(b.ref.curveId));
     return candidates[0] ?? null;

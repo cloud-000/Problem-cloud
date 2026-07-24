@@ -5,7 +5,9 @@ import {
     addRelationConstraint,
     applicableRelationActions,
     contextualRelationActions,
+    createSmartArc,
     createSmartPath,
+    createSmartPointMarker,
     editDrivingLengthDimension,
     emptyWhiteboardDocument,
     lengthDimensionValue,
@@ -17,6 +19,7 @@ import {
     translateWhiteboardItems,
     updateSmartPresentationStyle,
     type CurveFeatureRef,
+    type FeatureRef,
     type PointFeatureRef,
 } from ".";
 
@@ -41,6 +44,102 @@ function expectPoint(actual: readonly [number, number], expected: readonly [numb
     expect(actual[0]).toBeCloseTo(expected[0], 9);
     expect(actual[1]).toBeCloseTo(expected[1], 9);
 }
+
+function arcCurveId(document: ReturnType<typeof emptyWhiteboardDocument>, itemId: string): string {
+    const item = document.items.find((candidate) => candidate.kind === "sketch-curve" && candidate.id === itemId);
+    if (!item || item.kind !== "sketch-curve") throw new Error("missing arc item");
+    return item.curveId;
+}
+
+function distance(a: readonly [number, number], b: readonly [number, number]): number {
+    return Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+
+/** Perpendicular distance from `p` to the infinite line through `a`→`b`. */
+function lineDistance(
+    p: readonly [number, number],
+    a: readonly [number, number],
+    b: readonly [number, number],
+): number {
+    const length = distance(a, b);
+    return Math.abs((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])) / length;
+}
+
+describe("whiteboard arc constraints (point-on-curve, tangent)", () => {
+    test("point-on-curve drops an external point onto an arc's circle", () => {
+        // Arc: center (0,0), start (4,0) → radius 4; plus a stray point at (5,5).
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const withPoint = createSmartPointMarker(arc.document, [5, 5], undefined, "p");
+        const curveId = arcCurveId(withPoint.document, "arc");
+        const selection: FeatureRef[] = [
+            withPoint.endpointFeatures[0],
+            { kind: "curve", curveId },
+        ];
+
+        expect(applicableRelationActions(withPoint.document, selection).map(({ kind }) => kind))
+            .toEqual(["point-on-curve"]);
+
+        const result = addRelationConstraint(withPoint.document, "point-on-curve", selection);
+        expect(result.document).toBeDefined();
+        const scene = resolveWhiteboardDocument(result.document!);
+        const arcElement = scene.elements.find((element) => element.kind === "arc");
+        if (arcElement?.kind !== "arc") throw new Error("missing resolved arc");
+        const dot = scene.elements.find((element) => element.kind === "dot");
+        if (dot?.kind !== "dot") throw new Error("missing resolved point");
+        // The point now sits on the arc's circle: its distance to the center is the radius.
+        expect(distance(dot.at, arcElement.center)).toBeCloseTo(arcElement.radius, 5);
+    });
+
+    test("tangent makes a segment's line tangent to an arc's circle", () => {
+        // Arc radius 4 at the origin; a horizontal segment sitting at y = 7.
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const segment = createSmartPath(arc.document, [[-10, 7], [10, 7]], false, undefined, undefined, "seg");
+        const arcId = arcCurveId(segment.document, "arc");
+        const segItem = segment.document.items.find((item) => item.kind === "sketch-path" && item.id === "seg");
+        if (!segItem || segItem.kind !== "sketch-path") throw new Error("missing segment");
+        const segId = segItem.uses[0].curveId;
+        const selection: CurveFeatureRef[] = [
+            { kind: "curve", curveId: arcId },
+            { kind: "curve", curveId: segId },
+        ];
+
+        expect(applicableRelationActions(segment.document, selection).map(({ kind }) => kind))
+            .toEqual(["tangent"]);
+
+        const result = addRelationConstraint(segment.document, "tangent", selection);
+        expect(result.document).toBeDefined();
+        const scene = resolveWhiteboardDocument(result.document!);
+        const arcElement = scene.elements.find((element) => element.kind === "arc");
+        const line = scene.elements.find((element) => element.kind === "path");
+        if (arcElement?.kind !== "arc" || line?.kind !== "path") throw new Error("missing resolved geometry");
+        expect(lineDistance(arcElement.center, line.path.nodes[0], line.path.nodes[1]))
+            .toBeCloseTo(arcElement.radius, 5);
+    });
+
+    test("tangent is not applicable to two arcs and rejects atomically", () => {
+        const first = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "a1");
+        const second = createSmartArc(first.document, [20, 0], [24, 0], [20, 4], undefined, undefined, "a2");
+        const selection: CurveFeatureRef[] = [
+            { kind: "curve", curveId: arcCurveId(second.document, "a1") },
+            { kind: "curve", curveId: arcCurveId(second.document, "a2") },
+        ];
+        expect(applicableRelationActions(second.document, selection)).toEqual([]);
+        const result = addRelationConstraint(second.document, "tangent", selection);
+        expect(result.status).toBe("failed");
+        expect(result.document).toBeUndefined();
+    });
+
+    test("point-on-curve rejects a curve's own defining point", () => {
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const curveId = arcCurveId(arc.document, "arc");
+        // The arc's own `end` point lies on it trivially, so it is not offered.
+        const selection = [
+            { kind: "curve-point", curveId, feature: "end" } as PointFeatureRef,
+            { kind: "curve", curveId } as CurveFeatureRef,
+        ];
+        expect(applicableRelationActions(arc.document, selection)).toEqual([]);
+    });
+});
 
 describe("whiteboard smart geometry phase 3 model", () => {
     test("discovers contextual actions and authors all core line relations", () => {

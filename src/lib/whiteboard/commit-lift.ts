@@ -9,12 +9,12 @@
  * ever treated as authoritative and folded back; the tool describes *what it
  * changed* and these functions map that intent onto the Document.
  *
- * Creation with the line/rectangle/point tools lifts to **smart** sketch items
- * (with snap-inferred coincidence); pen/arc/label and every imported element
- * stay **baked**.
+ * Creation with the line/rectangle/point/arc tools lifts to **smart** sketch
+ * items (with snap-inferred coincidence); pen/label, full-circle arcs, and every
+ * imported element stay **baked**.
  */
 
-import type { Scene, SceneElement } from "$lib/asy/scene/types";
+import type { Pair, Scene, SceneElement } from "$lib/asy/scene/types";
 import type { ToolCommit } from "$lib/asy/engine";
 import type { WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
@@ -22,6 +22,7 @@ import {
     addDefaultRectangleConstraints,
     appendSmartPathNode,
     closeSmartPath,
+    createSmartArc,
     createSmartPath,
     createSmartPointMarker,
     deleteWhiteboardItems,
@@ -151,10 +152,36 @@ export function liftAdd(
         const created = createSmartPointMarker(document, added.at, added.pen, added.id);
         return conjoinCreatedFeatures(created.document, created.endpointFeatures, document, ctx);
     }
+    if (ctx.toolKind === "arc" && added?.kind === "arc") {
+        // A full turn (or a degenerate sweep) can't be a three-point smart arc —
+        // its rim endpoints would coincide — so it stays baked.
+        const sweep = ((added.angle2 - added.angle1) % 360 + 360) % 360;
+        if (sweep < 0.5 || sweep > 359.5) return appendBaked(document, elements);
+        const a1 = (added.angle1 * Math.PI) / 180;
+        const a2 = (added.angle2 * Math.PI) / 180;
+        const start: Pair = [
+            added.center[0] + added.radius * Math.cos(a1),
+            added.center[1] + added.radius * Math.sin(a1),
+        ];
+        const end: Pair = [
+            added.center[0] + added.radius * Math.cos(a2),
+            added.center[1] + added.radius * Math.sin(a2),
+        ];
+        const created = createSmartArc(
+            document,
+            added.center,
+            start,
+            end,
+            added.pen,
+            added.strokeEnabled,
+            added.id,
+        );
+        return conjoinCreatedFeatures(created.document, created.endpointFeatures, document, ctx);
+    }
     return appendBaked(document, elements);
 }
 
-/** Append raw geometry as baked items (pen · arc · label · imported ink). */
+/** Append raw geometry as baked items (pen · label · full-circle arc · imported ink). */
 export function appendBaked(
     document: WhiteboardDocument,
     elements: readonly SceneElement[],

@@ -3,6 +3,7 @@ import * as bunTest from "bun:test";
 import type { Scene } from "$lib/asy/scene";
 import {
     addRelationConstraint,
+    createSmartArc,
     createSmartPath,
     createSmartPointMarker,
     emptyWhiteboardDocument,
@@ -26,6 +27,31 @@ const { WhiteboardStore } = await import("./whiteboard.svelte");
 function expectPoint(actual: readonly [number, number], expected: readonly [number, number]): void {
     expect(actual[0]).toBeCloseTo(expected[0], 9);
     expect(actual[1]).toBeCloseTo(expected[1], 9);
+}
+
+const project = (point: Pair): Pair => [point[0], -point[1]];
+
+function overlayFor(store: InstanceType<typeof WhiteboardStore>) {
+    return buildOverlay({
+        displayScene: store.displayScene,
+        selection: store.selection,
+        selectionPreview: store.selectionPreview,
+        hasPreview: store.preview !== null,
+        toolKind: store.toolKind,
+        selectionContainsSmartItems: store.selectionContainsSmartItems,
+        constructionArcGuide: store.arcGuide,
+        marquee: store.marquee,
+        snapProposal: store.snapProposal,
+        constraintGlyphs: store.constraintGlyphs,
+        dimensionGlyphs: store.dimensionGlyphs,
+        selectedFeatureGeometry: store.selectedFeatureGeometry,
+        selectedVertex: null,
+        hoveredVertex: null,
+        selectedArcControl: null,
+        hoveredArcControl: null,
+        project,
+        toScreenLength: (units: number) => units,
+    });
 }
 
 describe("WhiteboardStore selection gestures", () => {
@@ -614,7 +640,7 @@ describe("WhiteboardStore characterization — creation per tool", () => {
         {
             tool: "arc",
             expectedKind: "arc",
-            smart: false,
+            smart: true,
             draw: (store) => {
                 store.pointerDown([0, 0]); // center
                 store.pointerDown([2, 0]); // radius
@@ -651,8 +677,8 @@ describe("WhiteboardStore characterization — creation per tool", () => {
             // The gesture committed exactly one element into the document.
             expect(store.scene.elements).toHaveLength(1);
             expect(store.scene.elements[0].kind).toBe(expectedKind);
-            // Current behavior: line/rectangle/point are lifted to smart items,
-            // while pen/arc/label stay baked.
+            // Current behavior: line/rectangle/point/arc are lifted to smart
+            // items, while pen/label stay baked.
             const item = store.document.items[0];
             expect(item.kind === "baked").toBe(!smart);
             expect(store.canUndo).toBe(true);
@@ -906,32 +932,247 @@ describe("WhiteboardStore characterization — asy round-trip", () => {
     });
 });
 
-describe("WhiteboardStore rectangle constraints + oriented selection box", () => {
-    const project = (point: Pair): Pair => [point[0], -point[1]];
-
-    function overlayFor(store: InstanceType<typeof WhiteboardStore>) {
-        return buildOverlay({
-            displayScene: store.displayScene,
-            selection: store.selection,
-            selectionPreview: store.selectionPreview,
-            hasPreview: store.preview !== null,
-            toolKind: store.toolKind,
-            selectionContainsSmartItems: store.selectionContainsSmartItems,
-            constructionArcGuide: store.arcGuide,
-            marquee: store.marquee,
-            snapProposal: store.snapProposal,
-            constraintGlyphs: store.constraintGlyphs,
-            dimensionGlyphs: store.dimensionGlyphs,
-            selectedFeatureGeometry: store.selectedFeatureGeometry,
-            selectedVertex: null,
-            hoveredVertex: null,
-            selectedArcControl: null,
-            hoveredArcControl: null,
-            project,
-            toScreenLength: (units: number) => units,
-        });
+// A smart arc is three real sketch points (center + two rim endpoints), so its
+// handles drag through Pipeline B and its points are ordinary snap/constraint
+// targets. These exercise that at the layer that orchestrates it — the store —
+// not just the pure model beneath (INVARIANTS §7).
+describe("WhiteboardStore smart arc points", () => {
+    /** A quarter arc: center (0,0), start (2,0) → r = 2, end (0,2) → 0°..90°. */
+    function quarterArc(document = emptyWhiteboardDocument()) {
+        return createSmartArc(document, [0, 0], [2, 0], [0, 2], undefined, undefined, "arc");
     }
 
+    function resolvedArc(store: InstanceType<typeof WhiteboardStore>) {
+        const element = store.scene.elements.find(({ id }) => id === "arc");
+        if (element?.kind !== "arc") throw new Error("missing resolved smart arc");
+        return element;
+    }
+
+    function arcGesture(
+        control: "center" | "start" | "end",
+        handle: readonly [number, number],
+    ) {
+        return { kind: "arc" as const, elementId: "arc", control, handle, minimumRadius: 0.1 };
+    }
+
+    test("dragging the end handle re-derives the arc as one undo/redo step", () => {
+        const store = new WhiteboardStore(quarterArc().document);
+        store.selection = ["arc"];
+        expect(resolvedArc(store).angle2).toBeCloseTo(90, 9);
+
+        // Swing the end point from 90° round to 180°.
+        store.pointerDown([0, 2], arcGesture("end", [0, 2]), true);
+        store.pointerMove([-2, 0], false, true);
+        store.pointerUp([-2, 0], false, [], true);
+
+        const dragged = resolvedArc(store);
+        expect(dragged.angle1).toBeCloseTo(0, 6);
+        expect(dragged.angle2).toBeCloseTo(180, 6);
+        // Radius comes from `start`, which the drag never touched.
+        expect(dragged.radius).toBeCloseTo(2, 6);
+        expect(store.preview).toBeNull();
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(resolvedArc(store).angle2).toBeCloseTo(90, 9);
+        expect(store.canUndo).toBe(false);
+
+        store.redo();
+        expect(resolvedArc(store).angle2).toBeCloseTo(180, 6);
+    });
+
+    test("dragging the center handle re-derives radius and both angles", () => {
+        const store = new WhiteboardStore(quarterArc().document);
+        store.selection = ["arc"];
+
+        store.pointerDown([0, 0], arcGesture("center", [0, 0]), true);
+        store.pointerMove([1, 0], false, true);
+        store.pointerUp([1, 0], false, [], true);
+
+        const moved = resolvedArc(store);
+        expectPoint(moved.center, [1, 0]);
+        // start (2,0) is now 1 away; end (0,2) sits at atan2(2, -1) from the center.
+        expect(moved.radius).toBeCloseTo(1, 6);
+        expect(moved.angle1).toBeCloseTo(0, 6);
+        expect(moved.angle2).toBeCloseTo((Math.atan2(2, -1) * 180) / Math.PI, 6);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expectPoint(resolvedArc(store).center, [0, 0]);
+        expect(resolvedArc(store).radius).toBeCloseTo(2, 9);
+    });
+
+    test("dragging an endpoint onto a nearby point attaches it with an inferred coincidence", () => {
+        // Wide geometry so only the marker falls inside the 0.2-unit snap radius.
+        const arc = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [10, 0],
+            [0, 10],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const marked = createSmartPointMarker(arc.document, [-10, 0], undefined, "marker");
+        const store = new WhiteboardStore(marked.document);
+        store.selection = ["arc"];
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+
+        // Release just shy of the marker; snapping pulls it exactly onto it.
+        store.pointerDown([0, 10], arcGesture("end", [0, 10]));
+        store.pointerMove([-10, 0.05]);
+        store.pointerUp([-10, 0.05]);
+
+        const coincident = Object.values(store.document.sketch.constraints)
+            .filter((constraint) => constraint.kind === "coincident");
+        expect(coincident).toHaveLength(1);
+        expect(coincident[0].origin).toBe("inferred");
+        // The arc's end point landed exactly on the marker, so the arc now ends at 180°.
+        expect(resolvedArc(store).angle2).toBeCloseTo(180, 6);
+        expect(store.canUndo).toBe(true);
+
+        // The whole attach — move plus constraint — is a single undo step.
+        store.undo();
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+        expect(resolvedArc(store).angle2).toBeCloseTo(90, 9);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("an arc's center and endpoints are constrainable point features", () => {
+        const created = quarterArc();
+        const curveId = Object.keys(created.document.sketch.curves)[0];
+        const store = new WhiteboardStore(created.document);
+
+        // A single arc point offers "fix point"...
+        store.selectFeature({ kind: "curve-point", curveId, feature: "center" });
+        expect(store.applicableRelationActions.map(({ kind }) => kind)).toEqual(["fixed-point"]);
+
+        // ...and a pair of them offers a distance dimension.
+        store.clearFeatureSelection();
+        store.selectFeature({ kind: "curve-point", curveId, feature: "start" });
+        store.selectFeature({ kind: "curve-point", curveId, feature: "end" }, true);
+        expect(store.applicableRelationActions.map(({ kind }) => kind)).toEqual(["distance"]);
+        expect(store.applyRelation("distance")).toBe(true);
+        expect(store.canUndo).toBe(true);
+        store.undo();
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+    });
+
+    test("a selected smart arc exposes point handles but no radius ring", () => {
+        const smart = new WhiteboardStore(quarterArc().document);
+        smart.selection = ["arc"];
+        const guide = overlayFor(smart).arcGuide;
+        expect(guide).not.toBeNull();
+        // center / start / end — the three real sketch points, each draggable.
+        expect(guide?.editHandles.map(({ control }) => control)).toEqual([
+            "center",
+            "start",
+            "end",
+        ]);
+        // Radius derives from `start`, so there is no standalone radius ring.
+        expect(guide?.radiusEditable).toBe(false);
+
+        // A baked arc of the same geometry keeps its editable radius ring.
+        const baked = new WhiteboardStore({
+            elements: [{ id: "arc", kind: "arc", center: [0, 0], radius: 2, angle1: 0, angle2: 90 }],
+        });
+        baked.selection = ["arc"];
+        expect(overlayFor(baked).arcGuide?.radiusEditable).toBe(true);
+    });
+
+    test("a segment-only relation on an arc curve is rejected and mutates nothing", () => {
+        const created = quarterArc();
+        const curveId = Object.keys(created.document.sketch.curves)[0];
+        const store = new WhiteboardStore(created.document);
+        store.selectFeature({ kind: "curve", curveId });
+
+        // An arc is not a straight segment, so horizontal/vertical never apply.
+        expect(store.applicableRelationActions).toEqual([]);
+        const before = structuredClone(store.document);
+        expect(store.applyRelation("horizontal")).toBe(false);
+        expect(store.document).toEqual(before);
+        expect(store.canUndo).toBe(false);
+    });
+});
+
+// Slice 2: arc constraints. These go through the store's relation surface
+// (selectFeature → applicableRelationActions → applyRelation), so they exercise
+// the wiring the pure model tests sit below (INVARIANTS §7).
+describe("WhiteboardStore arc constraints", () => {
+    function lineDistance(
+        p: readonly [number, number],
+        a: readonly [number, number],
+        b: readonly [number, number],
+    ): number {
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        return Math.abs((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])) / length;
+    }
+
+    test("tangent between an arc and a line commits once and undoes atomically", () => {
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const seg = createSmartPath(arc.document, [[-10, 7], [10, 7]], false, undefined, undefined, "seg");
+        const arcItem = seg.document.items.find((item) => item.kind === "sketch-curve" && item.id === "arc");
+        const segItem = seg.document.items.find((item) => item.kind === "sketch-path" && item.id === "seg");
+        if (arcItem?.kind !== "sketch-curve" || segItem?.kind !== "sketch-path") throw new Error("missing geometry");
+        const store = new WhiteboardStore(seg.document);
+
+        store.selectFeature({ kind: "curve", curveId: arcItem.curveId });
+        store.selectFeature({ kind: "curve", curveId: segItem.uses[0].curveId }, true);
+        expect(store.applicableRelationActions.map(({ kind }) => kind)).toEqual(["tangent"]);
+        expect(store.applyRelation("tangent")).toBe(true);
+
+        const arcElement = store.scene.elements.find((element) => element.kind === "arc");
+        const line = store.scene.elements.find((element) => element.kind === "path");
+        if (arcElement?.kind !== "arc" || line?.kind !== "path") throw new Error("missing resolved geometry");
+        expect(lineDistance(arcElement.center, line.path.nodes[0], line.path.nodes[1]))
+            .toBeCloseTo(arcElement.radius, 5);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("point-on-curve attaches a marker to an arc's circle as one undo step", () => {
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const withPoint = createSmartPointMarker(arc.document, [5, 5], undefined, "p");
+        const arcItem = withPoint.document.items.find((item) => item.kind === "sketch-curve" && item.id === "arc");
+        if (arcItem?.kind !== "sketch-curve") throw new Error("missing arc");
+        const store = new WhiteboardStore(withPoint.document);
+
+        store.selectFeature(withPoint.endpointFeatures[0]);
+        store.selectFeature({ kind: "curve", curveId: arcItem.curveId }, true);
+        expect(store.applicableRelationActions.map(({ kind }) => kind)).toEqual(["point-on-curve"]);
+        expect(store.applyRelation("point-on-curve")).toBe(true);
+
+        const arcElement = store.scene.elements.find((element) => element.kind === "arc");
+        const dot = store.scene.elements.find((element) => element.kind === "dot");
+        if (arcElement?.kind !== "arc" || dot?.kind !== "dot") throw new Error("missing resolved geometry");
+        expect(Math.hypot(dot.at[0] - arcElement.center[0], dot.at[1] - arcElement.center[1]))
+            .toBeCloseTo(arcElement.radius, 5);
+        expect(store.canUndo).toBe(true);
+
+        store.undo();
+        expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("an inapplicable relation on a single arc curve is rejected, mutating nothing", () => {
+        const arc = createSmartArc(emptyWhiteboardDocument(), [0, 0], [4, 0], [0, 4], undefined, undefined, "arc");
+        const arcItem = arc.document.items.find((item) => item.kind === "sketch-curve" && item.id === "arc");
+        if (arcItem?.kind !== "sketch-curve") throw new Error("missing arc");
+        const store = new WhiteboardStore(arc.document);
+        store.selectFeature({ kind: "curve", curveId: arcItem.curveId });
+
+        expect(store.applicableRelationActions).toEqual([]);
+        const before = structuredClone(store.document);
+        expect(store.applyRelation("tangent")).toBe(false);
+        expect(store.document).toEqual(before);
+        expect(store.canUndo).toBe(false);
+    });
+});
+
+describe("WhiteboardStore rectangle constraints + oriented selection box", () => {
     function drawRectangle(store: InstanceType<typeof WhiteboardStore>): void {
         store.setTool("rectangle");
         store.pointerDown([0, 0]);
