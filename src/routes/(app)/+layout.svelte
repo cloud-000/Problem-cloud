@@ -34,7 +34,12 @@
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { resolve } from "$app/paths";
    import { MediaQuery } from "svelte/reactivity";
+   import { onMount } from "svelte";
    import { setAppScrollViewport } from "$lib/components/virtual-list";
+   import {
+      loadSidebarExpanded,
+      saveSidebarExpanded,
+   } from "$lib/sidebar-persistence";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -134,6 +139,19 @@
    );
    // Sidebar state
    let expanded = $state(true);
+   let sidebarPreferenceLoaded = false;
+
+   onMount(() => {
+      expanded = loadSidebarExpanded(localStorage);
+      sidebarPreferenceLoaded = true;
+   });
+
+   function setSidebarExpanded(value: boolean) {
+      expanded = value;
+      if (sidebarPreferenceLoaded) {
+         saveSidebarExpanded(localStorage, value);
+      }
+   }
 
    const portraitQuery = new MediaQuery("(orientation: portrait)", false);
    let isPortrait = $derived(portraitQuery.current);
@@ -312,7 +330,7 @@
 <div
    class="app-container flex flex-row w-full h-dvh bg-background text-foreground overflow-hidden"
 >
-   <Sidebar.Root bind:expanded>
+   <Sidebar.Root bind:expanded={() => expanded, setSidebarExpanded}>
       <Sidebar.Header class={expanded ? "justify-between" : "justify-center"}>
          {#if expanded}
             <div class="flex items-center gap-2 text-primary-foreground">
