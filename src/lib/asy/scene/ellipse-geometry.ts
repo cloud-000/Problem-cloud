@@ -82,8 +82,30 @@ export function principalEllipseGeometry(
     };
 }
 
+/**
+ * Sweep (degrees) at or below which an arc's two rim endpoints are coincident,
+ * i.e. the arc closed on itself and reads as a full turn rather than a zero-width
+ * sliver. Shared with `SelectTool`, which applies the same rule to the candidate
+ * sweep mid-drag.
+ */
+export const COINCIDENT_SWEEP_DEGREES = 1e-4;
+
+/**
+ * The one place a pair of arc angles becomes a drawn sweep in `(0, 360]`.
+ *
+ * Every consumer — render, export, hit-test, the overlay guide, the inspector,
+ * and the select tool — must agree on this, or an arc draws as one shape and
+ * hit-tests or reports as another. Two angles that coincide (`angle2 - angle1`
+ * of ~0 or ~±360) mean a closed arc, so both ends of the range collapse to a
+ * full 360 turn.
+ */
 export function positiveArcSweep(angle1: number, angle2: number): number {
     const raw = angle2 - angle1;
+    // A whole number of turns (or more) is a full turn, not the `raw % 360` remainder.
     if (Math.abs(raw) >= 360 - EPSILON) return 360;
-    return ((raw % 360) + 360) % 360;
+    const sweep = ((raw % 360) + 360) % 360;
+    // Coincident endpoints wrap to *either* end of the range depending on which
+    // side of `start` the drifting `end` lands on, so measure the gap to the
+    // nearest full turn rather than only the distance up from zero.
+    return Math.min(sweep, 360 - sweep) < COINCIDENT_SWEEP_DEGREES ? 360 : sweep;
 }

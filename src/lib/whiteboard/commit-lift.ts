@@ -15,6 +15,7 @@
  */
 
 import type { Pair, Scene, SceneElement } from "$lib/asy/scene/types";
+import { positiveArcSweep } from "$lib/asy/scene/ellipse-geometry";
 import type { ToolCommit } from "$lib/asy/engine";
 import type { WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
@@ -155,7 +156,7 @@ export function liftAdd(
     if (ctx.toolKind === "arc" && added?.kind === "arc") {
         // A full turn (or a degenerate sweep) can't be a three-point smart arc —
         // its rim endpoints would coincide — so it stays baked.
-        const sweep = ((added.angle2 - added.angle1) % 360 + 360) % 360;
+        const sweep = positiveArcSweep(added.angle1, added.angle2);
         if (sweep < 0.5 || sweep > 359.5) return appendBaked(document, elements);
         const a1 = (added.angle1 * Math.PI) / 180;
         const a2 = (added.angle2 * Math.PI) / 180;

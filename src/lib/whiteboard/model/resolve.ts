@@ -1,6 +1,9 @@
 import type { Pair, PathElement, Scene, SceneElement } from "../../asy/scene/types";
 import type { SketchCurve, SketchPathItem, WhiteboardDocument } from "./types";
 
+/** World-space distance below which an arc's two rim endpoints count as coincident. */
+const COINCIDENT_ENDPOINT = 1e-4;
+
 function orientedSegment(
     document: WhiteboardDocument,
     curve: Extract<SketchCurve, { kind: "segment" }>,
@@ -96,7 +99,12 @@ function resolveItem(document: WhiteboardDocument, index: number): SceneElement 
     // `projectedArc` / codec `arc(c, r, a1, a2)`).
     const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
     const angle1 = Math.atan2(start[1] - center[1], start[0] - center[0]) * 180 / Math.PI;
-    const angle2 = Math.atan2(end[1] - center[1], end[0] - center[0]) * 180 / Math.PI;
+    // Coincident endpoints mean the sweep closed on itself, so emit a full turn
+    // *from* `angle1`: every consumer reads `angle2 - angle1`, so a bare 360 would
+    // encode a sweep of `360 - angle1` instead.
+    const angle2 = Math.hypot(end[0] - start[0], end[1] - start[1]) < COINCIDENT_ENDPOINT
+        ? angle1 + 360
+        : Math.atan2(end[1] - center[1], end[0] - center[0]) * 180 / Math.PI;
     return {
         id: item.id,
         kind: "arc",

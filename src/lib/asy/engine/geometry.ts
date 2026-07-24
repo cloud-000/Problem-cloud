@@ -5,6 +5,7 @@
 
 import type { Pair, Path, SceneElement } from "../scene/types";
 import { flattenPath } from "../scene/path-geometry";
+import { positiveArcSweep } from "../scene/ellipse-geometry";
 
 export function distance(a: Pair, b: Pair): number {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -93,8 +94,7 @@ export function pointToArc(
 ): number {
     const ang = normalizeDeg((Math.atan2(p[1] - center[1], p[0] - center[0]) * 180) / Math.PI);
     const a1 = normalizeDeg(angle1);
-    const rawSweep = angle2 - angle1;
-    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+    const sweep = positiveArcSweep(angle1, angle2);
     const rel = normalizeDeg(ang - a1);
     if (rel <= sweep) return pointToRing(p, center, radius);
     const e1: Pair = [

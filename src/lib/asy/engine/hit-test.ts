@@ -5,6 +5,7 @@
  */
 
 import type { Pair, Path, Scene, SceneElement } from "../scene/types";
+import { positiveArcSweep } from "../scene/ellipse-geometry";
 import {
     distance,
     pointInPolygon,
@@ -21,9 +22,7 @@ function ellipsePoints(
     angle2 = 360,
     steps = 96,
 ): Pair[] {
-    const sweep = Math.abs(angle2 - angle1) >= 360
-        ? 360
-        : ((angle2 - angle1) % 360 + 360) % 360;
+    const sweep = positiveArcSweep(angle1, angle2);
     return Array.from({ length: steps + 1 }, (_, index) => {
         const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
         const cos = Math.cos(radians);

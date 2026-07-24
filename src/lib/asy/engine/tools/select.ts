@@ -1,7 +1,11 @@
 import type { ArcElement, EllipticalArcElement, Pair, Scene, SceneElement } from "../../scene/types";
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
-import { principalEllipseGeometry } from "../../scene/ellipse-geometry";
+import {
+    COINCIDENT_SWEEP_DEGREES,
+    positiveArcSweep,
+    principalEllipseGeometry,
+} from "../../scene/ellipse-geometry";
 import { hitTest } from "../hit-test";
 import {
     distance,
@@ -21,6 +25,13 @@ import {
     type ToolContext,
     type ToolResult,
 } from "./types";
+
+/**
+ * Remaining gap (degrees) within which a dragged endpoint snaps an *open* arc
+ * shut into a full circle. Closing is sticky, reopening is not — see the
+ * `closesFullTurn` comment in `transformScene`.
+ */
+const FULL_TURN_SNAP_DEGREES = 8;
 
 function arcParameterAngle(element: ArcElement | EllipticalArcElement, point: Pair): number | null {
     const dx = point[0] - element.center[0];
@@ -399,14 +410,22 @@ export class SelectTool implements Tool {
             const delta = ((pointerAngle - startPointerAngle) * 180) / Math.PI;
             if (Math.abs(delta) <= 1e-9) return { scene, changed: false };
 
-            const rawSweep = element.angle2 - element.angle1;
-            const baseSweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+            const baseSweep = positiveArcSweep(element.angle1, element.angle2);
             const fixedStart = element.angle1;
             const fixedEnd = element.angle1 + baseSweep;
             const nextStart = control === "start" ? element.angle1 + delta : fixedStart;
             const nextEnd = control === "end" ? fixedEnd + delta : fixedEnd;
             const normalizedSweep = normalizeDeg(nextEnd - nextStart);
-            const nextSweep = normalizedSweep <= 1e-9 ? 360 : normalizedSweep;
+            // Closing is sticky, reopening is immediate: an open arc snaps shut once
+            // its endpoints come within the snap window, while an existing circle
+            // (`baseSweep === 360`) reopens on the first degree of drag. `baseSweep`
+            // reads the committed element, so the snap can't latch mid-gesture. The
+            // first clause is `positiveArcSweep`'s coincident-endpoint rule applied
+            // to the candidate sweep — it can't call the helper directly, because a
+            // drag past a full turn must wrap rather than clamp to 360.
+            const closesFullTurn = normalizedSweep <= COINCIDENT_SWEEP_DEGREES
+                || (baseSweep < 360 && normalizedSweep >= 360 - FULL_TURN_SNAP_DEGREES);
+            const nextSweep = closesFullTurn ? 360 : normalizedSweep;
 
             return {
                 scene: mapElements(scene, (candidate) =>

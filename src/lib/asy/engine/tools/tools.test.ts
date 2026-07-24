@@ -1157,6 +1157,56 @@ describe("SelectTool", () => {
         });
     });
 
+    test("arc endpoint control closes into a full circle stickily and reopens immediately", () => {
+        /** Point on the radius-2 rim at `degrees`, so the snap window reads in degrees. */
+        const onRim = (degrees: number): Pair => [
+            2 * Math.cos((degrees * Math.PI) / 180),
+            2 * Math.sin((degrees * Math.PI) / 180),
+        ];
+        const endHandleCtx = (element: SceneElement, handle: Pair): ToolContext => ({
+            ...ctx,
+            selection: [element.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: element.id,
+                control: "end",
+                handle,
+                minimumRadius: 0.25,
+            },
+        });
+
+        // Dragging the end handle to within the 8-degree window of the start point
+        // closes the open arc into a full circle.
+        const arc = createArc([0, 0], 2, 0, 90);
+        const scene = { elements: [arc] };
+        const snapCtx = endHandleCtx(arc, [0, 2]);
+        const snapTool = createTool("select");
+        snapTool.onPointerDown(scene, [0, 2], snapCtx);
+        const snapped = snapTool.onPointerUp(scene, onRim(-3), snapCtx);
+        expect(committed(snapped.commit)[0]).toMatchObject({
+            kind: "arc",
+            radius: 2,
+            angle1: 0,
+            angle2: 360,
+        });
+
+        // Dragging the end handle of an existing full circle opens it back into an
+        // arc on the first degree of travel — the snap must not latch.
+        const fullCircle = createArc([0, 0], 2, 0, 360);
+        const fullScene = { elements: [fullCircle] };
+        const exitCtx = endHandleCtx(fullCircle, [2, 0]);
+        const exitTool = createTool("select");
+        exitTool.onPointerDown(fullScene, [2, 0], exitCtx);
+        expect(exitTool.onPointerMove(fullScene, onRim(-5), exitCtx).commit).toBeUndefined();
+        const reopened = exitTool.onPointerUp(fullScene, onRim(-5), exitCtx);
+        expect(committed(reopened.commit)[0]).toMatchObject({
+            kind: "arc",
+            radius: 2,
+            angle1: 0,
+            angle2: 355,
+        });
+    });
+
     test("arc radius control preserves angles and clamps to its visible minimum", () => {
         const arc = createArc([0, 0], 2, 20, 200);
         const scene = { elements: [arc] };

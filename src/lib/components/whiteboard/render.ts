@@ -1,6 +1,6 @@
-import { normalizeDeg } from "$lib/asy/engine";
 import {
     pathCommands,
+    positiveArcSweep,
     resolvePenColor,
     type Pair,
     type Path,
@@ -216,8 +216,7 @@ export function projectedArc(
     project: Project,
     steps = 48,
 ): Pair[] {
-    const rawSweep = angle2 - angle1;
-    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+    const sweep = positiveArcSweep(angle1, angle2);
     const points: Pair[] = [];
     for (let index = 0; index <= steps; index++) {
         const degrees = angle1 + (sweep * index) / steps;
@@ -239,8 +238,7 @@ export function projectedEllipseArc(
     project: Project,
     steps = 96,
 ): Pair[] {
-    const rawSweep = angle2 - angle1;
-    const sweep = Math.abs(rawSweep) >= 360 ? 360 : normalizeDeg(rawSweep);
+    const sweep = positiveArcSweep(angle1, angle2);
     const points: Pair[] = [];
     for (let index = 0; index <= steps; index++) {
         const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
