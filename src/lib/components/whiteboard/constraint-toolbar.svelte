@@ -6,10 +6,11 @@
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import type { RelationKind } from "$lib/whiteboard/model";
     import {
-        autoToolbarPosition,
+        autoToolbarPlacement,
         clampToolbarPosition,
         constraintToolbarGuidance,
         hasConstraintToolbarTarget,
+        type ToolbarGeometry,
     } from "./constraint-toolbar";
 
     let {
@@ -32,7 +33,7 @@
 
     let toolbarWidth = $state(0);
     let toolbarHeight = $state(0);
-    /** A drag offset survives only while the same features stay selected. */
+    /** A drag offset survives while the first feature anchors the selection session. */
     let placement = $state<{ selectionKey: string; offset: Pair }>({
         selectionKey: "",
         offset: [0, 0],
@@ -44,20 +45,57 @@
         positionStart: Pair;
     } | null = null;
 
-    const selectionKey = $derived(JSON.stringify(store.featureSelection));
+    /**
+     * The first feature identifies an additive-selection session. Shift-added
+     * features preserve it, so the chosen side and any drag offset stay stable.
+     */
+    const selectionKey = $derived(JSON.stringify(store.featureSelection.slice(0, 1)));
     const toolbarSize = $derived({ width: toolbarWidth || 320, height: toolbarHeight || 40 });
+    const projectedGeometry = $derived.by((): ToolbarGeometry => {
+        const geometry = store.selectedFeatureGeometry;
+        return {
+            points: geometry.points.map(project),
+            segments: geometry.segments.map((segment) => ({
+                a: project(segment.a),
+                b: project(segment.b),
+            })),
+            arcs: geometry.arcs.map((arc) => ({ anchors: arc.anchors.map(project) })),
+        };
+    });
+    /**
+     * Choose the side from the first feature only. The full selection can grow
+     * around it without making the toolbar jump across the drawing.
+     */
+    const preferredSide = $derived.by(() => {
+        const first = store.featureSelection[0];
+        if (!first) return null;
+        const geometry = projectedGeometry;
+        let seed: ToolbarGeometry;
+        if (first.kind !== "curve") {
+            seed = { points: geometry.points.slice(0, 1), segments: [], arcs: [] };
+        } else if (store.document.sketch.curves[first.curveId]?.kind === "segment") {
+            seed = { points: [], segments: geometry.segments.slice(0, 1), arcs: [] };
+        } else {
+            seed = { points: [], segments: [], arcs: geometry.arcs.slice(0, 1) };
+        }
+        return autoToolbarPlacement(
+            seed,
+            { width: board.width, height: board.height },
+            toolbarSize,
+        )?.side ?? null;
+    });
     /**
      * Stage one: where the selection alone puts the toolbar. Upstream of the
      * drag offset, so `onDragMove` can read it without reading `position`.
      */
     const auto = $derived.by(() => {
         if (!hasConstraintToolbarTarget(store)) return null;
-        const geometry = store.selectedFeatureGeometry;
-        return autoToolbarPosition([
-            ...geometry.points.map(project),
-            ...geometry.segments.flatMap((segment) => [project(segment.a), project(segment.b)]),
-            ...geometry.arcs.flatMap((arc) => arc.anchors.map(project)),
-        ]);
+        return autoToolbarPlacement(
+            projectedGeometry,
+            { width: board.width, height: board.height },
+            toolbarSize,
+            preferredSide,
+        );
     });
     /** Stage two: the drag offset applied to `auto`, kept inside the board. */
     const position = $derived.by(() => {
@@ -66,7 +104,10 @@
             ? placement.offset
             : [0, 0] as Pair;
         const clamped = clampToolbarPosition(
-            { left: auto.left + offset[0], top: auto.top + offset[1] },
+            {
+                left: auto.position.left + offset[0],
+                top: auto.position.top + offset[1],
+            },
             { width: board.width, height: board.height },
             toolbarSize,
         );
@@ -125,7 +166,7 @@
         );
         placement = {
             selectionKey: drag.selectionKey,
-            offset: [moved.left - auto.left, moved.top - auto.top],
+            offset: [moved.left - auto.position.left, moved.top - auto.position.top],
         };
     }
 
