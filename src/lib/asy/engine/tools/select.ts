@@ -2,11 +2,10 @@ import type { ArcElement, EllipticalArcElement, Pair, Scene, SceneElement } from
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import {
-    COINCIDENT_SWEEP_DEGREES,
-    FULL_TURN_SNAP_DEGREES,
     positiveArcSweep,
     principalEllipseGeometry,
 } from "../../scene/ellipse-geometry";
+import { arcClosureSnapped } from "../arc-closure";
 import { hitTest } from "../hit-test";
 import {
     distance,
@@ -42,6 +41,24 @@ function arcParameterAngle(element: ArcElement | EllipticalArcElement, point: Pa
     return Math.atan2(localY, localX);
 }
 
+function arcEndpointAt(
+    element: ArcElement | EllipticalArcElement,
+    angle: number,
+): Pair {
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return element.kind === "arc"
+        ? [
+              element.center[0] + Math.abs(element.radius) * cos,
+              element.center[1] + Math.abs(element.radius) * sin,
+          ]
+        : [
+              element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
+              element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
+          ];
+}
+
 type ShapeTransformGesture = Exclude<SelectionTransformGesture, { kind: "move" }>;
 
 /**
@@ -62,6 +79,7 @@ export class SelectTool implements Tool {
     private moved = false;
     private scalarSnapTarget: number | null = null;
     private previousRawScalar: number | null = null;
+    private arcClosureSnapped = false;
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         const p = pointerPoint(input);
@@ -118,6 +136,14 @@ export class SelectTool implements Tool {
             this.movingIds = [...ctx.selection];
             this.transform = selectionGesture;
             this.base = scene;
+            if (selectionGesture.kind === "arc") {
+                const element = scene.elements.find(({ id }) => id === selectionGesture.elementId);
+                this.arcClosureSnapped = Boolean(
+                    element &&
+                    (element.kind === "arc" || element.kind === "elliptical-arc") &&
+                    positiveArcSweep(element.angle1, element.angle2) === 360,
+                );
+            }
             if (
                 selectionGesture.kind === "resize" ||
                 selectionGesture.kind === "vertex" ||
@@ -410,16 +436,17 @@ export class SelectTool implements Tool {
             const nextStart = control === "start" ? element.angle1 + delta : fixedStart;
             const nextEnd = control === "end" ? fixedEnd + delta : fixedEnd;
             const normalizedSweep = normalizeDeg(nextEnd - nextStart);
-            // Closing is sticky, reopening is immediate: an open arc snaps shut once
-            // its endpoints come within the snap window, while an existing circle
-            // (`baseSweep === 360`) reopens on the first degree of drag. `baseSweep`
-            // reads the committed element, so the snap can't latch mid-gesture. The
-            // first clause is `positiveArcSweep`'s coincident-endpoint rule applied
-            // to the candidate sweep — it can't call the helper directly, because a
-            // drag past a full turn must wrap rather than clamp to 360.
-            const closesFullTurn = normalizedSweep <= COINCIDENT_SWEEP_DEGREES
-                || (baseSweep < 360 && normalizedSweep >= 360 - FULL_TURN_SNAP_DEGREES);
-            const nextSweep = closesFullTurn ? 360 : normalizedSweep;
+            const endpointGap = distance(
+                arcEndpointAt(element, nextStart),
+                arcEndpointAt(element, nextEnd),
+            );
+            this.arcClosureSnapped = arcClosureSnapped({
+                endpointGap,
+                sceneUnitsPerPixel: ctx.sceneUnitsPerPixel,
+                snapped: this.arcClosureSnapped,
+                suppressSnap: ctx.suppressSnap,
+            });
+            const nextSweep = this.arcClosureSnapped ? 360 : normalizedSweep;
 
             return {
                 scene: mapElements(scene, (candidate) =>
@@ -545,5 +572,6 @@ export class SelectTool implements Tool {
         this.moved = false;
         this.scalarSnapTarget = null;
         this.previousRawScalar = null;
+        this.arcClosureSnapped = false;
     }
 }

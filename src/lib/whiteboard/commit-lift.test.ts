@@ -104,7 +104,7 @@ describe("commit lift: one ToolCommit -> one Document transaction", () => {
         }
     });
 
-    test("arc lifts to a smart arc of three points, but a full circle stays baked", () => {
+    test("partial and full arcs lift to smart three-point curves", () => {
         const empty = emptyWhiteboardDocument();
 
         // A partial arc (90° here) becomes a smart sketch-curve whose center and
@@ -126,13 +126,21 @@ describe("commit lift: one ToolCommit -> one Document transaction", () => {
         expect(resolved.angle1).toBeCloseTo(0, 9);
         expect(resolved.angle2).toBeCloseTo(90, 9);
 
-        // A full turn's rim endpoints would coincide, so it can't be a three-point
-        // smart arc — it stays baked.
+        // A full turn keeps distinct endpoint identities joined by one inferred
+        // coincidence, so it remains smart and can later be pulled open.
         const full = createArc([0, 0], 2, 0, 360);
         const fullLift = lift(empty, { kind: "add", elements: [full] }, { toolKind: "arc" });
-        expect(kinds(fullLift)).toEqual(["baked"]);
-        expect(fullLift.items[0]).toEqual({ kind: "baked", element: full });
-        expect(fullLift.sketch).toEqual(empty.sketch);
+        expect(kinds(fullLift)).toEqual(["sketch-curve"]);
+        expect(Object.keys(fullLift.sketch.points)).toHaveLength(3);
+        const closures = Object.values(fullLift.sketch.constraints).filter(
+            (constraint) => constraint.kind === "coincident" && constraint.origin === "inferred",
+        );
+        expect(closures).toHaveLength(1);
+        expect(resolveWhiteboardDocument(fullLift).elements[0]).toMatchObject({
+            kind: "arc",
+            angle1: 0,
+            angle2: 360,
+        });
     });
 
     test("replace swaps baked elements in place by id and leaves smart items alone", () => {

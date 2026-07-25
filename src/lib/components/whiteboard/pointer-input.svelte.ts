@@ -76,6 +76,7 @@ export class PointerInputController {
     #hoveredVertex = $state<VertexRef | null>(null);
     #selectedArcControl = $state<ArcControlRef | null>(null);
     #hoveredArcControl = $state<ArcControlRef | null>(null);
+    #activeArcPointer = $state<Pair | null>(null);
 
     #panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     #featureClickStart:
@@ -122,6 +123,10 @@ export class PointerInputController {
         return this.#selectedArcControl;
     }
 
+    get activeArcPointer(): Pair | null {
+        return this.#activeArcPointer;
+    }
+
     get hoveredArcControl(): ArcControlRef | null {
         return this.#hoveredArcControl;
     }
@@ -139,6 +144,7 @@ export class PointerInputController {
         this.#hoveredVertex = null;
         this.#selectedArcControl = null;
         this.#hoveredArcControl = null;
+        this.#activeArcPointer = null;
     }
 
     /** Abandon an in-flight draw/transform gesture without committing it. */
@@ -221,6 +227,7 @@ export class PointerInputController {
         this.#transformCursor = null;
         this.#selectedArcControl = null;
         this.#hoveredArcControl = null;
+        this.#activeArcPointer = null;
         this.#pointerId = null;
         this.#host.camera.beginPinch(a, b);
     }
@@ -387,6 +394,7 @@ export class PointerInputController {
         this.#hoveredVertex = null;
         this.#selectedArcControl = { elementId: hit.elementId, control: hit.control };
         this.#hoveredArcControl = this.#selectedArcControl;
+        this.#activeArcPointer = this.#local(e);
         this.#mode = "transform";
         this.#transformCursor = "move";
         this.#syncToolScale();
@@ -510,6 +518,9 @@ export class PointerInputController {
             camera.panX = this.#panStart.x + e.clientX - this.#panStart.clientX;
             camera.panY = this.#panStart.y + e.clientY - this.#panStart.clientY;
         } else if (this.#mode === "draw" || this.#mode === "transform") {
+            if (this.#mode === "transform" && this.#selectedArcControl) {
+                this.#activeArcPointer = this.#local(e);
+            }
             const drawingWithPen = this.#mode === "draw" && store.toolKind === "pen";
             const samples = drawingWithPen && typeof e.getCoalescedEvents === "function"
                 ? e.getCoalescedEvents()
@@ -618,6 +629,7 @@ export class PointerInputController {
         this.#panStart = null;
         this.#transformCursor = null;
         this.#hoveredVertex = this.#host.activeSelectedVertex;
+        this.#activeArcPointer = null;
         this.#mode = "idle";
     }
 
@@ -637,6 +649,7 @@ export class PointerInputController {
         this.#hoveredVertex = null;
         this.#selectedArcControl = null;
         this.#hoveredArcControl = null;
+        this.#activeArcPointer = null;
         this.#mode = "idle";
     }
 

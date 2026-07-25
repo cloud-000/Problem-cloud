@@ -185,9 +185,10 @@ the Document like everything else. What the lift produces depends on the tool:
   drawn geometry is immediately constrainable. The rectangle additionally ships
   with three `perpendicular` constraints (`addDefaultRectangleConstraints`) — its
   defining right angles — so it stays rectangular under rotate/resize.
-- **pen · label** → **`BakedItem`s** appended. A **full-circle arc** also stays
-  baked: a smart arc is three *distinct* points, so a 360° sweep (whose rim
-  endpoints coincide) has no three-point form.
+- **pen · label** → **`BakedItem`s** appended. Arc-tool output is always smart,
+  including a full circle: its distinct start/end point identities share an
+  inferred coincidence while closed, which can be pulled apart to reopen it.
+  Imported raw arcs remain baked.
 - **eraser** → `deleteWhiteboardItems`; **select** move/resize/rotate/vertex →
   the changed baked elements replaced in place by id.
 

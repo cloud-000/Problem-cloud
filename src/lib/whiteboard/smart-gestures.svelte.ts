@@ -12,16 +12,22 @@
  */
 
 import type { Scene } from "$lib/asy/scene/types";
-import type { SelectionTransformGesture } from "$lib/asy/engine";
+import {
+    arcClosureSnapped,
+    type SelectionTransformGesture,
+} from "$lib/asy/engine";
 import type { ConstraintService } from "$lib/whiteboard/constraint-service.svelte";
 import {
+    arcEndpointInteractionGap,
     nearestPointFeature,
     pointFeaturePosition,
+    removeConstraint,
     resolveWhiteboardDocument,
     rotateWhiteboardItems,
     scaleWhiteboardItems,
     translateWhiteboardItems,
     type GeometryOperationResult,
+    type ArcEndpointClosure,
     type PointFeatureRef,
     type SnapRelationProposal,
     type WhiteboardDocument,
@@ -41,6 +47,8 @@ export type SmartGesture =
           feature: PointFeatureRef;
           pointerOffset: readonly [number, number];
           candidate: SnapRelationProposal | null;
+          closure: ArcEndpointClosure | null;
+          closureSnapped: boolean;
           seed?: Readonly<Record<string, readonly [number, number]>>;
       }
     | {
@@ -225,11 +233,41 @@ export class SmartGestureController {
         target: readonly [number, number],
         suppressSnap: boolean,
     ): SnapRelationProposal | null {
+        const closure = drag.closure;
+        const closureAt = closure
+            ? pointFeaturePosition(drag.base, closure.counterpart)
+            : null;
+        if (closure && closureAt) {
+            const visibleGap = arcEndpointInteractionGap(
+                drag.base,
+                drag.feature,
+                target,
+            );
+            drag.closureSnapped = arcClosureSnapped({
+                endpointGap: visibleGap ?? Math.hypot(
+                    closureAt[0] - target[0],
+                    closureAt[1] - target[1],
+                ),
+                sceneUnitsPerPixel: this.#host.sceneUnitsPerPixel,
+                snapped: drag.closureSnapped,
+                suppressSnap,
+            });
+            if (drag.closureSnapped) {
+                return {
+                    source: drag.feature,
+                    target: closure.counterpart,
+                    from: target,
+                    to: closureAt,
+                };
+            }
+        }
         if (suppressSnap) return null;
         const acquired = drag.candidate;
+        const acquiredWasClosure = acquired && drag.closure &&
+            JSON.stringify(acquired.target) === JSON.stringify(drag.closure.counterpart);
         const acquiredAt = acquired ? pointFeaturePosition(drag.base, acquired.target) : null;
         if (
-            acquired && acquiredAt &&
+            acquired && !acquiredWasClosure && acquiredAt &&
             Math.hypot(acquiredAt[0] - target[0], acquiredAt[1] - target[1]) <=
                 12 * this.#host.sceneUnitsPerPixel
         ) {
@@ -249,6 +287,15 @@ export class SmartGestureController {
         } : null;
     }
 
+    #smartDragBase(
+        drag: Extract<SmartGesture, { kind: "drag-feature" }>,
+    ): WhiteboardDocument {
+        const constraintId = drag.closure?.inferredConstraintId;
+        return constraintId && !drag.closureSnapped
+            ? removeConstraint(drag.base, constraintId)
+            : drag.base;
+    }
+
     #previewSmartDrag(
         drag: Extract<SmartGesture, { kind: "drag-feature" }>,
         point: readonly [number, number],
@@ -261,7 +308,7 @@ export class SmartGestureController {
         const candidate = this.#smartDragCandidate(drag, rawTarget, suppressSnap);
         drag.candidate = candidate;
         const target = candidate?.to ?? rawTarget;
-        const solved = this.#constraints.solveDocument(drag.base, {
+        const solved = this.#constraints.solveDocument(this.#smartDragBase(drag), {
             affected: [drag.feature],
             drivers: [{ feature: drag.feature, target }],
             ...(drag.seed ? { initialPoints: drag.seed } : {}),
@@ -284,7 +331,7 @@ export class SmartGestureController {
             point[1] - drag.pointerOffset[1],
         ] as const;
         const candidate = this.#smartDragCandidate(drag, rawTarget, suppressSnap);
-        const solved = this.#constraints.solveDocument(drag.base, {
+        const solved = this.#constraints.solveDocument(this.#smartDragBase(drag), {
             affected: [drag.feature],
             drivers: [{ feature: drag.feature, target: candidate?.to ?? rawTarget }],
             ...(drag.seed ? { initialPoints: drag.seed } : {}),

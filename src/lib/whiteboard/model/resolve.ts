@@ -1,8 +1,22 @@
 import type { Pair, PathElement, Scene, SceneElement } from "../../asy/scene/types";
+import { pointFeaturePointId } from "./features";
 import type { SketchCurve, SketchPathItem, WhiteboardDocument } from "./types";
 
 /** World-space distance below which an arc's two rim endpoints count as coincident. */
 const COINCIDENT_ENDPOINT = 1e-4;
+
+function arcEndpointsConstrainedCoincident(
+    document: WhiteboardDocument,
+    curve: Extract<SketchCurve, { kind: "arc" }>,
+): boolean {
+    return Object.values(document.sketch.constraints).some((constraint) => {
+        if (!constraint.enabled || constraint.kind !== "coincident") return false;
+        const a = pointFeaturePointId(document, constraint.a);
+        const b = pointFeaturePointId(document, constraint.b);
+        return (a === curve.start && b === curve.end) ||
+            (a === curve.end && b === curve.start);
+    });
+}
 
 function orientedSegment(
     document: WhiteboardDocument,
@@ -102,7 +116,10 @@ function resolveItem(document: WhiteboardDocument, index: number): SceneElement 
     // Coincident endpoints mean the sweep closed on itself, so emit a full turn
     // *from* `angle1`: every consumer reads `angle2 - angle1`, so a bare 360 would
     // encode a sweep of `360 - angle1` instead.
-    const angle2 = Math.hypot(end[0] - start[0], end[1] - start[1]) < COINCIDENT_ENDPOINT
+    const angle2 = (
+        arcEndpointsConstrainedCoincident(document, curve) ||
+        Math.hypot(end[0] - start[0], end[1] - start[1]) < COINCIDENT_ENDPOINT
+    )
         ? angle1 + 360
         : Math.atan2(end[1] - center[1], end[0] - center[0]) * 180 / Math.PI;
     return {

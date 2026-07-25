@@ -31,7 +31,10 @@ function fakeSurface(): HTMLCanvasElement {
     } as unknown as HTMLCanvasElement;
 }
 
-function pressAt([clientX, clientY]: Pair): PointerEvent {
+function pressAt(
+    [clientX, clientY]: Pair,
+    overrides: Partial<PointerEvent> = {},
+): PointerEvent {
     return {
         clientX,
         clientY,
@@ -42,6 +45,7 @@ function pressAt([clientX, clientY]: Pair): PointerEvent {
         shiftKey: false,
         timeStamp: 0,
         preventDefault() {},
+        ...overrides,
     } as unknown as PointerEvent;
 }
 
@@ -99,6 +103,7 @@ function harness() {
             hoveredVertex: controller.hoveredVertex,
             selectedArcControl: controller.selectedArcControl,
             hoveredArcControl: controller.hoveredArcControl,
+            activeArcPointer: controller.activeArcPointer,
             project: (point) => camera.project(point),
             toScreenLength: (units) => camera.toScreenLength(units),
         });
@@ -159,6 +164,113 @@ describe("PointerInputController pointer-down routing", () => {
         const created = scope.store.scene.elements.at(-1);
         expect(created).toMatchObject({ kind: "arc", angle1: 0, angle2: 360 });
         expect(scope.store.inspectorClosed).toBe(true);
+    });
+
+    test("dragging separated near-coincident arc handles together closes the smart arc", () => {
+        const scope = harness();
+        scope.store.setTool("arc");
+        const click = (point: Pair) => {
+            const event = pressAt(point);
+            scope.controller.pointerDown(event);
+            scope.controller.pointerUp(event);
+        };
+
+        click([400, 300]); // center
+        click([500, 300]); // radius
+        click([500, 300]); // start
+        click([400, 200]); // open quarter-turn end
+
+        const quarterEnd = scope.overlay().arcGuide?.editHandles.find(
+            ({ control }) => control === "end",
+        );
+        expect(quarterEnd).toBeDefined();
+        if (!quarterEnd) return;
+
+        // First place the endpoint 0.0796585° shy of closure with Alt held.
+        // Its semantic endpoints are now under 2px apart, so the idle overlay
+        // separates the two handles by 7px each to keep both selectable.
+        const gap = 360 - 359.920341454506;
+        const radians = (-gap * Math.PI) / 180;
+        const nearStart: Pair = [
+            400 + 100 * Math.cos(radians),
+            300 - 100 * Math.sin(radians),
+        ];
+        scope.controller.pointerDown(pressAt(quarterEnd.screen, { altKey: true }));
+        scope.controller.pointerMove(pressAt(nearStart, { altKey: true }));
+        scope.controller.pointerUp(pressAt(nearStart, { altKey: true }));
+
+        const open = scope.store.inspectorProperties.find(({ id }) => id === "arcAngle");
+        expect(open?.value).toBeCloseTo(359.920341454506, 9);
+
+        const guide = scope.overlay().arcGuide;
+        const start = guide?.editHandles.find(({ control }) => control === "start");
+        const end = guide?.editHandles.find(({ control }) => control === "end");
+        expect(start).toBeDefined();
+        expect(end).toBeDefined();
+        if (!start || !end) return;
+        expect(Math.hypot(start.screen[0] - end.screen[0], start.screen[1] - end.screen[1]))
+            .toBeGreaterThan(10);
+
+        scope.controller.pointerDown(pressAt(end.screen));
+        scope.controller.pointerMove(pressAt(start.screen));
+        scope.controller.pointerUp(pressAt(start.screen));
+
+        expect(scope.store.inspectorClosed).toBe(true);
+        expect(scope.store.inspectorProperties.find(({ id }) => id === "arcAngle")?.value)
+            .toBe(360);
+        expect(Object.values(scope.store.document.sketch.constraints).filter(
+            (constraint) => {
+                if (
+                    constraint.kind !== "coincident" ||
+                    constraint.origin !== "inferred" ||
+                    constraint.a.kind !== "curve-point" ||
+                    constraint.b.kind !== "curve-point" ||
+                    constraint.a.curveId !== constraint.b.curveId
+                ) return false;
+                const features = [constraint.a.feature, constraint.b.feature];
+                return features.includes("start") && features.includes("end");
+            },
+        )).toHaveLength(1);
+    });
+
+    test("an off-rim pointer closes by the rendered arc endpoint without leaving a stale point", () => {
+        const scope = harness();
+        scope.store.setTool("arc");
+        const click = (point: Pair) => {
+            const event = pressAt(point);
+            scope.controller.pointerDown(event);
+            scope.controller.pointerUp(event);
+        };
+
+        click([400, 300]); // center
+        click([500, 300]); // radius
+        click([500, 300]); // start
+        click([400, 200]); // open quarter-turn end
+
+        const end = scope.overlay().arcGuide?.editHandles.find(
+            ({ control }) => control === "end",
+        );
+        expect(end).toBeDefined();
+        if (!end) return;
+
+        const gap = 360 - 359.39883330280395;
+        const radians = (-gap * Math.PI) / 180;
+        // The pointer is a normal 20px outside the radius, while the rendered
+        // endpoint projects onto the radius-100 circle only ~1px from `start`.
+        const pointer: Pair = [
+            400 + 120 * Math.cos(radians),
+            300 - 120 * Math.sin(radians),
+        ];
+        scope.controller.pointerDown(pressAt(end.screen));
+        scope.controller.pointerMove(pressAt(pointer));
+        const featurePointsDuringDrag = scope.overlay().featurePoints;
+
+        scope.controller.pointerUp(pressAt(pointer));
+
+        expect(scope.store.inspectorClosed).toBe(true);
+        expect(scope.store.inspectorProperties.find(({ id }) => id === "arcAngle")?.value)
+            .toBe(360);
+        expect(featurePointsDuringDrag).toHaveLength(0);
     });
 
     test("pressing a vertex handle selects that vertex and opens a transform", () => {

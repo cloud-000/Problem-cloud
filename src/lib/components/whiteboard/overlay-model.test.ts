@@ -37,6 +37,7 @@ function input(overrides: Partial<OverlayInput> = {}): OverlayInput {
         hoveredVertex: null,
         selectedArcControl: null,
         hoveredArcControl: null,
+        activeArcPointer: null,
         project,
         toScreenLength,
         ...overrides,
@@ -353,6 +354,29 @@ describe("arc guide", () => {
             "hovered",
             "selected",
         ]);
+    });
+
+    test("coincident handles separate only at rest and the active handle follows the pointer", () => {
+        const closed = createArc([1, 1], 1, 0, 360);
+        const closedInput = input({
+            displayScene: scene(closed),
+            selection: [closed.id],
+        });
+        const idle = buildOverlay(closedInput).arcGuide;
+        expect(idle?.editHandles.find(({ control }) => control === "start")?.screen)
+            .toEqual([120, 97]);
+        expect(idle?.editHandles.find(({ control }) => control === "end")?.screen)
+            .toEqual([120, 83]);
+
+        const active = buildOverlay({
+            ...closedInput,
+            selectedArcControl: { elementId: closed.id, control: "end" },
+            activeArcPointer: [133, 77],
+        }).arcGuide;
+        expect(active?.editHandles.find(({ control }) => control === "start")?.screen)
+            .toEqual([120, 90]);
+        expect(active?.editHandles.find(({ control }) => control === "end")?.screen)
+            .toEqual([133, 77]);
     });
 
     test("a construction guide wins over the selection and is not editable", () => {

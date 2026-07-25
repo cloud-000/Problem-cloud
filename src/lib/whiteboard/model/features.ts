@@ -58,6 +58,78 @@ export function pointFeaturePosition(
     return pointId ? document.sketch.points[pointId]?.at ?? null : null;
 }
 
+function pointProjectedToRadius(
+    center: Pair,
+    point: readonly [number, number],
+    radius: number,
+    fallback: Pair,
+): Pair {
+    const dx = point[0] - center[0];
+    const dy = point[1] - center[1];
+    const pointRadius = Math.hypot(dx, dy);
+    if (pointRadius <= 1e-12) return fallback;
+    return [
+        center[0] + (dx / pointRadius) * radius,
+        center[1] + (dy / pointRadius) * radius,
+    ];
+}
+
+/**
+ * The position an interaction handle represents. Most features expose their
+ * raw sketch point; a smart arc's end exposes the rim point actually rendered:
+ * its raw point contributes only the angle, while the start defines the radius.
+ */
+export function pointFeatureInteractionPosition(
+    document: WhiteboardDocument,
+    ref: PointFeatureRef,
+): Pair | null {
+    const raw = pointFeaturePosition(document, ref);
+    if (
+        !raw ||
+        ref.kind !== "curve-point" ||
+        ref.feature !== "end"
+    ) return raw;
+    const curve = document.sketch.curves[ref.curveId];
+    if (!curve || curve.kind !== "arc") return raw;
+    const center = document.sketch.points[curve.center]?.at;
+    const start = document.sketch.points[curve.start]?.at;
+    if (!center || !start) return raw;
+    const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+    return pointProjectedToRadius(center, raw, radius, start);
+}
+
+/**
+ * Distance between a smart arc's two rendered rim endpoints if `ref` were
+ * dragged to `target`. This intentionally ignores radial pointer drift: the
+ * renderer uses `start` for radius and `end` only for direction.
+ */
+export function arcEndpointInteractionGap(
+    document: WhiteboardDocument,
+    ref: PointFeatureRef,
+    target: readonly [number, number],
+): number | null {
+    if (
+        ref.kind !== "curve-point" ||
+        (ref.feature !== "start" && ref.feature !== "end")
+    ) return null;
+    const curve = document.sketch.curves[ref.curveId];
+    if (!curve || curve.kind !== "arc") return null;
+    const center = document.sketch.points[curve.center]?.at;
+    const start = document.sketch.points[curve.start]?.at;
+    const end = document.sketch.points[curve.end]?.at;
+    if (!center || !start || !end) return null;
+
+    if (ref.feature === "end") {
+        const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+        const visibleEnd = pointProjectedToRadius(center, target, radius, start);
+        return Math.hypot(visibleEnd[0] - start[0], visibleEnd[1] - start[1]);
+    }
+
+    const radius = Math.hypot(target[0] - center[0], target[1] - center[1]);
+    const visibleEnd = pointProjectedToRadius(center, end, radius, [target[0], target[1]]);
+    return Math.hypot(visibleEnd[0] - target[0], visibleEnd[1] - target[1]);
+}
+
 /**
  * The draggable sketch-point feature behind one of a smart arc's edit handles
  * (`center` / `start` / `end`), or `null` when the item is not a smart arc or
@@ -78,6 +150,53 @@ export function arcControlFeature(
     const curve = document.sketch.curves[item.curveId];
     if (!curve || curve.kind !== "arc") return null;
     return { kind: "curve-point", curveId: item.curveId, feature: control };
+}
+
+export interface ArcEndpointClosure {
+    counterpart: PointFeatureRef;
+    /** Existing inferred closure relation, removed when the endpoint is pulled apart. */
+    inferredConstraintId: string | null;
+}
+
+/**
+ * Describe the other rim endpoint of a smart arc and any inferred coincidence
+ * currently closing the pair. Centers and non-arc features have no closure.
+ */
+export function arcEndpointClosure(
+    document: WhiteboardDocument,
+    ref: PointFeatureRef,
+): ArcEndpointClosure | null {
+    if (
+        ref.kind !== "curve-point" ||
+        (ref.feature !== "start" && ref.feature !== "end")
+    ) return null;
+    const curve = document.sketch.curves[ref.curveId];
+    if (!curve || curve.kind !== "arc") return null;
+    const counterpart: PointFeatureRef = {
+        kind: "curve-point",
+        curveId: ref.curveId,
+        feature: ref.feature === "start" ? "end" : "start",
+    };
+    const sourcePointId = pointFeaturePointId(document, ref);
+    const targetPointId = pointFeaturePointId(document, counterpart);
+    if (!sourcePointId || !targetPointId) {
+        return { counterpart, inferredConstraintId: null };
+    }
+    const inferredConstraintId = Object.values(document.sketch.constraints).find((constraint) =>
+        constraint.kind === "coincident" &&
+        constraint.origin === "inferred" &&
+        (
+            (
+                pointFeaturePointId(document, constraint.a) === sourcePointId &&
+                pointFeaturePointId(document, constraint.b) === targetPointId
+            ) ||
+            (
+                pointFeaturePointId(document, constraint.a) === targetPointId &&
+                pointFeaturePointId(document, constraint.b) === sourcePointId
+            )
+        )
+    )?.id ?? null;
+    return { counterpart, inferredConstraintId };
 }
 
 function itemIdsForCurve(document: WhiteboardDocument, curveId: string): string[] {

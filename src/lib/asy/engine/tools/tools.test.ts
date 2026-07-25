@@ -61,6 +61,7 @@ const ctx: ToolContext = {
     penTapTolerance: 0.05,
     strokeProcessing: { ...DEFAULT_STROKE_PROCESSING_OPTIONS },
     sceneUnitsPerPixel: 0.025,
+    suppressSnap: false,
     selection: [],
     lineContinuation: null,
     promptLabel: () => "$P$",
@@ -461,14 +462,14 @@ describe("ArcTool", () => {
         const tool = createTool("arc");
         const scene = emptyScene();
         const onRim = (degrees: number): Pair => [
-            100 * Math.cos((degrees * Math.PI) / 180),
-            100 * Math.sin((degrees * Math.PI) / 180),
+            2 * Math.cos((degrees * Math.PI) / 180),
+            2 * Math.sin((degrees * Math.PI) / 180),
         ];
         tool.onPointerDown(scene, [0, 0], ctx);
-        tool.onPointerDown(scene, [100, 0], ctx);
-        tool.onPointerDown(scene, [100, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
 
-        const preview = tool.onPointerMove(scene, onRim(-3), ctx);
+        const preview = tool.onPointerMove(scene, onRim(-5), ctx);
         expect(preview.preview?.elements[0]).toMatchObject({
             kind: "arc",
             angle1: 0,
@@ -476,7 +477,7 @@ describe("ArcTool", () => {
         });
         expect(preview.arcGuide).toMatchObject({ angle1: 0, angle2: 360 });
 
-        const result = tool.onPointerDown(scene, onRim(-3), ctx);
+        const result = tool.onPointerDown(scene, onRim(-5), ctx);
         expect(committed(result.commit)[0]).toMatchObject({
             kind: "arc",
             angle1: 0,
@@ -488,16 +489,40 @@ describe("ArcTool", () => {
         const tool = createTool("arc");
         const scene = emptyScene();
         const onRim = (degrees: number): Pair => [
-            100 * Math.cos((degrees * Math.PI) / 180),
-            100 * Math.sin((degrees * Math.PI) / 180),
+            2 * Math.cos((degrees * Math.PI) / 180),
+            2 * Math.sin((degrees * Math.PI) / 180),
         ];
         tool.onPointerDown(scene, [0, 0], ctx);
-        tool.onPointerDown(scene, [100, 0], ctx);
-        tool.onPointerDown(scene, [100, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
 
         const preview = tool.onPointerMove(scene, onRim(0.2), ctx);
         expect(preview.arcGuide).toMatchObject({ angle1: 0, angle2: 360 });
         expect(preview.preview?.elements[0]).toMatchObject({ angle1: 0, angle2: 360 });
+    });
+
+    test("uses 10px/14px closure hysteresis and Alt suppresses it", () => {
+        const scene = emptyScene();
+        const onRim = (degrees: number): Pair => [
+            2 * Math.cos((degrees * Math.PI) / 180),
+            2 * Math.sin((degrees * Math.PI) / 180),
+        ];
+        const tool = createTool("arc");
+        tool.onPointerDown(scene, [0, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
+        tool.onPointerDown(scene, [2, 0], ctx);
+
+        expect(tool.onPointerMove(scene, onRim(5), ctx).arcGuide?.angle2).toBe(360);
+        // About 12.6px apart: outside acquisition, inside sticky release.
+        expect(tool.onPointerMove(scene, onRim(9), ctx).arcGuide?.angle2).toBe(360);
+        // About 15.3px apart: beyond release.
+        expect(tool.onPointerMove(scene, onRim(11), ctx).arcGuide?.angle2)
+            .toBeCloseTo(11, 9);
+        expect(tool.onPointerMove(
+            scene,
+            onRim(5),
+            { ...ctx, suppressSnap: true },
+        ).arcGuide?.angle2).toBeCloseTo(5, 9);
     });
 
     test("a tiny radius cancels construction and Escape clears its guide", () => {
@@ -1200,7 +1225,7 @@ describe("SelectTool", () => {
         });
     });
 
-    test("arc endpoint control closes into a full circle stickily and reopens immediately", () => {
+    test("arc endpoint control closes and reopens with pixel hysteresis", () => {
         /** Point on the radius-2 rim at `degrees`, so the snap window reads in degrees. */
         const onRim = (degrees: number): Pair => [
             2 * Math.cos((degrees * Math.PI) / 180),
@@ -1218,7 +1243,7 @@ describe("SelectTool", () => {
             },
         });
 
-        // Dragging the end handle to within the 8-degree window of the start point
+        // Dragging the end handle inside the shared 10px acquisition radius
         // closes the open arc into a full circle.
         const arc = createArc([0, 0], 2, 0, 90);
         const scene = { elements: [arc] };
@@ -1233,21 +1258,46 @@ describe("SelectTool", () => {
             angle2: 360,
         });
 
-        // Dragging the end handle of an existing full circle opens it back into an
-        // arc on the first degree of travel — the snap must not latch.
+        // A closed arc stays latched inside the 14px release radius, then opens.
         const fullCircle = createArc([0, 0], 2, 0, 360);
         const fullScene = { elements: [fullCircle] };
         const exitCtx = endHandleCtx(fullCircle, [2, 0]);
         const exitTool = createTool("select");
         exitTool.onPointerDown(fullScene, [2, 0], exitCtx);
-        expect(exitTool.onPointerMove(fullScene, onRim(-5), exitCtx).commit).toBeUndefined();
-        const reopened = exitTool.onPointerUp(fullScene, onRim(-5), exitCtx);
+        expect(exitTool.onPointerMove(fullScene, onRim(-12), exitCtx).commit).toBeUndefined();
+        const reopened = exitTool.onPointerUp(fullScene, onRim(-12), exitCtx);
         expect(committed(reopened.commit)[0]).toMatchObject({
             kind: "arc",
             radius: 2,
             angle1: 0,
-            angle2: 355,
+            angle2: 348,
         });
+    });
+
+    test("Alt suppresses baked arc endpoint closure", () => {
+        const arc = createArc([0, 0], 2, 0, 90);
+        const scene = { elements: [arc] };
+        const transformCtx: ToolContext = {
+            ...ctx,
+            suppressSnap: true,
+            selection: [arc.id],
+            selectionTransform: {
+                kind: "arc",
+                elementId: arc.id,
+                control: "end",
+                handle: [0, 2],
+                minimumRadius: 0.25,
+            },
+        };
+        const tool = createTool("select");
+        tool.onPointerDown(scene, [0, 2], transformCtx);
+        const angle = -5 * Math.PI / 180;
+        const result = tool.onPointerUp(
+            scene,
+            [2 * Math.cos(angle), 2 * Math.sin(angle)],
+            transformCtx,
+        );
+        expect(committed(result.commit)[0]).toMatchObject({ angle1: 0, angle2: 355 });
     });
 
     test("arc radius control preserves angles and clamps to its visible minimum", () => {

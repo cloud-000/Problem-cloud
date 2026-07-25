@@ -151,7 +151,19 @@ export function buildArcGuide(
     const end = selectedArcPoint(selectedArcElement, selectedArcElement.angle2);
     let startScreen = project(start);
     let endScreen = project(end);
-    if (Math.hypot(startScreen[0] - endScreen[0], startScreen[1] - endScreen[1]) < 2) {
+    const activeEndpointControl =
+        input.activeArcPointer &&
+        input.selectedArcControl?.elementId === selectedArcElement.id &&
+        (
+            input.selectedArcControl.control === "start" ||
+            input.selectedArcControl.control === "end"
+        )
+            ? input.selectedArcControl.control
+            : null;
+    if (
+        activeEndpointControl === null &&
+        Math.hypot(startScreen[0] - endScreen[0], startScreen[1] - endScreen[1]) < 2
+    ) {
         const radians = (selectedArcElement.angle1 * Math.PI) / 180;
         const tangentWorld: Pair = selectedArcElement.kind === "arc"
             ? [-Math.sin(radians), Math.cos(radians)]
@@ -180,6 +192,12 @@ export function buildArcGuide(
         { control: "start", handle: start, screen: startScreen },
         { control: "end", handle: end, screen: endScreen },
     ];
+    if (input.activeArcPointer && activeEndpointControl) {
+        const active = semanticHandles.find(
+            ({ control }) => control === activeEndpointControl,
+        );
+        if (active) active.screen = input.activeArcPointer;
+    }
     if (selectedArcElement.kind === "elliptical-arc" && geometry.eccentricity > 1e-4) {
         semanticHandles.push(
             { control: "focus1", handle: geometry.foci[0], screen: project(geometry.foci[0]) },

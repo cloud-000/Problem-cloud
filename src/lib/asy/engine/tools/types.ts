@@ -123,6 +123,8 @@ export interface ToolContext {
     strokeProcessing: StrokeProcessingOptions;
     /** Scene-space distance represented by one CSS pixel at the active zoom. */
     sceneUnitsPerPixel: number;
+    /** Bypass inferred snapping while Alt/Option is held. */
+    suppressSnap: boolean;
     /** Current selected element ids, used by tools that operate on a group. */
     selection: string[];
     /** Connected-path preview handed from the Line tool to Select. */

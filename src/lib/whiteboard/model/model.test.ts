@@ -184,6 +184,47 @@ describe("whiteboard document foundation", () => {
         ]);
     });
 
+    test("resolves an enabled arc endpoint coincidence as a full turn despite coordinate drift", () => {
+        const reportedSweep = 359.9642614456766;
+        const endAngle = (reportedSweep - 360) * Math.PI / 180;
+        const document: WhiteboardDocument = {
+            schemaVersion: 2,
+            items: [{ id: "arc-item", kind: "sketch-curve", curveId: "arc" }],
+            sketch: {
+                points: {
+                    center: { id: "center", at: [0, 0] },
+                    start: { id: "start", at: [1, 0] },
+                    end: { id: "end", at: [Math.cos(endAngle), Math.sin(endAngle)] },
+                },
+                parameters: {},
+                curves: {
+                    arc: {
+                        id: "arc",
+                        kind: "arc",
+                        center: "center",
+                        start: "start",
+                        end: "end",
+                    },
+                },
+                constraints: {
+                    closed: {
+                        id: "closed",
+                        kind: "coincident",
+                        enabled: true,
+                        origin: "inferred",
+                        a: { kind: "curve-point", curveId: "arc", feature: "start" },
+                        b: { kind: "curve-point", curveId: "arc", feature: "end" },
+                    },
+                },
+            },
+        };
+
+        const resolved = resolveWhiteboardDocument(document).elements[0];
+        expect(resolved.kind).toBe("arc");
+        if (resolved.kind !== "arc") return;
+        expect(resolved.angle2 - resolved.angle1).toBe(360);
+    });
+
     test("document snapshots are the history unit and redo is deterministic", () => {
         const history = new History<WhiteboardDocument>();
         const first = emptyWhiteboardDocument();

@@ -1,4 +1,5 @@
 export * from "./geometry";
+export * from "./arc-closure";
 export * from "./hit-test";
 export * from "./simplify";
 export * from "./brush";

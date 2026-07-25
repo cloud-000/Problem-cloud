@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
 import type { Scene } from "$lib/asy/scene";
 import {
+    addCoincidentConstraint,
     addRelationConstraint,
     createSmartArc,
     createSmartPath,
@@ -49,6 +50,7 @@ function overlayFor(store: InstanceType<typeof WhiteboardStore>) {
         hoveredVertex: null,
         selectedArcControl: null,
         hoveredArcControl: null,
+        activeArcPointer: null,
         project,
         toScreenLength: (units: number) => units,
     });
@@ -1055,6 +1057,140 @@ describe("WhiteboardStore smart arc points", () => {
         expect(Object.keys(store.document.sketch.constraints)).toHaveLength(0);
         expect(resolvedArc(store).angle2).toBeCloseTo(90, 9);
         expect(store.canUndo).toBe(false);
+    });
+
+    test("closing an arc is one smart edit and pulling past hysteresis reopens it", () => {
+        const store = new WhiteboardStore(quarterArc().document);
+        store.selection = ["arc"];
+
+        // The end acquires the start inside 10px (0.25 scene units here).
+        store.pointerDown([0, 2], arcGesture("end", [0, 2]));
+        store.pointerMove([2, 0.1]);
+        store.pointerUp([2, 0.1]);
+
+        expect(resolvedArc(store).angle2 - resolvedArc(store).angle1).toBeCloseTo(360, 9);
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) => constraint.kind === "coincident" && constraint.origin === "inferred",
+        )).toHaveLength(1);
+
+        // Pulling 0.4 units (16px) clears only that inferred closure and opens
+        // the same smart arc; the gesture remains a single undo step.
+        store.pointerDown([2, 0], arcGesture("end", [2, 0]));
+        store.pointerMove([2, 0.4]);
+        store.pointerUp([2, 0.4]);
+
+        expect(resolvedArc(store).angle2).toBeCloseTo(
+            (Math.atan2(0.4, 2) * 180) / Math.PI,
+            6,
+        );
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) => constraint.kind === "coincident",
+        )).toHaveLength(0);
+
+        store.undo();
+        expect(resolvedArc(store).angle2 - resolvedArc(store).angle1).toBeCloseTo(360, 9);
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) => constraint.kind === "coincident",
+        )).toHaveLength(1);
+        store.undo();
+        expect(resolvedArc(store).angle2).toBeCloseTo(90, 9);
+        expect(store.canUndo).toBe(false);
+    });
+
+    test("closure uses the rendered rim when the raw end point is off-circle", () => {
+        const gapDegrees = 360 - 359.7654969806049;
+        const radians = (-gapDegrees * Math.PI) / 180;
+        const created = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [2, 0],
+            [4 * Math.cos(radians), 4 * Math.sin(radians)],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const store = new WhiteboardStore(created.document);
+        store.selection = ["arc"];
+        expect(resolvedArc(store).angle2).toBeCloseTo(-gapDegrees, 9);
+
+        // The visible handle lies on the radius-2 rim, although the hidden raw
+        // point lies on radius 4. Pressing/releasing that visible near-seam
+        // handle must therefore acquire closure inside the 10px window.
+        const visibleEnd: Pair = [
+            2 * Math.cos(radians),
+            2 * Math.sin(radians),
+        ];
+        store.pointerDown(visibleEnd, arcGesture("end", visibleEnd));
+        store.pointerUp(visibleEnd);
+
+        expect(resolvedArc(store).angle2 - resolvedArc(store).angle1).toBeCloseTo(360, 9);
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) =>
+                constraint.kind === "coincident" && constraint.origin === "inferred",
+        )).toHaveLength(1);
+    });
+
+    test("dragging the start closes against the rendered end direction despite radial drift", () => {
+        const created = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [4, 0],
+            [0, 4],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const store = new WhiteboardStore(created.document);
+        store.selection = ["arc"];
+        const radians = (89.4 * Math.PI) / 180;
+        const offRimTarget: Pair = [
+            4.5 * Math.cos(radians),
+            4.5 * Math.sin(radians),
+        ];
+
+        store.pointerDown([4, 0], arcGesture("start", [4, 0]));
+        store.pointerMove(offRimTarget);
+        store.pointerUp(offRimTarget);
+
+        expect(resolvedArc(store).angle2 - resolvedArc(store).angle1).toBeCloseTo(360, 9);
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) =>
+                constraint.kind === "coincident" && constraint.origin === "inferred",
+        )).toHaveLength(1);
+    });
+
+    test("pull-to-reopen preserves an explicit endpoint coincidence", () => {
+        const created = quarterArc();
+        const curve = Object.values(created.document.sketch.curves)[0];
+        if (!curve || curve.kind !== "arc") throw new Error("expected smart arc");
+        const start = { kind: "curve-point" as const, curveId: curve.id, feature: "start" as const };
+        const end = { kind: "curve-point" as const, curveId: curve.id, feature: "end" as const };
+        const explicit = addCoincidentConstraint(
+            created.document,
+            start,
+            end,
+            "explicit",
+        );
+        if (!explicit) throw new Error("expected explicit closure");
+
+        const store = new WhiteboardStore(explicit);
+        store.selection = ["arc"];
+        const closed = resolvedArc(store);
+        const radians = closed.angle2 * Math.PI / 180;
+        const handle: Pair = [
+            closed.center[0] + closed.radius * Math.cos(radians),
+            closed.center[1] + closed.radius * Math.sin(radians),
+        ];
+        const pulled: Pair = [handle[0], handle[1] + 0.4];
+        store.pointerDown(handle, arcGesture("end", handle));
+        store.pointerMove(pulled);
+        store.pointerUp(pulled);
+
+        expect(Object.values(store.document.sketch.constraints).filter(
+            (constraint) =>
+                constraint.kind === "coincident" && constraint.origin === "explicit",
+        )).toHaveLength(1);
+        expect(resolvedArc(store).angle2 - resolvedArc(store).angle1).toBeCloseTo(360, 9);
     });
 
     test("an arc's center and endpoints are constrainable point features", () => {

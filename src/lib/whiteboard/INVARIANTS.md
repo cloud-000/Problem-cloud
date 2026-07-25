@@ -163,6 +163,7 @@ cell.
 | Asymptote read/write for a primitive | `asy/codec/` (`parser.ts` / `lower.ts` / `serialize.ts`) |
 | Hit-testing behavior | `asy/engine/hit-test.ts` |
 | Arc angles → drawn sweep (incl. what counts as a full circle) | `asy/scene/ellipse-geometry.ts` (`positiveArcSweep`) — the **only** place this is decided. Render, export, hit-test, the arc guide, the inspector and `SelectTool` all call it, so a local `abs(a2 - a1) >= 360 ? 360 : normalizeDeg(...)` is a bug: it makes an arc draw as one shape and hit-test or report as another |
+| Arc endpoint closure gesture | `asy/engine/arc-closure.ts` — the only acquire/release policy. Creation, baked editing, and smart endpoint dragging use the same screen-space thresholds; local angular snap windows are a bug. |
 | Freehand ink shaping | `asy/engine/brush.ts` / `simplify.ts` |
 | New constraint or relation kind | `whiteboard/model/types.ts` (`Constraint`) + `operations.ts` + `solver-adapter.ts` + `solver/` |
 | A document mutation (transaction) | `whiteboard/model/operations.ts` |

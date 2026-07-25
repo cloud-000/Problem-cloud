@@ -10,8 +10,8 @@
  * changed* and these functions map that intent onto the Document.
  *
  * Creation with the line/rectangle/point/arc tools lifts to **smart** sketch
- * items (with snap-inferred coincidence); pen/label, full-circle arcs, and every
- * imported element stay **baked**.
+ * items (with snap-inferred coincidence); pen/label and every imported element
+ * stay **baked**.
  */
 
 import type { Pair, Scene, SceneElement } from "$lib/asy/scene/types";
@@ -154,10 +154,7 @@ export function liftAdd(
         return conjoinCreatedFeatures(created.document, created.endpointFeatures, document, ctx);
     }
     if (ctx.toolKind === "arc" && added?.kind === "arc") {
-        // A full turn (or a degenerate sweep) can't be a three-point smart arc —
-        // its rim endpoints would coincide — so it stays baked.
         const sweep = positiveArcSweep(added.angle1, added.angle2);
-        if (sweep < 0.5 || sweep > 359.5) return appendBaked(document, elements);
         const a1 = (added.angle1 * Math.PI) / 180;
         const a2 = (added.angle2 * Math.PI) / 180;
         const start: Pair = [
@@ -177,12 +174,29 @@ export function liftAdd(
             added.strokeEnabled,
             added.id,
         );
+        if (sweep === 360) {
+            const closed = addCoincidentConstraint(
+                created.document,
+                created.endpointFeatures[1],
+                created.endpointFeatures[2],
+                "inferred",
+            );
+            if (!closed) return null;
+            // The internal closure already carries the end with the start, so
+            // infer external attachment once rather than over-constraining both.
+            return conjoinCreatedFeatures(
+                closed,
+                [created.endpointFeatures[0], created.endpointFeatures[1]],
+                document,
+                ctx,
+            );
+        }
         return conjoinCreatedFeatures(created.document, created.endpointFeatures, document, ctx);
     }
     return appendBaked(document, elements);
 }
 
-/** Append raw geometry as baked items (pen · label · full-circle arc · imported ink). */
+/** Append raw geometry as baked items (pen · label · imported ink). */
 export function appendBaked(
     document: WhiteboardDocument,
     elements: readonly SceneElement[],

@@ -189,6 +189,7 @@
             hoveredVertex: pointer.hoveredVertex,
             selectedArcControl: pointer.selectedArcControl,
             hoveredArcControl: pointer.hoveredArcControl,
+            activeArcPointer: pointer.activeArcPointer,
             project,
             toScreenLength: (units) => camera.toScreenLength(units),
             measureLabelWidth,

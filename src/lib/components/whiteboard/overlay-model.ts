@@ -183,6 +183,8 @@ export interface OverlayInput {
     hoveredVertex: VertexRef | null;
     selectedArcControl: ArcControlRef | null;
     hoveredArcControl: ArcControlRef | null;
+    /** Live screen position of the arc handle currently being dragged. */
+    activeArcPointer: Pair | null;
     /** asy-space point → screen point. */
     project: (point: Pair) => Pair;
     /** scene-unit distance → screen pixels. */
@@ -319,7 +321,12 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
             selected: glyph.selected,
             value: glyph.value,
         })),
-        featurePoints: input.selectedFeatureGeometry.points.map(project),
+        // A smart arc drag already has a live edit handle sourced from the
+        // preview Scene. Its selected-feature marker still comes from the
+        // committed Document, so drawing both leaves a stale "old endpoint".
+        featurePoints: input.activeArcPointer
+            ? []
+            : input.selectedFeatureGeometry.points.map(project),
         featureSegments: input.selectedFeatureGeometry.segments.map((segment) => ({
             a: project(segment.a),
             b: project(segment.b),

@@ -40,8 +40,10 @@ import {
 } from "$lib/whiteboard/smart-gestures.svelte";
 import type { StyleModel, WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
 import {
+    arcEndpointClosure,
     arcControlFeature,
     pathNodeFeature,
+    pointFeatureInteractionPosition,
     pointFeaturePosition,
     type PointFeatureRef,
     type WhiteboardDocument,
@@ -159,14 +161,17 @@ export class InteractionController {
             }
             case "drag-feature": {
                 if (route.directMoveIds) this.#selectForDirectMove(route.directMoveIds);
-                const at = pointFeaturePosition(this.#host.document, route.feature);
+                const at = pointFeatureInteractionPosition(this.#host.document, route.feature);
                 if (!at) return;
+                const closure = arcEndpointClosure(this.#host.document, route.feature);
                 const gesture = this.#beginSmartGesture({
                     kind: "drag-feature",
                     base: documentSnapshot(this.#host.document),
                     feature: route.feature,
                     pointerOffset: [point[0] - at[0], point[1] - at[1]],
                     candidate: null,
+                    closure,
+                    closureSnapped: closure?.inferredConstraintId != null,
                     seed: undefined,
                 });
                 this.#selection.selectFeature(route.feature, additiveFeatureSelection);
@@ -343,6 +348,7 @@ export class InteractionController {
             penTapTolerance: this.#host.penTapTolerance,
             strokeProcessing: { ...this.#host.strokeProcessing },
             sceneUnitsPerPixel: this.#host.sceneUnitsPerPixel,
+            suppressSnap: this.#suppressSnapCommit,
             selection: $state.snapshot(this.#selection.selection) as string[],
             lineContinuation: this.#host.lineContinuation
                 ? ($state.snapshot(this.#host.lineContinuation) as LineContinuation)
