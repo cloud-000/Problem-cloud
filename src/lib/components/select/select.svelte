@@ -224,7 +224,11 @@
         if (next instanceof Node && containerEl && containerEl.contains(next)) {
             return;
         }
-        open = false;
+        setTimeout(() => {
+            if (containerEl && !containerEl.contains(document.activeElement)) {
+                open = false;
+            }
+        }, 50);
     }
 </script>
 
@@ -337,7 +341,16 @@
                                     ? "text-muted-foreground opacity-50 cursor-not-allowed"
                                     : "cursor-pointer hover:bg-muted/50 data-active:bg-primary data-active:text-primary-foreground data-selected:bg-primary/20 dark:data-selected:bg-primary/30",
                             )}
-                            onmousedown={(e) => e.preventDefault()}
+                            onpointerdown={(e) => {
+                                if (e.pointerType === "mouse") {
+                                    e.preventDefault();
+                                }
+                            }}
+                            onmousedown={(e) => {
+                                if (typeof PointerEvent === "undefined") {
+                                    e.preventDefault();
+                                }
+                            }}
                             onclick={() =>
                                 !option.disabled && commitOption(option)}
                         >

@@ -533,7 +533,16 @@
                             ? "cursor-pointer data-active:bg-primary"
                             : "text-muted-foreground",
                     )}
-                    onmousedown={(e) => e.preventDefault()}
+                    onpointerdown={(e) => {
+                        if (e.pointerType === "mouse") {
+                            e.preventDefault();
+                        }
+                    }}
+                    onmousedown={(e) => {
+                        if (typeof PointerEvent === "undefined") {
+                            e.preventDefault();
+                        }
+                    }}
                     onclick={() => commitRow(row)}
                 >
                     {#if row.kind === "option"}
