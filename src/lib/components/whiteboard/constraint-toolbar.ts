@@ -1,4 +1,5 @@
 import type { Pair } from "$lib/asy/scene";
+import type { FeatureRef, WhiteboardDocument } from "$lib/whiteboard/model";
 
 export type ToolbarPosition = { left: number; top: number };
 
@@ -38,12 +39,29 @@ export function autoToolbarPosition(anchors: Pair[]): ToolbarPosition | null {
 export function hasConstraintToolbarTarget(store: {
     toolKind: string;
     featureSelection: readonly unknown[];
-    selectedFeatureGeometry: { points: readonly unknown[]; segments: readonly unknown[] };
+    selectedFeatureGeometry: {
+        points: readonly unknown[];
+        segments: readonly unknown[];
+        arcs: readonly unknown[];
+    };
 }): boolean {
     return store.toolKind === "select" &&
         store.featureSelection.length > 0 &&
         (store.selectedFeatureGeometry.points.length > 0 ||
-            store.selectedFeatureGeometry.segments.length > 0);
+            store.selectedFeatureGeometry.segments.length > 0 ||
+            store.selectedFeatureGeometry.arcs.length > 0);
+}
+
+/** Short next-step guidance for a single compatible curve feature. */
+export function constraintToolbarGuidance(
+    document: WhiteboardDocument,
+    selection: readonly FeatureRef[],
+): string | null {
+    if (selection.length !== 1 || selection[0].kind !== "curve") return null;
+    const curve = document.sketch.curves[selection[0].curveId];
+    if (curve?.kind === "arc") return "Shift-click a smart line to make it tangent";
+    if (curve?.kind === "segment") return "Shift-click another smart line to compare segments";
+    return null;
 }
 
 /** Keep a center-positioned floating toolbar fully inside its whiteboard. */

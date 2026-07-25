@@ -20,6 +20,9 @@ export type InteractionMode = "idle" | "draw" | "transform" | "pan" | "pinch";
 
 export type TransformCursor = ResizeCursor | "grab" | "grabbing" | "move";
 
+/** Screen-space movement still treated as an intentional click, not a drag. */
+const FEATURE_CLICK_SLOP_PX = 6;
+
 /**
  * What a pointer-down landed on, decided by one hit-test pass. Each kind maps
  * to exactly one gesture-opening branch.
@@ -80,7 +83,11 @@ export class PointerInputController {
 
     #panStart: { clientX: number; clientY: number; x: number; y: number } | null = null;
     #featureClickStart:
-        | { screen: Pair; selection: WhiteboardStore["featureSelection"] }
+        | {
+            screen: Pair;
+            asy: Pair;
+            selection: WhiteboardStore["featureSelection"];
+        }
         | null = null;
     #activeTouches = new SvelteMap<number, { clientX: number; clientY: number }>();
     #penSamples: PointerSampleBatcher<PointerSample>;
@@ -461,7 +468,11 @@ export class PointerInputController {
     #beginSelectionMove(e: PointerEvent, pointerScreen: Pair) {
         const { store } = this.#host;
         this.clearHandleSelection();
-        this.#featureClickStart = { screen: pointerScreen, selection: [...store.featureSelection] };
+        this.#featureClickStart = {
+            screen: pointerScreen,
+            asy: this.#asy(e),
+            selection: [...store.featureSelection],
+        };
         this.#mode = "transform";
         this.#transformCursor = "move";
         this.#syncToolScale();
@@ -484,6 +495,7 @@ export class PointerInputController {
         if (store.toolKind === "select") {
             this.#featureClickStart = {
                 screen: pointerScreen,
+                asy: this.#asy(e),
                 selection: [...store.featureSelection],
             };
         }
@@ -584,6 +596,15 @@ export class PointerInputController {
 
     pointerUp(e: PointerEvent) {
         const { store, camera } = this.#host;
+        const featureClick = store.toolKind === "select" ? this.#featureClickStart : null;
+        const local = featureClick ? this.#local(e) : null;
+        const featureClickMoved = featureClick && local
+            ? Math.hypot(
+                local[0] - featureClick.screen[0],
+                local[1] - featureClick.screen[1],
+            )
+            : Infinity;
+        const isFeatureClick = featureClickMoved <= FEATURE_CLICK_SLOP_PX;
         const wasPinching = this.#mode === "pinch";
         this.#activeTouches.delete(e.pointerId);
         this.#release(e.pointerId);
@@ -597,7 +618,11 @@ export class PointerInputController {
         if (e.pointerId !== this.#pointerId) return;
         if (this.#mode === "draw" || this.#mode === "transform") {
             const drawingWithPen = this.#mode === "draw" && store.toolKind === "pen";
-            const point = drawingWithPen ? this.#sample(e) : this.#asy(e);
+            const point = drawingWithPen
+                ? this.#sample(e)
+                : isFeatureClick && featureClick
+                  ? featureClick.asy
+                  : this.#asy(e);
             if (drawingWithPen) {
                 const flushed = this.#penSamples.flushWith((points) =>
                     store.pointerUp(point, e.shiftKey, points, e.altKey)
@@ -605,23 +630,15 @@ export class PointerInputController {
                 if (!flushed) store.pointerUp(point, e.shiftKey, [], e.altKey);
             } else store.pointerUp(point, e.shiftKey, [], e.altKey);
         }
-        if (store.toolKind === "select" && this.#featureClickStart) {
-            const [pointerX, pointerY] = this.#local(e);
-            const moved = Math.hypot(
-                pointerX - this.#featureClickStart.screen[0],
-                pointerY - this.#featureClickStart.screen[1],
-            );
-            if (moved <= 3) {
-                const at = this.#asy(e);
-                const element = hitTest(store.scene, at, camera.toAsyLength(8));
-                if (element) {
-                    store.selectFeatureAtItem(
-                        element.id,
-                        at,
-                        e.shiftKey,
-                        this.#featureClickStart.selection,
-                    );
-                }
+        if (isFeatureClick && featureClick) {
+            const element = hitTest(store.scene, featureClick.asy, camera.toAsyLength(8));
+            if (element) {
+                store.selectFeatureAtItem(
+                    element.id,
+                    featureClick.asy,
+                    e.shiftKey,
+                    featureClick.selection,
+                );
             }
         }
         this.#featureClickStart = null;

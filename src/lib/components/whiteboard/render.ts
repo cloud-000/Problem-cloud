@@ -159,6 +159,7 @@ export interface WhiteboardRenderOverlay {
     }>;
     featurePoints?: Pair[];
     featureSegments?: Array<{ a: Pair; b: Pair }>;
+    featureArcs?: Pair[][];
 }
 
 export type ProjectedPathCommand = PathCommand;
@@ -660,6 +661,10 @@ function drawOverlay(context: CanvasRenderingContext2D, overlay: WhiteboardRende
         context.beginPath();
         context.moveTo(segment.a[0], segment.a[1]);
         context.lineTo(segment.b[0], segment.b[1]);
+        context.stroke();
+    }
+    for (const arc of overlay.featureArcs ?? []) {
+        drawPolyline(context, arc);
         context.stroke();
     }
     for (const point of overlay.featurePoints ?? []) {

@@ -8,6 +8,7 @@
     import {
         autoToolbarPosition,
         clampToolbarPosition,
+        constraintToolbarGuidance,
         hasConstraintToolbarTarget,
     } from "./constraint-toolbar";
 
@@ -55,6 +56,7 @@
         return autoToolbarPosition([
             ...geometry.points.map(project),
             ...geometry.segments.flatMap((segment) => [project(segment.a), project(segment.b)]),
+            ...geometry.arcs.flatMap((arc) => arc.anchors.map(project)),
         ]);
     });
     /** Stage two: the drag offset applied to `auto`, kept inside the board. */
@@ -70,14 +72,13 @@
         );
         return { ...clamped, menuAbove: clamped.top + toolbarHeight + 190 > board.height };
     });
-    const lineSelectionGuidance = $derived.by(() => {
+    const selectionGuidance = $derived.by(() => {
+        const guidance = constraintToolbarGuidance(store.document, store.featureSelection);
+        if (guidance) return guidance;
         const markers = selectedSegmentMarkers;
-        if (store.featureSelection.length !== markers.length) return null;
-        if (markers.length === 1) {
-            return "Shift-click another smart line to compare segments";
-        }
-        if (markers.length === 2) return "Choose a relationship for these segments";
-        return null;
+        return store.featureSelection.length === 2 && markers.length === 2
+            ? "Choose a relationship for these segments"
+            : null;
     });
 
     const relationGlyphs: Record<RelationKind, string> = {
@@ -208,9 +209,9 @@
             </Button>
         </div>
 
-        {#if lineSelectionGuidance}
+        {#if selectionGuidance}
             <p class="px-2 pb-1 pt-0.5 text-center text-xs text-muted-foreground" role="status" aria-live="polite">
-                {lineSelectionGuidance}
+                {selectionGuidance}
             </p>
         {/if}
 

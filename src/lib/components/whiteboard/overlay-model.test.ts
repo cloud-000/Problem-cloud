@@ -32,7 +32,7 @@ function input(overrides: Partial<OverlayInput> = {}): OverlayInput {
         snapProposal: null,
         constraintGlyphs: [],
         dimensionGlyphs: [],
-        selectedFeatureGeometry: { points: [], segments: [] },
+        selectedFeatureGeometry: { points: [], segments: [], arcs: [] },
         selectedVertex: null,
         hoveredVertex: null,
         selectedArcControl: null,
@@ -546,6 +546,7 @@ describe("glyphs, markers, and rubber bands", () => {
                 selectedFeatureGeometry: {
                     points: [[0, 1]],
                     segments: [{ a: [0, 0], b: [2, 0] }, { a: [0, 0], b: [0, 2] }],
+                    arcs: [],
                 },
             }),
         );
@@ -559,6 +560,28 @@ describe("glyphs, markers, and rubber bands", () => {
             { a: [100, 100], b: [120, 100] },
             { a: [100, 100], b: [100, 80] },
         ]);
+    });
+
+    test("selected arc curves highlight their stroke instead of defining points", () => {
+        const arc = createArc([0, 0], 2, 0, 90);
+        const overlay = buildOverlay(
+            input({
+                displayScene: scene(arc),
+                selectedFeatureGeometry: {
+                    points: [],
+                    segments: [],
+                    arcs: [{
+                        elementId: arc.id,
+                        anchors: [[0, 0], [2, 0], [0, 2]],
+                    }],
+                },
+            }),
+        );
+
+        expect(overlay.featurePoints).toEqual([]);
+        expect(overlay.featureArcs).toHaveLength(1);
+        expect(overlay.featureArcs?.[0][0]).toEqual([120, 100]);
+        expect(overlay.featureArcs?.[0].at(-1)).toEqual([100, 80]);
     });
 
     test("marquee and snap proposal are projected screen-space", () => {

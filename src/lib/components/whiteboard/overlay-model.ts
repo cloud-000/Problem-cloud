@@ -32,6 +32,7 @@ import type {
     ScreenRect,
     WhiteboardRenderOverlay,
 } from "./render";
+import { projectedArc } from "./render";
 
 export type ResizePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -178,6 +179,7 @@ export interface OverlayInput {
     selectedFeatureGeometry: {
         points: readonly Pair[];
         segments: ReadonlyArray<{ a: Pair; b: Pair }>;
+        arcs: ReadonlyArray<{ elementId: string; anchors: readonly Pair[] }>;
     };
     selectedVertex: VertexRef | null;
     hoveredVertex: VertexRef | null;
@@ -331,6 +333,18 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
             a: project(segment.a),
             b: project(segment.b),
         })),
+        featureArcs: input.selectedFeatureGeometry.arcs.flatMap(({ elementId }) => {
+            const element = input.displayScene.elements.find(({ id }) => id === elementId);
+            return element?.kind === "arc"
+                ? [projectedArc(
+                    element.center,
+                    element.radius,
+                    element.angle1,
+                    element.angle2,
+                    project,
+                )]
+                : [];
+        }),
         selectionGeometryBounds,
         straightVertexEditablePath,
         selectedSegmentMarkers,

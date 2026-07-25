@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Pair } from "$lib/asy/scene";
 import {
+    createSmartArc,
+    createSmartPath,
+    emptyWhiteboardDocument,
+} from "$lib/whiteboard/model";
+import {
     autoToolbarPosition,
     clampToolbarPosition,
+    constraintToolbarGuidance,
     hasConstraintToolbarTarget,
 } from "./constraint-toolbar";
 
@@ -83,7 +89,7 @@ describe("constraint toolbar auto placement", () => {
 });
 
 describe("constraint toolbar visibility", () => {
-    const geometry = { points: [[0, 0]], segments: [] };
+    const geometry = { points: [[0, 0]], segments: [], arcs: [] };
 
     test("needs the select tool, a feature selection, and an anchor", () => {
         expect(hasConstraintToolbarTarget({
@@ -104,7 +110,38 @@ describe("constraint toolbar visibility", () => {
         expect(hasConstraintToolbarTarget({
             toolKind: "select",
             featureSelection: [{}],
-            selectedFeatureGeometry: { points: [], segments: [] },
+            selectedFeatureGeometry: { points: [], segments: [], arcs: [] },
         })).toBe(false);
+        expect(hasConstraintToolbarTarget({
+            toolKind: "select",
+            featureSelection: [{}],
+            selectedFeatureGeometry: { points: [], segments: [], arcs: [{}] },
+        })).toBe(true);
+    });
+});
+
+describe("constraint toolbar guidance", () => {
+    test("explains how to extend a single arc or line selection", () => {
+        const arc = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [2, 0],
+            [0, 2],
+        );
+        const arcItem = arc.document.items[0];
+        if (arcItem.kind !== "sketch-curve") throw new Error("missing smart arc");
+        expect(constraintToolbarGuidance(
+            arc.document,
+            [{ kind: "curve", curveId: arcItem.curveId }],
+        )).toBe("Shift-click a smart line to make it tangent");
+
+        const line = createSmartPath(arc.document, [[-2, 3], [2, 3]], false);
+        const lineItem = line.document.items.at(-1);
+        if (lineItem?.kind !== "sketch-path") throw new Error("missing smart line");
+        expect(constraintToolbarGuidance(
+            line.document,
+            [{ kind: "curve", curveId: lineItem.uses[0].curveId }],
+        )).toBe("Shift-click another smart line to compare segments");
+        expect(constraintToolbarGuidance(line.document, [])).toBeNull();
     });
 });

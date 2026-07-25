@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
 import type { Pair } from "$lib/asy/scene";
-import { createSmartPath, emptyWhiteboardDocument, type CurveFeatureRef } from "$lib/whiteboard/model";
+import {
+    createSmartArc,
+    createSmartPath,
+    emptyWhiteboardDocument,
+    type CurveFeatureRef,
+} from "$lib/whiteboard/model";
 import type { VertexRef, WhiteboardOverlay } from "./overlay-model";
 
 const runtimeMock = (bunTest as unknown as {
@@ -49,27 +54,8 @@ function pressAt(
     } as unknown as PointerEvent;
 }
 
-/**
- * A store holding one straight smart path with a driving length dimension, wired
- * to a controller through a host that rebuilds the overlay on every read (the
- * component gets that from `$derived`).
- */
-function harness() {
-    const created = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [3, 4]], false);
-    const item = created.document.items[0];
-    if (item.kind !== "sketch-path") throw new Error("missing smart path");
-    const store = new WhiteboardStore(created.document);
-
-    const curve: CurveFeatureRef = { kind: "curve", curveId: item.uses[0].curveId };
-    store.selectFeature(curve);
-    if (!store.addLengthDimension("driving")) throw new Error("missing dimension");
-    const dimensionId = store.selectedDimensionId!;
-
-    store.clearFeatureSelection();
-    store.selectDimension(null);
-    const pathElementId = store.scene.elements[0].id;
-    store.selection = [pathElementId];
-
+/** Wire a store to the pointer controller exactly as `whiteboard.svelte` does. */
+function wire(store: InstanceType<typeof WhiteboardStore>) {
     const surface = fakeSurface();
     const camera = new Camera({
         scale: 40,
@@ -133,8 +119,6 @@ function harness() {
     return {
         store,
         controller,
-        dimensionId,
-        pathElementId,
         overlay: overlayOf,
         get lengthMenuClosed() {
             return lengthMenuClosed;
@@ -142,7 +126,134 @@ function harness() {
     };
 }
 
+/**
+ * A store holding one straight smart path with a driving length dimension,
+ * wired to a controller through a host that rebuilds the overlay on every read.
+ */
+function harness() {
+    const created = createSmartPath(emptyWhiteboardDocument(), [[0, 0], [3, 4]], false);
+    const item = created.document.items[0];
+    if (item.kind !== "sketch-path") throw new Error("missing smart path");
+    const store = new WhiteboardStore(created.document);
+
+    const curve: CurveFeatureRef = { kind: "curve", curveId: item.uses[0].curveId };
+    store.selectFeature(curve);
+    if (!store.addLengthDimension("driving")) throw new Error("missing dimension");
+    const dimensionId = store.selectedDimensionId!;
+
+    store.clearFeatureSelection();
+    store.selectDimension(null);
+    const pathElementId = store.scene.elements[0].id;
+    store.selection = [pathElementId];
+
+    return { ...wire(store), dimensionId, pathElementId };
+}
+
 describe("PointerInputController pointer-down routing", () => {
+    test("arc-to-line feature selection tolerates click jitter and exposes tangency", () => {
+        const arc = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [2, 0],
+            [0, 2],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const line = createSmartPath(
+            arc.document,
+            [[-4, 4], [4, 4]],
+            false,
+            undefined,
+            undefined,
+            "line",
+        );
+        const arcItem = line.document.items.find((item) =>
+            item.kind !== "baked" && item.id === "arc"
+        );
+        const lineItem = line.document.items.find((item) =>
+            item.kind !== "baked" && item.id === "line"
+        );
+        if (arcItem?.kind !== "sketch-curve" || lineItem?.kind !== "sketch-path") {
+            throw new Error("missing smart arc/line");
+        }
+        const scope = wire(new WhiteboardStore(line.document));
+        const before = structuredClone(scope.store.document);
+        const arcStroke: Pair = [457, 243];
+
+        scope.controller.pointerDown(pressAt(arcStroke));
+        scope.controller.pointerMove(pressAt([461, 243]));
+        scope.controller.pointerUp(pressAt([461, 243]));
+
+        expect(scope.store.document).toEqual(before);
+        expect(scope.store.canUndo).toBe(false);
+        expect(scope.store.featureSelection).toEqual([
+            { kind: "curve", curveId: arcItem.curveId },
+        ]);
+        expect(scope.overlay().featurePoints).toEqual([]);
+        expect(scope.overlay().featureArcs).toHaveLength(1);
+
+        const lineStroke: Pair = [480, 140];
+        scope.controller.pointerDown(pressAt(lineStroke, { shiftKey: true }));
+        scope.controller.pointerUp(pressAt(lineStroke, { shiftKey: true }));
+
+        expect(scope.store.featureSelection).toEqual([
+            { kind: "curve", curveId: arcItem.curveId },
+            { kind: "curve", curveId: lineItem.uses[0].curveId },
+        ]);
+        expect(scope.store.contextualRelationActions.map(({ kind }) => kind))
+            .toEqual(["tangent"]);
+    });
+
+    test("normal curve clicks still replace selection and real drags move the arc", () => {
+        const arc = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [2, 0],
+            [0, 2],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const line = createSmartPath(
+            arc.document,
+            [[-4, 4], [4, 4]],
+            false,
+            undefined,
+            undefined,
+            "line",
+        );
+        const lineItem = line.document.items.find((item) =>
+            item.kind !== "baked" && item.id === "line"
+        );
+        if (lineItem?.kind !== "sketch-path") throw new Error("missing smart line");
+        const scope = wire(new WhiteboardStore(line.document));
+        const arcStroke: Pair = [457, 243];
+        const lineStroke: Pair = [480, 140];
+
+        scope.controller.pointerDown(pressAt(arcStroke));
+        scope.controller.pointerUp(pressAt(arcStroke));
+        scope.controller.pointerDown(pressAt(lineStroke));
+        scope.controller.pointerUp(pressAt(lineStroke));
+
+        expect(scope.store.featureSelection).toEqual([
+            { kind: "curve", curveId: lineItem.uses[0].curveId },
+        ]);
+        expect(scope.store.contextualRelationActions.map(({ kind }) => kind))
+            .toEqual(["horizontal", "vertical"]);
+
+        scope.controller.pointerDown(pressAt(arcStroke));
+        scope.controller.pointerMove(pressAt([465, 243]));
+        scope.controller.pointerUp(pressAt([465, 243]));
+
+        expect(scope.store.canUndo).toBe(true);
+        const movedArc = scope.store.scene.elements.find(({ id }) => id === "arc");
+        expect(movedArc?.kind).toBe("arc");
+        if (movedArc?.kind !== "arc") throw new Error("missing moved arc");
+        expect(movedArc.center[0]).toBeCloseTo(0.2, 9);
+        expect(movedArc.center[1]).toBeCloseTo(0, 9);
+    });
+
     test("four canvas clicks can close an arc at its construction endpoint", () => {
         const scope = harness();
         scope.store.setTool("arc");
@@ -212,6 +323,11 @@ describe("PointerInputController pointer-down routing", () => {
             .toBeGreaterThan(10);
 
         scope.controller.pointerDown(pressAt(end.screen));
+        expect(scope.store.featureSelection).toHaveLength(1);
+        expect(scope.store.featureSelection[0]).toMatchObject({
+            kind: "curve-point",
+            feature: "end",
+        });
         scope.controller.pointerMove(pressAt(start.screen));
         scope.controller.pointerUp(pressAt(start.screen));
 

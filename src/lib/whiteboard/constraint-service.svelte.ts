@@ -207,9 +207,11 @@ export class ConstraintService {
     get selectedFeatureGeometry(): {
         points: Pair[];
         segments: Array<{ a: Pair; b: Pair }>;
+        arcs: Array<{ elementId: string; anchors: Pair[] }>;
     } {
         const points: Pair[] = [];
         const segments: Array<{ a: Pair; b: Pair }> = [];
+        const arcs: Array<{ elementId: string; anchors: Pair[] }> = [];
         for (const feature of this.#host.featureSelection) {
             if (feature.kind !== "curve") {
                 const at = pointFeaturePosition(this.#host.document, feature);
@@ -222,13 +224,22 @@ export class ConstraintService {
                 const b = pointFeaturePosition(this.#host.document, refs[1]);
                 if (a && b) segments.push({ a, b });
             } else {
-                for (const ref of refs) {
+                const anchors = refs.flatMap((ref) => {
                     const at = pointFeaturePosition(this.#host.document, ref);
-                    if (at) points.push(at);
+                    return at ? [at] : [];
+                });
+                for (const item of this.#host.document.items) {
+                    if (
+                        item.kind === "sketch-curve" &&
+                        item.curveId === feature.curveId &&
+                        anchors.length > 0
+                    ) {
+                        arcs.push({ elementId: item.id, anchors });
+                    }
                 }
             }
         }
-        return { points, segments };
+        return { points, segments, arcs };
     }
 
     get canDimensionSelection(): boolean {
