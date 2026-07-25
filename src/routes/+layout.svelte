@@ -5,7 +5,7 @@
     import { Theme } from "$lib/utils/Theme.svelte";
     import { deviceDetails } from "$lib/mobile.svelte";
     if (browser) {
-        Theme.init("light");
+        Theme.init(deviceDetails.isKindle ? "kindle" : "light");
     }
 
     let { children } = $props();
