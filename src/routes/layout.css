@@ -484,3 +484,37 @@
     background-color: var(--color-surface-container-low);
     font-weight: 600;
 }
+
+/* ==========================================================================
+   5. KINDLE / E-INK MODE OVERRIDES
+   ========================================================================== */
+html[data-theme="kindle"] {
+    /* Blanket motion wipeout & performance overhead reduction */
+    &,
+    & *,
+    & *::before,
+    & *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+        backdrop-filter: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Force crisp white background & rich black text */
+    body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    /* High contrast crisp solid borders */
+    .border {
+        border-color: #000000 !important;
+    }
+
+    /* Ensure KaTeX math formulas are high-contrast black */
+    .katex {
+        color: #000000 !important;
+    }
+}
+
