@@ -2026,9 +2026,6 @@
                         onResume={togglePause}
                         onOpenSettings={() => utilityPanel.open("practice-settings")}
                         onEndSession={finishSession}
-                        onToggleTimerMode={() =>
-                           (timerMode =
-                              timerMode === "total" ? "problem" : "total")}
                      />
                   {/if}
 
