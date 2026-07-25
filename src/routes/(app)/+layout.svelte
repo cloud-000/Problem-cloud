@@ -20,6 +20,7 @@
    import { deviceDetails } from "$lib/mobile.svelte";
    import { goto } from "$app/navigation";
    import { topbar } from "$lib/state/topbar.svelte";
+   import { shell } from "$lib/state/shell.svelte";
    import { settings } from "$lib/state/settings.svelte";
    import {
       CoachContextRegister,
@@ -157,6 +158,10 @@
    let isPortrait = $derived(portraitQuery.current);
 
    const isMobilePortrait = $derived(deviceDetails.isMobile && isPortrait);
+
+   // A route with its own mobile bottom bar (the trainer) takes the nav's place
+   // rather than stacking on top of it.
+   const showNav = $derived(!isMobilePortrait || shell.mobileNavVisible);
 
    // Mobile portrait has five stable items; everything else belongs in More.
    let mobilePrimaryTabs = $derived(
@@ -330,102 +335,104 @@
 <div
    class="app-container flex flex-row w-full h-dvh bg-background text-foreground overflow-hidden"
 >
-   <Sidebar.Root bind:expanded={() => expanded, setSidebarExpanded}>
-      <Sidebar.Header class={expanded ? "justify-between" : "justify-center"}>
-         {#if expanded}
-            <div class="flex items-center gap-2 text-primary-foreground">
-               <Icon class="font-bold animate-pulse" fontsize="24px">cloud</Icon
-               >
-               <span class="text-base font-semibold tracking-tight"
-                  >ProblemCloud</span
-               >
-            </div>
-         {/if}
-         <Sidebar.Trigger />
-      </Sidebar.Header>
+   {#if showNav}
+      <Sidebar.Root bind:expanded={() => expanded, setSidebarExpanded}>
+         <Sidebar.Header class={expanded ? "justify-between" : "justify-center"}>
+            {#if expanded}
+               <div class="flex items-center gap-2 text-primary-foreground">
+                  <Icon class="font-bold animate-pulse" fontsize="24px">cloud</Icon
+                  >
+                  <span class="text-base font-semibold tracking-tight"
+                     >ProblemCloud</span
+                  >
+               </div>
+            {/if}
+            <Sidebar.Trigger />
+         </Sidebar.Header>
 
-      <Sidebar.Group heading="Navigation">
-         {#if isMobilePortrait}
-            {#each mobilePrimaryTabs.slice(0, 2) as tab (tab.href)}
-               {@const isActive = page.url.pathname === tab.href}
-               {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
-            {/each}
-            {#if aiCoachEnabled}
-               <Sidebar.Item active={false} activeClass="" label="Coach">
+         <Sidebar.Group heading="Navigation">
+            {#if isMobilePortrait}
+               {#each mobilePrimaryTabs.slice(0, 2) as tab (tab.href)}
+                  {@const isActive = page.url.pathname === tab.href}
+                  {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
+               {/each}
+               {#if aiCoachEnabled}
+                  <Sidebar.Item active={false} activeClass="" label="Coach">
+                     {#snippet child({ props })}
+                        <CoachLauncher
+                           {...props}
+                           variant="mobile"
+                           class="justify-center px-0"
+                        />
+                     {/snippet}
+                  </Sidebar.Item>
+               {/if}
+               {#each mobilePrimaryTabs.slice(2) as tab (tab.href)}
+                  {@const isActive = page.url.pathname === tab.href}
+                  {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
+               {/each}
+               <Sidebar.Item
+                  active={isAnyDropdownItemActive}
+                  activeClass=""
+                  label="More"
+               >
                   {#snippet child({ props })}
-                     <CoachLauncher
-                        {...props}
-                        variant="mobile"
-                        class="justify-center px-0"
-                     />
+                     <DropdownMenu
+                        options={moreOptions}
+                        class="w-full h-full"
+                        triggerClass="w-full h-full flex items-center justify-center"
+                     >
+                        <button
+                           type="button"
+                           {...props}
+                           class={cn(
+                              props.class,
+                              isAnyDropdownItemActive
+                                 ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                 : "text-muted-foreground hover:bg-surface-container hover:text-foreground",
+                              "justify-center px-0 w-10 h-10",
+                           )}
+                           aria-label="More options"
+                        >
+                           <Icon
+                              fill={isAnyDropdownItemActive}
+                              class="shrink-0 transition-colors"
+                           >
+                              more_horiz
+                           </Icon>
+                        </button>
+                     </DropdownMenu>
                   {/snippet}
                </Sidebar.Item>
+            {:else}
+               {#each visibleTabs as tab (tab.href)}
+                  {@const isActive = page.url.pathname === tab.href}
+                  {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
+               {/each}
             {/if}
-            {#each mobilePrimaryTabs.slice(2) as tab (tab.href)}
-               {@const isActive = page.url.pathname === tab.href}
-               {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
-            {/each}
-            <Sidebar.Item
-               active={isAnyDropdownItemActive}
-               activeClass=""
-               label="More"
-            >
-               {#snippet child({ props })}
-                  <DropdownMenu
-                     options={moreOptions}
-                     class="w-full h-full"
-                     triggerClass="w-full h-full flex items-center justify-center"
-                  >
-                     <button
-                        type="button"
-                        {...props}
-                        class={cn(
-                           props.class,
-                           isAnyDropdownItemActive
-                              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                              : "text-muted-foreground hover:bg-surface-container hover:text-foreground",
-                           "justify-center px-0 w-10 h-10",
-                        )}
-                        aria-label="More options"
-                     >
-                        <Icon
-                           fill={isAnyDropdownItemActive}
-                           class="shrink-0 transition-colors"
-                        >
-                           more_horiz
-                        </Icon>
-                     </button>
-                  </DropdownMenu>
-               {/snippet}
-            </Sidebar.Item>
-         {:else}
-            {#each visibleTabs as tab (tab.href)}
-               {@const isActive = page.url.pathname === tab.href}
-               {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
-            {/each}
-         {/if}
-      </Sidebar.Group>
+         </Sidebar.Group>
 
-      <Sidebar.Footer>
-         {#if session}
-            {#if !isMobilePortrait}
-               {@render sidebarLink(
-                  "/settings",
-                  "settings",
-                  "Settings",
-                  page.url.pathname === "/settings",
-               )}
+         <Sidebar.Footer>
+            {#if session}
+               {#if !isMobilePortrait}
+                  {@render sidebarLink(
+                     "/settings",
+                     "settings",
+                     "Settings",
+                     page.url.pathname === "/settings",
+                  )}
+               {/if}
+            {:else}
+               <Sidebar.Item
+                  href="/auth/login"
+                  icon="login"
+                  label="Log In"
+                  active={page.url.pathname === "/auth/login"}
+               />
             {/if}
-         {:else}
-            <Sidebar.Item
-               href="/auth/login"
-               icon="login"
-               label="Log In"
-               active={page.url.pathname === "/auth/login"}
-            />
-         {/if}
-      </Sidebar.Footer>
-   </Sidebar.Root>
+         </Sidebar.Footer>
+      </Sidebar.Root>
+   {/if}
 
    {#if session}
       <form

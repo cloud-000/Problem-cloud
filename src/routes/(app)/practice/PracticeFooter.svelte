@@ -5,9 +5,14 @@
         type DropdownOption,
     } from "$lib/components/dropdown-menu";
     import { Icon } from "$lib/components/icon";
+    import { CoachLauncher } from "$lib/components/coach";
     import type { PlayerRating } from "$lib/library";
     import { cn } from "$lib/utils";
     import { fade } from "svelte/transition";
+    import { deviceDetails } from "$lib/mobile.svelte";
+    import { coach } from "$lib/state/coach.svelte";
+    import { shell } from "$lib/state/shell.svelte";
+    import { MediaQuery } from "svelte/reactivity";
     import { deriveFooterViewState } from "./footer-state";
 
     let {
@@ -87,10 +92,26 @@
             canGoBack,
         }),
     );
+
+    const portraitQuery = new MediaQuery("(orientation: portrait)", false);
+    let isMobilePortrait = $derived(
+        deviceDetails.isMobile && portraitQuery.current,
+    );
+    // On mobile this bar replaces the app's bottom nav, so it also hosts the
+    // Coach button the nav would otherwise carry.
+    let showCoach = $derived(isMobilePortrait && coach.enabled);
+
+    // While the trainer bar is up, the app shell drops its mobile bottom nav.
+    $effect(() => shell.suppressMobileNav());
 </script>
 
 <footer
-    class="sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1"
+    class={cn(
+        "sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1",
+        // Standing in for the nav bar means owning its safe-area inset (home
+        // indicator / Safari toolbar).
+        isMobilePortrait && "pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
+    )}
 >
     <div
         class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
@@ -121,6 +142,9 @@
                 <Icon name="more_horiz" />
             </Button>
         </DropdownMenu>
+        {#if showCoach}
+            <CoachLauncher class="px-2.5 py-1.5 h-auto [&_svg]:size-3.5" />
+        {/if}
         {#if view.showForward && !view.compact && view.mode !== "test"}
             <Button
                 variant="ghost"
