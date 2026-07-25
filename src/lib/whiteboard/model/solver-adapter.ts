@@ -94,6 +94,15 @@ function documentToSolverGraph(document: WhiteboardDocument): SolverGraph {
                     constraints.push({ id, kind: "point-on-line", point, a: curve.start, b: curve.end });
                 } else if (curve.kind === "arc") {
                     constraints.push({ id, kind: "point-on-circle", point, center: curve.center, rim: curve.start });
+                } else if (curve.kind === "ellipse" || curve.kind === "elliptical-arc") {
+                    constraints.push({
+                        id,
+                        kind: "point-on-ellipse",
+                        point,
+                        center: curve.center,
+                        axisX: curve.axisX,
+                        axisY: curve.axisY,
+                    });
                 } else {
                     throw new Error(`point-on-curve on a ${curve.kind} is outside the point/segment solver adapter`);
                 }
@@ -103,18 +112,33 @@ function documentToSolverGraph(document: WhiteboardDocument): SolverGraph {
                 const a = document.sketch.curves[constraint.a];
                 const b = document.sketch.curves[constraint.b];
                 const segment = a?.kind === "segment" ? a : b?.kind === "segment" ? b : null;
-                const arc = a?.kind === "arc" ? a : b?.kind === "arc" ? b : null;
+                const arc =
+                    a?.kind === "arc" || a?.kind === "elliptical-arc"
+                        ? a
+                        : b?.kind === "arc" || b?.kind === "elliptical-arc"
+                          ? b
+                          : null;
                 if (!segment || !arc) {
                     throw new Error("tangent requires one segment and one arc in the point/segment solver adapter");
                 }
-                constraints.push({
-                    id,
-                    kind: "tangent-line-circle",
-                    a: segment.start,
-                    b: segment.end,
-                    center: arc.center,
-                    rim: arc.start,
-                });
+                constraints.push(arc.kind === "arc"
+                    ? {
+                          id,
+                          kind: "tangent-line-circle",
+                          a: segment.start,
+                          b: segment.end,
+                          center: arc.center,
+                          rim: arc.start,
+                      }
+                    : {
+                          id,
+                          kind: "tangent-line-ellipse",
+                          a: segment.start,
+                          b: segment.end,
+                          center: arc.center,
+                          axisX: arc.axisX,
+                          axisY: arc.axisY,
+                      });
                 break;
             }
             case "radial-distance":

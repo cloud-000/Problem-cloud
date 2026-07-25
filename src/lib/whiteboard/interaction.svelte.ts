@@ -141,6 +141,8 @@ export class InteractionController {
                     start: point,
                     pointerOffset: route.gesture.kind === "resize"
                         ? [point[0] - route.gesture.handle[0], point[1] - route.gesture.handle[1]]
+                        : route.gesture.kind === "arc"
+                          ? [point[0] - route.gesture.handle[0], point[1] - route.gesture.handle[1]]
                         : [0, 0],
                     gesture: route.gesture,
                     itemIds: route.itemIds,
@@ -269,7 +271,17 @@ export class InteractionController {
         const selection = this.#selection.selection;
         if (
             selectionTransform &&
-            (selectionTransform.kind === "resize" || selectionTransform.kind === "rotate") &&
+            (
+                selectionTransform.kind === "resize" ||
+                selectionTransform.kind === "rotate" ||
+                (
+                    selectionTransform.kind === "arc" &&
+                    (
+                        selectionTransform.control === "axis-x" ||
+                        selectionTransform.control === "axis-y"
+                    )
+                )
+            ) &&
             selection.length > 0 &&
             this.#selection.selectionHasSmartItems(selection)
         ) {

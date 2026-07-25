@@ -60,7 +60,9 @@ function curveOfKind(
 /** The point ids that *define* a curve — its endpoints/center — never on-curve targets. */
 function definingPointIds(curve: SketchCurve): string[] {
     if (curve.kind === "segment") return [curve.start, curve.end];
-    if (curve.kind === "arc") return [curve.center, curve.start, curve.end];
+    if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
+        return [curve.center, curve.start, curve.end];
+    }
     return [curve.center];
 }
 
@@ -75,7 +77,7 @@ export function pointOnCurvePair(
 ): { point: PointFeatureRef; curve: CurveFeatureRef } | null {
     const pointFeature = features.find(isPointFeature);
     const curveMatch = features
-        .map((feature) => curveOfKind(document, feature, ["segment", "arc"]))
+        .map((feature) => curveOfKind(document, feature, ["segment", "arc", "elliptical-arc"]))
         .find((match): match is CurveFeatureRef & { curve: SketchCurve } => match !== null);
     if (!pointFeature || !curveMatch) return null;
     const pointId = pointFeaturePointId(document, pointFeature);
@@ -88,7 +90,7 @@ export function tangentPair(
     document: WhiteboardDocument,
     features: readonly FeatureRef[],
 ): { arc: CurveFeatureRef; segment: CurveFeatureRef } | null {
-    const arc = features.map((feature) => curveOfKind(document, feature, ["arc"]))
+    const arc = features.map((feature) => curveOfKind(document, feature, ["arc", "elliptical-arc"]))
         .find((match): match is CurveFeatureRef & { curve: SketchCurve } => match !== null);
     const segment = features.map((feature) => curveOfKind(document, feature, ["segment"]))
         .find((match): match is CurveFeatureRef & { curve: SketchCurve } => match !== null);

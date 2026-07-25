@@ -80,6 +80,8 @@ export type SelectionTransformGesture =
           handle: Pair;
           /** Dimensions controlled by this handle. */
           axes: { x: boolean; y: boolean };
+          /** Orthonormal coordinate frame used to interpret the handle drag. */
+          frame?: { x: Pair; y: Pair };
           /** Smallest allowed positive scale per axis, preventing collapse/mirroring. */
           minimumScale: Pair;
       }
@@ -91,7 +93,15 @@ export type SelectionTransformGesture =
     | {
           kind: "arc";
           elementId: string;
-          control: "center" | "start" | "end" | "radius" | "focus1" | "focus2";
+          control:
+              | "center"
+              | "start"
+              | "end"
+              | "radius"
+              | "focus1"
+              | "focus2"
+              | "axis-x"
+              | "axis-y";
           /** Semantic geometry point, used to keep center drags from jumping. */
           handle: Pair;
           /** Smallest radius allowed by a radius drag. */

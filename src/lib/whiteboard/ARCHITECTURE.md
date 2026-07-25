@@ -65,6 +65,10 @@ It holds three kinds of state:
   with radius (`|center − start|`) and both angles **derived** at resolve time —
   so their endpoints are ordinary drag/snap/constraint targets. A **circle**
   still carries a scalar radius, since its rim is not a point.
+  Non-uniform resizing promotes circular smart curves to affine `ellipse` /
+  `elliptical-arc` curves. Their full `axisX`/`axisY` basis stays in the
+  Document, while elliptical-arc center/start/end remain ordinary sketch
+  points for snapping and constraints.
 - **`dimensions`** — driving/reference length·radius·angle annotations.
 
 All mutation of the whiteboard is a mutation of *this* object, produced by the
@@ -148,7 +152,7 @@ rule. The boundary between them is a documented contract, not an accident.
 
 | | **Pipeline A — Tools** | **Pipeline B — Smart gestures** |
 |---|---|---|
-| Handles | creation & freehand: pen, line, rectangle, arc, point, label, eraser, marquee | constraint-driven edits: drag a smart feature, translate / rotate / resize a smart selection |
+| Handles | creation & freehand: pen, line, rectangle, arc, point, label, eraser, marquee | constraint-driven edits: drag a smart feature, translate / rotate / affine-resize a smart selection |
 | Contract | `Tool` state machine (`asy/engine/tools`) — `onPointerDown/Move/Up` return a `ToolResult` | `operations.ts` transactions + the `solver` |
 | Reads | the projected `Scene` (for hit-testing & rubber-band preview) | the Document's `SketchGraph` |
 | Writes on commit | **a `ToolCommit` delta, lifted to one Document transaction** | Document (points/params updated by the solver) |
@@ -191,6 +195,12 @@ the Document like everything else. What the lift produces depends on the tool:
   Imported raw arcs remain baked.
 - **eraser** → `deleteWhiteboardItems`; **select** move/resize/rotate/vertex →
   the changed baked elements replaced in place by id.
+
+Resize corners are freeform by default and Shift locks the pointer-down aspect
+ratio; edge handles resize one axis. A single rotated smart rectangle uses its
+own edge frame, while aggregate selections use canvas axes. The solver remains
+authoritative: incompatible driving constraints reject the commit, and a
+radial constraint prevents promotion to an ellipse.
 
 Previews are the only transient Scenes, and they are render-only (never stored,
 never history).

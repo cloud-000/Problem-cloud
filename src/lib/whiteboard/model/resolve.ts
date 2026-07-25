@@ -7,7 +7,7 @@ const COINCIDENT_ENDPOINT = 1e-4;
 
 function arcEndpointsConstrainedCoincident(
     document: WhiteboardDocument,
-    curve: Extract<SketchCurve, { kind: "arc" }>,
+    curve: Extract<SketchCurve, { kind: "arc" | "elliptical-arc" }>,
 ): boolean {
     return Object.values(document.sketch.constraints).some((constraint) => {
         if (!constraint.enabled || constraint.kind !== "coincident") return false;
@@ -16,6 +16,14 @@ function arcEndpointsConstrainedCoincident(
         return (a === curve.start && b === curve.end) ||
             (a === curve.end && b === curve.start);
     });
+}
+
+function ellipseParameterAngle(axisX: Pair, axisY: Pair, delta: Pair): number {
+    const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
+    if (Math.abs(determinant) <= 1e-12) return 0;
+    const localX = (delta[0] * axisY[1] - delta[1] * axisY[0]) / determinant;
+    const localY = (-delta[0] * axisX[1] + delta[1] * axisX[0]) / determinant;
+    return Math.atan2(localY, localX) * 180 / Math.PI;
 }
 
 function orientedSegment(
@@ -103,10 +111,42 @@ function resolveItem(document: WhiteboardDocument, index: number): SceneElement 
             ...style,
         };
     }
+    if (curve.kind === "ellipse") {
+        return {
+            id: item.id,
+            kind: "ellipse",
+            center,
+            axisX: curve.axisX,
+            axisY: curve.axisY,
+            ...(item.fillPen ? { fillPen: item.fillPen } : {}),
+            ...style,
+        };
+    }
     if (item.fillPen) throw new Error(`arc presentation ${item.id} cannot have a fill pen`);
     const start = document.sketch.points[curve.start]?.at;
     const end = document.sketch.points[curve.end]?.at;
     if (!start || !end) throw new Error(`arc ${curve.id} has an unresolved endpoint`);
+    if (curve.kind === "elliptical-arc") {
+        const startDelta: Pair = [start[0] - center[0], start[1] - center[1]];
+        const endDelta: Pair = [end[0] - center[0], end[1] - center[1]];
+        const angle1 = ellipseParameterAngle(curve.axisX, curve.axisY, startDelta);
+        const angle2 = (
+            arcEndpointsConstrainedCoincident(document, curve) ||
+            Math.hypot(end[0] - start[0], end[1] - start[1]) < COINCIDENT_ENDPOINT
+        )
+            ? angle1 + 360
+            : ellipseParameterAngle(curve.axisX, curve.axisY, endDelta);
+        return {
+            id: item.id,
+            kind: "elliptical-arc",
+            center,
+            axisX: curve.axisX,
+            axisY: curve.axisY,
+            angle1,
+            angle2,
+            ...style,
+        };
+    }
     // Radius comes from `start` (the point on the drawn circle); `end` supplies
     // only its angle. The arc is the CCW sweep `start`→`end`, so the Scene's
     // positive-sweep angle convention reproduces it directly (`render.ts`

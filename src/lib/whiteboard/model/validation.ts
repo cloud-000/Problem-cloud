@@ -1,5 +1,5 @@
 import type { Scene } from "../../asy/scene/types";
-import { migrateSceneToWhiteboardDocument } from "./document";
+import { migrateSceneToWhiteboardDocument, migrateV2WhiteboardDocument } from "./document";
 import {
     WHITEBOARD_SCHEMA_VERSION,
     type PointFeatureRef,
@@ -20,6 +20,14 @@ function finite(value: unknown): value is number {
 
 function pair(value: unknown): boolean {
     return Array.isArray(value) && value.length === 2 && finite(value[0]) && finite(value[1]);
+}
+
+function affineBasis(axisX: unknown, axisY: unknown): boolean {
+    return pair(axisX) && pair(axisY) &&
+        Math.abs(
+            (axisX as number[])[0] * (axisY as number[])[1] -
+            (axisX as number[])[1] * (axisY as number[])[0],
+        ) > 1e-12;
 }
 
 function optionalBoolean(owner: UnknownRecord, key: string): boolean {
@@ -128,7 +136,10 @@ function pointFeature(
         if (!curve) errors.push(`${context} references missing curve ${value.curveId}`);
         else if (curve.kind === "segment" && value.feature === "center") {
             errors.push(`${context} cannot reference center on segment ${curve.id}`);
-        } else if (curve.kind !== "segment" && value.feature !== "center" && curve.kind === "circle") {
+        } else if (
+            (curve.kind === "circle" || curve.kind === "ellipse") &&
+            value.feature !== "center"
+        ) {
             errors.push(`${context} cannot reference ${value.feature} on circle ${curve.id}`);
         }
         return true;
@@ -165,8 +176,16 @@ function validateReferences(document: WhiteboardDocument, errors: string[]): voi
             errors.push(`items[${index}] references missing point ${item.pointId}`);
         }
         if (item.kind === "sketch-curve") {
-            if (curveRef(document, item.curveId, ["segment", "circle", "arc"], errors, `items[${index}]`) &&
-                document.sketch.curves[item.curveId].kind === "arc" && item.fillPen) {
+            if (curveRef(
+                document,
+                item.curveId,
+                ["segment", "circle", "ellipse", "arc", "elliptical-arc"],
+                errors,
+                `items[${index}]`,
+            ) && (
+                document.sketch.curves[item.curveId].kind === "arc" ||
+                document.sketch.curves[item.curveId].kind === "elliptical-arc"
+            ) && item.fillPen) {
                 errors.push(`items[${index}] cannot fill an arc presentation`);
             }
         }
@@ -229,11 +248,17 @@ function validateReferences(document: WhiteboardDocument, errors: string[]): voi
                 break;
             case "point-on-curve":
                 pointFeature(constraint.point, document, errors, `${context}.point`);
-                curveRef(document, constraint.curveId, ["segment", "circle", "arc"], errors, context);
+                curveRef(
+                    document,
+                    constraint.curveId,
+                    ["segment", "circle", "ellipse", "arc", "elliptical-arc"],
+                    errors,
+                    context,
+                );
                 break;
             case "tangent":
-                curveRef(document, constraint.a, ["segment", "arc"], errors, `${context}.a`);
-                curveRef(document, constraint.b, ["segment", "arc"], errors, `${context}.b`);
+                curveRef(document, constraint.a, ["segment", "arc", "elliptical-arc"], errors, `${context}.a`);
+                curveRef(document, constraint.b, ["segment", "arc", "elliptical-arc"], errors, `${context}.b`);
                 break;
         }
     }
@@ -302,12 +327,28 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
                 !finite(curve.radius) || curve.radius < 0) {
                 errors.push(`curve ${id} is invalid`);
             }
+        } else if (curve.kind === "ellipse") {
+            if (
+                typeof curve.center !== "string" || !candidate.sketch.points[curve.center] ||
+                !affineBasis(curve.axisX, curve.axisY)
+            ) {
+                errors.push(`curve ${id} is invalid`);
+            }
         } else if (curve.kind === "arc") {
             // A smart arc is three real points; its radius/angles are derived.
             if (
                 typeof curve.center !== "string" || !candidate.sketch.points[curve.center] ||
                 typeof curve.start !== "string" || !candidate.sketch.points[curve.start] ||
                 typeof curve.end !== "string" || !candidate.sketch.points[curve.end]
+            ) {
+                errors.push(`curve ${id} is invalid`);
+            }
+        } else if (curve.kind === "elliptical-arc") {
+            if (
+                typeof curve.center !== "string" || !candidate.sketch.points[curve.center] ||
+                typeof curve.start !== "string" || !candidate.sketch.points[curve.start] ||
+                typeof curve.end !== "string" || !candidate.sketch.points[curve.end] ||
+                !affineBasis(curve.axisX, curve.axisY)
             ) {
                 errors.push(`curve ${id} is invalid`);
             }
@@ -389,10 +430,15 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
     return { valid: errors.length === 0, errors };
 }
 
-/** Parse current V2 JSON or migrate an unversioned V1 Scene. */
+/** Parse current V3 JSON, migrate V2 documents, or migrate an unversioned V1 Scene. */
 export function parsePersistedWhiteboardDocument(value: unknown): WhiteboardDocument | null {
     if (record(value) && value.schemaVersion !== undefined) {
-        return validateWhiteboardDocument(value).valid ? value as unknown as WhiteboardDocument : null;
+        const candidate = value.schemaVersion === 2
+            ? migrateV2WhiteboardDocument(value as unknown as Parameters<typeof migrateV2WhiteboardDocument>[0])
+            : value;
+        return validateWhiteboardDocument(candidate).valid
+            ? candidate as unknown as WhiteboardDocument
+            : null;
     }
     if (!validateScene(value).valid) return null;
     return migrateSceneToWhiteboardDocument(value as Scene);

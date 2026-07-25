@@ -556,14 +556,14 @@ describe("WhiteboardStore selection gestures", () => {
             axes: { x: true, y: true },
             minimumScale: [0.1, 0.1],
         });
-        resized.pointerMove([8, 4]);
-        resized.pointerUp([8, 4]);
+        resized.pointerMove([8, 6]);
+        resized.pointerUp([8, 6]);
         const resizedScene = resized.scene.elements;
         if (resizedScene[0].kind !== "path" || resizedScene[1].kind !== "dot") throw new Error("missing resized selection");
         resizedScene[0].path.nodes.forEach((point, index) =>
-            expectPoint(point, [[0, 0], [8, 0], [8, 4]][index] as [number, number])
+            expectPoint(point, [[0, 0], [8, 0], [8, 6]][index] as [number, number])
         );
-        expectPoint(resizedScene[1].at, [4, 6]);
+        expectPoint(resizedScene[1].at, [4, 9]);
         expect(resized.canUndo).toBe(true);
 
         const rotated = new WhiteboardStore(mixed);
@@ -1235,6 +1235,51 @@ describe("WhiteboardStore smart arc points", () => {
         expect(overlayFor(baked).arcGuide?.radiusEditable).toBe(true);
     });
 
+    test("a stretched smart arc exposes solver-routed affine axis controls", () => {
+        const store = new WhiteboardStore(quarterArc().document);
+        store.selection = ["arc"];
+        store.pointerDown([2, 2], {
+            kind: "resize",
+            anchor: [0, 0],
+            handle: [2, 2],
+            axes: { x: true, y: true },
+            minimumScale: [0.1, 0.1],
+        });
+        store.pointerMove([4, 2]);
+        store.pointerUp([4, 2]);
+
+        const affine = store.scene.elements.find(({ id }) => id === "arc");
+        if (affine?.kind !== "elliptical-arc") throw new Error("missing affine smart arc");
+        expect(affine.axisX).toEqual([4, 0]);
+        expect(affine.axisY).toEqual([0, 2]);
+        const guide = overlayFor(store).arcGuide;
+        expect(guide?.editHandles.map(({ control }) => control)).toEqual([
+            "center",
+            "start",
+            "end",
+            "axis-x",
+            "axis-y",
+        ]);
+        const axisX = guide?.editHandles.find(({ control }) => control === "axis-x");
+        if (!axisX) throw new Error("missing smart ellipse axis handle");
+        store.pointerDown(axisX.handle, {
+            kind: "arc",
+            elementId: "arc",
+            control: "axis-x",
+            handle: axisX.handle,
+            minimumRadius: 0.1,
+        });
+        store.pointerMove([6, 0]);
+        store.pointerUp([6, 0]);
+        const edited = store.scene.elements.find(({ id }) => id === "arc");
+        if (edited?.kind !== "elliptical-arc") throw new Error("missing edited affine arc");
+        expect(edited.axisX).toEqual([6, 0]);
+        store.undo();
+        const restored = store.scene.elements.find(({ id }) => id === "arc");
+        if (restored?.kind !== "elliptical-arc") throw new Error("missing restored affine arc");
+        expect(restored.axisX).toEqual([4, 0]);
+    });
+
     test("a segment-only relation on an arc curve is rejected and mutates nothing", () => {
         const created = quarterArc();
         const curveId = Object.keys(created.document.sketch.curves)[0];
@@ -1378,7 +1423,7 @@ describe("WhiteboardStore rectangle constraints + oriented selection box", () =>
         const quad = overlay.selectionQuad;
         expect(quad).not.toBeNull();
         if (!quad) throw new Error("expected an oriented selection quad");
-        expect(overlay.resizeHandles).toHaveLength(4);
+        expect(overlay.resizeHandles).toHaveLength(8);
         const edge = (index: number): Pair => [
             quad[(index + 1) % 4][0] - quad[index][0],
             quad[(index + 1) % 4][1] - quad[index][1],

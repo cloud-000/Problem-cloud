@@ -43,7 +43,15 @@ export interface VertexRef {
     nodeIndex: number;
 }
 
-export type ArcControl = "center" | "start" | "end" | "radius" | "focus1" | "focus2";
+export type ArcControl =
+    | "center"
+    | "start"
+    | "end"
+    | "radius"
+    | "focus1"
+    | "focus2"
+    | "axis-x"
+    | "axis-y";
 
 export interface ArcControlRef {
     elementId: string;
@@ -57,6 +65,7 @@ export interface OverlayResizeHandle extends RenderResizeHandle {
     handle: Pair;
     anchor: Pair;
     axes: { x: boolean; y: boolean };
+    frame: { x: Pair; y: Pair };
     cursor: ResizeCursor;
 }
 

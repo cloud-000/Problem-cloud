@@ -19,13 +19,15 @@ import {
 import type { ConstraintService } from "$lib/whiteboard/constraint-service.svelte";
 import {
     arcEndpointInteractionGap,
+    editWhiteboardEllipseAxis,
     nearestPointFeature,
     pointFeaturePosition,
     removeConstraint,
     resolveWhiteboardDocument,
+    resizeWhiteboardItems,
     rotateWhiteboardItems,
-    scaleWhiteboardItems,
     translateWhiteboardItems,
+    WORLD_RESIZE_FRAME,
     type GeometryOperationResult,
     type ArcEndpointClosure,
     type PointFeatureRef,
@@ -36,7 +38,7 @@ import {
 /** The resize/rotate subset of the view's selection-handle gestures. */
 export type SmartSelectionTransform = Extract<
     SelectionTransformGesture,
-    { kind: "resize" } | { kind: "rotate" }
+    { kind: "resize" } | { kind: "rotate" } | { kind: "arc" }
 >;
 
 /** The Pipeline B arms of the single `ActiveGesture` union. */
@@ -163,7 +165,7 @@ export class SmartGestureController {
     #smartTransformResult(
         transform: Extract<SmartGesture, { kind: "transform" }>,
         point: readonly [number, number],
-        snapRotation: boolean,
+        shiftKey: boolean,
         mode: "preview" | "commit",
     ): GeometryOperationResult {
         if (transform.gesture.kind === "rotate") {
@@ -174,29 +176,75 @@ export class SmartGestureController {
             );
             const pointerAngle = Math.atan2(point[1] - pivot[1], point[0] - pivot[0]);
             let degrees = (pointerAngle - startAngle) * 180 / Math.PI;
-            if (snapRotation) degrees = Math.round(degrees / 15) * 15;
+            if (shiftKey) degrees = Math.round(degrees / 15) * 15;
             return rotateWhiteboardItems(transform.base, transform.itemIds, pivot, degrees, mode);
+        }
+        if (transform.gesture.kind === "arc") {
+            if (
+                transform.gesture.control !== "axis-x" &&
+                transform.gesture.control !== "axis-y"
+            ) {
+                return {
+                    status: "failed",
+                    conflictingConstraintIds: [],
+                    diagnostic: "unsupported smart curve transform",
+                };
+            }
+            return editWhiteboardEllipseAxis(
+                transform.base,
+                transform.gesture.elementId,
+                transform.gesture.control,
+                [
+                    point[0] - transform.pointerOffset[0],
+                    point[1] - transform.pointerOffset[1],
+                ],
+                mode,
+            );
         }
 
         const { anchor, handle, axes, minimumScale } = transform.gesture;
-        const startX = handle[0] - anchor[0];
-        const startY = handle[1] - anchor[1];
-        const adjustedX = point[0] - transform.pointerOffset[0] - anchor[0];
-        const adjustedY = point[1] - transform.pointerOffset[1] - anchor[1];
+        const frame = transform.gesture.frame ?? WORLD_RESIZE_FRAME;
+        const startVector = [handle[0] - anchor[0], handle[1] - anchor[1]] as const;
+        const adjustedVector = [
+            point[0] - transform.pointerOffset[0] - anchor[0],
+            point[1] - transform.pointerOffset[1] - anchor[1],
+        ] as const;
+        const startX = startVector[0] * frame.x[0] + startVector[1] * frame.x[1];
+        const startY = startVector[0] * frame.y[0] + startVector[1] * frame.y[1];
+        const adjustedX = adjustedVector[0] * frame.x[0] + adjustedVector[1] * frame.x[1];
+        const adjustedY = adjustedVector[0] * frame.y[0] + adjustedVector[1] * frame.y[1];
         const activeX = axes.x && Math.abs(startX) > 1e-12;
         const activeY = axes.y && Math.abs(startY) > 1e-12;
-        let factor = 1;
-        if (activeX && activeY) {
-            const lengthSquared = startX * startX + startY * startY;
-            factor = (adjustedX * startX + adjustedY * startY) / lengthSquared;
-        } else if (activeX) factor = adjustedX / startX;
-        else if (activeY) factor = adjustedY / startY;
-        const minimum = Math.max(minimumScale[0], minimumScale[1]);
-        return scaleWhiteboardItems(
+        if (!activeX && !activeY) {
+            return {
+                status: "failed",
+                conflictingConstraintIds: [],
+                diagnostic: "resize handle has no active axis",
+            };
+        }
+        let scaleX = activeX ? adjustedX / startX : 1;
+        let scaleY = activeY ? adjustedY / startY : 1;
+        if (shiftKey) {
+            let factor: number;
+            if (activeX && activeY) {
+                const lengthSquared = startX * startX + startY * startY;
+                factor = (adjustedX * startX + adjustedY * startY) / lengthSquared;
+            } else {
+                factor = activeX ? scaleX : scaleY;
+            }
+            factor = Math.max(Math.max(minimumScale[0], minimumScale[1]), factor);
+            scaleX = factor;
+            scaleY = factor;
+        } else {
+            if (activeX) scaleX = Math.max(minimumScale[0], scaleX);
+            if (activeY) scaleY = Math.max(minimumScale[1], scaleY);
+        }
+        return resizeWhiteboardItems(
             transform.base,
             transform.itemIds,
             anchor,
-            Math.max(minimum, factor),
+            [scaleX, scaleY],
+            frame,
             mode,
         );
     }

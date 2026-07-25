@@ -104,8 +104,12 @@ function constraintPointIds(graph: SolverGraph, constraint: SolverConstraint): P
             return sortedUnique([constraint.point, constraint.a, constraint.b]);
         case "point-on-circle":
             return sortedUnique([constraint.point, constraint.center, constraint.rim]);
+        case "point-on-ellipse":
+            return sortedUnique([constraint.point, constraint.center]);
         case "tangent-line-circle":
             return sortedUnique([constraint.a, constraint.b, constraint.center, constraint.rim]);
+        case "tangent-line-ellipse":
+            return sortedUnique([constraint.a, constraint.b, constraint.center]);
     }
 }
 
@@ -156,12 +160,29 @@ function validateRequest(request: SolveRequest, config: SolverConfig): string | 
             if (!graph.points[constraint.point] || !graph.points[constraint.center] || !graph.points[constraint.rim]) {
                 return `constraint ${constraint.id} references a missing point`;
             }
+        } else if (constraint.kind === "point-on-ellipse") {
+            if (!graph.points[constraint.point] || !graph.points[constraint.center]) {
+                return `constraint ${constraint.id} references a missing point`;
+            }
+            if (!finitePoint(constraint.axisX) || !finitePoint(constraint.axisY)) {
+                return `constraint ${constraint.id} has a non-finite ellipse basis`;
+            }
         } else if (constraint.kind === "tangent-line-circle") {
             if (
                 !graph.points[constraint.a] || !graph.points[constraint.b] ||
                 !graph.points[constraint.center] || !graph.points[constraint.rim]
             ) {
                 return `constraint ${constraint.id} references a missing point`;
+            }
+        } else if (constraint.kind === "tangent-line-ellipse") {
+            if (
+                !graph.points[constraint.a] || !graph.points[constraint.b] ||
+                !graph.points[constraint.center]
+            ) {
+                return `constraint ${constraint.id} references a missing point`;
+            }
+            if (!finitePoint(constraint.axisX) || !finitePoint(constraint.axisY)) {
+                return `constraint ${constraint.id} has a non-finite ellipse basis`;
             }
         } else {
             if (!graph.segments[constraint.a] || !graph.segments[constraint.b]) {
@@ -394,6 +415,21 @@ function constraintResiduals(
             const distance = vectorLength(vectorBetween(point(constraint.center), point(constraint.point)));
             return [(distance - radius) / scale];
         }
+        case "point-on-ellipse": {
+            const center = point(constraint.center);
+            const target = point(constraint.point);
+            const dx = target[0] - center[0];
+            const dy = target[1] - center[1];
+            const determinant =
+                constraint.axisX[0] * constraint.axisY[1] -
+                constraint.axisX[1] * constraint.axisY[0];
+            if (Math.abs(determinant) <= degeneracyTolerance * scale * scale) return [1];
+            const localX =
+                (dx * constraint.axisY[1] - dy * constraint.axisY[0]) / determinant;
+            const localY =
+                (-dx * constraint.axisX[1] + dy * constraint.axisX[0]) / determinant;
+            return [Math.hypot(localX, localY) - 1];
+        }
         case "tangent-line-circle": {
             const c = point(constraint.center);
             const a = point(constraint.a);
@@ -404,6 +440,22 @@ function constraintResiduals(
             const distance = Math.abs((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / length;
             const radius = vectorLength(vectorBetween(c, point(constraint.rim)));
             return [(distance - radius) / scale];
+        }
+        case "tangent-line-ellipse": {
+            const c = point(constraint.center);
+            const a = point(constraint.a);
+            const b = point(constraint.b);
+            const dx = b[0] - a[0];
+            const dy = b[1] - a[1];
+            const length = Math.max(Math.hypot(dx, dy), degeneracyTolerance * scale);
+            const signedDistance = ((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / length;
+            const normalX = dy / length;
+            const normalY = -dx / length;
+            const support = Math.hypot(
+                normalX * constraint.axisX[0] + normalY * constraint.axisX[1],
+                normalX * constraint.axisY[0] + normalY * constraint.axisY[1],
+            );
+            return [(Math.abs(signedDistance) - support) / scale];
         }
     }
 }

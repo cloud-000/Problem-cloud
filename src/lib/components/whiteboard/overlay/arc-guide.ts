@@ -178,7 +178,32 @@ export function buildArcGuide(
         );
         if (active) active.screen = input.activeArcPointer;
     }
-    if (selectedArcElement.kind === "elliptical-arc" && geometry.eccentricity > 1e-4) {
+    if (selectedArcElement.kind === "elliptical-arc" && input.selectionContainsSmartItems) {
+        semanticHandles.push(
+            {
+                control: "axis-x",
+                handle: [
+                    selectedArcElement.center[0] + selectedArcElement.axisX[0],
+                    selectedArcElement.center[1] + selectedArcElement.axisX[1],
+                ],
+                screen: project([
+                    selectedArcElement.center[0] + selectedArcElement.axisX[0],
+                    selectedArcElement.center[1] + selectedArcElement.axisX[1],
+                ]),
+            },
+            {
+                control: "axis-y",
+                handle: [
+                    selectedArcElement.center[0] + selectedArcElement.axisY[0],
+                    selectedArcElement.center[1] + selectedArcElement.axisY[1],
+                ],
+                screen: project([
+                    selectedArcElement.center[0] + selectedArcElement.axisY[0],
+                    selectedArcElement.center[1] + selectedArcElement.axisY[1],
+                ]),
+            },
+        );
+    } else if (selectedArcElement.kind === "elliptical-arc" && geometry.eccentricity > 1e-4) {
         semanticHandles.push(
             { control: "focus1", handle: geometry.foci[0], screen: project(geometry.foci[0]) },
             { control: "focus2", handle: geometry.foci[1], screen: project(geometry.foci[1]) },

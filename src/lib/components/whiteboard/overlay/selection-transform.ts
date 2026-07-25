@@ -27,6 +27,7 @@ import type {
     OverlayResizeHandle,
     OverlayRotationControl,
     OverlayVertexHandle,
+    ResizeCursor,
     VertexRef,
 } from "../overlay-model";
 
@@ -148,6 +149,18 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
         screenRect,
         elementScreenRect,
     } = params;
+    const resizeCursor = (
+        handle: Pair,
+        anchor: Pair,
+        corner: boolean,
+    ): ResizeCursor => {
+        const from = project(anchor);
+        const to = project(handle);
+        const dx = to[0] - from[0];
+        const dy = to[1] - from[1];
+        if (!corner) return Math.abs(dx) >= Math.abs(dy) ? "ew-resize" : "ns-resize";
+        return dx * dy >= 0 ? "nwse-resize" : "nesw-resize";
+    };
 
     const selectionGeometryBounds = ((): Bounds | null => {
         if (activeSelection.length === 0) return null;
@@ -189,9 +202,9 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
     /**
      * A single selected, *rotated* smart rectangle whose selection box should
      * hug its orientation. Restricted to smart selections (the rectangle tool's
-     * output) so only corner-uniform resize applies — baked axis-scaling has no
-     * oriented meaning — and skipped when axis-aligned, where the AABB path
-     * already produces the identical box.
+     * output), whose solver-owned perpendicular relations give local width and
+     * height a stable meaning, and skipped when axis-aligned, where the AABB
+     * path already produces the identical box.
      */
     const orientedRectangle = ((): {
         cornersAsy: [Pair, Pair, Pair, Pair];
@@ -255,19 +268,72 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
             input.toolKind !== "select"
         ) return [];
         if (orientedRectangle) {
-            // Four corner handles at the rotated corners; each is a uniform
-            // scale about the diagonally opposite corner (smart selections only
-            // ever expose corner handles, so no oriented edge handle is needed).
             const cornerPosition = ["nw", "ne", "se", "sw"] as const;
-            const cornerCursor = ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize"] as const;
-            return orientedRectangle.cornersAsy.map((corner, index) => ({
+            const [c0, c1, c2, c3] = orientedRectangle.cornersAsy;
+            const ux = c1[0] - c0[0];
+            const uy = c1[1] - c0[1];
+            const vx = c3[0] - c0[0];
+            const vy = c3[1] - c0[1];
+            const frame = {
+                x: [ux / Math.hypot(ux, uy), uy / Math.hypot(ux, uy)] as Pair,
+                y: [vx / Math.hypot(vx, vy), vy / Math.hypot(vx, vy)] as Pair,
+            };
+            const corners = orientedRectangle.cornersAsy.map((corner, index) => ({
                 position: cornerPosition[index],
                 screen: orientedRectangle.inflated[index],
                 handle: corner,
                 anchor: orientedRectangle.cornersAsy[(index + 2) % 4],
                 axes: { x: true, y: true },
-                cursor: cornerCursor[index],
+                frame,
+                cursor: resizeCursor(corner, orientedRectangle.cornersAsy[(index + 2) % 4], true),
             }));
+            const midpoint = (a: Pair, b: Pair): Pair => [
+                (a[0] + b[0]) / 2,
+                (a[1] + b[1]) / 2,
+            ];
+            const [s0, s1, s2, s3] = orientedRectangle.inflated;
+            return [
+                corners[0],
+                {
+                    position: "n",
+                    screen: midpoint(s0, s1),
+                    handle: midpoint(c0, c1),
+                    anchor: midpoint(c3, c2),
+                    axes: { x: false, y: true },
+                    frame,
+                    cursor: resizeCursor(midpoint(c0, c1), midpoint(c3, c2), false),
+                },
+                corners[1],
+                {
+                    position: "e",
+                    screen: midpoint(s1, s2),
+                    handle: midpoint(c1, c2),
+                    anchor: midpoint(c0, c3),
+                    axes: { x: true, y: false },
+                    frame,
+                    cursor: resizeCursor(midpoint(c1, c2), midpoint(c0, c3), false),
+                },
+                corners[2],
+                {
+                    position: "s",
+                    screen: midpoint(s2, s3),
+                    handle: midpoint(c2, c3),
+                    anchor: midpoint(c1, c0),
+                    axes: { x: false, y: true },
+                    frame,
+                    cursor: resizeCursor(midpoint(c2, c3), midpoint(c1, c0), false),
+                },
+                corners[3],
+                {
+                    position: "w",
+                    screen: midpoint(s3, s0),
+                    handle: midpoint(c3, c0),
+                    anchor: midpoint(c2, c1),
+                    axes: { x: true, y: false },
+                    frame,
+                    cursor: resizeCursor(midpoint(c3, c0), midpoint(c2, c1), false),
+                },
+            ];
         }
         const { x, y, width: boxWidth, height: boxHeight } = selectionRect;
         const { min, max } = selectionGeometryBounds;
@@ -282,6 +348,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                 handle: [min[0], max[1]],
                 anchor: [max[0], min[1]],
                 axes: { x: canResizeX, y: canResizeY },
+                frame: { x: [1, 0], y: [0, 1] },
                 cursor: "nwse-resize",
             },
             {
@@ -290,6 +357,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                 handle: [max[0], max[1]],
                 anchor: [min[0], min[1]],
                 axes: { x: canResizeX, y: canResizeY },
+                frame: { x: [1, 0], y: [0, 1] },
                 cursor: "nesw-resize",
             },
             {
@@ -298,6 +366,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                 handle: [max[0], min[1]],
                 anchor: [min[0], max[1]],
                 axes: { x: canResizeX, y: canResizeY },
+                frame: { x: [1, 0], y: [0, 1] },
                 cursor: "nwse-resize",
             },
             {
@@ -306,10 +375,11 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                 handle: [min[0], min[1]],
                 anchor: [max[0], max[1]],
                 axes: { x: canResizeX, y: canResizeY },
+                frame: { x: [1, 0], y: [0, 1] },
                 cursor: "nesw-resize",
             },
         ];
-        if (!input.selectionContainsSmartItems && canResizeY) {
+        if (canResizeY) {
             handles.push(
                 {
                     position: "n",
@@ -317,6 +387,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                     handle: [midX, max[1]],
                     anchor: [midX, min[1]],
                     axes: { x: false, y: true },
+                    frame: { x: [1, 0], y: [0, 1] },
                     cursor: "ns-resize",
                 },
                 {
@@ -325,11 +396,12 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                     handle: [midX, min[1]],
                     anchor: [midX, max[1]],
                     axes: { x: false, y: true },
+                    frame: { x: [1, 0], y: [0, 1] },
                     cursor: "ns-resize",
                 },
             );
         }
-        if (!input.selectionContainsSmartItems && canResizeX) {
+        if (canResizeX) {
             handles.push(
                 {
                     position: "e",
@@ -337,6 +409,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                     handle: [max[0], midY],
                     anchor: [min[0], midY],
                     axes: { x: true, y: false },
+                    frame: { x: [1, 0], y: [0, 1] },
                     cursor: "ew-resize",
                 },
                 {
@@ -345,6 +418,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
                     handle: [min[0], midY],
                     anchor: [max[0], midY],
                     axes: { x: true, y: false },
+                    frame: { x: [1, 0], y: [0, 1] },
                     cursor: "ew-resize",
                 },
             );

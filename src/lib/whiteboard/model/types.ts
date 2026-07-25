@@ -1,6 +1,6 @@
 import type { Pair, Pen, SceneElement, SceneMeta } from "../../asy/scene/types";
 
-export const WHITEBOARD_SCHEMA_VERSION = 2 as const;
+export const WHITEBOARD_SCHEMA_VERSION = 3 as const;
 
 export type PointId = string;
 export type ParameterId = string;
@@ -22,6 +22,7 @@ export interface ScalarParameter {
 export type SketchCurve =
     | { id: CurveId; kind: "segment"; start: PointId; end: PointId }
     | { id: CurveId; kind: "circle"; center: PointId; radius: number }
+    | { id: CurveId; kind: "ellipse"; center: PointId; axisX: Pair; axisY: Pair }
     | {
           id: CurveId;
           kind: "arc";
@@ -35,6 +36,17 @@ export type SketchCurve =
            * the Scene `arc` element's angle convention.
            */
           center: PointId;
+          start: PointId;
+          end: PointId;
+      }
+    | {
+          id: CurveId;
+          kind: "elliptical-arc";
+          center: PointId;
+          /** Affine images of the source circle's unit X/Y radius vectors. */
+          axisX: Pair;
+          axisY: Pair;
+          /** Real sketch points that retain endpoint snapping and constraints. */
           start: PointId;
           end: PointId;
       };
@@ -126,7 +138,7 @@ export interface WhiteboardDocument {
     schemaVersion: typeof WHITEBOARD_SCHEMA_VERSION;
     items: WhiteboardItem[];
     sketch: SketchGraph;
-    /** Optional so persisted Phase 1/2 V2 documents remain valid without migration. */
+    /** Optional so migrated legacy documents remain valid without synthesized data. */
     dimensions?: Record<string, LengthDimension>;
     meta?: SceneMeta;
 }

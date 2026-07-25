@@ -91,6 +91,14 @@ export type SolverConstraint =
           rim: PointId;
       })
     | (ConstraintBase & {
+          /** `point` lies on the affine ellipse centered at `center`. */
+          kind: "point-on-ellipse";
+          point: PointId;
+          center: PointId;
+          axisX: SolverPoint;
+          axisY: SolverPoint;
+      })
+    | (ConstraintBase & {
           /**
            * The line through `a`→`b` is tangent to the circle centered at
            * `center` with radius `|rim − center|`: distance(center, line) equals
@@ -101,6 +109,15 @@ export type SolverConstraint =
           b: PointId;
           center: PointId;
           rim: PointId;
+      })
+    | (ConstraintBase & {
+          /** The line through `a`→`b` is tangent to an affine ellipse. */
+          kind: "tangent-line-ellipse";
+          a: PointId;
+          b: PointId;
+          center: PointId;
+          axisX: SolverPoint;
+          axisY: SolverPoint;
       });
 
 export interface SolverGraph {

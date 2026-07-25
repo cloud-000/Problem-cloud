@@ -474,10 +474,16 @@ export class SelectTool implements Tool {
         }
         if (this.transform.kind === "resize") {
             const { anchor, handle, axes, minimumScale } = this.transform;
-            const startX = handle[0] - anchor[0];
-            const startY = handle[1] - anchor[1];
-            const adjustedX = pointer[0] - this.transformPointerOffset[0] - anchor[0];
-            const adjustedY = pointer[1] - this.transformPointerOffset[1] - anchor[1];
+            const frame = this.transform.frame ?? { x: [1, 0] as Pair, y: [0, 1] as Pair };
+            const startVector: Pair = [handle[0] - anchor[0], handle[1] - anchor[1]];
+            const adjustedVector: Pair = [
+                pointer[0] - this.transformPointerOffset[0] - anchor[0],
+                pointer[1] - this.transformPointerOffset[1] - anchor[1],
+            ];
+            const startX = startVector[0] * frame.x[0] + startVector[1] * frame.x[1];
+            const startY = startVector[0] * frame.y[0] + startVector[1] * frame.y[1];
+            const adjustedX = adjustedVector[0] * frame.x[0] + adjustedVector[1] * frame.x[1];
+            const adjustedY = adjustedVector[0] * frame.y[0] + adjustedVector[1] * frame.y[1];
             const activeX = axes.x && Math.abs(startX) > 1e-12;
             const activeY = axes.y && Math.abs(startY) > 1e-12;
             if (!activeX && !activeY) return { scene, changed: false };
@@ -501,9 +507,20 @@ export class SelectTool implements Tool {
                 if (activeY) scaleY = Math.max(minimumScale[1], scaleY);
             }
             const factors: Pair = [scaleX, scaleY];
+            const frameAngle = Math.atan2(frame.x[1], frame.x[0]) * 180 / Math.PI;
             return {
                 scene: mapElements(scene, (element) =>
-                    selected.has(element.id) ? scaleElementBy(element, anchor, factors) : element,
+                    selected.has(element.id)
+                        ? rotateElement(
+                              scaleElementBy(
+                                  rotateElement(element, anchor, -frameAngle),
+                                  anchor,
+                                  factors,
+                              ),
+                              anchor,
+                              frameAngle,
+                          )
+                        : element,
                 ),
                 changed: Math.abs(scaleX - 1) > 1e-9 || Math.abs(scaleY - 1) > 1e-9,
             };

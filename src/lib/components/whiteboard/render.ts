@@ -66,7 +66,7 @@ export interface RenderRotationControl {
 }
 
 export interface RenderArcHandle extends RenderResizeHandle {
-    control: "center" | "start" | "end" | "focus1" | "focus2";
+    control: "center" | "start" | "end" | "focus1" | "focus2" | "axis-x" | "axis-y";
     state?: "default" | "hovered" | "selected";
 }
 

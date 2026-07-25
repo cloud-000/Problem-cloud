@@ -435,10 +435,18 @@ export class PointerInputController {
 
     #beginResize(e: PointerEvent, hit: Extract<PointerHit, { kind: "resize" }>) {
         const { store, camera } = this.#host;
-        const { handle: resizeHandle, bounds } = hit;
+        const { handle: resizeHandle } = hit;
         this.clearHandleSelection();
-        const extentXpx = camera.toScreenLength(bounds.max[0] - bounds.min[0]);
-        const extentYpx = camera.toScreenLength(bounds.max[1] - bounds.min[1]);
+        const delta: Pair = [
+            resizeHandle.handle[0] - resizeHandle.anchor[0],
+            resizeHandle.handle[1] - resizeHandle.anchor[1],
+        ];
+        const extentXpx = camera.toScreenLength(Math.abs(
+            delta[0] * resizeHandle.frame.x[0] + delta[1] * resizeHandle.frame.x[1],
+        ));
+        const extentYpx = camera.toScreenLength(Math.abs(
+            delta[0] * resizeHandle.frame.y[0] + delta[1] * resizeHandle.frame.y[1],
+        ));
         this.#mode = "transform";
         this.#transformCursor = resizeHandle.cursor;
         this.#syncToolScale();
@@ -447,6 +455,7 @@ export class PointerInputController {
             anchor: resizeHandle.anchor,
             handle: resizeHandle.handle,
             axes: resizeHandle.axes,
+            frame: resizeHandle.frame,
             minimumScale: [
                 extentXpx > 1e-9 ? Math.min(1, 12 / extentXpx) : 0,
                 extentYpx > 1e-9 ? Math.min(1, 12 / extentYpx) : 0,

@@ -30,12 +30,33 @@ function curvePointId(
         if (feature === "end") return curve.end;
         return null;
     }
-    if (curve.kind === "arc") {
+    if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
         if (feature === "center") return curve.center;
         if (feature === "start") return curve.start;
         return curve.end;
     }
     return feature === "center" ? curve.center : null;
+}
+
+function pointProjectedToEllipse(
+    center: Pair,
+    point: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    fallback: Pair,
+): Pair {
+    const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
+    if (Math.abs(determinant) <= 1e-12) return fallback;
+    const dx = point[0] - center[0];
+    const dy = point[1] - center[1];
+    const localX = (dx * axisY[1] - dy * axisY[0]) / determinant;
+    const localY = (-dx * axisX[1] + dy * axisX[0]) / determinant;
+    const length = Math.hypot(localX, localY);
+    if (length <= 1e-12) return fallback;
+    return [
+        center[0] + axisX[0] * localX / length + axisY[0] * localY / length,
+        center[1] + axisX[1] * localX / length + axisY[1] * localY / length,
+    ];
 }
 
 /** Resolve an independent or curve-owned point feature through one registry. */
@@ -87,13 +108,21 @@ export function pointFeatureInteractionPosition(
     if (
         !raw ||
         ref.kind !== "curve-point" ||
-        ref.feature !== "end"
+        (ref.feature !== "start" && ref.feature !== "end")
     ) return raw;
     const curve = document.sketch.curves[ref.curveId];
-    if (!curve || curve.kind !== "arc") return raw;
+    if (!curve || (curve.kind !== "arc" && curve.kind !== "elliptical-arc")) return raw;
     const center = document.sketch.points[curve.center]?.at;
     const start = document.sketch.points[curve.start]?.at;
     if (!center || !start) return raw;
+    if (curve.kind === "elliptical-arc") {
+        const fallback = [
+            center[0] + curve.axisX[0],
+            center[1] + curve.axisX[1],
+        ] as Pair;
+        return pointProjectedToEllipse(center, raw, curve.axisX, curve.axisY, fallback);
+    }
+    if (ref.feature === "start") return raw;
     const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
     return pointProjectedToRadius(center, raw, radius, start);
 }
@@ -113,12 +142,33 @@ export function arcEndpointInteractionGap(
         (ref.feature !== "start" && ref.feature !== "end")
     ) return null;
     const curve = document.sketch.curves[ref.curveId];
-    if (!curve || curve.kind !== "arc") return null;
+    if (!curve || (curve.kind !== "arc" && curve.kind !== "elliptical-arc")) return null;
     const center = document.sketch.points[curve.center]?.at;
     const start = document.sketch.points[curve.start]?.at;
     const end = document.sketch.points[curve.end]?.at;
     if (!center || !start || !end) return null;
 
+    if (curve.kind === "elliptical-arc") {
+        const fallback = [
+            center[0] + curve.axisX[0],
+            center[1] + curve.axisX[1],
+        ] as Pair;
+        const visibleStart = pointProjectedToEllipse(
+            center,
+            ref.feature === "start" ? target : start,
+            curve.axisX,
+            curve.axisY,
+            fallback,
+        );
+        const visibleEnd = pointProjectedToEllipse(
+            center,
+            ref.feature === "end" ? target : end,
+            curve.axisX,
+            curve.axisY,
+            fallback,
+        );
+        return Math.hypot(visibleEnd[0] - visibleStart[0], visibleEnd[1] - visibleStart[1]);
+    }
     if (ref.feature === "end") {
         const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
         const visibleEnd = pointProjectedToRadius(center, target, radius, start);
@@ -148,7 +198,7 @@ export function arcControlFeature(
     );
     if (!item || item.kind !== "sketch-curve") return null;
     const curve = document.sketch.curves[item.curveId];
-    if (!curve || curve.kind !== "arc") return null;
+    if (!curve || (curve.kind !== "arc" && curve.kind !== "elliptical-arc")) return null;
     return { kind: "curve-point", curveId: item.curveId, feature: control };
 }
 
@@ -171,7 +221,7 @@ export function arcEndpointClosure(
         (ref.feature !== "start" && ref.feature !== "end")
     ) return null;
     const curve = document.sketch.curves[ref.curveId];
-    if (!curve || curve.kind !== "arc") return null;
+    if (!curve || (curve.kind !== "arc" && curve.kind !== "elliptical-arc")) return null;
     const counterpart: PointFeatureRef = {
         kind: "curve-point",
         curveId: ref.curveId,
@@ -239,7 +289,7 @@ export function discoverPointFeatures(document: WhiteboardDocument): DiscoveredP
                     zIndex,
                 });
             }
-        } else if (curve.kind === "arc") {
+        } else if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
             // A smart arc surfaces all three of its real points, so they can be
             // dragged, snapped to, and attached to like any endpoint/center.
             const arcFeatures = [
@@ -353,13 +403,31 @@ export function nearestSegmentFeature(
             const distance = Math.hypot(at[0] - (start[0] + t * dx), at[1] - (start[1] + t * dy));
             return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
         }
-        if (curve.kind === "arc") {
+        if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
             const center = document.sketch.points[curve.center]?.at;
             const start = document.sketch.points[curve.start]?.at;
             if (!center || !start) return [];
-            const r = Math.hypot(start[0] - center[0], start[1] - center[1]);
-            const distToCenter = Math.hypot(at[0] - center[0], at[1] - center[1]);
-            const distance = Math.abs(distToCenter - r);
+            const distance = curve.kind === "arc"
+                ? Math.abs(
+                      Math.hypot(at[0] - center[0], at[1] - center[1]) -
+                      Math.hypot(start[0] - center[0], start[1] - center[1]),
+                  )
+                : Math.hypot(
+                      at[0] - pointProjectedToEllipse(
+                          center,
+                          at,
+                          curve.axisX,
+                          curve.axisY,
+                          [center[0] + curve.axisX[0], center[1] + curve.axisX[1]],
+                      )[0],
+                      at[1] - pointProjectedToEllipse(
+                          center,
+                          at,
+                          curve.axisX,
+                          curve.axisY,
+                          [center[0] + curve.axisX[0], center[1] + curve.axisX[1]],
+                      )[1],
+                  );
             return distance <= radius ? [{ ref: { kind: "curve" as const, curveId: curve.id }, distance }] : [];
         }
         return [];

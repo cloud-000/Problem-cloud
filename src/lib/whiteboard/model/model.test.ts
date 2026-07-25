@@ -65,12 +65,13 @@ describe("whiteboard document foundation", () => {
         expect(validateWhiteboardDocument(document)).toEqual({ valid: true, errors: [] });
     });
 
-    test("parses V2 deterministically and migrates unversioned V1 scenes", () => {
+    test("parses V3 deterministically and migrates V2 documents and unversioned V1 scenes", () => {
         const document = migrateSceneToWhiteboardDocument(EVERY_ELEMENT_SCENE);
         const json = JSON.stringify(document);
 
         expect(parsePersistedWhiteboardDocument(JSON.parse(json))).toEqual(document);
         expect(JSON.stringify(parsePersistedWhiteboardDocument(JSON.parse(json)))).toBe(json);
+        expect(parsePersistedWhiteboardDocument({ ...document, schemaVersion: 2 })).toEqual(document);
         expect(parsePersistedWhiteboardDocument(JSON.parse(JSON.stringify(EVERY_ELEMENT_SCENE)))).toEqual(document);
     });
 
@@ -107,7 +108,7 @@ describe("whiteboard document foundation", () => {
 
     test("validates structural path connections and feature compatibility", () => {
         const document: WhiteboardDocument = {
-            schemaVersion: 2,
+            schemaVersion: WHITEBOARD_SCHEMA_VERSION,
             items: [{
                 id: "path-item",
                 kind: "sketch-path",
@@ -150,7 +151,7 @@ describe("whiteboard document foundation", () => {
 
     test("resolves supported smart presentations from one canonical graph", () => {
         const document: WhiteboardDocument = {
-            schemaVersion: 2,
+            schemaVersion: WHITEBOARD_SCHEMA_VERSION,
             items: [
                 { id: "edge", kind: "sketch-curve", curveId: "segment", pen: { lineWidth: 2 } },
                 { id: "center-dot", kind: "sketch-point-marker", pointId: "center" },
@@ -188,7 +189,7 @@ describe("whiteboard document foundation", () => {
         const reportedSweep = 359.9642614456766;
         const endAngle = (reportedSweep - 360) * Math.PI / 180;
         const document: WhiteboardDocument = {
-            schemaVersion: 2,
+            schemaVersion: WHITEBOARD_SCHEMA_VERSION,
             items: [{ id: "arc-item", kind: "sketch-curve", curveId: "arc" }],
             sketch: {
                 points: {

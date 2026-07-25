@@ -668,7 +668,9 @@ function smartItemPointIds(document: WhiteboardDocument, item: WhiteboardItem): 
         const curve = document.sketch.curves[curveId];
         if (!curve) return [];
         if (curve.kind === "segment") return [curve.start, curve.end];
-        if (curve.kind === "arc") return [curve.center, curve.start, curve.end];
+        if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
+            return [curve.center, curve.start, curve.end];
+        }
         return [curve.center];
     });
 }
@@ -715,7 +717,7 @@ function transformWhiteboardItems(
     itemIds: readonly string[],
     pointTarget: (point: Pair) => Pair,
     bakedTransform: (element: SceneElement) => SceneElement,
-    radialTransform: (curve: Extract<SketchCurve, { kind: "circle" | "arc" }>) => SketchCurve,
+    curveTransform: (curve: SketchCurve) => SketchCurve,
     mode: "preview" | "commit",
 ): GeometryOperationResult {
     const selected = new Set(itemIds);
@@ -725,11 +727,24 @@ function transformWhiteboardItems(
     const pointIds = [...new Set(selectedSmartItems.flatMap((item) =>
         smartItemPointIds(document, item)
     ))].sort();
-    let next = document;
+    const selectedCurveIds = new Set(selectedSmartItems.flatMap((item) =>
+        item.kind === "sketch-curve" ? [item.curveId] : []
+    ));
+    const candidateCurves = Object.fromEntries(
+        Object.entries(document.sketch.curves).map(([id, curve]) => [
+            id,
+            selectedCurveIds.has(id) ? curveTransform(curve) : curve,
+        ]),
+    );
+    const candidate = {
+        ...document,
+        sketch: { ...document.sketch, curves: candidateCurves },
+    };
+    let next = candidate;
     let result: GeometryOperationResult = successful(document);
     if (pointIds.length > 0) {
         const refs = pointIds.map((pointId) => ({ kind: "point" as const, pointId }));
-        const solved = solveWhiteboardDocument(document, {
+        const solved = solveWhiteboardDocument(candidate, {
             affected: refs,
             drivers: refs.map((feature) => ({
                 feature,
@@ -742,21 +757,206 @@ function transformWhiteboardItems(
         next = solved.document;
     }
 
-    const selectedCurveIds = new Set(selectedSmartItems.flatMap((item) =>
-        item.kind === "sketch-curve" ? [item.curveId] : []
-    ));
-    const curves = Object.fromEntries(Object.entries(next.sketch.curves).map(([id, curve]) => [
-        id,
-        selectedCurveIds.has(id) && (curve.kind === "circle" || curve.kind === "arc")
-            ? radialTransform(curve)
-            : curve,
-    ]));
     const items = next.items.map((item) =>
         item.kind === "baked" && selected.has(item.element.id)
             ? { ...item, element: bakedTransform(item.element) }
             : item
     );
-    return { ...result, document: { ...next, items, sketch: { ...next.sketch, curves } } };
+    return { ...result, document: { ...next, items } };
+}
+
+export interface ResizeFrame {
+    x: Pair;
+    y: Pair;
+}
+
+export const WORLD_RESIZE_FRAME: ResizeFrame = { x: [1, 0], y: [0, 1] };
+
+function resizeVector(vector: Pair, factors: Pair, frame: ResizeFrame): Pair {
+    const localX = vector[0] * frame.x[0] + vector[1] * frame.x[1];
+    const localY = vector[0] * frame.y[0] + vector[1] * frame.y[1];
+    return [
+        frame.x[0] * localX * factors[0] + frame.y[0] * localY * factors[1],
+        frame.x[1] * localX * factors[0] + frame.y[1] * localY * factors[1],
+    ];
+}
+
+function resizePoint(point: Pair, anchor: Pair, factors: Pair, frame: ResizeFrame): Pair {
+    const transformed = resizeVector(
+        [point[0] - anchor[0], point[1] - anchor[1]],
+        factors,
+        frame,
+    );
+    return [anchor[0] + transformed[0], anchor[1] + transformed[1]];
+}
+
+function resizeBakedElement(
+    element: SceneElement,
+    anchor: Pair,
+    factors: Pair,
+    frame: ResizeFrame,
+): SceneElement {
+    if (frame === WORLD_RESIZE_FRAME) return scaleElementBy(element, anchor, factors);
+    const rotated = rotateElement(
+        element,
+        anchor,
+        -Math.atan2(frame.x[1], frame.x[0]) * 180 / Math.PI,
+    );
+    const scaled = scaleElementBy(rotated, anchor, factors);
+    return rotateElement(
+        scaled,
+        anchor,
+        Math.atan2(frame.x[1], frame.x[0]) * 180 / Math.PI,
+    );
+}
+
+/** Affinely resize a smart, baked, or mixed selection in the supplied frame. */
+export function resizeWhiteboardItems(
+    document: WhiteboardDocument,
+    itemIds: readonly string[],
+    anchor: Pair,
+    factors: Pair,
+    frame: ResizeFrame = WORLD_RESIZE_FRAME,
+    mode: "preview" | "commit" = "commit",
+): GeometryOperationResult {
+    if (
+        factors.some((factor) => !Number.isFinite(factor) || factor <= 0) ||
+        ![...frame.x, ...frame.y].every(Number.isFinite)
+    ) {
+        return {
+            status: "failed",
+            conflictingConstraintIds: [],
+            diagnostic: "resize factors and frame must be finite and positive",
+        };
+    }
+    const dot = frame.x[0] * frame.y[0] + frame.x[1] * frame.y[1];
+    const lengthX = Math.hypot(...frame.x);
+    const lengthY = Math.hypot(...frame.y);
+    if (Math.abs(dot) > 1e-6 || Math.abs(lengthX - 1) > 1e-6 || Math.abs(lengthY - 1) > 1e-6) {
+        return {
+            status: "failed",
+            conflictingConstraintIds: [],
+            diagnostic: "resize frame must be orthonormal",
+        };
+    }
+
+    const selected = new Set(itemIds);
+    const selectedCurveIds = new Set(document.items.flatMap((item) =>
+        item.kind === "sketch-curve" && selected.has(item.id) ? [item.curveId] : []
+    ));
+    const anisotropic = Math.abs(factors[0] - factors[1]) > 1e-9;
+    if (anisotropic) {
+        const radialConflicts = Object.values(document.sketch.constraints)
+            .filter((constraint) =>
+                constraint.enabled &&
+                constraint.kind === "radial-distance" &&
+                selectedCurveIds.has(constraint.curveId)
+            )
+            .map(({ id }) => id);
+        if (radialConflicts.length > 0) {
+            return {
+                status: "conflicting",
+                conflictingConstraintIds: radialConflicts,
+                diagnostic: "a radial constraint prevents non-uniform resizing",
+            };
+        }
+    }
+
+    const uniformFactor = factors[0];
+    return transformWhiteboardItems(
+        document,
+        itemIds,
+        (point) => resizePoint(point, anchor, factors, frame),
+        (element) => resizeBakedElement(element, anchor, factors, frame),
+        (curve) => {
+            if (curve.kind === "ellipse" || curve.kind === "elliptical-arc") {
+                return {
+                    ...curve,
+                    axisX: resizeVector(curve.axisX, factors, frame),
+                    axisY: resizeVector(curve.axisY, factors, frame),
+                };
+            }
+            if (!anisotropic && curve.kind === "circle") {
+                return { ...curve, radius: curve.radius * uniformFactor };
+            }
+            if (!anisotropic || (curve.kind !== "circle" && curve.kind !== "arc")) return curve;
+            const radius = curve.kind === "circle"
+                ? curve.radius
+                : Math.hypot(
+                      document.sketch.points[curve.start].at[0] -
+                          document.sketch.points[curve.center].at[0],
+                      document.sketch.points[curve.start].at[1] -
+                          document.sketch.points[curve.center].at[1],
+                  );
+            const basis = {
+                axisX: resizeVector([radius, 0], factors, frame),
+                axisY: resizeVector([0, radius], factors, frame),
+            };
+            return curve.kind === "circle"
+                ? { id: curve.id, kind: "ellipse", center: curve.center, ...basis }
+                : {
+                      id: curve.id,
+                      kind: "elliptical-arc",
+                      center: curve.center,
+                      start: curve.start,
+                      end: curve.end,
+                      ...basis,
+                  };
+        },
+        mode,
+    );
+}
+
+/** Edit one affine basis vector of a smart ellipse/elliptical arc. */
+export function editWhiteboardEllipseAxis(
+    document: WhiteboardDocument,
+    itemId: string,
+    axis: "axis-x" | "axis-y",
+    target: Pair,
+    mode: "preview" | "commit" = "commit",
+): GeometryOperationResult {
+    const item = document.items.find((candidate) =>
+        candidate.kind === "sketch-curve" && candidate.id === itemId
+    );
+    if (!item || item.kind !== "sketch-curve") {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "ellipse item is missing" };
+    }
+    const curve = document.sketch.curves[item.curveId];
+    if (!curve || (curve.kind !== "ellipse" && curve.kind !== "elliptical-arc")) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "curve is not an ellipse" };
+    }
+    const center = document.sketch.points[curve.center]?.at;
+    if (!center || !target.every(Number.isFinite)) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "ellipse axis target is invalid" };
+    }
+    const vector: Pair = [target[0] - center[0], target[1] - center[1]];
+    if (Math.hypot(...vector) <= 1e-9) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "ellipse axis cannot collapse" };
+    }
+    const nextCurve = {
+        ...curve,
+        ...(axis === "axis-x" ? { axisX: vector } : { axisY: vector }),
+    };
+    const determinant =
+        nextCurve.axisX[0] * nextCurve.axisY[1] -
+        nextCurve.axisX[1] * nextCurve.axisY[0];
+    if (Math.abs(determinant) <= 1e-9) {
+        return { status: "failed", conflictingConstraintIds: [], diagnostic: "ellipse axes cannot be collinear" };
+    }
+    const candidate: WhiteboardDocument = {
+        ...document,
+        sketch: {
+            ...document.sketch,
+            curves: { ...document.sketch.curves, [curve.id]: nextCurve },
+        },
+    };
+    const affected = [curve.center, ...(curve.kind === "elliptical-arc" ? [curve.start, curve.end] : [])]
+        .map((pointId) => ({ kind: "point" as const, pointId }));
+    return operationFromSolve(solveWhiteboardDocument(candidate, {
+        affected,
+        drivers: [],
+        mode,
+    }));
 }
 
 /** Uniformly scale a smart/mixed selection while preserving its constraint component. */
@@ -770,17 +970,12 @@ export function scaleWhiteboardItems(
     if (!Number.isFinite(factor) || factor <= 0) {
         return { status: "failed", conflictingConstraintIds: [], diagnostic: "scale must be finite and positive" };
     }
-    return transformWhiteboardItems(
+    return resizeWhiteboardItems(
         document,
         itemIds,
-        (point) => [
-            anchor[0] + (point[0] - anchor[0]) * factor,
-            anchor[1] + (point[1] - anchor[1]) * factor,
-        ],
-        (element) => scaleElementBy(element, anchor, [factor, factor]),
-        // A smart arc's radius/angles derive from its three points, which
-        // `pointTarget` already scales — only a circle's scalar radius needs it.
-        (curve) => curve.kind === "circle" ? { ...curve, radius: curve.radius * factor } : curve,
+        anchor,
+        [factor, factor],
+        WORLD_RESIZE_FRAME,
         mode,
     );
 }
@@ -811,10 +1006,19 @@ export function rotateWhiteboardItems(
             ];
         },
         (element) => rotateElement(element, pivot, degrees),
-        // Both a smart arc (three points) and a circle (center point + scalar
-        // radius) rotate entirely through `pointTarget` moving their points: the
-        // arc's angles re-derive and a circle's radius is rotation-invariant.
-        (curve) => curve,
+        (curve) => curve.kind === "ellipse" || curve.kind === "elliptical-arc"
+            ? {
+                  ...curve,
+                  axisX: [
+                      curve.axisX[0] * cosine - curve.axisX[1] * sine,
+                      curve.axisX[0] * sine + curve.axisX[1] * cosine,
+                  ],
+                  axisY: [
+                      curve.axisY[0] * cosine - curve.axisY[1] * sine,
+                      curve.axisY[0] * sine + curve.axisY[1] * cosine,
+                  ],
+              }
+            : curve,
         mode,
     );
 }
@@ -834,7 +1038,7 @@ export function updateSmartPresentationStyle(
         return {
             ...item,
             ...style,
-            ...(resolved.kind === "path" || resolved.kind === "circle"
+            ...(resolved.kind === "path" || resolved.kind === "circle" || resolved.kind === "ellipse"
                 ? (resolved.fillPen ? { fillPen: resolved.fillPen } : { fillPen: undefined })
                 : {}),
         };
@@ -876,7 +1080,7 @@ function referencedPointIds(document: WhiteboardDocument): Set<string> {
         if (curve.kind === "segment") {
             ids.add(curve.start);
             ids.add(curve.end);
-        } else if (curve.kind === "arc") {
+        } else if (curve.kind === "arc" || curve.kind === "elliptical-arc") {
             ids.add(curve.center);
             ids.add(curve.start);
             ids.add(curve.end);
@@ -943,4 +1147,3 @@ export function deleteWhiteboardItems(
     };
     return next;
 }
-

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Scene } from "../../asy/scene/types";
+import type { Pair, Scene } from "../../asy/scene/types";
 import {
     addLengthDimension,
     addRelationConstraint,
@@ -13,11 +13,13 @@ import {
     lengthDimensionValue,
     lengthDimensionsForSelection,
     resolveWhiteboardDocument,
+    resizeWhiteboardItems,
     rotateWhiteboardItems,
     scaleWhiteboardItems,
     switchDirectionalRelationConstraint,
     translateWhiteboardItems,
     updateSmartPresentationStyle,
+    validateWhiteboardDocument,
     type CurveFeatureRef,
     type FeatureRef,
     type PointFeatureRef,
@@ -114,6 +116,74 @@ describe("whiteboard arc constraints (point-on-curve, tangent)", () => {
         if (arcElement?.kind !== "arc" || line?.kind !== "path") throw new Error("missing resolved geometry");
         expect(lineDistance(arcElement.center, line.path.nodes[0], line.path.nodes[1]))
             .toBeCloseTo(arcElement.radius, 5);
+    });
+
+    test("point-on-curve and tangent generalize after an arc becomes affine", () => {
+        const source = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [4, 0],
+            [0, 4],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const stretched = resizeWhiteboardItems(source.document, ["arc"], [0, 0], [2, 0.5]);
+        if (!stretched.document) throw new Error("missing stretched arc");
+        const withPoint = createSmartPointMarker(stretched.document, [10, 10], undefined, "p");
+        const curveId = arcCurveId(withPoint.document, "arc");
+        const attached = addRelationConstraint(withPoint.document, "point-on-curve", [
+            withPoint.endpointFeatures[0],
+            { kind: "curve", curveId },
+        ]);
+        expect(attached.document).toBeDefined();
+        const ellipse = resolveWhiteboardDocument(attached.document!).elements
+            .find((element) => element.id === "arc");
+        const dot = resolveWhiteboardDocument(attached.document!).elements
+            .find((element) => element.id === "p");
+        if (ellipse?.kind !== "elliptical-arc" || dot?.kind !== "dot") {
+            throw new Error("missing affine relation geometry");
+        }
+        const localX = (dot.at[0] - ellipse.center[0]) / 8;
+        const localY = (dot.at[1] - ellipse.center[1]) / 2;
+        expect(Math.hypot(localX, localY)).toBeCloseTo(1, 5);
+
+        const segment = createSmartPath(
+            attached.document!,
+            [[-10, 7], [10, 7]],
+            false,
+            undefined,
+            undefined,
+            "seg",
+        );
+        const segmentItem = segment.document.items.find(
+            (item) => item.kind === "sketch-path" && item.id === "seg",
+        );
+        if (!segmentItem || segmentItem.kind !== "sketch-path") throw new Error("missing segment");
+        const tangent = addRelationConstraint(segment.document, "tangent", [
+            { kind: "curve", curveId },
+            { kind: "curve", curveId: segmentItem.uses[0].curveId },
+        ]);
+        expect(tangent.document).toBeDefined();
+        const tangentScene = resolveWhiteboardDocument(tangent.document!);
+        const tangentEllipse = tangentScene.elements.find((element) => element.id === "arc");
+        const tangentLine = tangentScene.elements.find((element) => element.id === "seg");
+        if (tangentEllipse?.kind !== "elliptical-arc" || tangentLine?.kind !== "path") {
+            throw new Error("missing affine tangent geometry");
+        }
+        const lineDx = tangentLine.path.nodes[1][0] - tangentLine.path.nodes[0][0];
+        const lineDy = tangentLine.path.nodes[1][1] - tangentLine.path.nodes[0][1];
+        const lineLength = Math.hypot(lineDx, lineDy);
+        const normal: Pair = [lineDy / lineLength, -lineDx / lineLength];
+        const support = Math.hypot(
+            normal[0] * tangentEllipse.axisX[0] + normal[1] * tangentEllipse.axisX[1],
+            normal[0] * tangentEllipse.axisY[0] + normal[1] * tangentEllipse.axisY[1],
+        );
+        expect(lineDistance(
+            tangentEllipse.center,
+            tangentLine.path.nodes[0],
+            tangentLine.path.nodes[1],
+        )).toBeCloseTo(support, 5);
     });
 
     test("tangent is not applicable to two arcs and rejects atomically", () => {
@@ -289,5 +359,114 @@ describe("whiteboard smart geometry phase 3 model", () => {
             expectPoint(point, [[3, -1], [3, 3], [1, 3]][index] as [number, number])
         );
         expectPoint(rotatedScene[1].at, [0, 1]);
+    });
+
+    test("non-uniform resize promotes a smart arc to an affine smart arc", () => {
+        const created = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [4, 0],
+            [0, 4],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const resized = resizeWhiteboardItems(
+            created.document,
+            ["arc"],
+            [0, 0],
+            [2, 0.5],
+        );
+        expect(resized.document).toBeDefined();
+        expect(validateWhiteboardDocument(resized.document!)).toEqual({ valid: true, errors: [] });
+        const curve = resized.document!.sketch.curves[arcCurveId(resized.document!, "arc")];
+        expect(curve).toMatchObject({
+            kind: "elliptical-arc",
+            axisX: [8, 0],
+            axisY: [0, 2],
+        });
+        const resolved = resolveWhiteboardDocument(resized.document!).elements[0];
+        expect(resolved).toMatchObject({
+            kind: "elliptical-arc",
+            center: [0, 0],
+            axisX: [8, 0],
+            axisY: [0, 2],
+        });
+        if (curve.kind !== "elliptical-arc") throw new Error("missing affine arc curve");
+        expect(resized.document!.sketch.points[curve.center].at).toEqual([0, 0]);
+        const invalid = structuredClone(resized.document!);
+        const invalidCurve = invalid.sketch.curves[curve.id];
+        if (invalidCurve.kind !== "elliptical-arc") throw new Error("missing cloned affine arc");
+        invalidCurve.axisY = [...invalidCurve.axisX];
+        expect(validateWhiteboardDocument(invalid).valid).toBe(false);
+    });
+
+    test("a radial constraint blocks circle-to-ellipse promotion without mutation", () => {
+        const created = createSmartArc(
+            emptyWhiteboardDocument(),
+            [0, 0],
+            [4, 0],
+            [0, 4],
+            undefined,
+            undefined,
+            "arc",
+        );
+        const curveId = arcCurveId(created.document, "arc");
+        const constrained = {
+            ...created.document,
+            sketch: {
+                ...created.document.sketch,
+                parameters: {
+                    ...created.document.sketch.parameters,
+                    radius: { id: "radius", value: 4, unit: "length" as const },
+                },
+                constraints: {
+                    ...created.document.sketch.constraints,
+                    radial: {
+                        id: "radial",
+                        kind: "radial-distance" as const,
+                        enabled: true,
+                        origin: "explicit" as const,
+                        curveId,
+                        value: "radius",
+                        display: "radius" as const,
+                    },
+                },
+            },
+        };
+        const result = resizeWhiteboardItems(constrained, ["arc"], [0, 0], [2, 1]);
+        expect(result.status).toBe("conflicting");
+        expect(result.conflictingConstraintIds).toEqual(["radial"]);
+        expect(result.document).toBeUndefined();
+    });
+
+    test("a rotated local resize changes a smart rectangle's width without losing right angles", () => {
+        const root = Math.SQRT1_2;
+        const created = createSmartPath(
+            emptyWhiteboardDocument(),
+            [[0, 0], [2 * root, 2 * root], [root, 3 * root], [-root, root]],
+            true,
+            undefined,
+            undefined,
+            "rect",
+        );
+        const resized = resizeWhiteboardItems(
+            created.document,
+            ["rect"],
+            [-root, root],
+            [2, 1],
+            { x: [root, root], y: [-root, root] },
+        );
+        expect(resized.document).toBeDefined();
+        const element = resolveWhiteboardDocument(resized.document!).elements[0];
+        if (element.kind !== "path") throw new Error("missing resized rectangle");
+        const a = element.path.nodes[0];
+        const b = element.path.nodes[1];
+        const c = element.path.nodes[2];
+        const ab: [number, number] = [b[0] - a[0], b[1] - a[1]];
+        const bc: [number, number] = [c[0] - b[0], c[1] - b[1]];
+        expect(Math.hypot(...ab)).toBeCloseTo(4, 7);
+        expect(Math.hypot(...bc)).toBeCloseTo(1, 7);
+        expect(ab[0] * bc[0] + ab[1] * bc[1]).toBeCloseTo(0, 7);
     });
 });

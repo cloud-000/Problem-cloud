@@ -26,3 +26,10 @@ export function migrateSceneToWhiteboardDocument(scene: Scene): WhiteboardDocume
         ...(scene.meta ? { meta: scene.meta } : {}),
     };
 }
+
+/** V2 → V3 is additive: existing curve records remain valid verbatim. */
+export function migrateV2WhiteboardDocument(
+    document: Omit<WhiteboardDocument, "schemaVersion"> & { schemaVersion: 2 },
+): WhiteboardDocument {
+    return { ...document, schemaVersion: WHITEBOARD_SCHEMA_VERSION };
+}

@@ -99,10 +99,13 @@ describe("selection box", () => {
         // ...and it is actually rotated (no purely horizontal/vertical edge).
         expect(quad.some((_, i) => Math.abs(edge(i)[0]) > 1e-6 && Math.abs(edge(i)[1]) > 1e-6)).toBe(true);
 
-        // Four corner resize handles anchored to the diagonally-opposite corner.
-        expect(overlay.resizeHandles).toHaveLength(4);
+        // Four corner and four edge handles follow the rectangle's local frame.
+        expect(overlay.resizeHandles).toHaveLength(8);
         expect(overlay.resizeHandles[0].handle).toEqual([0, 0]);
         expect(overlay.resizeHandles[0].anchor).toEqual([1, 3]);
+        expect(overlay.resizeHandles.map(({ position }) => position)).toEqual(
+            ["nw", "n", "ne", "e", "se", "s", "sw", "w"],
+        );
         expect(overlay.rotationControl).not.toBeNull();
     });
 
@@ -175,7 +178,7 @@ describe("resize handles", () => {
         expect([...byPosition.keys()].sort()).toEqual(
             ["e", "n", "ne", "nw", "s", "se", "sw", "w"],
         );
-        expect(byPosition.get("nw")).toEqual({
+        expect(byPosition.get("nw")).toMatchObject({
             position: "nw",
             screen: [94, 74],
             handle: [0, 2],
@@ -191,7 +194,7 @@ describe("resize handles", () => {
         });
         expect(byPosition.get("ne")).toMatchObject({ screen: [126, 74], cursor: "nesw-resize" });
         expect(byPosition.get("sw")).toMatchObject({ screen: [94, 106], cursor: "nesw-resize" });
-        expect(byPosition.get("n")).toEqual({
+        expect(byPosition.get("n")).toMatchObject({
             position: "n",
             screen: [110, 74],
             handle: [1, 2],
@@ -199,7 +202,7 @@ describe("resize handles", () => {
             axes: { x: false, y: true },
             cursor: "ns-resize",
         });
-        expect(byPosition.get("e")).toEqual({
+        expect(byPosition.get("e")).toMatchObject({
             position: "e",
             screen: [126, 90],
             handle: [2, 1],
@@ -209,10 +212,12 @@ describe("resize handles", () => {
         });
     });
 
-    test("a smart selection keeps only the four corner handles", () => {
+    test("a smart selection exposes side handles for non-uniform resizing", () => {
         const overlay = buildOverlay({ ...baseline, selectionContainsSmartItems: true });
 
-        expect(overlay.resizeHandles.map((h) => h.position)).toEqual(["nw", "ne", "se", "sw"]);
+        expect(overlay.resizeHandles.map((h) => h.position)).toEqual(
+            ["nw", "ne", "se", "sw", "n", "s", "e", "w"],
+        );
     });
 
     test("a flat selection clears the y axis flag and drops the n/s handles", () => {
