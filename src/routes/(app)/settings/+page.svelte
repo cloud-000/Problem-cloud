@@ -72,7 +72,7 @@
                     value={Theme.theme}
                     options={Theme.themeOptions}
                     onchange={(val) => {
-                        Theme.theme = val;
+                        Theme.setUserTheme(val);
                     }}
                 />
             </div>

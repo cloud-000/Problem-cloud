@@ -39,6 +39,13 @@ export class Theme {
         this.#activates.forEach((act) => this.#a.get(t)?.activate(act));
     }
 
+    static setUserTheme(t: string) {
+        try {
+            localStorage.setItem("theme:user_explicit", "true");
+        } catch (_) {}
+        this.theme = t;
+    }
+
     static get theme() {
         return currentThemeName;
     }
