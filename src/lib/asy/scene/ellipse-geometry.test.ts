@@ -1,5 +1,46 @@
 import { describe, expect, test } from "bun:test";
-import { COINCIDENT_SWEEP_DEGREES, positiveArcSweep } from "./ellipse-geometry";
+import {
+    arcPointAt,
+    circlePointAt,
+    COINCIDENT_SWEEP_DEGREES,
+    ellipsePointAt,
+    positiveArcSweep,
+} from "./ellipse-geometry";
+
+describe("parametric ellipse points", () => {
+    function expectPoint(
+        actual: readonly [number, number],
+        expected: readonly [number, number],
+    ): void {
+        expect(actual[0]).toBeCloseTo(expected[0], 12);
+        expect(actual[1]).toBeCloseTo(expected[1], 12);
+    }
+
+    test("evaluates circle and affine ellipse geometry through one basis helper", () => {
+        expectPoint(circlePointAt([1, 2], 3, 90), [1, 5]);
+        expectPoint(ellipsePointAt([1, 1], [2, 1], [-1, 2], 90), [0, 3]);
+    });
+
+    test("evaluates both Scene arc kinds through the shared wrapper", () => {
+        expectPoint(arcPointAt({
+            id: "arc",
+            kind: "arc",
+            center: [1, 2],
+            radius: 3,
+            angle1: 0,
+            angle2: 90,
+        }, 180), [-2, 2]);
+        expectPoint(arcPointAt({
+            id: "ellipse",
+            kind: "elliptical-arc",
+            center: [1, 1],
+            axisX: [2, 1],
+            axisY: [-1, 2],
+            angle1: 0,
+            angle2: 90,
+        }, 90), [0, 3]);
+    });
+});
 
 /**
  * `positiveArcSweep` is the single place a pair of arc angles becomes a drawn

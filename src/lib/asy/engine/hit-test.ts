@@ -5,7 +5,7 @@
  */
 
 import type { Pair, Path, Scene, SceneElement } from "../scene/types";
-import { positiveArcSweep } from "../scene/ellipse-geometry";
+import { ellipsePointAt, positiveArcSweep } from "../scene/ellipse-geometry";
 import {
     distance,
     pointInPolygon,
@@ -23,15 +23,15 @@ function ellipsePoints(
     steps = 96,
 ): Pair[] {
     const sweep = positiveArcSweep(angle1, angle2);
-    return Array.from({ length: steps + 1 }, (_, index) => {
-        const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        return [
-            center[0] + axisX[0] * cos + axisY[0] * sin,
-            center[1] + axisX[1] * cos + axisY[1] * sin,
-        ] as Pair;
-    });
+    return Array.from(
+        { length: steps + 1 },
+        (_, index) => ellipsePointAt(
+            center,
+            axisX,
+            axisY,
+            angle1 + (sweep * index) / steps,
+        ),
+    );
 }
 
 /** Distance from `p` to a single element's geometry (Infinity for raw). */

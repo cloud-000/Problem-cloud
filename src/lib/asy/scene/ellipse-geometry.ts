@@ -11,6 +11,41 @@ export interface PrincipalEllipseGeometry {
     foci: readonly [Pair, Pair];
 }
 
+/** Evaluate a circle/ellipse basis at one parameter angle in degrees. */
+export function ellipsePointAt(
+    center: Pair,
+    axisX: Pair,
+    axisY: Pair,
+    angle: number,
+): Pair {
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return [
+        center[0] + axisX[0] * cos + axisY[0] * sin,
+        center[1] + axisX[1] * cos + axisY[1] * sin,
+    ];
+}
+
+/** Evaluate a circle at one parameter angle in degrees. */
+export function circlePointAt(center: Pair, radius: number, angle: number): Pair {
+    const radians = (angle * Math.PI) / 180;
+    return [
+        center[0] + radius * Math.cos(radians),
+        center[1] + radius * Math.sin(radians),
+    ];
+}
+
+/** Evaluate a Scene arc or elliptical arc at one parameter angle in degrees. */
+export function arcPointAt(
+    element: ArcElement | EllipticalArcElement,
+    angle: number,
+): Pair {
+    return element.kind === "arc"
+        ? circlePointAt(element.center, element.radius, angle)
+        : ellipsePointAt(element.center, element.axisX, element.axisY, angle);
+}
+
 function normalize(vector: Pair, fallback: Pair): Pair {
     const length = Math.hypot(vector[0], vector[1]);
     return length > EPSILON

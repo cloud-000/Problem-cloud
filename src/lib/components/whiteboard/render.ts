@@ -1,4 +1,6 @@
 import {
+    circlePointAt,
+    ellipsePointAt,
     pathCommands,
     positiveArcSweep,
     resolvePenColor,
@@ -220,11 +222,7 @@ export function projectedArc(
     const points: Pair[] = [];
     for (let index = 0; index <= steps; index++) {
         const degrees = angle1 + (sweep * index) / steps;
-        const radians = (degrees * Math.PI) / 180;
-        points.push(project([
-            center[0] + radius * Math.cos(radians),
-            center[1] + radius * Math.sin(radians),
-        ]));
+        points.push(project(circlePointAt(center, radius, degrees)));
     }
     return points;
 }
@@ -241,13 +239,12 @@ export function projectedEllipseArc(
     const sweep = positiveArcSweep(angle1, angle2);
     const points: Pair[] = [];
     for (let index = 0; index <= steps; index++) {
-        const radians = ((angle1 + (sweep * index) / steps) * Math.PI) / 180;
-        const cos = Math.cos(radians);
-        const sin = Math.sin(radians);
-        points.push(project([
-            center[0] + axisX[0] * cos + axisY[0] * sin,
-            center[1] + axisX[1] * cos + axisY[1] * sin,
-        ]));
+        points.push(project(ellipsePointAt(
+            center,
+            axisX,
+            axisY,
+            angle1 + (sweep * index) / steps,
+        )));
     }
     return points;
 }

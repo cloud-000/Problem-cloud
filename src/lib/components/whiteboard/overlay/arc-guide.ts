@@ -8,6 +8,8 @@
  * `buildOverlay`, which stays the single overlay assembly point (INVARIANTS §1/§5).
  */
 import {
+    arcPointAt,
+    circlePointAt,
     positiveArcSweep,
     principalEllipseGeometry,
     type ArcElement,
@@ -29,28 +31,6 @@ function isArcControl(
     control: ArcControl,
 ): boolean {
     return ref?.elementId === elementId && ref.control === control;
-}
-
-function arcPoint(center: Pair, radius: number, angle: number): Pair {
-    const radians = (angle * Math.PI) / 180;
-    return [
-        center[0] + radius * Math.cos(radians),
-        center[1] + radius * Math.sin(radians),
-    ];
-}
-
-function selectedArcPoint(
-    element: ArcElement | EllipticalArcElement,
-    angle: number,
-): Pair {
-    if (element.kind === "arc") return arcPoint(element.center, element.radius, angle);
-    const radians = (angle * Math.PI) / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    return [
-        element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
-        element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
-    ];
 }
 
 function geometryLabel(value: number): string {
@@ -89,7 +69,7 @@ export function buildArcGuide(
     const construction = input.constructionArcGuide;
     if (construction) {
         const radiusEnd = construction.angle1 !== undefined
-            ? arcPoint(construction.center, construction.radius, construction.angle1)
+            ? circlePointAt(construction.center, construction.radius, construction.angle1)
             : construction.radiusPoint ?? construction.center;
         const radiusLabelAt: Pair = [
             construction.center[0] + (radiusEnd[0] - construction.center[0]) * 0.55,
@@ -101,7 +81,7 @@ export function buildArcGuide(
         if (construction.angle1 !== undefined) {
             handles.push({
                 control: "start",
-                screen: project(arcPoint(
+                screen: project(circlePointAt(
                     construction.center,
                     construction.radius,
                     construction.angle1,
@@ -111,7 +91,7 @@ export function buildArcGuide(
         if (construction.angle2 !== undefined) {
             handles.push({
                 control: "end",
-                screen: project(arcPoint(
+                screen: project(circlePointAt(
                     construction.center,
                     construction.radius,
                     construction.angle2,
@@ -147,8 +127,8 @@ export function buildArcGuide(
     const radiusEditable =
         selectedArcElement.kind === "arc" && !input.selectionContainsSmartItems;
 
-    const start = selectedArcPoint(selectedArcElement, selectedArcElement.angle1);
-    const end = selectedArcPoint(selectedArcElement, selectedArcElement.angle2);
+    const start = arcPointAt(selectedArcElement, selectedArcElement.angle1);
+    const end = arcPointAt(selectedArcElement, selectedArcElement.angle2);
     let startScreen = project(start);
     let endScreen = project(end);
     const activeEndpointControl =
@@ -215,7 +195,7 @@ export function buildArcGuide(
     }));
     const points = selectedArcElement.kind === "elliptical-arc"
         ? Array.from({ length: 65 }, (_, index) =>
-              project(selectedArcPoint(selectedArcElement, (index / 64) * 360)),
+              project(arcPointAt(selectedArcElement, (index / 64) * 360)),
           )
         : undefined;
     const majorOffset: Pair = [
@@ -258,7 +238,7 @@ export function buildArcGuide(
               },
           ];
     const sweep = positiveArcSweep(selectedArcElement.angle1, selectedArcElement.angle2);
-    const angleMidpoint = selectedArcPoint(
+    const angleMidpoint = arcPointAt(
         selectedArcElement,
         selectedArcElement.angle1 + sweep / 2,
     );

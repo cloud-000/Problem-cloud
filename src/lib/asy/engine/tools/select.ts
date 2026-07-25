@@ -2,6 +2,7 @@ import type { ArcElement, EllipticalArcElement, Pair, Scene, SceneElement } from
 import { elementBounds } from "../../scene/bounds";
 import { isStraightPathVertexEditable } from "../../scene/path-geometry";
 import {
+    arcPointAt,
     positiveArcSweep,
     principalEllipseGeometry,
 } from "../../scene/ellipse-geometry";
@@ -39,24 +40,6 @@ function arcParameterAngle(element: ArcElement | EllipticalArcElement, point: Pa
     const localY = (-dx * element.axisX[1] + dy * element.axisX[0]) / determinant;
     if (Math.hypot(localX, localY) <= 1e-12) return null;
     return Math.atan2(localY, localX);
-}
-
-function arcEndpointAt(
-    element: ArcElement | EllipticalArcElement,
-    angle: number,
-): Pair {
-    const radians = (angle * Math.PI) / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    return element.kind === "arc"
-        ? [
-              element.center[0] + Math.abs(element.radius) * cos,
-              element.center[1] + Math.abs(element.radius) * sin,
-          ]
-        : [
-              element.center[0] + element.axisX[0] * cos + element.axisY[0] * sin,
-              element.center[1] + element.axisX[1] * cos + element.axisY[1] * sin,
-          ];
 }
 
 type ShapeTransformGesture = Exclude<SelectionTransformGesture, { kind: "move" }>;
@@ -437,8 +420,8 @@ export class SelectTool implements Tool {
             const nextEnd = control === "end" ? fixedEnd + delta : fixedEnd;
             const normalizedSweep = normalizeDeg(nextEnd - nextStart);
             const endpointGap = distance(
-                arcEndpointAt(element, nextStart),
-                arcEndpointAt(element, nextEnd),
+                arcPointAt(element, nextStart),
+                arcPointAt(element, nextEnd),
             );
             this.arcClosureSnapped = arcClosureSnapped({
                 endpointGap,
