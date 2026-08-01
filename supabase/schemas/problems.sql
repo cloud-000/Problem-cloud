@@ -28,6 +28,13 @@ create table public.tests (
   format_order     smallint,
 
   is_computational boolean not null default false,
+  -- Source-backed test declaration from the scraper. `known` is deliberately
+  -- absent here: it is derived per problem from the presence of an answer.
+  response_kind    text check (response_kind in
+                       ('mcq', 'short_answer', 'proof', 'construction',
+                        'estimation', 'interactive', 'unknown')),
+  answer_status    text check (answer_status in
+                       ('source_missing', 'not_applicable', 'needs_review')),
   difficulty       integer default 0,
   quality          integer default 0,
   -- Default time allotment for taking this test, in seconds. null = untimed /
@@ -77,6 +84,13 @@ create table public.problems (
   topic              text,
   tags               text[],                  -- tags
   is_computational   boolean not null default false,
+  -- Resolved per-problem coverage from the scraper: problem override, then
+  -- test declaration, then `known` when a usable answer exists.
+  response_kind      text check (response_kind in
+                         ('mcq', 'short_answer', 'proof', 'construction',
+                          'estimation', 'interactive', 'unknown')),
+  answer_status      text check (answer_status in
+                         ('known', 'source_missing', 'not_applicable', 'needs_review')),
   difficulty         integer default 0,
   quality            integer default 0,
   verified           boolean not null default false,
@@ -134,20 +148,23 @@ security definer
 set search_path = ''
 as $$
 declare
-  total_problems bigint;
+  graded_total bigint;
   missing_answers bigint;
 begin
-  select pg_catalog.count(*) into total_problems
+  select pg_catalog.count(*) into graded_total
   from public.problems
-  where test_id = t_id;
+  where test_id = t_id
+    and coalesce(answer_status, '') <> 'not_applicable';
 
   select pg_catalog.count(*) into missing_answers
   from public.problems
-  where test_id = t_id and (answer_index = -1 or answer_index is null);
+  where test_id = t_id
+    and coalesce(answer_status, '') <> 'not_applicable'
+    and (answer_index = -1 or answer_index is null);
 
   update public.tests
   set
-    has_all_answers = (total_problems > 0 and missing_answers = 0),
+    has_all_answers = (graded_total > 0 and missing_answers = 0),
     missing_answers_count = missing_answers::integer
   where id = t_id;
 end;

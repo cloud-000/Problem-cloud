@@ -62,6 +62,11 @@ create unlogged table public._import_tests (
   format           text,
   format_order     smallint,
   is_computational boolean not null default false,
+  response_kind    text check (response_kind in
+                       ('mcq', 'short_answer', 'proof', 'construction',
+                        'estimation', 'interactive', 'unknown')),
+  answer_status    text check (answer_status in
+                       ('source_missing', 'not_applicable', 'needs_review')),
   difficulty       integer default 0,   -- seed-only
   quality          integer default 0    -- seed-only
 );
@@ -83,6 +88,11 @@ create unlogged table public._import_problems (
   topic              text,
   tags               text[],
   is_computational   boolean not null default false,
+  response_kind      text check (response_kind in
+                         ('mcq', 'short_answer', 'proof', 'construction',
+                          'estimation', 'interactive', 'unknown')),
+  answer_status      text check (answer_status in
+                         ('known', 'source_missing', 'not_applicable', 'needs_review')),
   difficulty         integer default 0,   -- seed-only
   quality            integer default 0,   -- seed-only
   verified           boolean not null default false,  -- seed-only
@@ -227,16 +237,16 @@ begin
     raise exception 'sync: % staging test(s) reference an unknown series', v_bad;
   end if;
 
-  -- tests: match on sync_key. name/year/type/division/format/is_computational
-  -- and their display orders are scraper-owned;
+  -- tests: match on sync_key. name/year/type/division/format/is_computational,
+  -- coverage declarations, and display orders are scraper-owned;
   -- difficulty/quality (and time_limit_seconds) are seed-then-lock. section and
   -- aops_category_id are identity components (baked into sync_key) so they only
   -- ever change by minting a new key -> a new row; not updated here.
   with src as (
     select it.sync_key, s.id as series_id, it.name, it.year, it.aops_category_id,
            it.section, it.type, it.division, it.division_order,
-           it.format, it.format_order,
-           it.is_computational, it.difficulty, it.quality
+           it.format, it.format_order, it.is_computational,
+           it.response_kind, it.answer_status, it.difficulty, it.quality
     from public._import_tests it
     join public.series s on s.name = it.series_name
   ),
@@ -244,10 +254,10 @@ begin
     insert into public.tests
       (sync_key, series_id, name, year, aops_category_id, section,
        type, division, division_order, format, format_order,
-       is_computational, difficulty, quality)
+       is_computational, response_kind, answer_status, difficulty, quality)
     select sync_key, series_id, name, year, aops_category_id, section,
            type, division, division_order, format, format_order,
-           is_computational, difficulty, quality
+           is_computational, response_kind, answer_status, difficulty, quality
     from src
     on conflict (sync_key) do update
       set series_id        = excluded.series_id,
@@ -258,7 +268,9 @@ begin
           division_order   = excluded.division_order,
           format           = excluded.format,
           format_order     = excluded.format_order,
-          is_computational = excluded.is_computational
+          is_computational = excluded.is_computational,
+          response_kind    = excluded.response_kind,
+          answer_status    = excluded.answer_status
     returning (xmax = 0) as inserted
   )
   select
@@ -282,17 +294,18 @@ begin
   with src as (
     select ip.sync_key, t.id as test_id, ip.n, ip.aops_id, ip.statement,
            ip.choices, ip.answer_index, ip.official_solutions, ip.topic, ip.tags,
-           ip.is_computational, ip.difficulty, ip.quality, ip.verified, ip.notes
+           ip.is_computational, ip.response_kind, ip.answer_status,
+           ip.difficulty, ip.quality, ip.verified, ip.notes
     from public._import_problems ip
     join public.tests t on t.sync_key = ip.test_sync_key
   ),
   ins as (
     insert into public.problems
       (sync_key, test_id, n, aops_id, statement, choices, answer_index,
-       official_solutions, topic, tags, is_computational,
+       official_solutions, topic, tags, is_computational, response_kind, answer_status,
        difficulty, quality, verified, notes)
     select sync_key, test_id, n, aops_id, statement, choices, answer_index,
-           official_solutions, topic, tags, is_computational,
+           official_solutions, topic, tags, is_computational, response_kind, answer_status,
            difficulty, quality, verified, notes
     from src
     on conflict (sync_key) do update
@@ -303,7 +316,9 @@ begin
           official_solutions = excluded.official_solutions,
           topic              = excluded.topic,
           tags               = excluded.tags,
-          is_computational   = excluded.is_computational
+          is_computational   = excluded.is_computational,
+          response_kind      = excluded.response_kind,
+          answer_status      = excluded.answer_status
     returning (xmax = 0) as inserted
   )
   select

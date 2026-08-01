@@ -150,11 +150,16 @@ export function restoreTestDraft(
 }
 
 export function testOutcome(entry: PracticeHistoryEntry): TestOutcome {
-    const isMcq = (entry.problem.choices?.length ?? 0) > 1;
+    const choices = entry.problem.choices ?? [];
+    const answerIndex = entry.problem.answer_index ?? -1;
+    const isMcq = choices.length > 1;
     const skipped = isMcq
         ? entry.selectedChoice == null
         : !entry.answer.trim();
     if (skipped) return { skipped: true, correct: null };
+    if (answerIndex < 0 || answerIndex >= choices.length) {
+        return { skipped: false, correct: null };
+    }
     return {
         skipped: false,
         // Free-response is graded with the same normalizing matcher as live
@@ -162,11 +167,8 @@ export function testOutcome(entry: PracticeHistoryEntry): TestOutcome {
         // carry unit labels ("8 pies", "19 cm") or LaTeX/formatting the solver
         // won't retype, so `===` marked genuinely-correct answers wrong.
         correct: isMcq
-            ? entry.selectedChoice === entry.problem.answer_index
-            : answersMatch(
-                  entry.answer,
-                  entry.problem.choices?.[entry.problem.answer_index ?? 0] ?? "",
-              ),
+            ? entry.selectedChoice === answerIndex
+            : answersMatch(entry.answer, choices[answerIndex]),
     };
 }
 

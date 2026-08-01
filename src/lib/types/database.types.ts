@@ -37,6 +37,7 @@ export type Database = {
       _import_problems: {
         Row: {
           answer_index: number | null
+          answer_status: string | null
           aops_id: number | null
           canonical_sync_key: string | null
           choices: string[] | null
@@ -46,6 +47,7 @@ export type Database = {
           notes: string | null
           official_solutions: string[] | null
           quality: number | null
+          response_kind: string | null
           statement: string | null
           sync_key: string
           tags: string[] | null
@@ -55,6 +57,7 @@ export type Database = {
         }
         Insert: {
           answer_index?: number | null
+          answer_status?: string | null
           aops_id?: number | null
           canonical_sync_key?: string | null
           choices?: string[] | null
@@ -64,6 +67,7 @@ export type Database = {
           notes?: string | null
           official_solutions?: string[] | null
           quality?: number | null
+          response_kind?: string | null
           statement?: string | null
           sync_key: string
           tags?: string[] | null
@@ -73,6 +77,7 @@ export type Database = {
         }
         Update: {
           answer_index?: number | null
+          answer_status?: string | null
           aops_id?: number | null
           canonical_sync_key?: string | null
           choices?: string[] | null
@@ -82,6 +87,7 @@ export type Database = {
           notes?: string | null
           official_solutions?: string[] | null
           quality?: number | null
+          response_kind?: string | null
           statement?: string | null
           sync_key?: string
           tags?: string[] | null
@@ -111,6 +117,7 @@ export type Database = {
       }
       _import_tests: {
         Row: {
+          answer_status: string | null
           aops_category_id: string | null
           difficulty: number | null
           division: string | null
@@ -120,6 +127,7 @@ export type Database = {
           is_computational: boolean
           name: string
           quality: number | null
+          response_kind: string | null
           section: number
           series_name: string
           sync_key: string
@@ -127,6 +135,7 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          answer_status?: string | null
           aops_category_id?: string | null
           difficulty?: number | null
           division?: string | null
@@ -136,6 +145,7 @@ export type Database = {
           is_computational?: boolean
           name: string
           quality?: number | null
+          response_kind?: string | null
           section?: number
           series_name: string
           sync_key: string
@@ -143,6 +153,7 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          answer_status?: string | null
           aops_category_id?: string | null
           difficulty?: number | null
           division?: string | null
@@ -152,6 +163,7 @@ export type Database = {
           is_computational?: boolean
           name?: string
           quality?: number | null
+          response_kind?: string | null
           section?: number
           series_name?: string
           sync_key?: string
@@ -741,6 +753,7 @@ export type Database = {
       problems: {
         Row: {
           answer_index: number | null
+          answer_status: string | null
           aops_id: number | null
           built_at: string
           canonical_id: number | null
@@ -752,6 +765,7 @@ export type Database = {
           notes: string | null
           official_solutions: string[] | null
           quality: number | null
+          response_kind: string | null
           statement: string | null
           sync_key: string | null
           tags: string[] | null
@@ -761,6 +775,7 @@ export type Database = {
         }
         Insert: {
           answer_index?: number | null
+          answer_status?: string | null
           aops_id?: number | null
           built_at?: string
           canonical_id?: number | null
@@ -772,6 +787,7 @@ export type Database = {
           notes?: string | null
           official_solutions?: string[] | null
           quality?: number | null
+          response_kind?: string | null
           statement?: string | null
           sync_key?: string | null
           tags?: string[] | null
@@ -781,6 +797,7 @@ export type Database = {
         }
         Update: {
           answer_index?: number | null
+          answer_status?: string | null
           aops_id?: number | null
           built_at?: string
           canonical_id?: number | null
@@ -792,6 +809,7 @@ export type Database = {
           notes?: string | null
           official_solutions?: string[] | null
           quality?: number | null
+          response_kind?: string | null
           statement?: string | null
           sync_key?: string | null
           tags?: string[] | null
@@ -1089,6 +1107,7 @@ export type Database = {
       }
       tests: {
         Row: {
+          answer_status: string | null
           aops_category_id: string | null
           difficulty: number | null
           division: string | null
@@ -1101,6 +1120,7 @@ export type Database = {
           missing_answers_count: number
           name: string
           quality: number | null
+          response_kind: string | null
           section: number
           series_id: number | null
           sync_key: string | null
@@ -1109,6 +1129,7 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          answer_status?: string | null
           aops_category_id?: string | null
           difficulty?: number | null
           division?: string | null
@@ -1121,6 +1142,7 @@ export type Database = {
           missing_answers_count?: number
           name: string
           quality?: number | null
+          response_kind?: string | null
           section?: number
           series_id?: number | null
           sync_key?: string | null
@@ -1129,6 +1151,7 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          answer_status?: string | null
           aops_category_id?: string | null
           difficulty?: number | null
           division?: string | null
@@ -1141,6 +1164,7 @@ export type Database = {
           missing_answers_count?: number
           name?: string
           quality?: number | null
+          response_kind?: string | null
           section?: number
           series_id?: number | null
           sync_key?: string | null

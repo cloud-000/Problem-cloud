@@ -125,6 +125,16 @@ describe("test grading", () => {
         expect(testOutcome(cm)).toEqual({ skipped: false, correct: true });
     });
 
+    test("leaves submitted answerless problems ungraded", () => {
+        const free = entry(5, [], -1);
+        free.answer = "anything";
+        expect(testOutcome(free)).toEqual({ skipped: false, correct: null });
+
+        const mcq = entry(6, ["A", "B"], -1);
+        mcq.selectedChoice = 0;
+        expect(testOutcome(mcq)).toEqual({ skipped: false, correct: null });
+    });
+
     test("detects skipped answers and summarizes all outcomes", () => {
         const correct = entry(1, ["A", "B"], 1);
         correct.selectedChoice = 1;
