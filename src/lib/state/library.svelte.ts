@@ -15,6 +15,32 @@ function freshFrame(level: Level): Frame {
     return { level, context: {}, filters: {} };
 }
 
+function normalizedFilters(filters: Filters): Filters {
+    return Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => {
+            if (value == null) return false;
+            return !Array.isArray(value) || value.length > 0;
+        }),
+    ) as Filters;
+}
+
+function filtersEqual(left: Filters, right: Filters): boolean {
+    const leftEntries = Object.entries(normalizedFilters(left));
+    const rightEntries = Object.entries(normalizedFilters(right));
+    if (leftEntries.length !== rightEntries.length) return false;
+
+    return leftEntries.every(([key, leftValue]) => {
+        const rightValue = right[key as keyof Filters];
+        if (Array.isArray(leftValue) && Array.isArray(rightValue)) {
+            return (
+                leftValue.length === rightValue.length &&
+                leftValue.every((value, index) => value === rightValue[index])
+            );
+        }
+        return leftValue === rightValue;
+    });
+}
+
 /**
  * Browser-style navigation for the library finder. Back/forward step between frames
  * (drill-downs / manual level changes); filter edits mutate the *current* frame in
@@ -24,7 +50,7 @@ function freshFrame(level: Level): Frame {
  * never leaks across SSR requests.
  */
 export class LibraryStore {
-    history = $state<Frame[]>([freshFrame("series")]);
+    history = $state<Frame[]>([freshFrame("problems")]);
     cursor = $state(0);
 
     current = $derived(this.history[this.cursor]);
@@ -81,7 +107,10 @@ export class LibraryStore {
      */
     patchFilters(partial: Filters) {
         untrack(() => {
-            this.current.filters = { ...this.current.filters, ...partial };
+            const current = this.current.filters;
+            const next = normalizedFilters({ ...current, ...partial });
+            if (filtersEqual(current, next)) return;
+            this.current.filters = next;
         });
     }
 
@@ -94,13 +123,29 @@ export class LibraryStore {
     clearScope(which: "series" | "test") {
         untrack(() => {
             const ctx = { ...this.current.context };
+            const filters = { ...this.current.filters };
             if (which === "series") {
                 delete ctx.series;
                 delete ctx.test;
+                delete filters.seriesId;
+                delete filters.testId;
             } else {
                 delete ctx.test;
+                delete filters.testId;
             }
             this.current.context = ctx;
+            this.current.filters = filters;
+        });
+    }
+
+    /** Clear optional filters while preserving the current search and drilled scope. */
+    clearFilters() {
+        untrack(() => {
+            this.current.filters = {
+                search: this.current.filters.search,
+                seriesId: this.current.context.series?.id,
+                testId: this.current.context.test?.id,
+            };
         });
     }
 }

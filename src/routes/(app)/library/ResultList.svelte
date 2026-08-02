@@ -76,9 +76,9 @@
     }
 
     function estimateRowSize() {
-        if (level === "series") return 50;
-        if (level === "tests") return 70;
-        return 260;
+        if (level === "series") return 72;
+        if (level === "tests") return 104;
+        return 360;
     }
 
     function overscanForLevel() {
@@ -88,7 +88,7 @@
 
 {#snippet badge(text: string)}
     <span
-        class="rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground"
+        class="rounded-full bg-surface-container px-2 py-0.5 type-caption text-muted-foreground"
     >
         {text}
     </span>
@@ -102,22 +102,31 @@
             seriesHref != null
                 ? [{ label: "Art of Problem Solving", href: seriesHref }]
                 : []}
-        <div
-            class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
-        >
+        <div class="flex flex-col gap-3 border-b border-border py-4 sm:flex-row sm:items-center">
             <button
                 type="button"
-                class="flex flex-1 items-center gap-2 p-3 text-left font-medium"
+                class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 onclick={() => store.drillToTests(series)}
             >
-                {series.name}
-                {#if series.is_official}{@render badge("official")}{/if}
+                <span class="min-w-0 flex-1">
+                    <span class="block type-body font-semibold text-foreground group-hover:underline">
+                        {series.name}
+                    </span>
+                    <span class="mt-1 flex flex-wrap items-center gap-1.5">
+                        {#if series.is_official}{@render badge("Official")}{/if}
+                        {@render badge(`Series ${series.id}`)}
+                    </span>
+                </span>
+                <Icon name="chevron_right" class="shrink-0 text-muted-foreground" />
             </button>
-            <LinkMenu
-                links={aopsLinks}
-                label="Open in Art of Problem Solving"
-            />
-            <Icon name="chevron_right" class="text-muted-foreground" />
+            {#if aopsLinks.length}
+                <div class="flex justify-end">
+                    <LinkMenu
+                        links={aopsLinks}
+                        label="Open in Art of Problem Solving"
+                    />
+                </div>
+            {/if}
         </div>
     {:else if level === "tests"}
         {@const test = row as TestRow}
@@ -126,57 +135,62 @@
             testHref != null
                 ? [{ label: "Art of Problem Solving", href: testHref }]
                 : []}
-        <div
-            class="flex items-center gap-1 rounded-lg border border-border bg-surface-container-low pr-2 transition-colors hover:bg-surface-container"
-        >
+        <div class="flex flex-col gap-3 border-b border-border py-4 sm:flex-row sm:items-center">
             <button
                 type="button"
-                class="flex flex-1 flex-col gap-1 p-3 text-left"
+                class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 onclick={() =>
                     store.drillToProblems(store.current.context.series, test)}
             >
-                <span class="font-medium">{test.name}</span>
-                <span class="flex flex-wrap items-center gap-1.5">
-                    {#if test.series?.name}{@render badge(test.series.name)}{/if}
-                    {#if test.year}{@render badge(String(test.year))}{/if}
-                    {#if test.type}{@render badge(test.type)}{/if}
-                    {#if test.is_computational}{@render badge(
-                            "computational",
-                        )}{/if}
-                    {#if test.missing_answers_count > 0}
-                        <span
-                            class="inline-flex items-center gap-1 rounded-full bg-unsure-container px-2 py-0.5 text-xs font-medium text-on-unsure-container"
-                        >
-                            <Icon name="warning" fontsize={14} fill={true} />
-                            lost {test.missing_answers_count} answers
-                        </span>
-                    {/if}
+                <span class="min-w-0 flex-1">
+                    <span class="block type-body font-semibold text-foreground group-hover:underline">
+                        {test.name}
+                    </span>
+                    <span class="mt-1 flex flex-wrap items-center gap-1.5">
+                        {#if test.series?.name}{@render badge(test.series.name)}{/if}
+                        {#if test.year}{@render badge(String(test.year))}{/if}
+                        {#if test.type}{@render badge(test.type)}{/if}
+                        {@render badge(`Test ${test.id}`)}
+                        {#if test.is_computational}{@render badge("Computational")}{/if}
+                        {#if test.missing_answers_count > 0}
+                            <span
+                                class="inline-flex items-center gap-1 rounded-full bg-unsure-container px-2 py-0.5 type-caption text-on-unsure-container"
+                            >
+                                <Icon name="warning" fontsize={14} fill={true} />
+                                Missing {test.missing_answers_count} answers
+                            </span>
+                        {/if}
+                    </span>
                 </span>
+                <Icon name="chevron_right" class="shrink-0 text-muted-foreground" />
             </button>
-            {#if test.series_id != null}
-                <Button
-                    href={practiceLaunchHref(
-                        {
-                            kind: "mock-test",
-                            testId: test.id,
-                            seriesId: test.series_id,
-                        },
-                        resolve("/practice"),
-                    )}
-                    variant="outline"
-                    size="sm"
-                    class="gap-1.5"
-                    aria-label={`Take ${test.name} as a mock test`}
-                >
-                    <Icon name="play_arrow" />
-                    Mock test
-                </Button>
-            {/if}
-            <LinkMenu
-                links={aopsLinks}
-                label="Open in Art of Problem Solving"
-            />
-            <Icon name="chevron_right" class="text-muted-foreground" />
+            <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
+                {#if test.series_id != null}
+                    <Button
+                        href={practiceLaunchHref(
+                            {
+                                kind: "mock-test",
+                                testId: test.id,
+                                seriesId: test.series_id,
+                            },
+                            resolve("/practice"),
+                        )}
+                        variant="outline"
+                        size="sm"
+                        class="flex-1 gap-1.5 sm:flex-none"
+                        aria-label={`Take ${test.name} as a mock test`}
+                    >
+                        <Icon name="play_arrow" />
+                        Mock test
+                    </Button>
+                {/if}
+                {#if aopsLinks.length}
+                    <LinkMenu
+                        links={aopsLinks}
+                        label="Open in Art of Problem Solving"
+                    />
+                {/if}
+            </div>
         </div>
     {:else}
         {@const problem = row as ProblemRow}
@@ -184,6 +198,7 @@
         <Problem
             {problem}
             mode="preview"
+            appearance="row"
             {isInstantFeedback}
             bind:answer={draft.answer}
             bind:selectedChoice={draft.selectedChoice}
@@ -196,9 +211,11 @@
 {/snippet}
 
 {#if error}
-    <p class="mb-2 text-sm text-destructive">{error}</p>
+    <p class="py-8 type-secondary text-destructive">{error}</p>
 {:else if !loading && displayedResults.length === 0}
-    <p class="text-sm text-muted-foreground">No results.</p>
+    <p class="py-12 text-center type-secondary text-muted-foreground">
+        No results match this search and filter combination.
+    </p>
 {/if}
 
 {#if displayedResults.length > 0}
@@ -207,7 +224,7 @@
         getKey={(row) => `${level}:${row.id}`}
         estimateSize={estimateRowSize}
         overscan={overscanForLevel()}
-        gap={8}
+        gap={0}
         {onEndReached}
         {resetKey}
         ariaLabel={`${level} results`}

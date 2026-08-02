@@ -1,7 +1,4 @@
 <script lang="ts">
-    import { Input } from "$lib/components/input";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
     import { Combobox, type Option } from "$lib/components/combobox";
     import { RangeSlider } from "$lib/components/range-slider";
     import { TriStateSwitch, type TriState } from "$lib/components/toggle";
@@ -30,7 +27,6 @@
     const f = frame.filters;
 
     // Locals seeded from the frame's filters; an effect below pushes them back.
-    let name = $state(f.name ?? "");
     let isOfficial = $state<TriState>(boolToTri(f.isOfficial));
     let seriesSel = $state<string[]>(
         f.seriesId != null ? [String(f.seriesId)] : [],
@@ -62,27 +58,8 @@
         { value: "ignored", label: "Ignored" },
     ];
 
-    // Parents locked in by drilling — shown as removable scope chips. Reactive so
-    // clearing one re-runs the patch effect (dropping its id) and reveals the series
-    // combobox when series scope is removed.
-    let lockedSeries = $state(frame.context.series);
-    let lockedTest = $state(frame.context.test);
-
-    /** "×" on the test chip — broaden to the series scope. */
-    function removeTestScope() {
-        lockedTest = undefined;
-        store.clearScope("test");
-    }
-
-    /** "×" on the series chip — fully unscope (cascades to the test). */
-    function removeSeriesScope() {
-        lockedSeries = undefined;
-        lockedTest = undefined;
-        // A drilled frame seeds seriesSel from f.seriesId; clear it so the patch
-        // effect doesn't re-apply the series via its `?? seriesSel[0]` fallback.
-        seriesSel = [];
-        store.clearScope("series");
-    }
+    const lockedSeries = frame.context.series;
+    const lockedTest = frame.context.test;
 
     /** Treat an untouched (full-range) slider as "no filter" so null-valued rows show. */
     function rangeOrUndef(
@@ -103,7 +80,6 @@
         let patch: Filters;
         if (level === "series") {
             patch = {
-                name: name || undefined,
                 isOfficial: triToBool(isOfficial),
             };
         } else if (level === "tests") {
@@ -111,7 +87,6 @@
                 seriesId:
                     lockedSeries?.id ??
                     (seriesSel[0] ? Number(seriesSel[0]) : undefined),
-                name: name || undefined,
                 year: rangeOrUndef(year, YEAR_RANGE),
                 type: type.length ? type : undefined,
                 isComputational: triToBool(isComputational),
@@ -137,204 +112,196 @@
 </script>
 
 {#snippet field(label: string)}
-    <span class="text-xs font-medium text-muted-foreground">{label}</span>
+    <span class="type-caption text-muted-foreground">{label}</span>
 {/snippet}
 
-<div class="flex flex-col gap-4">
-    {#if lockedSeries || lockedTest}
-        <div class="flex flex-col gap-1.5">
-            {@render field("Scope")}
-            <div class="flex flex-wrap gap-1.5">
-                {#if lockedSeries}
-                    <span
-                        class="inline-flex items-center gap-1 rounded-full bg-surface-container py-0.5 pr-1 pl-2.5 text-xs"
-                    >
-                        {lockedSeries.name}
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`Remove ${lockedSeries.name} scope`}
-                            onclick={removeSeriesScope}
-                        >
-                            <Icon fontsize={14}>close</Icon>
-                        </Button>
-                    </span>
-                {/if}
-                {#if lockedTest}
-                    <span
-                        class="inline-flex items-center gap-1 rounded-full bg-surface-container py-0.5 pr-1 pl-2.5 text-xs"
-                    >
-                        {lockedTest.name}
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`Remove ${lockedTest.name} scope`}
-                            onclick={removeTestScope}
-                        >
-                            <Icon fontsize={14}>close</Icon>
-                        </Button>
-                    </span>
-                {/if}
-            </div>
-        </div>
-    {/if}
-
+<div class="flex flex-col gap-6">
     {#if level === "series"}
-        <label class="flex flex-col gap-1.5">
-            {@render field("Name")}
-            <Input bind:value={name} placeholder="Search series…" />
-        </label>
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center justify-between gap-4">
             {@render field("Official")}
             <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground"
+                <span class="type-caption text-muted-foreground"
                     >{triText(isOfficial, "Official", "Not official")}</span
                 >
                 <TriStateSwitch bind:value={isOfficial} size="sm" />
             </div>
         </div>
     {:else if level === "tests"}
-        {#if !lockedSeries}
+        <section class="flex flex-col gap-4" aria-labelledby="test-browse-filters">
+            <h3 id="test-browse-filters" class="type-secondary font-semibold text-foreground">
+                Browse
+            </h3>
+            {#if !lockedSeries}
+                <div class="flex flex-col gap-1.5">
+                    {@render field("Series")}
+                    <Combobox
+                        options={seriesOptions}
+                        strict
+                        max={1}
+                        bind:value={seriesSel}
+                        placeholder="Any series…"
+                    />
+                </div>
+            {/if}
             <div class="flex flex-col gap-1.5">
-                {@render field("Series")}
+                {@render field("Type")}
                 <Combobox
-                    options={seriesOptions}
-                    strict
-                    max={1}
-                    bind:value={seriesSel}
-                    placeholder="Any series…"
+                    bind:value={type}
+                    placeholder="Any type…"
+                    inputPlaceholder="Add type…"
                 />
             </div>
-        {/if}
-        <label class="flex flex-col gap-1.5">
-            {@render field("Name")}
-            <Input bind:value={name} placeholder="Search tests…" />
-        </label>
-        <div class="flex flex-col gap-1.5">
-            {@render field(`Year (${year[0]}–${year[1]})`)}
-            <RangeSlider
-                bind:value={year}
-                min={YEAR_RANGE[0]}
-                max={YEAR_RANGE[1]}
-                step={1}
-                label="Year"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field("Type")}
-            <Combobox
-                bind:value={type}
-                placeholder="Any type…"
-                inputPlaceholder="Add type…"
-            />
-        </div>
-        <div class="flex items-center justify-between gap-2">
-            {@render field("Computational")}
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground"
-                    >{triText(
-                        isComputational,
-                        "Computational",
-                        "Not computational",
-                    )}</span
-                >
-                <TriStateSwitch bind:value={isComputational} size="sm" />
+        </section>
+
+        <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-date-filters">
+            <h3 id="test-date-filters" class="type-secondary font-semibold text-foreground">
+                Date
+            </h3>
+            <div class="flex flex-col gap-1.5">
+                {@render field(`Year (${year[0]}–${year[1]})`)}
+                <RangeSlider
+                    bind:value={year}
+                    min={YEAR_RANGE[0]}
+                    max={YEAR_RANGE[1]}
+                    step={1}
+                    label="Year"
+                />
             </div>
-        </div>
+        </section>
+
+        <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-attribute-filters">
+            <h3 id="test-attribute-filters" class="type-secondary font-semibold text-foreground">
+                Attributes
+            </h3>
+            <div class="flex items-center justify-between gap-4">
+                {@render field("Computational")}
+                <div class="flex items-center gap-2">
+                    <span class="type-caption text-muted-foreground"
+                        >{triText(
+                            isComputational,
+                            "Computational",
+                            "Not computational",
+                        )}</span
+                    >
+                    <TriStateSwitch bind:value={isComputational} size="sm" />
+                </div>
+            </div>
+        </section>
     {:else}
-        {#if !lockedSeries}
+        <section class="flex flex-col gap-4" aria-labelledby="problem-browse-filters">
+            <h3 id="problem-browse-filters" class="type-secondary font-semibold text-foreground">
+                Browse
+            </h3>
+            {#if !lockedSeries}
+                <div class="flex flex-col gap-1.5">
+                    {@render field("Series")}
+                    <Combobox
+                        options={seriesOptions}
+                        strict
+                        max={1}
+                        bind:value={seriesSel}
+                        placeholder="Any series…"
+                    />
+                </div>
+            {/if}
             <div class="flex flex-col gap-1.5">
-                {@render field("Series")}
+                {@render field("Topic")}
                 <Combobox
-                    options={seriesOptions}
+                    options={TOPICS}
                     strict
-                    max={1}
-                    bind:value={seriesSel}
-                    placeholder="Any series…"
+                    bind:value={topic}
+                    placeholder="Any topic…"
+                    inputPlaceholder="Add topic…"
                 />
             </div>
-        {/if}
-        <div class="flex flex-col gap-1.5">
-            {@render field("Topic")}
-            <Combobox
-                options={TOPICS}
-                strict
-                bind:value={topic}
-                placeholder="Any topic…"
-                inputPlaceholder="Add topic…"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field("Tags")}
-            <Combobox
-                bind:value={tags}
-                placeholder="Any tags…"
-                inputPlaceholder="Add tag…"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field("Mastery")}
-            <Combobox
-                bind:value={mastery}
-                options={masteryOptions}
-                strict
-                placeholder="Any mastery…"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field("Plan")}
-            <Combobox
-                bind:value={engagement}
-                options={engagementOptions}
-                strict
-                placeholder="Any plan…"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field(
-                `Difficulty — problem rating (${difficulty[0]}–${difficulty[1]})`,
-            )}
-            <RangeSlider
-                bind:value={difficulty}
-                min={DIFFICULTY_RANGE[0]}
-                max={DIFFICULTY_RANGE[1]}
-                step={50}
-                label="Difficulty (problem rating)"
-            />
-        </div>
-        <div class="flex flex-col gap-1.5">
-            {@render field(`Quality (${quality[0]}–${quality[1]})`)}
-            <RangeSlider
-                bind:value={quality}
-                min={QUALITY_RANGE[0]}
-                max={QUALITY_RANGE[1]}
-                step={1}
-                label="Quality"
-            />
-        </div>
-        <div class="flex items-center justify-between gap-2">
-            {@render field("Computational")}
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground"
-                    >{triText(
-                        isComputational,
-                        "Computational",
-                        "Not computational",
-                    )}</span
-                >
-                <TriStateSwitch bind:value={isComputational} size="sm" />
+            <div class="flex flex-col gap-1.5">
+                {@render field("Tags")}
+                <Combobox
+                    bind:value={tags}
+                    placeholder="Any tags…"
+                    inputPlaceholder="Add tag…"
+                />
             </div>
-        </div>
-        <div class="flex items-center justify-between gap-2">
-            {@render field("Verified")}
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground"
-                    >{triText(verified, "Verified", "Not verified")}</span
-                >
-                <TriStateSwitch bind:value={verified} size="sm" />
+        </section>
+
+        <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="problem-progress-filters">
+            <h3 id="problem-progress-filters" class="type-secondary font-semibold text-foreground">
+                Progress
+            </h3>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="flex flex-col gap-1.5">
+                    {@render field("Mastery")}
+                    <Combobox
+                        bind:value={mastery}
+                        options={masteryOptions}
+                        strict
+                        placeholder="Any mastery…"
+                    />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    {@render field("Plan")}
+                    <Combobox
+                        bind:value={engagement}
+                        options={engagementOptions}
+                        strict
+                        placeholder="Any plan…"
+                    />
+                </div>
             </div>
-        </div>
+        </section>
+
+        <section class="flex flex-col gap-5 border-t border-border pt-5" aria-labelledby="problem-difficulty-filters">
+            <h3 id="problem-difficulty-filters" class="type-secondary font-semibold text-foreground">
+                Difficulty
+            </h3>
+            <div class="flex flex-col gap-1.5">
+                {@render field(`Problem rating (${difficulty[0]}–${difficulty[1]})`)}
+                <RangeSlider
+                    bind:value={difficulty}
+                    min={DIFFICULTY_RANGE[0]}
+                    max={DIFFICULTY_RANGE[1]}
+                    step={50}
+                    label="Difficulty (problem rating)"
+                />
+            </div>
+            <div class="flex flex-col gap-1.5">
+                {@render field(`Quality (${quality[0]}–${quality[1]})`)}
+                <RangeSlider
+                    bind:value={quality}
+                    min={QUALITY_RANGE[0]}
+                    max={QUALITY_RANGE[1]}
+                    step={1}
+                    label="Quality"
+                />
+            </div>
+        </section>
+
+        <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="problem-attribute-filters">
+            <h3 id="problem-attribute-filters" class="type-secondary font-semibold text-foreground">
+                Attributes
+            </h3>
+            <div class="flex items-center justify-between gap-4">
+                {@render field("Computational")}
+                <div class="flex items-center gap-2">
+                    <span class="type-caption text-muted-foreground"
+                        >{triText(
+                            isComputational,
+                            "Computational",
+                            "Not computational",
+                        )}</span
+                    >
+                    <TriStateSwitch bind:value={isComputational} size="sm" />
+                </div>
+            </div>
+            <div class="flex items-center justify-between gap-4">
+                {@render field("Verified")}
+                <div class="flex items-center gap-2">
+                    <span class="type-caption text-muted-foreground"
+                        >{triText(verified, "Verified", "Not verified")}</span
+                    >
+                    <TriStateSwitch bind:value={verified} size="sm" />
+                </div>
+            </div>
+        </section>
     {/if}
 </div>

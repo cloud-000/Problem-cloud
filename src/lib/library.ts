@@ -347,6 +347,8 @@ export const YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()];
  * and the filter UI trivial. `boolean | null`: `null`/absent = no filter ("Any").
  */
 export interface Filters {
+    // shared Library toolbar query: names for series/tests, exact ids for all levels
+    search?: string;
     // series
     name?: string; // also used by tests
     isOfficial?: boolean | null;
@@ -395,6 +397,10 @@ export async function fetchSeries(
     page = 0,
 ): Promise<SeriesRow[]> {
     let q = supabase.from("series").select("*");
+    const search = f.search?.trim();
+    const searchIds = search ? parseLibrarySearchIds(search) : null;
+    if (searchIds?.length) q = q.in("id", searchIds);
+    else if (search) q = q.ilike("name", `%${search}%`);
     if (f.name?.trim()) q = q.ilike("name", `%${f.name.trim()}%`);
     if (f.isOfficial != null) q = q.eq("is_official", f.isOfficial);
     const { data, error } = await q
@@ -411,6 +417,10 @@ export async function fetchTests(
     page = 0,
 ): Promise<TestRow[]> {
     let q = supabase.from("tests").select("*, series(name)");
+    const search = f.search?.trim();
+    const searchIds = search ? parseLibrarySearchIds(search) : null;
+    if (searchIds?.length) q = q.in("id", searchIds);
+    else if (search) q = q.ilike("name", `%${search}%`);
     if (f.seriesId != null) q = q.eq("series_id", f.seriesId);
     if (f.name?.trim()) q = q.ilike("name", `%${f.name.trim()}%`);
     if (f.year) q = q.gte("year", f.year[0]).lte("year", f.year[1]);
@@ -434,7 +444,12 @@ export async function fetchProblems(
     // Page ids through the caller-scoped flat index first. Personal-state filters
     // therefore run before pagination and null means truly unassessed/no plan,
     // including problems with no problem_progress row.
+    const search = f.search?.trim();
+    const searchIds = search ? parseLibrarySearchIds(search) : null;
+    if (search && !searchIds) return [];
+
     let index = supabase.from("user_problem_index").select("problem_id");
+    if (searchIds?.length) index = index.in("problem_id", searchIds);
     if (f.testId != null) index = index.eq("test_id", f.testId);
     else if (f.seriesId != null) index = index.eq("series_id", f.seriesId);
     if (f.topic?.length) index = index.in("topic", f.topic);
@@ -475,6 +490,18 @@ export async function fetchProblems(
     return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>)
         .map(normalizeEmbeds)
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}
+
+/** Parse a toolbar query as a deduplicated list of positive integer ids. */
+export function parseLibrarySearchIds(input: string): number[] | null {
+    const parts = input.split(/[\s,]+/).filter(Boolean);
+    if (
+        parts.length === 0 ||
+        parts.some((part) => !/^\d+$/.test(part) || Number(part) < 1)
+    ) {
+        return null;
+    }
+    return [...new Set(parts.map(Number))];
 }
 
 function applyNullableStateFilter(

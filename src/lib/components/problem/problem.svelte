@@ -24,6 +24,7 @@
     import ProblemAnswer from "./problem-answer.svelte";
 
     type ProblemMode = "preview" | "practice" | "review";
+    type ProblemAppearance = "card" | "row";
 
     type Props = {
         problem: ProblemRow;
@@ -33,6 +34,8 @@
         mastery?: Mastery | null;
         engagement?: Engagement | null;
         mode?: ProblemMode;
+        /** Visual containment: cards by default, divider-separated rows in collections. */
+        appearance?: ProblemAppearance;
         showAnswerState?: boolean;
         disabled?: boolean;
         isInstantFeedback?: boolean;
@@ -53,6 +56,7 @@
         mastery: masteryValue,
         engagement: engagementValue,
         mode = "practice",
+        appearance = "card",
         showAnswerState = false,
         disabled = false,
         isInstantFeedback = false,
@@ -102,7 +106,7 @@
 
 {#snippet badge(text: string)}
     <span
-        class="inline-flex items-center rounded-full border border-border/60 bg-surface-container-lowest px-2 py-0.5 text-xs text-muted-foreground"
+        class="inline-flex items-center rounded-full border border-border/60 bg-surface-container-lowest px-2 py-0.5 type-caption text-muted-foreground"
     >
         {text}
     </span>
@@ -115,7 +119,7 @@
             ? "Provisional rating — few attempts / high uncertainty"
             : `Skill rating from ${r.attempts} rated attempt${r.attempts === 1 ? "" : "s"}`}
         class={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums",
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 type-caption tabular-nums",
             provisional
                 ? "border-border/60 bg-surface-container-lowest text-muted-foreground"
                 : "border-primary/20 bg-primary/10 text-primary-foreground",
@@ -142,21 +146,34 @@
 
 <article
     class={cn(
-        "relative rounded-xl border border-border/70 bg-surface-container-lowest shadow-xs",
+        appearance === "row"
+            ? "relative border-b border-border bg-transparent py-5"
+            : "relative rounded-xl border border-border/70 bg-surface-container-lowest shadow-xs",
         className,
     )}
 >
     <header
-        class="flex min-w-0 items-start justify-between gap-3 rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4"
+        class={cn(
+            "flex min-w-0 items-start justify-between gap-3",
+            appearance === "row"
+                ? "flex-col pb-3 sm:flex-row"
+                : "rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4",
+        )}
     >
         <div class="flex min-w-0 items-start gap-3">
-            <div
-                class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
-                aria-label={`Problem ${problem.n + 1}`}
-            >
-                <span class="text-[0.625rem] font-semibold tracking-widest text-muted-foreground uppercase">No.</span>
-                <span class="-mt-0.5 text-base font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
-            </div>
+            {#if appearance === "row"}
+                <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
+                    #{problem.n + 1}
+                </span>
+            {:else}
+                <div
+                    class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
+                    aria-label={`Problem ${problem.n + 1}`}
+                >
+                    <span class="type-caption text-muted-foreground">No.</span>
+                    <span class="-mt-0.5 type-body font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
+                </div>
+            {/if}
 
             <div class="flex min-w-0 flex-col gap-1.5">
                 {#if problem.tests?.name}
@@ -168,20 +185,20 @@
                                 rel="noopener noreferrer"
                                 variant="link"
                                 size="xs"
-                                class="h-auto min-w-0 justify-start p-0 text-sm font-semibold text-foreground"
+                                class="h-auto min-w-0 justify-start p-0 type-secondary font-semibold text-foreground"
                                 title={`Open ${problem.tests.name} on Art of Problem Solving`}
                             >
                                 <span class="truncate">{problem.tests.name}</span>
                             </Button>
                         {:else}
-                            <span class="min-w-0 truncate text-sm font-semibold text-foreground">{problem.tests.name}</span>
+                            <span class="min-w-0 truncate type-secondary font-semibold text-foreground">{problem.tests.name}</span>
                         {/if}
                         {#if problem.verified}
                             <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
                         {/if}
                     </div>
                 {:else}
-                    <span class="text-sm font-semibold text-foreground">Problem {problem.n + 1}</span>
+                    <span class="type-secondary font-semibold text-foreground">Problem {problem.n + 1}</span>
                 {/if}
 
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -198,7 +215,7 @@
                         <StatusTag status="review" label="Review due" size="sm" />
                     {/if}
                     {#if problem.answer_index === null || problem.answer_index < 0}
-                        <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 text-xs font-medium text-unsure">
+                        <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 type-caption text-unsure">
                             <Icon name="warning" fontsize="0.85rem" /> Answer unavailable
                         </span>
                     {/if}
@@ -206,7 +223,13 @@
             </div>
         </div>
 
-        <nav class="flex shrink-0 items-center gap-1" aria-label="Problem actions">
+        <nav
+            class={cn(
+                "flex shrink-0 items-center gap-1",
+                appearance === "row" && "w-full justify-end sm:w-auto",
+            )}
+            aria-label="Problem actions"
+        >
             {#if debug}
                 <Toggle
                     variant="ghost"
@@ -247,7 +270,7 @@
                     <Icon name="info" />
                 </summary>
                 <div
-                    class="absolute top-10 right-0 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-container-highest p-3 text-xs shadow-lg"
+                    class="absolute top-10 right-0 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-container-highest p-3 type-caption shadow-lg"
                 >
                     <div class="mb-2 flex items-center gap-1.5 font-semibold text-foreground">
                         <Icon name="database" />
@@ -282,7 +305,7 @@
         </nav>
     </header>
 
-    <div class="px-3 py-4 sm:px-5 sm:py-5">
+    <div class={appearance === "row" ? "py-2" : "px-3 py-4 sm:px-5 sm:py-5"}>
         <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
             <ProblemOrganization
                 problemId={problem.id}
@@ -304,7 +327,7 @@
                 {:else}
                     <MathStatement
                         text={problem.statement ?? ""}
-                        class="min-w-0 text-base leading-7 text-foreground md:text-lg md:leading-8"
+                        class="min-w-0 type-problem text-foreground"
                     />
                 {/if}
             </section>
@@ -314,7 +337,7 @@
                 aria-label="Your response"
             >
                 {#if isMultipleChoice && !disabled}
-                    <span class="hidden items-center justify-end gap-1 text-xs text-muted-foreground sm:inline-flex">
+                    <span class="hidden items-center justify-end gap-1 type-caption text-muted-foreground sm:inline-flex">
                         <Icon name="ink_eraser" fontsize="0.9rem" />
                         Right-click or use × to eliminate
                     </span>
