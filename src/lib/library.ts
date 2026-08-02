@@ -287,7 +287,7 @@ type ProblemEmbeds = {
  * Collapse the embedded `problem_progress` (0/1 rows) into `progress` and the
  * `problem_ratings` array into the single `overall`-scope `rating`.
  */
-function normalizeEmbeds<T extends ProblemEmbeds>(
+export function normalizeEmbeds<T extends ProblemEmbeds>(
     row: T,
 ): Omit<T, "problem_progress" | "problem_ratings" | "canonical"> & {
     progress: ProblemProgress | null;
