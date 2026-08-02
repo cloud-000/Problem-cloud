@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
+    import * as Page from "$lib/components/page";
     import { Select } from "$lib/components/select";
     import { fetchAllSeries, fetchByIds, type ProblemRow } from "$lib/library";
     import { fetchProgressBreakdown } from "$lib/progress-analytics";
@@ -158,28 +159,15 @@
     }
 </script>
 
-<div class="space-y-6">
-    <section class="mx-auto w-full max-w-5xl space-y-4">
-        <div class="rounded-2xl border border-border/60 bg-surface-container-low/40 p-4 shadow-xs sm:p-5">
-            {#if hasFilters}
-                <div class="mb-4 flex items-center justify-end">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="h-7"
-                        onclick={clearFilters}
-                    >
-                        Clear filters
-                    </Button>
-                </div>
-            {/if}
+<Page.Section
+    title="Series matrix"
+    description="See activity, mastery, plans, and review status across every problem in a series."
+>
+    <div class="space-y-6">
+        <div class="border-b border-border pb-5">
             <div class="grid gap-4 md:grid-cols-3">
                 <label class="flex min-w-0 flex-col gap-1.5">
-                    <span
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Series
-                    </span>
+                    <span class="type-caption text-muted-foreground">Series</span>
                     <Select
                         options={seriesOptions}
                         bind:value={seriesId}
@@ -189,11 +177,7 @@
                 </label>
                 {#if divisionOptions.length > 0}
                     <div class="flex min-w-0 flex-col gap-1.5">
-                        <span
-                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        >
-                            Division
-                        </span>
+                        <span class="type-caption text-muted-foreground">Division</span>
                         <Combobox
                             bind:value={selectedDivisions}
                             options={divisionOptions}
@@ -206,11 +190,7 @@
                 {/if}
                 {#if formatOptions.length > 0}
                     <div class="flex min-w-0 flex-col gap-1.5">
-                        <span
-                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        >
-                            Format
-                        </span>
+                        <span class="type-caption text-muted-foreground">Format</span>
                         <Combobox
                             bind:value={selectedFormats}
                             options={formatOptions}
@@ -222,12 +202,17 @@
                     </div>
                 {/if}
             </div>
+            {#if hasFilters}
+                <div class="mt-3 flex justify-end">
+                    <Button variant="ghost" size="sm" onclick={clearFilters}>
+                        Clear series filters
+                    </Button>
+                </div>
+            {/if}
         </div>
 
         {#if errorMsg}
-            <div
-                class="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-destructive"
-            >
+            <div class="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
                 <span>{errorMsg}</span>
                 <Button variant="ghost" size="sm" onclick={() => (errorMsg = null)}>
                     Dismiss
@@ -236,21 +221,21 @@
         {/if}
 
         {#if loadingSeries || loadingGrid}
-            <div class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 py-12 text-sm text-muted-foreground">
+            <div class="flex items-center justify-center gap-2 py-12 type-secondary text-muted-foreground">
                 <Icon name="progress_activity" class="animate-spin" />
                 Loading series review…
             </div>
         {:else if !seriesId}
-            <div class="rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
+            <div class="py-12 text-center type-secondary text-muted-foreground">
                 No series are available.
             </div>
         {:else if tests.length === 0}
-            <div class="rounded-xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground">
+            <div class="py-12 text-center type-secondary text-muted-foreground">
                 This series has no reviewable problems yet.
             </div>
         {:else if filteredTests.length === 0}
-            <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12 text-center">
-                <div class="text-sm text-muted-foreground">
+            <div class="flex flex-col items-center gap-3 py-12 text-center">
+                <div class="type-secondary text-muted-foreground">
                     No tests match the selected division and format.
                 </div>
                 <Button variant="outline" size="sm" onclick={clearFilters}>
@@ -258,20 +243,18 @@
                 </Button>
             </div>
         {/if}
-    </section>
+        <div class="sr-only" aria-live="polite">
+            {filteredTests.length} visible test{filteredTests.length === 1 ? "" : "s"}
+        </div>
 
-    <!-- Data state -->
-    <div class="sr-only" aria-live="polite">
-        {filteredTests.length} visible test{filteredTests.length === 1 ? "" : "s"}
+        {#if !loadingSeries && !loadingGrid && seriesId && tests.length > 0 && filteredTests.length > 0}
+            {#key matrixKey}
+                <SeriesReviewGrid
+                    tests={filteredTests}
+                    {openingProblemId}
+                    onOpenProblem={openProblem}
+                />
+            {/key}
+        {/if}
     </div>
-
-    {#if !loadingSeries && !loadingGrid && seriesId && tests.length > 0 && filteredTests.length > 0}
-        {#key matrixKey}
-            <SeriesReviewGrid
-                tests={filteredTests}
-                {openingProblemId}
-                onOpenProblem={openProblem}
-            />
-        {/key}
-    {/if}
-</div>
+</Page.Section>

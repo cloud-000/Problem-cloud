@@ -243,17 +243,14 @@
 </script>
 
 <div class={cn("space-y-6 transition-all duration-200", selected && "pb-36 sm:pb-28")}>
-    <section class="mx-auto w-full max-w-5xl space-y-4" aria-labelledby="problem-filter-heading">
-        <div class="rounded-2xl border border-border/60 bg-surface-container-low/40 p-4 shadow-xs sm:p-5">
-            <div class="mb-4 flex flex-wrap items-start gap-3">
-                <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-container text-muted-foreground">
-                    <Icon name="tune" fontsize="1.1rem" />
-                </div>
-                <div class="min-w-0 flex-1">
-                    <h3 id="problem-filter-heading" class="text-sm font-semibold">Filters</h3>
-                </div>
+    <section class="space-y-4" aria-labelledby="problem-filter-heading">
+        <div class="border-b border-border pb-5">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 id="problem-filter-heading" class="type-section-title text-foreground">
+                    Problem filters
+                </h3>
                 {#if hasStateFilters}
-                    <Button variant="ghost" size="sm" class="h-8" onclick={clearStateFilters}>
+                    <Button variant="ghost" size="sm" onclick={clearStateFilters}>
                         Clear filters
                     </Button>
                 {/if}
@@ -261,55 +258,50 @@
 
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs font-medium text-muted-foreground">Activity</span>
+                    <span class="type-caption text-muted-foreground">Activity</span>
                     <Select options={activityOptions} bind:value={activityFilter} />
                 </label>
                 <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs font-medium text-muted-foreground">Mastery</span>
+                    <span class="type-caption text-muted-foreground">Mastery</span>
                     <Select options={masteryOptions} bind:value={masteryFilter} />
                 </label>
                 <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs font-medium text-muted-foreground">Plan</span>
+                    <span class="type-caption text-muted-foreground">Plan</span>
                     <Select options={planOptions} bind:value={planFilter} />
                 </label>
                 <label class="flex min-w-0 flex-col gap-1.5">
-                    <span class="text-xs font-medium text-muted-foreground">Schedule</span>
+                    <span class="type-caption text-muted-foreground">Schedule</span>
                     <Select options={dueOptions} bind:value={dueFilter} />
                 </label>
             </div>
 
-            <div class="mt-4 grid grid-cols-3 divide-x divide-border/60 rounded-xl border border-border/50 bg-surface-container-lowest">
+            <div class="mt-4 grid grid-cols-3 divide-x divide-border border-y border-border">
                 <div class="px-3 py-3 text-center sm:px-4">
-                    <div class="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">Shown</div>
-                    <div class="mt-1 font-mono text-lg font-semibold">{summary.total}<span class="text-xs font-normal text-muted-foreground"> / {allSummary.total}</span></div>
+                    <div class="type-code text-foreground">{summary.total}<span class="type-caption text-muted-foreground"> / {allSummary.total}</span></div>
+                    <div class="type-caption text-muted-foreground">shown</div>
                 </div>
                 <div class="px-3 py-3 text-center sm:px-4">
-                    <div class="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">Attempted</div>
-                    <div class="mt-1 font-mono text-lg font-semibold">{summary.attempted}</div>
+                    <div class="type-code text-foreground">{summary.attempted}</div>
+                    <div class="type-caption text-muted-foreground">attempted</div>
                 </div>
                 <div class="px-3 py-3 text-center sm:px-4">
-                    <div class="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">Review due</div>
-                    <div class="mt-1 font-mono text-lg font-semibold">{summary.due}</div>
+                    <div class="type-code text-foreground">{summary.due}</div>
+                    <div class="type-caption text-muted-foreground">review due</div>
                 </div>
             </div>
         </div>
-
-
     </section>
 
-    <section class="w-full overflow-hidden rounded-2xl border border-border/60 bg-surface-container-low/30 shadow-xs" aria-labelledby="matrix-heading">
-        <div class="border-b border-border/60 bg-surface-container-lowest px-4 py-4 sm:px-5">
+    <section class="w-full overflow-hidden border-t border-border" aria-labelledby="matrix-heading">
+        <div class="border-b border-border py-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div class="flex items-center gap-2">
-                        <Icon name="grid_view" class="text-primary-foreground" />
-                        <h3 id="matrix-heading" class="font-semibold">Problem matrix</h3>
-                    </div>
-                    <p class="mt-1 text-xs text-muted-foreground">
+                    <h3 id="matrix-heading" class="type-section-title text-foreground">Problem matrix</h3>
+                    <p class="mt-1 type-caption text-muted-foreground">
                         {visibleTests.length} test{visibleTests.length === 1 ? "" : "s"} · {summary.total} problem{summary.total === 1 ? "" : "s"}. Select a cell for details and review controls.
                     </p>
                 </div>
-                <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground" aria-label="Matrix legend">
+                <div class="flex flex-wrap gap-x-4 gap-y-2 type-caption text-muted-foreground" aria-label="Matrix legend">
                     {#each Object.entries(masteryMeta) as [key, meta] (key)}
                         <span class="inline-flex items-center gap-1.5"><span class={cn("size-4 rounded border", meta.class)}></span>{meta.label}</span>
                     {/each}
@@ -322,8 +314,8 @@
             <div class="flex flex-col items-center gap-3 px-4 py-14 text-center">
                 <Icon name="filter_alt_off" fontsize="1.5rem" class="text-muted-foreground" />
                 <div>
-                    <p class="text-sm font-medium">No problems match these filters</p>
-                    <p class="mt-1 text-xs text-muted-foreground">Clear the problem filters to restore the full matrix.</p>
+                    <p class="type-body text-foreground">No problems match these filters</p>
+                    <p class="mt-1 type-caption text-muted-foreground">Clear the problem filters to restore the full matrix.</p>
                 </div>
                 <Button variant="outline" size="sm" onclick={clearStateFilters}>Clear filters</Button>
             </div>
@@ -336,10 +328,10 @@
                 aria-colcount={matrixColumnCount}
             >
                 <thead bind:this={tableHead}><tr>
-                    <th scope="col" class="sticky left-0 z-30 w-16 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Year</th>
-                    {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 w-32 bg-surface-container-low px-2 py-1 text-left text-xs font-medium text-muted-foreground">Test</th>{/if}
+                    <th scope="col" class="sticky left-0 z-30 w-16 bg-surface-container-low px-2 py-1 text-left type-caption text-muted-foreground">Year</th>
+                    {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 w-32 bg-surface-container-low px-2 py-1 text-left type-caption text-muted-foreground">Test</th>{/if}
                     <th scope="col" class="w-auto p-0 border-none"></th>
-                    {#each columns as column (column)}<th scope="col" class="size-8 min-w-8 text-center font-mono text-[0.7rem] font-normal text-muted-foreground">{column + 1}</th>{/each}
+                    {#each columns as column (column)}<th scope="col" class="size-8 min-w-8 text-center type-caption font-mono text-muted-foreground">{column + 1}</th>{/each}
                     <th scope="col" class="w-auto p-0 border-none"></th>
                 </tr></thead>
                 {#if topSpacerHeight > 0}
@@ -362,8 +354,8 @@
                         {#each yearTests as test, rowIndex (test.id)}
                             {@const byNumber = new Map(test.problems.map((problem) => [problem.n, problem]))}
                             <tr aria-rowindex={yearGroupRowStarts[virtualGroup.index] + rowIndex}>
-                                {#if rowIndex === 0}<th scope="rowgroup" rowspan={yearTests.length} class="sticky left-0 z-20 w-16 bg-surface-container-low px-2 text-left align-top text-xs font-semibold">{year ?? "Other"}</th>{/if}
-                                {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-32 bg-surface-container-low px-2 text-left text-xs font-medium" title={test.name}><span class="block max-w-28 truncate">{reviewRowLabel(test)}</span></th>{/if}
+                                {#if rowIndex === 0}<th scope="rowgroup" rowspan={yearTests.length} class="sticky left-0 z-20 w-16 bg-surface-container-low px-2 text-left align-top type-caption text-foreground">{year ?? "Other"}</th>{/if}
+                                {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-32 bg-surface-container-low px-2 text-left type-caption text-foreground" title={test.name}><span class="block max-w-28 truncate">{reviewRowLabel(test)}</span></th>{/if}
                                 <td class="p-0 border-none"></td>
                                 {#each columns as column (column)}
                                     {@const problem = byNumber.get(column)}

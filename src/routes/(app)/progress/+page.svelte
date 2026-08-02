@@ -2,15 +2,12 @@
     import type { PageData } from "./$types";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
+    import { page } from "$app/state";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
+    import * as Page from "$lib/components/page";
     import { Select } from "$lib/components/select";
-    import {
-        BreakdownRow,
-        type BreakdownMetric,
-    } from "$lib/components/breakdown-row";
-    import type { Segment } from "$lib/components/segment-bar";
     import {
         fetchProgressBreakdown,
         rankWeaknesses,
@@ -26,12 +23,14 @@
         fetchAllSeries,
         fetchPlayerRatingHistory,
         RATING_PROVISIONAL_RD,
+        type ProblemRow,
         type PlayerRatingPoint,
     } from "$lib/library";
     import { RatingChart } from "$lib/components/rating-chart";
-    import { Subtabs } from "$lib/components/subtabs";
     import SeriesReviewPanel from "./SeriesReviewPanel.svelte";
+    import ProgressNav, { type ProgressView } from "./ProgressNav.svelte";
     import {
+        fetchDueReviews,
         fetchProblemStateSummary,
         type ProblemStateSummary,
     } from "$lib/progress";
@@ -43,11 +42,18 @@
     // Full rating climb (all-time); sliced to the selected range for display.
     let ratingHistory = $state<PlayerRatingPoint[]>([]);
     let stateSummary = $state<ProblemStateSummary | null>(null);
+    let dueReviews = $state<ProblemRow[]>([]);
+    let dueLoading = $state(true);
+    let dueError = $state<string | null>(null);
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
     // Topic currently spinning up a drill session (disables its button).
     let drilling = $state<string | null>(null);
-    let activeView = $state("overview");
+    let startingReview = $state(false);
+    let activeView = $derived.by<ProgressView>(() => {
+        const view = page.url.searchParams.get("view");
+        return view === "review" || view === "matrix" ? view : "overview";
+    });
 
     // Series lens for the overview: empty = all series. The breakdown RPC takes a
     // multi-series array; the state summary is single-series, so it only narrows
@@ -129,6 +135,32 @@
         void load(rangeFrom(range), selectedSeriesIds.map(Number));
     });
 
+    $effect(() => {
+        if (!user) {
+            dueReviews = [];
+            dueLoading = false;
+            return;
+        }
+        let cancelled = false;
+        dueLoading = true;
+        fetchDueReviews(supabase)
+            .then((problems) => {
+                if (cancelled) return;
+                dueReviews = problems;
+                dueError = null;
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                dueError = (error as Error).message || "Failed to load reviews";
+            })
+            .finally(() => {
+                if (!cancelled) dueLoading = false;
+            });
+        return () => {
+            cancelled = true;
+        };
+    });
+
     // Overall totals, aggregated from the single topic query (topics are disjoint
     // per problem, so summing distinct_problems gives the true total).
     let totals = $derived.by(() =>
@@ -186,47 +218,16 @@
             visibleHistory[visibleHistory.length - 1].rd >=
                 RATING_PROVISIONAL_RD,
     );
+    let latestRating = $derived(
+        visibleHistory.length > 0
+            ? visibleHistory[visibleHistory.length - 1].rating
+            : null,
+    );
 
     // Weakest topics (min-volume floored, weakest first) for the Focus panel.
     let weaknesses = $derived(rankWeaknesses(rows).slice(0, 4));
     // Full topic list, most-practiced first.
     let topicRows = $derived([...rows].sort((a, b) => b.graded - a.graded));
-
-    function segmentsFor(r: TopicStat): Segment[] {
-        const incorrect = Math.max(r.graded - r.correct, 0);
-        return [
-            {
-                value: r.correct,
-                color: "var(--color-correct)",
-                label: "Correct",
-            },
-            {
-                value: incorrect,
-                color: "var(--color-destructive)",
-                label: "Incorrect",
-            },
-            {
-                value: r.skipped,
-                color: "var(--color-muted-foreground)",
-                label: "Skipped",
-            },
-        ];
-    }
-
-    function metricsFor(r: TopicStat): BreakdownMetric[] {
-        return [
-            {
-                label: "eventual",
-                value: pct(accuracy(r)),
-                title: "Eventual accuracy",
-            },
-            {
-                label: "avg time",
-                value: fmtTime(avgTimeMs(r)),
-                title: "Avg time / graded attempt",
-            },
-        ];
-    }
 
     function subFor(r: TopicStat): string {
         const probs = `${r.distinct_problems} problem${r.distinct_problems === 1 ? "" : "s"}`;
@@ -254,342 +255,360 @@
             drilling = null;
         }
     }
+
+    async function startReview() {
+        if (!user || startingReview) return;
+        startingReview = true;
+        try {
+            const settings = {
+                ...defaultPracticeSettings(),
+                mode: "review" as const,
+            };
+            const session = await startSession(supabase, user.id, {
+                name: "Due review",
+                settings,
+            });
+            await goto(resolve(`/practice?session=${session.id}`));
+        } catch (error) {
+            dueError = (error as Error).message || "Failed to start review";
+            startingReview = false;
+        }
+    }
 </script>
 
-<div class="flex w-full max-w-none flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <!-- Header -->
-    <div class="max-w-5xl mx-auto w-full border-b border-border/80 pb-4 space-y-1">
-        <h1
-            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-        >
-            <Icon
-                name="insights"
-                fontsize="2rem"
-                class="text-primary-foreground"
-            />
-            Progress
-        </h1>
+<svelte:head><title>Progress · ProblemCloud</title></svelte:head>
 
-    </div>
+<Page.Root width="standard">
+    <Page.Header
+        title="Progress"
+        description="Understand what needs attention, review your work, and follow your development over time."
+    >
+        {#snippet actions()}
+            <Button href="/practice" size="lg">Start targeted practice</Button>
+        {/snippet}
+    </Page.Header>
+
+    <ProgressNav active={activeView} />
 
     {#if !user}
-        <!-- Unauthenticated prompt -->
-        <div class="max-w-5xl mx-auto w-full">
-            <div
-                class="flex flex-col items-center justify-center gap-4 text-center py-16"
-            >
-                <div
-                    class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-                >
-                    <Icon name="insights" fontsize="2.5rem" />
+        <div class="flex flex-col items-center gap-4 py-16 text-center">
+            <div>
+                <h2 class="type-section-title text-foreground">
+                    Sign in to view your progress
+                </h2>
+                <p class="mt-1 type-secondary text-muted-foreground">
+                    Your accuracy, pace, review schedule, and topic development
+                    will appear here.
+                </p>
+            </div>
+            <Button href="/auth/login">Log in</Button>
+        </div>
+    {:else if activeView === "matrix"}
+        <div class="2xl:-mx-[120px] 2xl:w-[calc(100%+240px)]">
+            <SeriesReviewPanel {supabase} />
+        </div>
+    {:else if activeView === "review"}
+        <Page.Section
+            title="Review due"
+            description="Work through problems scheduled for review across your series."
+        >
+            {#snippet actions()}
+                <Button onclick={startReview} disabled={startingReview || dueReviews.length === 0}>
+                    {startingReview ? "Starting…" : "Start review"}
+                </Button>
+            {/snippet}
+
+            {#if dueLoading}
+                <div class="flex items-center justify-center gap-2 py-12 type-secondary text-muted-foreground">
+                    <Icon name="progress_activity" class="animate-spin" />
+                    Loading reviews…
                 </div>
-                <div class="flex flex-col gap-1">
-                    <h2 class="text-lg font-semibold">
-                        Sign in to view your progress
-                    </h2>
-                    <p class="text-sm text-muted-foreground">
-                        We track your accuracy and pace by topic automatically once
-                        you're logged in.
+            {:else if dueError}
+                <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
+                    {dueError}
+                </p>
+            {:else if dueReviews.length === 0}
+                <div class="py-12 text-center">
+                    <h3 class="type-section-title text-foreground">You are caught up</h3>
+                    <p class="mt-1 type-secondary text-muted-foreground">
+                        Practice another problem to keep building your review queue.
                     </p>
                 </div>
-                <Button
-                    href="/auth/login"
-                    variant="primary"
-                    class="mt-2 px-6 shadow-sm"
-                >
-                    Log In
-                </Button>
-            </div>
-        </div>
-    {:else}
-        <Subtabs bind:value={activeView} class="w-full flex flex-col gap-6">
-            <div class="max-w-5xl mx-auto w-full border-b border-border/80">
-                <Subtabs.List class="border-b-0">
-                    <Subtabs.Trigger value="overview" icon="insights">
-                        Overview
-                    </Subtabs.Trigger>
-                    <Subtabs.Trigger value="series" icon="grid_view">
-                        Series review
-                    </Subtabs.Trigger>
-                </Subtabs.List>
-            </div>
-
-            <Subtabs.Content value="overview" class="mx-auto w-full max-w-5xl space-y-6">
-                <!-- Series + range lens -->
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <span
-                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                            >Series</span
+            {:else}
+                <div class="border-t border-border">
+                    {#each dueReviews as problem (problem.id)}
+                        <div
+                            class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
                         >
-                        <Combobox
-                            bind:value={selectedSeriesIds}
-                            options={seriesOptions}
-                            strict
-                            placeholder="All series"
-                            inputPlaceholder="Add series…"
-                        />
-                    </div>
-                    <div class="flex flex-col gap-1.5 w-full sm:w-48">
-                        <span
-                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                            >Time Range</span
-                        >
-                        <Select
-                            options={rangeOptions}
-                            bind:value={range}
-                            placeholder="Select range..."
-                        />
-                    </div>
-                </div>
-
-                {#if stateSummary}
-                    <section class="space-y-3 rounded-xl border border-border/60 bg-surface-container-low/40 p-4">
-                        <div class="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                                <h2 class="text-sm font-bold uppercase tracking-wider text-muted-foreground">Mastery and plans</h2>
-                                <p class="mt-0.5 text-xs text-muted-foreground">Current all-time organization · independent of the activity range</p>
+                            <div class="min-w-0">
+                                <h3 class="type-body text-foreground">
+                                    {problem.tests?.name ?? "Practice problem"}
+                                    <span class="text-muted-foreground">
+                                        · Problem {problem.n + 1}
+                                    </span>
+                                </h3>
+                                <p class="type-caption text-muted-foreground">
+                                    {problem.tests?.series?.name ?? "Independent problem"}
+                                </p>
                             </div>
-                            <span class="text-xs text-muted-foreground">{stateSummary.review_due} review due</span>
+                            <span class="type-code text-muted-foreground">
+                                {problem.rating
+                                    ? Math.round(problem.rating.rating)
+                                    : "—"}
+                            </span>
+                            <Button
+                                onclick={startReview}
+                                disabled={startingReview}
+                                variant="outline"
+                                size="sm"
+                            >
+                                Review
+                            </Button>
                         </div>
-                        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
-                            <div class="rounded-lg bg-surface-container-lowest p-3"><div class="text-xs text-muted-foreground">Unassessed</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.unassessed}</div></div>
-                            <div class="rounded-lg bg-destructive/10 p-3 text-destructive"><div class="text-xs">Needs work</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.needs_work}</div></div>
-                            <div class="rounded-lg bg-unsure/10 p-3 text-unsure"><div class="text-xs">Learning</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.learning}</div></div>
-                            <div class="rounded-lg bg-correct/10 p-3 text-correct"><div class="text-xs">Confident</div><div class="mt-1 font-mono text-xl font-semibold">{stateSummary.confident}</div></div>
-                        </div>
-                        <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            <span>Working on <strong class="text-foreground">{stateSummary.working}</strong></span>
-                            <span>· Revisit <strong class="text-foreground">{stateSummary.revisit}</strong></span>
-                            <span>· Later <strong class="text-foreground">{stateSummary.later}</strong></span>
-                            <span>· Ignored <strong class="text-foreground">{stateSummary.ignored}</strong></span>
-                        </div>
-                    </section>
-                {/if}
+                    {/each}
+                </div>
+            {/if}
+        </Page.Section>
+    {:else}
+        <Page.Toolbar>
+            <div class="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">Series</span>
+                    <Combobox
+                        bind:value={selectedSeriesIds}
+                        options={seriesOptions}
+                        strict
+                        placeholder="All series"
+                        inputPlaceholder="Add series…"
+                    />
+                </label>
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">Time range</span>
+                    <Select
+                        options={rangeOptions}
+                        bind:value={range}
+                        placeholder="Select range…"
+                    />
+                </label>
+            </div>
+        </Page.Toolbar>
 
         {#if loading && rows.length === 0}
-            <div class="flex flex-col items-center justify-center py-16 gap-3">
-                <Icon
-                    name="progress_activity"
-                    class="animate-spin text-muted-foreground"
-                    fontsize="1.8rem"
-                />
-                <p class="text-xs text-muted-foreground">Loading progress...</p>
+            <div class="flex items-center justify-center gap-2 py-16 type-secondary text-muted-foreground">
+                <Icon name="progress_activity" class="animate-spin" />
+                Loading progress…
             </div>
         {:else if errorMsg}
-            <div
-                class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-            >
+            <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
                 {errorMsg}
-            </div>
+            </p>
         {:else if rows.length === 0}
-            <div
-                class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-            >
-                <div
-                    class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-                >
-                    <Icon name="query_stats" fontsize="1.8rem" />
-                </div>
+            <div class="flex flex-col items-center gap-4 py-16 text-center">
                 <div>
-                    <h3 class="text-sm font-semibold">No progress yet</h3>
-                    <p class="text-xs text-muted-foreground mt-0.5">
-                        Attempt some problems and your topic breakdown will
-                        appear here.
+                    <h2 class="type-section-title text-foreground">No progress yet</h2>
+                    <p class="mt-1 type-secondary text-muted-foreground">
+                        Attempt some problems and your topic breakdown will appear here.
                     </p>
                 </div>
-                <Button size="sm" href="/practice" class="mt-1"
-                    >Go Practice</Button
-                >
+                <Button href="/practice">Start practicing</Button>
             </div>
         {:else}
-            <!-- Rating climb -->
-            {#if ratingHistory.length > 0}
-                <div
-                    class="rounded-xl border border-border/60 bg-surface-container-low p-4"
-                >
-                    <div class="flex items-center gap-2">
-                        <Icon
-                            name="trending_up"
-                            class="text-primary-foreground"
-                            fontsize="1.2rem"
-                        />
-                        <h2
-                            class="text-sm font-bold uppercase tracking-wider text-muted-foreground"
-                        >
-                            Rating
-                        </h2>
-                        {#if ratingDelta != null && ratingDelta !== 0}
-                            <span
-                                class="font-mono text-xs font-semibold {ratingDelta >
-                                0
-                                    ? 'text-correct'
-                                    : 'text-destructive'}"
-                            >
-                                {ratingDelta > 0 ? "+" : ""}{Math.round(
-                                    ratingDelta,
-                                )}
-                            </span>
+            <section
+                class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                aria-labelledby="next-step-heading"
+            >
+                <div>
+                    <p class="type-caption text-muted-foreground">Recommended next step</p>
+                    <h2 id="next-step-heading" class="mt-1 type-section-title text-foreground">
+                        {#if stateSummary?.review_due}
+                            Review {stateSummary.review_due}
+                            {stateSummary.review_due === 1 ? "problem" : "problems"} due now
+                        {:else if weaknesses[0]}
+                            Practice {topicLabel(weaknesses[0].bucket_label)}
+                        {:else}
+                            Continue building your progress
                         {/if}
-                        {#if ratingProvisional}
-                            <span
-                                class="text-xs text-muted-foreground"
-                                title="Rating deviation is still high — it will settle as you play more rated matches."
-                            >
-                                · provisional
-                            </span>
+                    </h2>
+                    <p class="mt-1 type-secondary text-muted-foreground">
+                        {#if weaknesses[0]}
+                            Start with {topicLabel(weaknesses[0].bucket_label)}—the clearest opportunity in this range.
+                        {:else}
+                            Another focused session will make your next recommendation more precise.
                         {/if}
+                    </p>
+                </div>
+                <div class="sm:text-right">
+                    <div class="type-display font-mono tabular-nums text-foreground">
+                        {stateSummary?.review_due ?? 0}
                     </div>
+                    <a
+                        href={resolve("/progress?view=review")}
+                        class="type-caption text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
+                    >review due</a>
+                </div>
+            </section>
+
+            <div class="grid gap-10 lg:grid-cols-[1.08fr_0.92fr]">
+                <Page.Section title="Focus areas">
+                    {#snippet actions()}
+                        <a
+                            href={resolve("/progress?view=review")}
+                            class="type-secondary text-foreground underline decoration-border underline-offset-4"
+                        >Open review</a>
+                    {/snippet}
+                    <div class="border-t border-border">
+                        {#each weaknesses.slice(0, 3) as topic (topic.bucket_key)}
+                            <div class="border-b border-border py-4">
+                                <div class="flex items-baseline justify-between gap-4">
+                                    <div>
+                                        <h3 class="type-body text-foreground">
+                                            {topicLabel(topic.bucket_label)}
+                                        </h3>
+                                        <p class="type-caption text-muted-foreground">
+                                            {subFor(topic)}
+                                        </p>
+                                    </div>
+                                    <span class="type-code text-foreground">
+                                        {pct(firstAccuracy(topic))}
+                                    </span>
+                                </div>
+                                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        class="h-full rounded-full bg-primary"
+                                        style:width={`${Math.round((firstAccuracy(topic) ?? 0) * 100)}%`}
+                                    ></div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onclick={() => drill(topic.bucket_key)}
+                                    disabled={drilling === topic.bucket_key}
+                                    class="mt-2 -ml-2"
+                                >
+                                    {drilling === topic.bucket_key ? "Starting…" : "Practice topic"}
+                                </Button>
+                            </div>
+                        {/each}
+                    </div>
+                </Page.Section>
+
+                <Page.Section title="Rating">
+                    {#snippet actions()}
+                        <span class="type-code text-foreground">
+                            {latestRating == null ? "—" : Math.round(latestRating)}
+                            {#if ratingDelta != null && ratingDelta !== 0}
+                                <span class={ratingDelta > 0 ? "text-correct" : "text-destructive"}>
+                                    {ratingDelta > 0 ? "+" : ""}{Math.round(ratingDelta)}
+                                </span>
+                            {/if}
+                        </span>
+                    {/snippet}
                     {#if visibleHistory.length > 0}
                         <RatingChart
                             points={visibleHistory}
-                            class="mt-3"
                             color="var(--color-primary-foreground)"
                             bandColor="var(--color-primary)"
                             bandOpacity={0.5}
                         />
+                        {#if ratingProvisional}
+                            <p class="type-caption text-muted-foreground">
+                                Provisional while rating deviation remains high.
+                            </p>
+                        {/if}
                     {:else}
-                        <p class="mt-4 text-xs text-muted-foreground">
+                        <p class="py-10 type-secondary text-muted-foreground">
                             No rated matches in this range.
                         </p>
                     {/if}
-                </div>
-            {/if}
+                </Page.Section>
+            </div>
 
-            <!-- Overall stat tiles -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div
-                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-                >
-                    <div
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Problems
-                    </div>
-                    <div
-                        class="mt-2 text-2xl font-bold text-foreground font-mono"
-                    >
-                        {totals.distinct}
-                    </div>
+            <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
+                <div class="py-4 pr-4">
+                    <div class="type-code text-foreground">{totals.distinct}</div>
+                    <div class="type-caption text-muted-foreground">problems</div>
                 </div>
-                <div
-                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-                >
-                    <div
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        First-Try
-                    </div>
-                    <div
-                        class="mt-2 text-2xl font-bold text-foreground font-mono"
-                    >
-                        {pct(overallFirst)}
-                    </div>
+                <div class="border-l border-border py-4 pl-4 md:px-5">
+                    <div class="type-code text-foreground">{pct(overallFirst)}</div>
+                    <div class="type-caption text-muted-foreground">first try</div>
                 </div>
-                <div
-                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-                >
-                    <div
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Eventual
-                    </div>
-                    <div
-                        class="mt-2 text-2xl font-bold text-foreground font-mono"
-                    >
-                        {pct(overallAcc)}
-                    </div>
+                <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
+                    <div class="type-code text-foreground">{pct(overallAcc)}</div>
+                    <div class="type-caption text-muted-foreground">eventual</div>
                 </div>
-                <div
-                    class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-                >
-                    <div
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                        Avg Time
-                    </div>
-                    <div
-                        class="mt-2 text-2xl font-bold text-foreground font-mono"
-                    >
-                        {fmtTime(overallAvg)}
-                    </div>
+                <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
+                    <div class="type-code text-foreground">{fmtTime(overallAvg)}</div>
+                    <div class="type-caption text-muted-foreground">average time</div>
                 </div>
             </div>
 
-            <!-- Focus areas (weakness → drill) -->
-            {#if weaknesses.length > 0}
-                <div class="space-y-3">
-                    <div class="flex items-center gap-2">
-                        <Icon
-                            name="target"
-                            class="text-destructive"
-                            fontsize="1.2rem"
-                        />
-                        <h2
-                            class="text-sm font-bold uppercase tracking-wider text-muted-foreground"
-                        >
-                            Focus Areas
-                        </h2>
+            {#if stateSummary}
+                <Page.Section
+                    title="Problem state"
+                    description="Current all-time organization, independent of the selected activity range."
+                >
+                    <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
+                        <div class="py-4 pr-4">
+                            <div class="type-code text-foreground">{stateSummary.unassessed}</div>
+                            <div class="type-caption text-muted-foreground">unassessed</div>
+                        </div>
+                        <div class="border-l border-border py-4 pl-4 md:px-5">
+                            <div class="type-code text-destructive">{stateSummary.needs_work}</div>
+                            <div class="type-caption text-muted-foreground">needs work</div>
+                        </div>
+                        <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
+                            <div class="type-code text-unsure">{stateSummary.learning}</div>
+                            <div class="type-caption text-muted-foreground">learning</div>
+                        </div>
+                        <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
+                            <div class="type-code text-correct">{stateSummary.confident}</div>
+                            <div class="type-caption text-muted-foreground">confident</div>
+                        </div>
                     </div>
-                    <div class="space-y-2">
-                        {#each weaknesses as r (r.bucket_key)}
-                            <BreakdownRow
-                                highlight
-                                label={topicLabel(r.bucket_label)}
-                                sublabel={subFor(r)}
-                                score={firstAccuracy(r)}
-                                segments={segmentsFor(r)}
-                                metrics={metricsFor(r)}
-                            >
-                                {#snippet action()}
-                                    <Button
-                                        size="sm"
-                                        onclick={() => drill(r.bucket_key)}
-                                        disabled={drilling === r.bucket_key}
-                                        class="gap-1"
-                                    >
-                                        <Icon
-                                            name={drilling === r.bucket_key
-                                                ? "progress_activity"
-                                                : "sprint"}
-                                            class={drilling === r.bucket_key
-                                                ? "animate-spin size-[1.1em]"
-                                                : "size-[1.1em]"}
-                                        />
-                                        Drill
-                                    </Button>
-                                {/snippet}
-                            </BreakdownRow>
-                        {/each}
-                    </div>
-                </div>
+                    <p class="type-secondary text-muted-foreground">
+                        Working on <span class="text-foreground">{stateSummary.working}</span>
+                        · Revisit <span class="text-foreground">{stateSummary.revisit}</span>
+                        · Later <span class="text-foreground">{stateSummary.later}</span>
+                        · Ignored <span class="text-foreground">{stateSummary.ignored}</span>
+                    </p>
+                </Page.Section>
             {/if}
 
-            <!-- Full topic breakdown -->
-            <div class="space-y-3">
-                <h2
-                    class="text-sm font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 pb-1"
-                >
-                    By Topic
-                </h2>
-                <div class="space-y-2">
-                    {#each topicRows as r (r.bucket_key)}
-                        <BreakdownRow
-                            label={topicLabel(r.bucket_label)}
-                            sublabel={subFor(r)}
-                            score={firstAccuracy(r)}
-                            segments={segmentsFor(r)}
-                            metrics={metricsFor(r)}
-                        />
+            <Page.Section
+                title="By topic"
+                description="Performance across all practiced topics in the selected range."
+            >
+                <div class="border-t border-border">
+                    {#each topicRows as topic (topic.bucket_key)}
+                        <div
+                            class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-6"
+                        >
+                            <div class="min-w-0">
+                                <h3 class="type-body text-foreground">
+                                    {topicLabel(topic.bucket_label)}
+                                </h3>
+                                <p class="type-caption text-muted-foreground">{subFor(topic)}</p>
+                            </div>
+                            <div>
+                                <div class="type-code text-foreground">{pct(firstAccuracy(topic))}</div>
+                                <div class="type-caption text-muted-foreground">first try</div>
+                            </div>
+                            <div>
+                                <div class="type-code text-foreground">{pct(accuracy(topic))}</div>
+                                <div class="type-caption text-muted-foreground">eventual</div>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onclick={() => drill(topic.bucket_key)}
+                                disabled={drilling === topic.bucket_key}
+                            >
+                                Practice
+                            </Button>
+                        </div>
                     {/each}
                 </div>
-            </div>
-                {/if}
-            </Subtabs.Content>
-
-            <Subtabs.Content value="series" class="w-full">
-                <SeriesReviewPanel {supabase} />
-            </Subtabs.Content>
-        </Subtabs>
+            </Page.Section>
+        {/if}
     {/if}
-</div>
+</Page.Root>

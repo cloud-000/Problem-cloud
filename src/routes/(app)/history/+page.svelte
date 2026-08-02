@@ -5,16 +5,16 @@
     import { StatusTag } from "$lib/components/status-tag";
     import { Combobox } from "$lib/components/combobox";
     import { Select } from "$lib/components/select";
-    import { Input } from "$lib/components/input";
     import { DatePicker } from "$lib/components/date-picker";
     import { ProblemReview } from "$lib/components/problem";
+    import * as Page from "$lib/components/page";
     import { RangeSlider } from "$lib/components/range-slider";
     import { TriStateSwitch, type TriState } from "$lib/components/toggle";
     import {
         fetchRecentSubmissions,
         type RecentSubmissionRow,
     } from "$lib/progress";
-    import { cn } from "$lib/utils";
+    import ProgressNav from "../progress/ProgressNav.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -271,361 +271,193 @@
     ];
 </script>
 
-<div class="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
-    <!-- Header -->
-    <div class="border-b border-border/80 pb-4 space-y-1">
-        <h1
-            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-        >
-            <Icon
-                name="history"
-                fontsize="2rem"
-                class="text-primary-foreground"
-            />
-            History
-        </h1>
+<svelte:head><title>History · ProblemCloud</title></svelte:head>
 
-    </div>
+<Page.Root width="standard">
+    <Page.Header
+        title="Progress"
+        description="Understand what needs attention, review your work, and follow your development over time."
+    >
+        {#snippet actions()}
+            <Button href="/practice" size="lg">Start targeted practice</Button>
+        {/snippet}
+    </Page.Header>
+
+    <ProgressNav active="history" />
 
     {#if !user}
-        <!-- Unauthenticated Prompt -->
-        <div
-            class="flex flex-col items-center justify-center gap-4 text-center py-16"
-        >
-            <div
-                class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="history" fontsize="2.5rem" />
-            </div>
-            <div class="flex max-w-5xl flex-col gap-1">
-                <h2 class="text-lg font-semibold">
-                    Sign in to view your history
-                </h2>
-                <p class="text-sm text-muted-foreground">
-                    We track your progress and submission history automatically
-                    once you are logged in.
+        <div class="flex flex-col items-center gap-4 py-16 text-center">
+            <div>
+                <h2 class="type-section-title text-foreground">Sign in to view your history</h2>
+                <p class="mt-1 type-secondary text-muted-foreground">
+                    Your submission history is recorded automatically while you practice.
                 </p>
             </div>
-            <Button
-                href="/auth/login"
-                variant="primary"
-                class="mt-2 px-6 shadow-sm"
-            >
-                Log In
-            </Button>
+            <Button href="/auth/login">Log in</Button>
         </div>
     {:else}
-        <!-- Stats Summary Block (Dynamic) -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div
-                class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-            >
-                <div
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Total Attempts
-                </div>
-                <div class="mt-2 text-2xl font-bold text-foreground font-mono">
-                    {stats.total}
-                </div>
-            </div>
-            <div
-                class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-            >
-                <div
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Accuracy
-                </div>
-                <div class="mt-2 text-2xl font-bold text-foreground font-mono">
-                    {stats.accuracy}
-                </div>
-            </div>
-            <div
-                class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-            >
-                <div
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Solved Count
-                </div>
-                <div class="mt-2 text-2xl font-bold text-foreground font-mono">
-                    {stats.solved}
-                </div>
-            </div>
-            <div
-                class="p-4 rounded-xl border border-border/60 bg-surface-container-low flex flex-col justify-center"
-            >
-                <div
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Time Spent
-                </div>
-                <div class="mt-2 text-2xl font-bold text-foreground font-mono">
-                    {stats.timeSpent}
-                </div>
-            </div>
-        </div>
-
-        <!-- Filters Panel -->
-        <div
-            class="flex flex-row flex-wrap gap-4 items-end bg-surface-container-low p-4 rounded-xl border border-border/60"
+        <Page.Section
+            title="History"
+            description="Review past submissions and reopen the problem and solution."
         >
-            <div class="flex flex-col gap-1.5 md:w-64 w-full">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >Outcome</span
-                >
-                <Combobox
-                    options={outcomeOptions}
-                    strict
-                    bind:value={selectedOutcomes}
-                    placeholder="Filter outcomes..."
-                    inputPlaceholder="Add filter..."
-                />
-            </div>
-
-            <div class="flex flex-col gap-1.5 md:w-48 w-full">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >Time Range</span
-                >
-                <Select
-                    options={selectOptions}
-                    bind:value={timeRange}
-                    placeholder="Select range..."
-                />
-            </div>
-
-            {#if timeRange === "custom"}
-                <div class="flex flex-col gap-1.5 md:w-40 w-full">
-                    <span
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        >Start Date</span
-                    >
-                    <DatePicker
-                        bind:value={startDate}
-                        placeholder="Start date"
-                        max={endDate || undefined}
-                    />
+            <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
+                <div class="py-4 pr-4">
+                    <div class="type-code text-foreground">{stats.total}</div>
+                    <div class="type-caption text-muted-foreground">attempts</div>
                 </div>
-                <div class="flex flex-col gap-1.5 md:w-40 w-full">
-                    <span
-                        class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        >End Date</span
-                    >
-                    <DatePicker
-                        bind:value={endDate}
-                        placeholder="End date"
-                        min={startDate || undefined}
-                    />
+                <div class="border-l border-border py-4 pl-4 md:px-5">
+                    <div class="type-code text-foreground">{stats.accuracy}</div>
+                    <div class="type-caption text-muted-foreground">accuracy</div>
                 </div>
-            {/if}
-
-            <div class="flex flex-col gap-1.5 md:w-56 w-full">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >Rating ({ratingRange[0]}–{ratingRange[1]})</span
-                >
-                <div class="pt-2 pb-1">
-                    <RangeSlider
-                        bind:value={ratingRange}
-                        min={MIN_RATING}
-                        max={MAX_RATING}
-                        step={50}
-                        label="Rating"
-                    />
+                <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
+                    <div class="type-code text-foreground">{stats.solved}</div>
+                    <div class="type-caption text-muted-foreground">solved</div>
+                </div>
+                <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
+                    <div class="type-code text-foreground">{stats.timeSpent}</div>
+                    <div class="type-caption text-muted-foreground">time spent</div>
                 </div>
             </div>
+        </Page.Section>
 
-            <div class="flex flex-col gap-1.5 md:w-36 w-full">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                    >Has Solutions</span
-                >
-                <div class="flex items-center gap-2 h-9">
-                    <TriStateSwitch bind:value={hasSolutionsFilter} size="sm" />
-                    <span class="text-xs text-muted-foreground">
-                        {#if hasSolutionsFilter === "on"}
-                            Yes
-                        {:else if hasSolutionsFilter === "off"}
-                            No
-                        {:else}
-                            Any
-                        {/if}
+        <Page.Toolbar>
+            <div class="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">Outcome</span>
+                    <Combobox
+                        options={outcomeOptions}
+                        strict
+                        bind:value={selectedOutcomes}
+                        placeholder="All outcomes"
+                        inputPlaceholder="Add outcome…"
+                    />
+                </label>
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">Time range</span>
+                    <Select options={selectOptions} bind:value={timeRange} />
+                </label>
+                <label class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">
+                        Rating {ratingRange[0]}–{ratingRange[1]}
                     </span>
+                    <div class="px-1 pt-2">
+                        <RangeSlider
+                            bind:value={ratingRange}
+                            min={MIN_RATING}
+                            max={MAX_RATING}
+                            step={50}
+                            label="Rating"
+                        />
+                    </div>
+                </label>
+                <div class="flex min-w-0 flex-col gap-1.5">
+                    <span class="type-caption text-muted-foreground">Has solutions</span>
+                    <div class="flex min-h-9 items-center gap-2">
+                        <TriStateSwitch bind:value={hasSolutionsFilter} size="sm" />
+                        <span class="type-caption text-muted-foreground">
+                            {hasSolutionsFilter === "on"
+                                ? "Yes"
+                                : hasSolutionsFilter === "off"
+                                  ? "No"
+                                  : "Any"}
+                        </span>
+                    </div>
                 </div>
+                {#if timeRange === "custom"}
+                    <label class="flex min-w-0 flex-col gap-1.5">
+                        <span class="type-caption text-muted-foreground">Start date</span>
+                        <DatePicker bind:value={startDate} placeholder="Start date" max={endDate || undefined} />
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1.5">
+                        <span class="type-caption text-muted-foreground">End date</span>
+                        <DatePicker bind:value={endDate} placeholder="End date" min={startDate || undefined} />
+                    </label>
+                {/if}
             </div>
-
             {#if hasActiveFilters}
-                <Button
-                    variant="ghost"
-                    onclick={resetFilters}
-                    class="text-muted-foreground hover:text-foreground text-xs font-normal gap-1 px-3 h-9 md:w-auto w-full border border-dashed border-border"
-                >
-                    <Icon name="clear" class="size-[1.2em]" />
-                    Clear Filters
-                </Button>
+                <Button variant="ghost" size="sm" onclick={resetFilters}>Clear filters</Button>
             {/if}
-        </div>
+        </Page.Toolbar>
 
-        <!-- History Feed -->
         {#if loading && submissions.length === 0}
-            <div class="flex flex-col items-center justify-center py-16 gap-3">
-                <Icon
-                    name="progress_activity"
-                    class="animate-spin text-muted-foreground"
-                    fontsize="1.8rem"
-                />
-                <p class="text-xs text-muted-foreground">Loading history...</p>
+            <div class="flex items-center justify-center gap-2 py-16 type-secondary text-muted-foreground">
+                <Icon name="progress_activity" class="animate-spin" />
+                Loading history…
             </div>
         {:else if errorMsg}
-            <div
-                class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-            >
-                {errorMsg}
-            </div>
+            <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">{errorMsg}</p>
         {:else if filteredSubmissions.length === 0}
-            <div
-                class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-            >
-                <div
-                    class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-                >
-                    <Icon name="history_toggle_off" fontsize="1.8rem" />
-                </div>
+            <div class="flex flex-col items-center gap-4 py-16 text-center">
                 <div>
-                    <h3 class="text-sm font-semibold">No submissions found</h3>
-                    <p class="text-xs text-muted-foreground mt-0.5">
+                    <h2 class="type-section-title text-foreground">No submissions found</h2>
+                    <p class="mt-1 type-secondary text-muted-foreground">
                         {hasActiveFilters
-                            ? "Try resetting the filters."
-                            : "Start practicing to see your attempts here!"}
+                            ? "Try clearing the current filters."
+                            : "Start practicing to see your attempts here."}
                     </p>
                 </div>
                 {#if hasActiveFilters}
-                    <Button size="sm" onclick={resetFilters} class="mt-1"
-                        >Clear Filters</Button
-                    >
+                    <Button onclick={resetFilters}>Clear filters</Button>
                 {:else}
-                    <Button size="sm" href="/practice" class="mt-1"
-                        >Go Practice</Button
-                    >
+                    <Button href="/practice">Start practicing</Button>
                 {/if}
             </div>
         {:else}
-            <div class="space-y-6">
+            <div class="space-y-8">
                 {#each groupedSubmissions as group (group.dayLabel)}
-                    <div class="space-y-3">
+                    <section aria-labelledby={`history-${group.dayLabel.replaceAll(" ", "-")}`}>
                         <h2
-                            class="text-xs font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 pb-1"
+                            id={`history-${group.dayLabel.replaceAll(" ", "-")}`}
+                            class="type-section-title text-foreground"
                         >
                             {group.dayLabel}
                         </h2>
-
-                        <div class="space-y-2">
+                        <div class="mt-3 border-t border-border">
                             {#each group.items as sub (sub.id)}
                                 {@const isExpanded = expandedIds.has(sub.id)}
-                                <div
-                                    class="rounded-xl border border-border/60 bg-surface-container-lowest overflow-hidden transition-all duration-200 shadow-xs hover:border-border"
-                                >
-                                    <!-- Card Header/Summary Row -->
+                                <div class="border-b border-border">
                                     <button
                                         type="button"
                                         onclick={() => toggleExpand(sub.id)}
-                                        class="w-full flex items-center justify-between gap-4 p-4 text-left outline-none cursor-pointer select-none hover:bg-surface-container-low/30 transition-colors"
+                                        aria-expanded={isExpanded}
+                                        class="grid min-h-16 w-full gap-3 py-4 text-left transition-colors hover:bg-muted/40 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5 sm:px-2"
                                     >
-                                        <div
-                                            class="flex items-center gap-3 min-w-0 flex-1"
-                                        >
-                                            <!-- Outcome Indicator Badge -->
-                                            <StatusTag
-                                                class="shrink-0"
-                                                status={sub.skipped
-                                                    ? "skipped"
-                                                    : sub.is_correct
-                                                      ? "correct"
-                                                      : "incorrect"}
-                                            />
-
-                                            <!-- Metadata: Test name and Problem number -->
-                                            <div class="flex flex-col min-w-0">
-                                                <span
-                                                    class="text-sm font-semibold text-foreground truncate"
-                                                >
-                                                    {#if sub.problems?.tests?.name}
-                                                        {sub.problems.tests
-                                                            .name}
-                                                    {:else}
-                                                        Practice Problem
-                                                    {/if}
-                                                    <span
-                                                        class="text-muted-foreground font-normal"
-                                                    >
-                                                        • Problem {(sub.problems
-                                                            ?.n ?? 0) + 1}
-                                                    </span>
+                                        <StatusTag
+                                            class="w-fit"
+                                            status={sub.skipped
+                                                ? "skipped"
+                                                : sub.is_correct
+                                                  ? "correct"
+                                                  : "incorrect"}
+                                        />
+                                        <div class="min-w-0">
+                                            <span class="type-body text-foreground">
+                                                {sub.problems?.tests?.name ?? "Practice problem"}
+                                                <span class="text-muted-foreground">
+                                                    · Problem {(sub.problems?.n ?? 0) + 1}
                                                 </span>
-                                                <span
-                                                    class="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5"
-                                                >
-                                                    <span
-                                                        >{formatTimeOfDay(
-                                                            sub.created_at,
-                                                        )}</span
-                                                    >
-                                                    <span>•</span>
-                                                    <span
-                                                        >{formatElapsed(
-                                                            sub.elapsed_ms,
-                                                        )}</span
-                                                    >
-                                                    {#if sub.source}
-                                                        <span>•</span>
-                                                        <span
-                                                            class="uppercase tracking-wider text-[9px] font-bold bg-muted px-1 py-0.2 rounded border border-border/50"
-                                                        >
-                                                            {sub.source}
-                                                        </span>
-                                                    {/if}
-                                                </span>
-                                            </div>
+                                            </span>
+                                            <span class="mt-0.5 flex flex-wrap gap-x-2 type-caption text-muted-foreground">
+                                                <span>{formatTimeOfDay(sub.created_at)}</span>
+                                                <span>{sub.source}</span>
+                                            </span>
                                         </div>
-
-                                        <div
-                                            class="flex items-center gap-3 shrink-0"
-                                        >
-                                            {#if sub.flagged}
-                                                <Icon
-                                                    name="flag"
-                                                    class="text-unsure size-[1.2rem]"
-                                                    fill
-                                                />
-                                            {/if}
-                                            <Icon
-                                                name={isExpanded
-                                                    ? "expand_less"
-                                                    : "expand_more"}
-                                                class="text-muted-foreground transition-transform duration-200"
-                                            />
-                                        </div>
+                                        <span class="type-code text-muted-foreground">
+                                            {formatElapsed(sub.elapsed_ms)}
+                                        </span>
+                                        <Icon
+                                            name={isExpanded ? "expand_less" : "expand_more"}
+                                            class="text-muted-foreground"
+                                        />
                                     </button>
 
-                                    <!-- Expanded Card Body (Problem Details) -->
                                     {#if isExpanded}
-                                        <div
-                                            class="border-t border-border/40 p-4 bg-surface-container-low/10"
-                                        >
+                                        <div class="border-t border-border bg-surface-container-low/30 px-4 py-5">
                                             {#if sub.problems}
-                                                <!-- The row header above already
-                                                     shows status/test/number, so
-                                                     the review card drops its own
-                                                     header and just adds the
-                                                     preview + solution panel. -->
                                                 <ProblemReview
                                                     entry={{
                                                         problem: sub.problems,
-                                                        selectedChoice:
-                                                            sub.selected_choice,
+                                                        selectedChoice: sub.selected_choice,
                                                         answer: "",
                                                         correct: sub.is_correct,
                                                         flagged: sub.flagged,
@@ -636,11 +468,8 @@
                                                     class="border-0 bg-transparent p-0"
                                                 />
                                             {:else}
-                                                <p
-                                                    class="text-xs text-muted-foreground italic"
-                                                >
-                                                    Problem details could not be
-                                                    loaded.
+                                                <p class="type-secondary text-muted-foreground">
+                                                    Problem details could not be loaded.
                                                 </p>
                                             {/if}
                                         </div>
@@ -648,22 +477,17 @@
                                 </div>
                             {/each}
                         </div>
-                    </div>
+                    </section>
                 {/each}
 
-                <!-- Load More Button -->
                 {#if submissions.length >= limit}
-                    <div class="flex justify-center pt-2">
-                        <Button
-                            variant="outline"
-                            onclick={() => (limit += 100)}
-                            class="text-xs font-semibold px-6 py-2 shadow-xs"
-                        >
-                            Load More Attempts
+                    <div class="flex justify-center">
+                        <Button variant="outline" onclick={() => (limit += 100)}>
+                            Load more attempts
                         </Button>
                     </div>
                 {/if}
             </div>
         {/if}
     {/if}
-</div>
+</Page.Root>
