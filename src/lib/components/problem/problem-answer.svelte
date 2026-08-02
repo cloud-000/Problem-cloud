@@ -3,6 +3,7 @@
     import { Icon } from "$lib/components/icon";
     import { HiddenText } from "$lib/components/hidden-text";
     import { Input } from "$lib/components/input";
+    import { StatusTag } from "$lib/components/status-tag";
     import { toasts } from "$lib/state/toast.svelte";
     import { cn } from "$lib/utils";
     import { answersMatch } from "$lib/utils/answer-matcher";
@@ -41,9 +42,17 @@
     let canShowAnswerState = $derived(
         showAnswerState && answerIndex != null && answerIndex >= 0,
     );
-    let isCorrect = $derived(canShowAnswerState && checkAnswer() === true);
+    let answerResult = $derived(
+        canShowAnswerState ? checkAnswer() : null,
+    );
+    let hasOutcome = $derived(answerResult !== null);
+    let isCorrect = $derived(answerResult === true);
     let answerBlocked = $state(true);
-    let answerStateVisible = $derived(canShowAnswerState && !answerBlocked);
+    // The student's outcome is never secret. Only the canonical answer stays
+    // behind the disclosure after an incorrect submission.
+    let correctAnswerVisible = $derived(
+        hasOutcome && (isCorrect || !answerBlocked),
+    );
     let feedback = $state<{
         result: boolean | null;
         target: number | "input" | null;
@@ -201,9 +210,9 @@
     >
         {#each normalizedChoices as choice, i (i)}
             {@const selected = selectedChoice === i}
-            {@const correct = answerStateVisible && answerIndex === i}
+            {@const correct = correctAnswerVisible && answerIndex === i}
             {@const incorrect =
-                answerStateVisible && selected && answerIndex !== i}
+                hasOutcome && selected && answerIndex !== i}
             {@const feedbackActive = feedback?.target === i}
             {@const struck = eliminated.includes(i)}
             <div class="group/choice relative">
@@ -283,9 +292,19 @@
             </div>
         {/each}
     </div>
-    {#if canShowAnswerState}
-        <div class="mt-2">
-            <HiddenText bind:blocked={answerBlocked} />
+    {#if hasOutcome}
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+            <StatusTag
+                size="sm"
+                status={isCorrect ? "correct" : "incorrect"}
+            />
+            {#if !isCorrect}
+                <HiddenText bind:blocked={answerBlocked}>
+                    <span class="text-sm text-muted-foreground">
+                        Correct answer highlighted above
+                    </span>
+                </HiddenText>
+            {/if}
         </div>
     {/if}
 {:else}
@@ -301,8 +320,8 @@
             feedback?.target === "input" &&
                 feedback.result === null &&
                 "ring-3 ring-unsure/40",
-            answerStateVisible && isCorrect && "ring-3 ring-correct/40",
-            answerStateVisible && !isCorrect && "ring-3 ring-destructive/40",
+            hasOutcome && isCorrect && "ring-3 ring-correct/40",
+            hasOutcome && !isCorrect && "ring-3 ring-destructive/40",
         )}
     >
         {#if showViewMode}
@@ -313,8 +332,8 @@
                 onfocus={startEditing}
                 class={cn(
                     "dark:bg-input/30 border-input h-9 rounded-md border bg-transparent px-2.5 py-1 text-base shadow-xs w-full min-w-0 text-center flex items-center justify-center cursor-pointer transition-all hover:bg-muted/10 md:text-sm text-foreground",
-                    answerStateVisible && isCorrect && "border-correct bg-correct/10",
-                    answerStateVisible && !isCorrect && "border-destructive bg-destructive/10",
+                    hasOutcome && isCorrect && "border-correct bg-correct/10",
+                    hasOutcome && !isCorrect && "border-destructive bg-destructive/10",
                 )}
                 title="Click or focus to edit answer math"
             >
@@ -346,33 +365,36 @@
                 onkeydown={handleKeydown}
                 class={cn(
                     "text-center",
-                    answerStateVisible &&
+                    hasOutcome &&
                         isCorrect &&
                         "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
-                    answerStateVisible &&
+                    hasOutcome &&
                         !isCorrect &&
                         "border-destructive bg-destructive/10 focus-visible:border-destructive focus-visible:ring-destructive/50",
                 )}
             />
         {/if}
     </div>
-    {#if answerStateVisible && !isCorrect}
-        <div
-            class="mt-2 text-sm text-muted-foreground flex items-center gap-1.5"
-        >
-            <span>Correct answer:</span>
-            <span
-                class="font-mono text-foreground font-semibold bg-surface-container px-1.5 py-0.5 rounded border border-border"
-            >
-                <LaTeX class="inline-block"
-                    >${normalizedChoices[answerIndex as number]}$</LaTeX
-                >
-            </span>
-            <HiddenText bind:blocked={answerBlocked} />
-        </div>
-    {:else if canShowAnswerState}
-        <div class="mt-2">
-            <HiddenText bind:blocked={answerBlocked} />
+    {#if hasOutcome}
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+            <StatusTag
+                size="sm"
+                status={isCorrect ? "correct" : "incorrect"}
+            />
+            {#if !isCorrect}
+                <HiddenText bind:blocked={answerBlocked}>
+                    <span class="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <span>Correct answer:</span>
+                        <span
+                            class="rounded border border-border bg-surface-container px-1.5 py-0.5 font-mono font-semibold text-foreground"
+                        >
+                            <LaTeX class="inline-block"
+                                >${normalizedChoices[answerIndex as number]}$</LaTeX
+                            >
+                        </span>
+                    </span>
+                </HiddenText>
+            {/if}
         </div>
     {/if}
 {/if}
