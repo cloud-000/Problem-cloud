@@ -1,7 +1,6 @@
 <script lang="ts">
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import CompactControls from "./compact-controls.svelte";
-    import PropertyCard from "./property-card.svelte";
     import Whiteboard from "./whiteboard.svelte";
 
     let {
@@ -27,6 +26,5 @@
 
 <div class="relative h-full min-h-0 overflow-hidden bg-background">
     <Whiteboard {store} shortcutsAlwaysActive />
-    <CompactControls {store} showProperties={false} class="absolute left-2 right-2 top-2 z-20" />
-    <PropertyCard {store} class="absolute right-2 top-16 z-20" />
+    <CompactControls {store} class="absolute left-2 right-2 top-2 z-20" />
 </div>

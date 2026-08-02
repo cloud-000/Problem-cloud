@@ -19,6 +19,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { hasWhiteboardInspector } from "./control-policy";
 
     let {
         store,
@@ -35,6 +36,8 @@
         onProperties?: () => void;
         propertiesOpen?: boolean;
     } = $props();
+
+    const propertiesAvailable = $derived(hasWhiteboardInspector(store));
 </script>
 
 <div
@@ -51,7 +54,7 @@
         {#if showPan || tool.kind !== "pan"}
             <Button
                 variant={store.toolKind === tool.kind ? "default" : "ghost"}
-                size="icon-sm"
+                size={orientation === "horizontal" ? "icon-lg" : "icon-sm"}
                 title={tool.title}
                 aria-label={tool.title}
                 aria-pressed={store.toolKind === tool.kind}
@@ -62,11 +65,11 @@
         {/if}
     {/each}
 
-    {#if onProperties}
+    {#if onProperties && propertiesAvailable}
         <div class={orientation === "vertical" ? "my-1 h-px w-6 bg-border/60" : "mx-1 h-6 w-px shrink-0 bg-border/60"}></div>
         <Button
             variant={propertiesOpen ? "default" : "ghost"}
-            size="icon-sm"
+            size={orientation === "horizontal" ? "icon-lg" : "icon-sm"}
             title="Properties"
             aria-label="Open properties"
             aria-expanded={propertiesOpen}

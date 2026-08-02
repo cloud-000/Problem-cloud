@@ -4,6 +4,7 @@
     import Toolbar from "./toolbar.svelte";
     import CommandCard from "./command-card.svelte";
     import PropertyCard from "./property-card.svelte";
+    import { hasWhiteboardInspector } from "./control-policy";
 
     let {
         store,
@@ -19,6 +20,8 @@
 
     let root: HTMLDivElement | null = null;
     let propertiesOpen = $state(false);
+    const propertiesAvailable = $derived(hasWhiteboardInspector(store));
+    const visiblePropertiesOpen = $derived(propertiesOpen && propertiesAvailable);
 
     function closeProperties() {
         store.commitPropertyEdit();
@@ -26,7 +29,7 @@
     }
 
     function toggleProperties() {
-        if (propertiesOpen) closeProperties();
+        if (visiblePropertiesOpen) closeProperties();
         else propertiesOpen = true;
     }
 
@@ -56,15 +59,15 @@
         {store}
         {showPan}
         class="min-w-0 flex-1"
-        {propertiesOpen}
-        onProperties={showProperties ? toggleProperties : undefined}
+        propertiesOpen={visiblePropertiesOpen}
+        onProperties={showProperties && propertiesAvailable ? toggleProperties : undefined}
     />
     <CommandCard {store} compact class="shrink-0" />
-    {#if showProperties && propertiesOpen}
+    {#if showProperties && visiblePropertiesOpen}
         <PropertyCard
             {store}
             onClose={closeProperties}
-            class="absolute left-0 top-full z-30 mt-2 max-w-[calc(100vw-2rem)]"
+            class="absolute left-0 top-full z-30 mt-2 w-[min(20rem,calc(100vw-1rem))] max-w-full"
         />
     {/if}
 </div>

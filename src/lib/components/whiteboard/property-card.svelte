@@ -30,10 +30,12 @@
         store,
         class: className,
         onClose,
+        docked = false,
     }: {
         store: WhiteboardStore;
         class?: string;
         onClose?: () => void;
+        docked?: boolean;
     } = $props();
 
     const properties = $derived(store.inspectorProperties);
@@ -89,7 +91,10 @@
 
 <section
     class={cn(
-        "w-60 rounded-xl border border-border/60 bg-surface-container-lowest/97 shadow-lg backdrop-blur-(--backdrop-blur)",
+        "w-60 border border-border/60 bg-surface-container-lowest/97 backdrop-blur-(--backdrop-blur)",
+        docked
+            ? "flex h-full flex-col rounded-none border-y-0 border-r-0 shadow-none"
+            : "rounded-xl shadow-lg",
         className,
     )}
     aria-label="Whiteboard properties"
@@ -113,7 +118,10 @@
         {/if}
     </header>
 
-    <div class="max-h-[min(70vh,34rem)] space-y-4 overflow-y-auto p-3">
+    <div class={cn(
+        "space-y-4 overflow-y-auto p-3",
+        docked ? "min-h-0 flex-1" : "max-h-[min(70vh,34rem)]",
+    )}>
         {#if dimension}
             <div class="space-y-1.5 border-b border-border/60 pb-3">
                 <label class="text-xs font-medium" for="whiteboard-dimension-value">
