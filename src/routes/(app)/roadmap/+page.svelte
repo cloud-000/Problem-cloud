@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { Icon } from "$lib/components/icon";
     import { Button } from "$lib/components/button";
+    import * as Page from "$lib/components/page";
     import { Input } from "$lib/components/input";
     import { Select } from "$lib/components/select";
     import { DatePicker } from "$lib/components/date-picker";
@@ -120,31 +121,16 @@
                 id: "future" as const,
                 title: "Future",
                 items: futureItems,
-                icon: "event_upcoming",
-                colorClass: "border-t-4 border-t-amber-500",
-                textClass: "text-amber-500",
-                badgeClass:
-                    "bg-amber-500/10 text-amber-500 border border-amber-500/20",
             },
             {
                 id: "active" as const,
                 title: "Active",
                 items: activeItems,
-                icon: "schedule",
-                colorClass: "border-t-4 border-t-blue-500",
-                textClass: "text-blue-500",
-                badgeClass:
-                    "bg-blue-500/10 text-blue-500 border border-blue-500/20",
             },
             {
                 id: "done" as const,
                 title: "Done",
                 items: doneItems,
-                icon: "task_alt",
-                colorClass: "border-t-4 border-t-emerald-500",
-                textClass: "text-emerald-500",
-                badgeClass:
-                    "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20",
             },
         ];
     });
@@ -366,124 +352,61 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 p-6 max-w-7xl mx-auto w-full">
-    <!-- Header -->
-    <div
-        class="border-b border-border/80 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+<svelte:head>
+    <title>Product roadmap · ProblemCloud</title>
+</svelte:head>
+
+<Page.Root width="wide">
+    <Page.Header
+        title="Product roadmap"
+        description="Follow what is planned, in progress, and complete. Vote for the work that matters most to you."
     >
-        <div class="space-y-1">
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-            >
-                <Icon
-                    name="map"
-                    fontsize="2rem"
-                    class="text-primary-foreground"
-                />
-                Roadmap
-            </h1>
+        {#snippet actions()}
+            {#if isAdmin}
+                <Button onclick={openAddModal} class="gap-1.5">
+                    <Icon name="add" />
+                    Add goal
+                </Button>
+            {/if}
+        {/snippet}
+    </Page.Header>
 
-        </div>
-        {#if isAdmin}
-            <Button
-                onclick={openAddModal}
-                class="flex items-center gap-1.5 shadow-xs shrink-0 self-start md:self-center"
-            >
-                <Icon name="add" />
-                Add Goal
-            </Button>
-        {/if}
-    </div>
-
-    <!-- Kanban Board Grid -->
     {#if loading}
-        <div
-            class="flex flex-col items-center justify-center py-20 gap-3 text-center"
-        >
-            <Icon
-                name="hourglass_empty"
-                class="text-muted-foreground animate-spin"
-                fontsize="3rem"
-            />
-            <p class="text-sm text-muted-foreground">Loading roadmap...</p>
+        <div class="flex min-h-64 items-center justify-center" aria-live="polite">
+            <p class="type-secondary text-muted-foreground">Loading roadmap…</p>
         </div>
     {:else}
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            {#each columns as col}
-                <div
-                    class="flex flex-col rounded-2xl bg-surface-container-low/40 border border-border/60 shadow-xs min-h-[600px] overflow-hidden"
-                >
-                    <!-- Column Header -->
-                    <div
-                        class={cn(
-                            "px-4 py-3 bg-surface-container/60 flex items-center justify-between border-b border-border/60",
-                            col.colorClass,
-                        )}
-                    >
-                        <div
-                            class="flex items-center gap-2 font-semibold text-sm text-foreground"
-                        >
-                            <Icon name={col.icon} class={col.textClass} />
-                            <span>{col.title}</span>
-                            <span
-                                class={cn(
-                                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                                    col.badgeClass,
-                                )}
-                            >
-                                {col.items.length}
-                            </span>
-                        </div>
-                    </div>
+        <section aria-label="Roadmap stages" class="grid grid-cols-1 lg:grid-cols-3 lg:divide-x lg:divide-border">
+            {#each columns as col (col.id)}
+                <section class="min-w-0 py-8 first:pt-0 lg:px-8 lg:py-0 lg:first:pl-0 lg:last:pr-0">
+                    <header class="flex items-baseline justify-between gap-4 border-b border-border pb-3">
+                        <h2 class="type-section-title text-foreground">{col.title}</h2>
+                        <span class="type-caption shrink-0 text-muted-foreground">
+                            {col.items.length} {col.items.length === 1 ? "goal" : "goals"}
+                        </span>
+                    </header>
 
-                    <!-- Column Cards -->
-                    <div
-                        class="flex-1 p-4 flex flex-col gap-4 overflow-y-auto max-h-[70vh]"
-                    >
-                        {#if col.items.length === 0}
-                            <div
-                                class="flex-1 flex flex-col items-center justify-center py-16 px-4 border-2 border-dashed border-border/40 rounded-xl text-center"
-                            >
-                                <div
-                                    class="flex size-10 items-center justify-center rounded-full bg-surface-container mb-2 text-muted-foreground/50"
-                                >
-                                    <Icon name="inbox" fontsize="1.5rem" />
-                                </div>
-                                <span
-                                    class="text-xs font-semibold text-foreground"
-                                    >No features here</span
-                                >
-                                <span
-                                    class="text-[10px] text-muted-foreground mt-0.5"
-                                    >Nothing has been catalogued in this phase
-                                    yet.</span
-                                >
-                            </div>
-                        {:else}
+                    {#if col.items.length === 0}
+                        <p class="type-secondary py-8 text-muted-foreground">
+                            No goals are in this stage yet.
+                        </p>
+                    {:else}
+                        <div>
                             {#each col.items as goal (goal.id)}
-                                <div
-                                    class="group relative flex flex-col justify-between p-5 rounded-xl bg-surface-container-lowest border border-border/80 hover:border-primary-foreground/30 hover:shadow-xs transition-all duration-200 gap-3 h-fit"
-                                >
-                                    <!-- Title & Admin Controls -->
-                                    <div
-                                        class="flex items-start justify-between gap-4"
-                                    >
-                                        <h3
-                                            class="font-semibold text-sm text-foreground leading-snug tracking-tight"
-                                        >
+                                <article class="group border-b border-border py-5 last:border-b-0">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <h3 class="type-body font-semibold text-foreground">
                                             {goal.title}
                                         </h3>
 
                                         {#if isAdmin}
-                                            <div
-                                                class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                            >
+                                            <div class="flex shrink-0 items-center gap-1">
                                                 {#if goal.status !== "future"}
                                                     <button
                                                         onclick={() =>
                                                             moveStage(goal, -1)}
-                                                        class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-container transition-colors cursor-pointer"
-                                                        title="Move backward"
+                                                        class="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container hover:text-foreground"
+                                                        aria-label="Move {goal.title} backward"
                                                     >
                                                         <Icon
                                                             name="arrow_back"
@@ -495,8 +418,8 @@
                                                     <button
                                                         onclick={() =>
                                                             moveStage(goal, 1)}
-                                                        class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-container transition-colors cursor-pointer"
-                                                        title="Move forward"
+                                                        class="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container hover:text-foreground"
+                                                        aria-label="Move {goal.title} forward"
                                                     >
                                                         <Icon
                                                             name="arrow_forward"
@@ -507,8 +430,8 @@
                                                 <button
                                                     onclick={() =>
                                                         openEditModal(goal)}
-                                                    class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-container transition-colors cursor-pointer"
-                                                    title="Edit Goal"
+                                                    class="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container hover:text-foreground"
+                                                    aria-label="Edit {goal.title}"
                                                 >
                                                     <Icon
                                                         name="edit"
@@ -518,8 +441,8 @@
                                                 <button
                                                     onclick={() =>
                                                         openDeleteConfirm(goal)}
-                                                    class="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-                                                    title="Delete Goal"
+                                                    class="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                    aria-label="Delete {goal.title}"
                                                 >
                                                     <Icon
                                                         name="delete"
@@ -530,38 +453,16 @@
                                         {/if}
                                     </div>
 
-                                    <!-- Description (LaTeX block) -->
-                                    <div
-                                        class="text-xs text-muted-foreground font-normal leading-normal break-words min-w-0"
-                                    >
-                                        <LaTeX class="whitespace-pre-wrap"
-                                            >{goal.description}</LaTeX
-                                        >
+                                    <div class="type-secondary mt-2 break-words text-muted-foreground">
+                                        <LaTeX class="whitespace-pre-wrap">{goal.description}</LaTeX>
                                     </div>
 
-                                    <!-- Footer (Target Date & Votes widget) -->
-                                    <div
-                                        class="flex items-center justify-between gap-2 border-t border-border/30 pt-2 mt-auto min-h-fit"
-                                    >
-                                        <span
-                                            class="inline-flex h-7 min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] font-medium text-muted-foreground bg-surface-container-high/40 rounded-full px-2.5 border border-border/20"
-                                        >
-                                            <Icon
-                                                name="calendar_month"
-                                                fontsize="12px"
-                                                class="text-muted-foreground shrink-0"
-                                            />
-                                            <span class="truncate"
-                                                >{formatDate(
-                                                    goal.planned_date,
-                                                )}</span
-                                            >
+                                    <div class="mt-4 flex items-center justify-between gap-3">
+                                        <span class="type-caption text-muted-foreground">
+                                            {goal.planned_date ? `Planned ${formatDate(goal.planned_date)}` : "Timing to be decided"}
                                         </span>
 
-                                        <!-- Votes -->
-                                        <div
-                                            class="flex h-7 items-center gap-0.5 shrink-0 bg-surface-container/40 rounded-lg p-0.5 border border-border/30"
-                                        >
+                                        <div class="flex min-h-10 shrink-0 items-center" aria-label={`Votes for ${goal.title}`}>
                                             <button
                                                 onclick={() =>
                                                     handleVote(
@@ -570,12 +471,12 @@
                                                         1,
                                                     )}
                                                 class={cn(
-                                                    "p-1 rounded-md hover:bg-surface-container-high transition-all duration-150 flex items-center justify-center cursor-pointer",
+                                                    "flex size-10 items-center justify-center rounded-md hover:bg-surface-container",
                                                     goal.user_vote === 1
-                                                        ? "text-primary-foreground font-semibold"
-                                                        : "text-muted-foreground/60 hover:text-foreground",
+                                                        ? "text-primary"
+                                                        : "text-muted-foreground hover:text-foreground",
                                                 )}
-                                                title={goal.user_vote === 1
+                                                aria-label={goal.user_vote === 1
                                                     ? "Retract upvote"
                                                     : "Upvote"}
                                             >
@@ -588,10 +489,10 @@
 
                                             <span
                                                 class={cn(
-                                                    "text-xs font-semibold px-1.5 min-w-[20px] text-center",
+                                                    "type-code min-w-8 text-center",
                                                     goal.net_score > 0
-                                                        ? "text-primary-foreground"
-                                                        : goal.net_score < 0
+                                                        ? "text-primary"
+                                                    : goal.net_score < 0
                                                           ? "text-destructive"
                                                           : "text-muted-foreground",
                                                 )}
@@ -609,12 +510,12 @@
                                                         -1,
                                                     )}
                                                 class={cn(
-                                                    "p-1 rounded-md hover:bg-surface-container-high transition-all duration-150 flex items-center justify-center cursor-pointer",
+                                                    "flex size-10 items-center justify-center rounded-md hover:bg-surface-container",
                                                     goal.user_vote === -1
-                                                        ? "text-destructive font-semibold"
-                                                        : "text-muted-foreground/60 hover:text-foreground",
+                                                        ? "text-destructive"
+                                                        : "text-muted-foreground hover:text-foreground",
                                                 )}
-                                                title={goal.user_vote === -1
+                                                aria-label={goal.user_vote === -1
                                                     ? "Retract downvote"
                                                     : "Downvote"}
                                             >
@@ -626,15 +527,15 @@
                                             </button>
                                         </div>
                                     </div>
-                                </div>
+                                </article>
                             {/each}
-                        {/if}
-                    </div>
-                </div>
+                        </div>
+                    {/if}
+                </section>
             {/each}
-        </div>
+        </section>
     {/if}
-</div>
+</Page.Root>
 
 <!-- Add Goal Modal -->
 <Modal
