@@ -1,14 +1,15 @@
 <script lang="ts">
-    import { Select } from "$lib/components/select";
-    import { Icon } from "$lib/components/icon";
     import { Button } from "$lib/components/button";
-    import { Theme } from "$lib/utils/Theme.svelte";
-    import { modal } from "$lib/state/modal.svelte";
-    import FeedbackModal from "./FeedbackModal.svelte";
-    import AIConnectionsSection from "./AIConnectionsSection.svelte";
-    import type { PageData } from "./$types";
+    import { Icon } from "$lib/components/icon";
+    import * as Page from "$lib/components/page";
+    import { Select } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
+    import { modal } from "$lib/state/modal.svelte";
     import { settings } from "$lib/state/settings.svelte";
+    import { Theme } from "$lib/utils/Theme.svelte";
+    import AIConnectionsSection from "./AIConnectionsSection.svelte";
+    import FeedbackModal from "./FeedbackModal.svelte";
+    import type { PageData } from "./$types";
 
     let { data }: { data: PageData } = $props();
     let { profile, session, user, supabase } = $derived(data);
@@ -23,231 +24,136 @@
     }
 </script>
 
-<div class="space-y-8 p-6 max-w-4xl mx-auto">
-    <!-- Header -->
-    <div class="border-b border-border/80 pb-4">
-        <h1
-            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-        >
-            <Icon
-                name="settings"
-                fontsize="2rem"
-                class="text-primary-foreground"
-            />
-            Settings
-        </h1>
-        <p class="text-sm text-muted-foreground mt-1">
-            Customize your ProblemCloud experience and manage your preferences.
-        </p>
-    </div>
+<svelte:head>
+    <title>Settings · ProblemCloud</title>
+</svelte:head>
 
-    <!-- Interface Settings -->
-    <div
-        class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+<Page.Root width="narrow" class="gap-10">
+    <Page.Header
+        title="Settings"
+        description="Manage your interface, account, and connected services."
+    />
+
+    <Page.Section
+        title="Appearance"
+        description="Choose how ProblemCloud looks on this device. Asymptote diagrams adjust their contrast automatically."
     >
-        <div>
-            <h2
-                class="text-lg font-semibold text-foreground flex items-center gap-2"
+        <div class="border-y border-border/60">
+            <div
+                class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"
             >
-                <Icon name="palette" class="text-primary-foreground" />
-                Appearance
-            </h2>
-            <p class="text-xs text-muted-foreground mt-0.5">
-                Change the interface theme. Asymptote diagrams will adjust
-                contrast automatically.
-            </p>
-        </div>
-
-        <div
-            class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2"
-        >
-            <div class="flex flex-col gap-0.5">
-                <span class="text-sm font-medium text-foreground">Theme</span>
-                <span class="text-xs text-muted-foreground"
-                    >Select a light or dark aesthetic.</span
-                >
+                <div class="min-w-0">
+                    <p class="type-body font-medium text-foreground">Theme</p>
+                    <p class="mt-0.5 type-secondary text-muted-foreground">
+                        Select a light or dark appearance.
+                    </p>
+                </div>
+                <div class="w-full shrink-0 sm:w-56">
+                    <Select
+                        value={Theme.theme}
+                        options={Theme.themeOptions}
+                        onchange={(value) => Theme.setUserTheme(value)}
+                    />
+                </div>
             </div>
-            <div class="w-full sm:w-56 shrink-0">
-                <Select
-                    value={Theme.theme}
-                    options={Theme.themeOptions}
-                    onchange={(val) => {
-                        Theme.setUserTheme(val);
-                    }}
+        </div>
+    </Page.Section>
+
+    <Page.Section
+        title="Experimental features"
+        description="Control access to unfinished tools on this device."
+    >
+        <div class="border-y border-border/60">
+            <div class="flex items-center justify-between gap-6 py-4">
+                <div class="min-w-0">
+                    <label
+                        for="beta-features-switch"
+                        class="type-body font-medium text-foreground"
+                    >
+                        Show beta tools
+                    </label>
+                    <p class="mt-0.5 type-secondary text-muted-foreground">
+                        Reveal developer and feature-testing areas that may change without notice.
+                    </p>
+                </div>
+                <Switch
+                    bind:checked={settings.showBetaFeatures}
+                    id="beta-features-switch"
+                    class="shrink-0"
                 />
             </div>
         </div>
-    </div>
+    </Page.Section>
 
-    <!-- Beta Features -->
-    <div
-        class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+    <Page.Section
+        title="Account"
+        description="Details associated with your current ProblemCloud account."
     >
-        <div>
-            <h2
-                class="text-lg font-semibold text-foreground flex items-center gap-2"
-            >
-                <Icon name="labs" class="text-primary-foreground" />
-                Beta Features
-            </h2>
-            <p class="text-xs text-muted-foreground mt-0.5">
-                Enable experimental options and tools under development.
-            </p>
-        </div>
-
-        <div
-            class="flex items-center justify-between gap-4 pb-2"
-        >
-            <div class="flex flex-col gap-0.5">
-                <span class="text-sm font-medium text-foreground">Show Beta Tabs</span>
-                <span class="text-xs text-muted-foreground"
-                    >Toggle visibility of beta tabs like Find (debug search) and Test (feature labs).</span
-                >
-            </div>
-            <div class="shrink-0">
-                <Switch bind:checked={settings.showBetaFeatures} id="beta-features-switch" />
-            </div>
-        </div>
-    </div>
-
-    <!-- Account Details -->
-    <div
-        class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
-    >
-        <div>
-            <h2
-                class="text-lg font-semibold text-foreground flex items-center gap-2"
-            >
-                <Icon name="account_circle" class="text-primary-foreground" />
-                Account Profile
-            </h2>
-            <p class="text-xs text-muted-foreground mt-0.5">
-                Information about your current logged-in account.
-            </p>
-        </div>
-
         {#if session && profile}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div
-                    class="flex flex-col gap-1 p-3 rounded-lg bg-surface-container-low/40 border border-border/30"
-                >
-                    <span
-                        class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-                        >Username</span
-                    >
-                    <span class="text-sm font-medium text-foreground"
-                        >{profile.username || "Not set"}</span
-                    >
+            <dl class="border-y border-border/60 divide-y divide-border/60">
+                <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                    <dt class="type-secondary text-muted-foreground">Username</dt>
+                    <dd class="type-body text-foreground sm:text-right">
+                        {profile.username || "Not set"}
+                    </dd>
                 </div>
-
-                <div
-                    class="flex flex-col gap-1 p-3 rounded-lg bg-surface-container-low/40 border border-border/30"
-                >
-                    <span
-                        class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-                        >Email Address</span
-                    >
-                    <span class="text-sm font-medium text-foreground"
-                        >{session.user?.email || "Not set"}</span
-                    >
+                <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                    <dt class="type-secondary text-muted-foreground">Email address</dt>
+                    <dd class="type-body break-words text-foreground sm:text-right">
+                        {session.user?.email || "Not set"}
+                    </dd>
                 </div>
-
-                <div
-                    class="flex flex-col gap-1 p-3 rounded-lg bg-surface-container-low/40 border border-border/30"
-                >
-                    <span
-                        class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-                        >Rank Status</span
-                    >
-                    <span class="text-sm font-medium text-foreground">
+                <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                    <dt class="type-secondary text-muted-foreground">Account role</dt>
+                    <dd class="type-body text-foreground sm:text-right">
                         {profile.admin_rank > 0
-                            ? `Admin (Level ${profile.admin_rank})`
-                            : "Standard User"}
-                    </span>
+                            ? `Admin (level ${profile.admin_rank})`
+                            : "Standard user"}
+                    </dd>
                 </div>
-
-                <div
-                    class="flex flex-col gap-1 p-3 rounded-lg bg-surface-container-low/40 border border-border/30"
-                >
-                    <span
-                        class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-                        >Bio Status</span
-                    >
-                    <span class="text-sm font-medium text-foreground"
-                        >{profile.status || "None"}</span
-                    >
+                <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                    <dt class="type-secondary text-muted-foreground">Status</dt>
+                    <dd class="type-body text-foreground sm:text-right">
+                        {profile.status || "None"}
+                    </dd>
                 </div>
-            </div>
+            </dl>
         {:else}
             <div
-                class="flex flex-col items-center justify-center p-8 rounded-lg border border-dashed border-border/80 bg-surface-container-low/20"
+                class="flex flex-col gap-4 border-y border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"
             >
-                <Icon
-                    name="error_outline"
-                    fontsize="3rem"
-                    class="text-muted-foreground mb-2"
-                />
-                <span class="text-sm font-medium text-foreground"
-                    >Not Logged In</span
-                >
-                <span
-                    class="text-xs text-muted-foreground mt-1 mb-4 text-center"
-                >
-                    Please log in to view and manage your profile details.
-                </span>
-                <Button
-                    href="/auth/login"
-                    variant="primary"
-                    class="px-4 shadow-xs"
-                >
-                    Log In
-                </Button>
+                <div>
+                    <p class="type-body font-medium text-foreground">You are not logged in</p>
+                    <p class="mt-0.5 type-secondary text-muted-foreground">
+                        Log in to view your account details and connected services.
+                    </p>
+                </div>
+                <Button href="/auth/login" variant="primary" class="shrink-0">Log in</Button>
             </div>
         {/if}
-    </div>
+    </Page.Section>
 
-    <!-- AI Connections -->
     {#if session && user}
         <AIConnectionsSection />
-    {/if}
 
-    <!-- Feedback & Support -->
-    {#if session && user}
-        <div
-            class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+        <Page.Section
+            title="Feedback"
+            description="Report a bug, suggest a feature, or share an idea with the team."
         >
-            <div>
-                <h2
-                    class="text-lg font-semibold text-foreground flex items-center gap-2"
-                >
-                    <Icon name="feedback" class="text-primary-foreground" />
-                    Feedback & Support
-                </h2>
-                <p class="text-xs text-muted-foreground mt-0.5">
-                    Report a bug, suggest a feature, or share general feedback
-                    with the team.
-                </p>
-            </div>
-
             <div
-                class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                class="flex flex-col gap-4 border-y border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"
             >
-                <div class="flex flex-col gap-0.5">
-                    <span class="text-sm font-medium text-foreground"
-                        >Send feedback</span
-                    >
-                    <span class="text-xs text-muted-foreground"
-                        >Help us improve ProblemCloud.</span
-                    >
+                <div>
+                    <p class="type-body font-medium text-foreground">Send feedback</p>
+                    <p class="mt-0.5 type-secondary text-muted-foreground">
+                        Your message goes directly to the ProblemCloud team for review.
+                    </p>
                 </div>
-                <Button
-                    onclick={openFeedback}
-                    class="shrink-0 flex items-center gap-2"
-                >
+                <Button onclick={openFeedback} variant="outline" class="shrink-0">
                     <Icon name="send" fontsize="1.1rem" />
                     Send feedback
                 </Button>
             </div>
-        </div>
+        </Page.Section>
     {/if}
-</div>
+</Page.Root>

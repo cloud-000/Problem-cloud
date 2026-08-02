@@ -5,8 +5,8 @@ import type { AIConnectionCredential, AIPresetId, StoredAIConnection } from "$li
 /**
  * Browser-held AI connections, including their API keys.
  *
- * Keys deliberately never reach the database. They live in localStorage and ride along
- * on each /api/ai request, where the server uses them in memory and discards them. The
+ * Keys deliberately never reach the database or ProblemCloud's server. They live in
+ * localStorage and browser requests send them directly to the configured provider. The
  * trade-off is honest and must stay visible in the settings UI: localStorage has no
  * httpOnly equivalent, so any XSS on this app can read every key here.
  */
@@ -76,7 +76,7 @@ class AICredentialStore {
         return this.#connections.length > 0;
     }
 
-    /** The wire shape sent to the server: local bookkeeping stripped. */
+    /** The credential shape consumed by browser-side provider adapters. */
     get wireConnections(): AIConnectionCredential[] {
         return this.#connections.map(({ createdAt: _createdAt, ...credential }) => credential);
     }

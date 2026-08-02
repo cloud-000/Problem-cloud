@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import * as Page from "$lib/components/page";
     import { presetFor } from "$lib/ai/presets";
     import { aiCredentials } from "$lib/state/ai-credentials.svelte";
     import { coach } from "$lib/state/coach.svelte";
@@ -35,57 +36,26 @@
     }
 </script>
 
-<!-- Hidden entirely when the Coach is switched off server-side: a connection form that
-     cannot reach a working endpoint is worse than no form. -->
-{#if coach.enabled}
-<div
-    class="border border-border/50 rounded-xl p-6 bg-surface-container-lowest shadow-xs flex flex-col gap-6"
+<Page.Section
+    title="AI connections"
+    description="Bring your own provider key to use Coach. Requests go directly from this browser to the provider; your key never reaches our servers or your ProblemCloud account. Keys are stored in this browser and can be read by anyone with access to it."
 >
-    <div>
-        <h2 class="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Icon name="key" class="text-primary-foreground" />
-            AI Connections
-        </h2>
-        <p class="text-xs text-muted-foreground mt-0.5">
-            Bring your own API key to use the coach. Requests go straight from this browser
-            to the provider, so your key never reaches our servers or your ProblemCloud
-            account. It is stored in this browser, where anyone with access to it can read it.
-        </p>
-    </div>
-
-    {#if aiCredentials.connections.length === 0}
-        <div
-            class="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border/60 px-4 py-8 text-center"
-        >
-            <Icon name="link_off" class="text-muted-foreground" fontsize="1.75rem" />
-            <div>
-                <p class="text-sm font-medium text-foreground">No connections yet</p>
-                <p class="text-xs text-muted-foreground mt-0.5">
-                    Add a provider key to start using the coach.
-                </p>
-            </div>
-            <Button size="sm" onclick={() => openModal()}>
-                <Icon name="add" fontsize="1.1rem" />
-                Add connection
-            </Button>
-        </div>
-    {:else}
-        <div class="flex flex-col gap-2">
+        <div class="border-y border-border/60 divide-y divide-border/60">
             {#each aiCredentials.connections as connection (connection.id)}
                 <div
-                    class="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-container-low px-4 py-3"
+                    class="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"
                 >
-                    <div class="flex flex-col gap-0.5 min-w-0">
-                        <span class="text-sm font-medium text-foreground truncate">
+                    <div class="min-w-0">
+                        <p class="truncate type-body font-medium text-foreground">
                             {connection.label}
-                        </span>
-                        <span class="text-xs text-muted-foreground truncate">
+                        </p>
+                        <p class="mt-0.5 truncate type-secondary text-muted-foreground">
                             {presetFor(connection.preset).label} · {aiCredentials.maskedKey(
                                 connection.id,
                             )}
-                        </span>
+                        </p>
                     </div>
-                    <div class="flex shrink-0 gap-1.5">
+                    <div class="flex shrink-0 flex-wrap gap-2">
                         <Button
                             size="sm"
                             variant="outline"
@@ -93,12 +63,21 @@
                             disabled={testingId === connection.id}
                         >
                             {#if testingId === connection.id}
-                                <Icon name="progress_activity" class="animate-spin" fontsize="1.1rem" />
+                                <Icon
+                                    name="progress_activity"
+                                    class="animate-spin"
+                                    fontsize="1.1rem"
+                                />
+                                Testing…
                             {:else}
                                 Test
                             {/if}
                         </Button>
-                        <Button size="sm" variant="outline" onclick={() => openModal(connection.id)}>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onclick={() => openModal(connection.id)}
+                        >
                             Edit
                         </Button>
                         <Button
@@ -110,14 +89,30 @@
                         </Button>
                     </div>
                 </div>
+            {:else}
+                <div
+                    class="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"
+                >
+                    <div>
+                        <p class="type-body font-medium text-foreground">No connections yet</p>
+                        <p class="mt-0.5 type-secondary text-muted-foreground">
+                            Add a provider key to start using Coach.
+                        </p>
+                    </div>
+                    <Button size="sm" onclick={() => openModal()} class="shrink-0">
+                        <Icon name="add" fontsize="1.1rem" />
+                        Add connection
+                    </Button>
+                </div>
             {/each}
+
+            {#if aiCredentials.connections.length > 0}
+                <div class="py-4">
+                    <Button size="sm" variant="outline" onclick={() => openModal()}>
+                        <Icon name="add" fontsize="1.1rem" />
+                        Add another connection
+                    </Button>
+                </div>
+            {/if}
         </div>
-        <div class="flex justify-start">
-            <Button size="sm" variant="outline" onclick={() => openModal()}>
-                <Icon name="add" fontsize="1.1rem" />
-                Add another
-            </Button>
-        </div>
-    {/if}
-</div>
-{/if}
+</Page.Section>
