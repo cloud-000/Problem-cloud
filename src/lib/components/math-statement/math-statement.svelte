@@ -27,7 +27,7 @@
         {#if segment.kind === "asy"}
             <Figure imageSrc={segment.imageSrc} code={segment.code} alt="Asymptote diagram" />
         {:else if segment.kind === "img"}
-            <Figure imageSrc={segment.src} alt={segment.alt} autoInvert={false} />
+            <Figure imageSrc={segment.src} alt={segment.alt} />
         {:else}
             <LaTeX>{@html segment.html}</LaTeX>
         {/if}
