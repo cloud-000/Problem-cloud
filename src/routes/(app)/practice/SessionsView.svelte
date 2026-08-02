@@ -8,7 +8,7 @@
     import { RangeSlider } from "$lib/components/range-slider";
     import { Select, type SelectOption } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
-    import { fetchAllSeries, fetchAllTests, type TestSummary } from "$lib/library";
+    import { fetchAllSeries, fetchTestsForSeries, type TestSummary } from "$lib/library";
     import {
         fetchSessions,
         startSession,
@@ -116,32 +116,37 @@
         dialogFormat = "practice";
         selectedSeriesId = "";
         selectedTestId = "";
+        tests = [];
         unitValue = 0;
         unlimited = false;
         strictTiming = true;
         allowPause = false;
         revealPerSegment = false;
         dialogOpen = true;
-        if (tests.length === 0 || series.length === 0) loadTests();
+        if (series.length === 0) loadSeries();
     }
 
-    async function loadTests() {
+    async function loadSeries() {
+        try {
+            series = await fetchAllSeries(supabase);
+        } catch (e) {
+            errorMsg = (e as Error).message || "Failed to load series";
+        }
+    }
+
+    async function onSeriesChange(value: string) {
+        selectedSeriesId = value;
+        selectedTestId = "";
+        tests = [];
+        if (!value) return;
         testsLoading = true;
         try {
-            [series, tests] = await Promise.all([
-                fetchAllSeries(supabase),
-                fetchAllTests(supabase),
-            ]);
+            tests = await fetchTestsForSeries(supabase, value);
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to load tests";
         } finally {
             testsLoading = false;
         }
-    }
-
-    function onSeriesChange(value: string) {
-        selectedSeriesId = value;
-        selectedTestId = "";
     }
 
     // Seed the time slider from the chosen test's timing rule.

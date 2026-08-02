@@ -563,6 +563,27 @@ export async function fetchAllTests(
     });
 }
 
+/** Fetch all tests belonging to a specific series, newest first. */
+export async function fetchTestsForSeries(
+    supabase: Supabase,
+    seriesId: number | string,
+): Promise<TestSummary[]> {
+    const numId = typeof seriesId === "string" ? Number(seriesId) : seriesId;
+    const { data, error } = await supabase
+        .from("tests")
+        .select("id, name, year, series_id, format, time_limit_seconds, problems(count)")
+        .eq("series_id", numId)
+        .order("year", { ascending: false })
+        .order("name");
+    if (error) throw error;
+    return (data ?? []).map((t) => {
+        const { problems, ...rest } = t as typeof t & {
+            problems: { count: number }[] | null;
+        };
+        return { ...rest, problemCount: problems?.[0]?.count ?? 0 };
+    });
+}
+
 /** Lightweight `{id, name}` list to populate the series filter combobox. */
 export async function fetchAllSeries(
     supabase: Supabase,
