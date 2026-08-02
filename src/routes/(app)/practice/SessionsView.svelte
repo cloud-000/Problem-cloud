@@ -1,6 +1,8 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { goto } from "$app/navigation";
+    import { afterNavigate, goto, replaceState } from "$app/navigation";
+    import { resolve } from "$app/paths";
+    import { page } from "$app/state";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
@@ -26,6 +28,10 @@
         type TimingRule,
     } from "$lib/test-timing";
     import { defaultPracticeSettings, defaultTestSettings } from "$lib/trainer";
+    import {
+        parsePracticeLaunch,
+        type PracticeLaunchIntent,
+    } from "$lib/practice-launch";
     import { cn } from "$lib/utils";
     import SessionCard from "./SessionCard.svelte";
 
@@ -110,10 +116,9 @@
             (selectedSeriesId !== "" && selectedTestId !== ""),
     );
 
-    function openDialog() {
-        if (!user || busy) return;
+    function resetDialog(format: "practice" | "test" = "practice") {
         dialogName = "";
-        dialogFormat = "practice";
+        dialogFormat = format;
         selectedSeriesId = "";
         selectedTestId = "";
         tests = [];
@@ -122,6 +127,11 @@
         strictTiming = true;
         allowPause = false;
         revealPerSegment = false;
+    }
+
+    function openDialog() {
+        if (!user || busy) return;
+        resetDialog();
         dialogOpen = true;
         if (series.length === 0) loadSeries();
     }
@@ -162,6 +172,37 @@
             dbTimeLimitSeconds: test.time_limit_seconds,
         }).unitDefault;
     }
+
+    async function applyLaunchIntent(intent: PracticeLaunchIntent) {
+        if (!user || busy) return;
+        switch (intent.kind) {
+            case "mock-test":
+                resetDialog("test");
+                dialogOpen = true;
+                if (series.length === 0) await loadSeries();
+                await onSeriesChange(String(intent.seriesId));
+                onTestChange(String(intent.testId));
+                break;
+        }
+    }
+
+    // Launch parameters are one-shot commands: consume them, immediately replace
+    // the current history entry with a clean URL, then configure the modal through
+    // the same selection handlers used by direct interaction.
+    afterNavigate(() => {
+        const parsed = parsePracticeLaunch(page.url);
+        if (!parsed.hadLaunchParams) return;
+        const cleanedRoute = parsed.cleanedUrl.search
+            ? (`/practice${parsed.cleanedUrl.search}${parsed.cleanedUrl.hash}` as `/practice?${string}`)
+            : parsed.cleanedUrl.hash
+              ? (`/practice${parsed.cleanedUrl.hash}` as `/practice#${string}`)
+              : "/practice";
+        replaceState(
+            resolve(cleanedRoute),
+            page.state,
+        );
+        if (parsed.intent) void applyLaunchIntent(parsed.intent);
+    });
 
     async function loadSessions() {
         if (!user) {
@@ -222,7 +263,7 @@
                 name,
                 settings,
             });
-            await goto(`/practice?session=${row.id}`);
+            await goto(resolve(`/practice?session=${row.id}`));
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to start session";
             busy = false;
@@ -230,7 +271,7 @@
     }
 
     function practiceFreely() {
-        goto("/practice?session=root");
+        goto(resolve("/practice?session=root"));
     }
 
     function sessionFormat(s: PracticeSessionRow): "practice" | "test" {
@@ -252,7 +293,7 @@
                 return;
             }
         }
-        await goto(`/practice?session=${s.id}`);
+        await goto(resolve(`/practice?session=${s.id}`));
     }
 
     async function saveRename(s: PracticeSessionRow, name: string) {

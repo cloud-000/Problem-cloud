@@ -1,5 +1,7 @@
 <script lang="ts">
     import { Icon } from "$lib/components/icon";
+    import { Button } from "$lib/components/button";
+    import { resolve } from "$app/paths";
     import { LinkMenu } from "$lib/components/link-menu";
     import { Problem } from "$lib/components/problem";
     import { VirtualList } from "$lib/components/virtual-list";
@@ -12,6 +14,7 @@
     } from "$lib/library";
     import type { Engagement, Mastery, PersonalProblemState } from "$lib/progress";
     import type { LibraryStore } from "$lib/state/library.svelte";
+    import { practiceLaunchHref } from "$lib/practice-launch";
 
     type ResultRow = SeriesRow | TestRow | ProblemRow;
     class ProblemDraft {
@@ -150,6 +153,25 @@
                     {/if}
                 </span>
             </button>
+            {#if test.series_id != null}
+                <Button
+                    href={practiceLaunchHref(
+                        {
+                            kind: "mock-test",
+                            testId: test.id,
+                            seriesId: test.series_id,
+                        },
+                        resolve("/practice"),
+                    )}
+                    variant="outline"
+                    size="sm"
+                    class="gap-1.5"
+                    aria-label={`Take ${test.name} as a mock test`}
+                >
+                    <Icon name="play_arrow" />
+                    Mock test
+                </Button>
+            {/if}
             <LinkMenu
                 links={aopsLinks}
                 label="Open in Art of Problem Solving"
