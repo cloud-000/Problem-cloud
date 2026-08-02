@@ -260,7 +260,11 @@
                             <Icon name="open_in_full" />
                         </Button>
                     </div>
-                    <ProblemReview {entry} elapsedMs={entry.elapsedMs} />
+                    <ProblemReview
+                        {entry}
+                        elapsedMs={entry.elapsedMs}
+                        showOrganization
+                    />
                 </div>
             {/each}
         </div>
@@ -281,6 +285,7 @@
         <ProblemReview
             entry={focusedEntry}
             elapsedMs={focusedEntry.elapsedMs}
+            showOrganization
             class="border-0 bg-transparent p-0"
         />
     {/if}

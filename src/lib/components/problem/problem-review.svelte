@@ -14,6 +14,7 @@
         entry,
         showHeader = true,
         autoRevealSolution = true,
+        showOrganization = false,
         elapsedMs = null,
         class: className,
     }: {
@@ -24,6 +25,8 @@
         /** Auto-open the solution on a wrong answer (trainer post-test review).
          * Off in long lists so solutions start collapsed. */
         autoRevealSolution?: boolean;
+        /** Show the problem's mastery and future-plan controls. */
+        showOrganization?: boolean;
         /** Time spent on this problem, shown as a header chip. Null hides it. */
         elapsedMs?: number | null;
         class?: string;
@@ -107,11 +110,14 @@
     {/if}
     <Problem
         problem={entry.problem}
+        mastery={entry.progress?.mastery}
+        engagement={entry.progress?.engagement}
         selectedChoice={entry.selectedChoice}
         answer={entry.answer}
         showAnswerState={true}
         disabled={true}
         mode="preview"
+        {showOrganization}
     />
     {#if entry.problem.official_solutions?.length}
         <ProblemSolution

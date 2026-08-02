@@ -42,7 +42,8 @@
         isInstantFeedback?: boolean;
         /** Enables debugging affordances, e.g. the raw-text statement toggle. */
         debug?: boolean;
-        promptMastery?: boolean;
+        /** Shows controls for the signed-in user's mastery and future plan. */
+        showOrganization?: boolean;
         class?: string;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
@@ -62,7 +63,7 @@
         disabled = false,
         isInstantFeedback = false,
         debug = false,
-        promptMastery = false,
+        showOrganization = false,
         class: className,
         onEnter,
         onOrganizationChange,
@@ -321,17 +322,21 @@
 
     <div class={appearance === "row" ? "py-2" : "px-3 py-4 sm:px-5 sm:py-5"}>
         <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
-            <ProblemOrganization
-                problemId={problem.id}
-                {mastery}
-                {engagement}
-                prompt={promptMastery}
-                onchange={(state) => {
-                    mastery = state.mastery;
-                    engagement = state.engagement;
-                    onOrganizationChange?.(state);
-                }}
-            />
+            {#if showOrganization}
+                <ProblemOrganization
+                    problemId={problem.id}
+                    {mastery}
+                    {engagement}
+                    promptPresentation={appearance === "card"
+                        ? "persistent"
+                        : "transient"}
+                    onchange={(state) => {
+                        mastery = state.mastery;
+                        engagement = state.engagement;
+                        onOrganizationChange?.(state);
+                    }}
+                />
+            {/if}
 
             <section aria-label={`Problem ${problem.n + 1} statement`}>
                 {#if debug && showRaw}

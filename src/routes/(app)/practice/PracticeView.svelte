@@ -1954,6 +1954,7 @@
                            mastery={currentProgress?.mastery ?? null}
                            engagement={currentProgress?.engagement ?? null}
                            prompt={!currentProgress?.mastery}
+                           promptPresentation="persistent"
                            {suggestedMastery}
                            onchange={(state) => {
                               masteryTouched = true;

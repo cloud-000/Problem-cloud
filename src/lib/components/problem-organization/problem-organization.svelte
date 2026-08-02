@@ -21,6 +21,7 @@
         mastery = null,
         engagement = null,
         prompt = false,
+        promptPresentation = "transient",
         suggestedMastery = null,
         onchange,
         class: className,
@@ -29,6 +30,8 @@
         mastery?: Mastery | null;
         engagement?: Engagement | null;
         prompt?: boolean;
+        /** Keep the prompt visible after a choice instead of switching to the compact editor. */
+        promptPresentation?: "persistent" | "transient";
         /** Optional recommendation to emphasize without saving it for the user. */
         suggestedMastery?: Mastery | null;
         onchange?: (state: PersonalProblemState) => void;
@@ -50,6 +53,10 @@
     let localMastery = $derived<Mastery | null>(mastery);
     let localEngagement = $derived<Engagement | null>(engagement);
     let saving = $state<"mastery" | "engagement" | null>(null);
+    const familiarityLabelId = $props.id();
+    let showPrompt = $derived(
+        promptPresentation === "persistent" || (prompt && !localMastery),
+    );
 
     let supabase = $derived(
         page.data.supabase as SupabaseClient<Database> | undefined,
@@ -108,28 +115,73 @@
     }
 </script>
 
+{#snippet planOptions()}
+    <fieldset class="space-y-1.5" disabled={saving != null}>
+        <legend class="text-xs font-semibold text-muted-foreground">Plan</legend>
+        <div class="grid grid-cols-2 gap-1">
+            <button type="button" class={cn("rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-container", !localEngagement && "bg-surface-container font-medium")} onclick={() => chooseEngagement(null)}>No plan</button>
+            {#each engagementChoices as choice (choice.value)}
+                <button type="button" class={cn("flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-container", localEngagement === choice.value && "bg-surface-container font-medium")} onclick={() => chooseEngagement(choice.value)}>
+                    <Icon name={choice.icon} fontsize="0.85rem" /> {choice.label}
+                </button>
+            {/each}
+        </div>
+    </fieldset>
+{/snippet}
+
 {#if canEdit}
-    <div class={cn("flex flex-wrap items-center gap-1.5", className)}>
-        {#if prompt && !localMastery}
-            <div class="flex w-full flex-wrap items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5">
-                <div class="mr-auto flex flex-col gap-0.5">
-                    <span class="text-xs font-medium">How well do you know this?</span>
-                    <span class="text-[0.6875rem] text-muted-foreground">Optional — choose one or continue without answering.</span>
+    <div
+        class={cn(
+            "flex min-h-10 flex-wrap items-center gap-1.5",
+            showPrompt && "w-full",
+            className,
+        )}
+    >
+        {#if showPrompt}
+            <section
+                class="flex w-full flex-col gap-1.5 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between"
+                aria-labelledby={familiarityLabelId}
+            >
+                <div class="flex items-center gap-1">
+                    <p id={familiarityLabelId} class="type-caption text-muted-foreground">
+                        How familiar?
+                    </p>
+                    {#if promptPresentation === "persistent"}
+                        <details class="group/organize relative">
+                            <summary class="flex size-10 cursor-pointer list-none items-center justify-center rounded-full text-muted-foreground hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60" aria-label="Set future plan" title="Set future plan">
+                                <Icon name="tune" />
+                            </summary>
+                            <div class="absolute left-0 bottom-full z-40 mb-1 w-64 rounded-lg border border-border/70 bg-surface-container-lowest p-3 text-foreground shadow-lg">
+                                {@render planOptions()}
+                            </div>
+                        </details>
+                    {/if}
                 </div>
-                {#each masteryChoices as choice (choice.value)}
-                    <Button
-                        variant={choice.value === suggestedMastery ? "default" : "outline"}
-                        size="sm"
-                        disabled={saving != null}
-                        onclick={() => chooseMastery(choice.value)}
-                    >
-                        {choice.label}
-                        {#if choice.value === suggestedMastery}
-                            <span class="opacity-75">· Suggested</span>
-                        {/if}
-                    </Button>
-                {/each}
-            </div>
+                <div class="isolate grid h-8 w-full grid-cols-3 overflow-hidden rounded-full border border-border/60 bg-surface-container sm:w-[23rem]">
+                    {#each masteryChoices as choice (choice.value)}
+                        <Button
+                            variant={choice.value === localMastery
+                                ? "primary"
+                                : "ghost"}
+                            size="sm"
+                            class={cn(
+                                "h-8 w-full rounded-none border-0 px-1.5 text-xs shadow-none first:rounded-l-full last:rounded-r-full hover:shadow-none",
+                                !localMastery &&
+                                    choice.value === suggestedMastery &&
+                                    "bg-surface-container-high text-foreground",
+                            )}
+                            disabled={saving != null}
+                            aria-pressed={localMastery === choice.value}
+                            aria-label={choice.value === suggestedMastery
+                                ? `${choice.label}${localMastery ? "" : " (recommended)"}`
+                                : choice.label}
+                            onclick={() => chooseMastery(choice.value)}
+                        >
+                            {choice.label}
+                        </Button>
+                    {/each}
+                </div>
+            </section>
         {:else}
             <details class="group/organize relative">
                 <summary class="flex size-7 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-surface-container hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60" aria-label="Set mastery and plan">
@@ -145,17 +197,7 @@
                             {/each}
                         </div>
                     </fieldset>
-                    <fieldset class="space-y-1.5" disabled={saving != null}>
-                        <legend class="text-xs font-semibold text-muted-foreground">Plan</legend>
-                        <div class="grid grid-cols-2 gap-1">
-                            <button type="button" class={cn("rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-container", !localEngagement && "bg-surface-container font-medium")} onclick={() => chooseEngagement(null)}>No plan</button>
-                            {#each engagementChoices as choice (choice.value)}
-                                <button type="button" class={cn("flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-container", localEngagement === choice.value && "bg-surface-container font-medium")} onclick={() => chooseEngagement(choice.value)}>
-                                    <Icon name={choice.icon} fontsize="0.85rem" /> {choice.label}
-                                </button>
-                            {/each}
-                        </div>
-                    </fieldset>
+                    {@render planOptions()}
                 </div>
             </details>
             <span class={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", masteryClass(localMastery))}>

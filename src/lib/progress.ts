@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
 import {
+    CANONICAL_STATE_SELECT,
+    PROGRESS_SELECT,
     RATING_SELECT,
     TESTS_EMBED,
-    overallProblemRating,
+    normalizeEmbeds,
     type ProblemRow,
     type ProblemRating,
 } from "$lib/library";
@@ -13,19 +15,24 @@ type Supabase = SupabaseClient<Database>;
 // Embed used wherever a `problems` row is nested (submissions, due reviews) so the
 // Problem component's rating badge is populated. Reuses the shared `TESTS_EMBED`
 // (carries `aops_category_id` for review AoPS links) and the nested overall-rating
-// embed. Collapse the raw rows with `collapseRating`.
-const PROBLEM_EMBED = `problems(*, ${TESTS_EMBED}, ${RATING_SELECT})`;
+// embed. Collapse the raw rows with `collapseProblemEmbeds`.
+const PROBLEM_EMBED = `problems(*, ${TESTS_EMBED}, ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT})`;
 
 /** Raw embedded problem before its `problem_ratings` array is collapsed. */
 type RawEmbeddedProblem = ProblemRow & {
+    canonical_id?: number | null;
+    problem_progress?: ProblemProgress[] | null;
     problem_ratings?: (ProblemRating & { scope: string })[] | null;
+    canonical?: {
+        problem_progress?: ProblemProgress[] | null;
+        problem_ratings?: (ProblemRating & { scope: string })[] | null;
+    } | null;
 };
 
-/** Collapse an embedded problem's `problem_ratings` array into `rating`. */
-function collapseRating(problem: RawEmbeddedProblem | null): ProblemRow | null {
+/** Collapse an embedded problem's persisted progress and ratings into UI state. */
+function collapseProblemEmbeds(problem: RawEmbeddedProblem | null): ProblemRow | null {
     if (!problem) return null;
-    const { problem_ratings, ...rest } = problem;
-    return { ...rest, rating: overallProblemRating(problem_ratings) };
+    return normalizeEmbeds(problem);
 }
 
 export type Mastery = "needs_work" | "learning" | "confident";
@@ -241,7 +248,7 @@ export async function fetchDueReviews(
     if (error) throw error;
     return (data ?? [])
         .map((row) =>
-            collapseRating(
+            collapseProblemEmbeds(
                 (row as unknown as { problems: RawEmbeddedProblem | null })
                     .problems,
             ),
@@ -269,7 +276,7 @@ export async function fetchRecentSubmissions(
     if (error) throw error;
     return ((data ?? []) as unknown as RecentSubmissionRow[]).map((row) => ({
         ...row,
-        problems: collapseRating(row.problems as RawEmbeddedProblem | null),
+        problems: collapseProblemEmbeds(row.problems as RawEmbeddedProblem | null),
     }));
 }
 
@@ -292,6 +299,6 @@ export async function fetchSessionSubmissions(
     if (error) throw error;
     return ((data ?? []) as unknown as RecentSubmissionRow[]).map((row) => ({
         ...row,
-        problems: collapseRating(row.problems as RawEmbeddedProblem | null),
+        problems: collapseProblemEmbeds(row.problems as RawEmbeddedProblem | null),
     }));
 }

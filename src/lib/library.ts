@@ -42,6 +42,11 @@ export type ProblemRow = Tables<"problems"> & {
  */
 export type ProblemReviewEntry = {
     problem: ProblemRow;
+    /**
+     * Current persisted state when the caller keeps it alongside the problem
+     * (as session history does). Omit it when `problem.progress` is populated.
+     */
+    progress?: ProblemProgress | null;
     selectedChoice: number | null;
     answer: string;
     correct: boolean | null;
@@ -95,7 +100,7 @@ export function aopsCommunityUrl(
 // The current user's progress fields, embedded via the problem_progress FK. RLS
 // scopes the embed to the signed-in user, so it returns a 0/1-element array per
 // problem (always empty for anonymous users).
-const PROGRESS_SELECT =
+export const PROGRESS_SELECT =
     "problem_progress(times_seen, times_correct, times_reviewed, times_skipped, last_correct, last_reviewed_at, last_submission_at, next_review_at, solved, mastery, engagement)";
 
 // The problem's ratings, embedded via the problem_ratings FK — one row per scope

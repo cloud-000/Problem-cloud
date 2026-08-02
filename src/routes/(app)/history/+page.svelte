@@ -465,6 +465,7 @@
                                                     }}
                                                     showHeader={false}
                                                     autoRevealSolution={false}
+                                                    showOrganization
                                                     class="border-0 bg-transparent p-0"
                                                 />
                                             {:else}
