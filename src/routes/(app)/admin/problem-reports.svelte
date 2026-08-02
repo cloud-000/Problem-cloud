@@ -8,26 +8,27 @@
     import { Problem } from "$lib/components/problem";
     import { MathStatement } from "$lib/components/math-statement";
     import {
-        fetchAnswerSuggestions,
-        reviewAnswerSuggestion,
-        type AnswerSuggestionRow,
-        type FeedbackStatusFilter,
+        fetchProblemReports,
+        reviewProblemReport,
+        type ProblemReportRow,
+        type ProblemReportStatusFilter,
     } from "$lib/admin";
     import { toasts } from "$lib/state/toast.svelte";
+    import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
     let statusFilter = $state("pending");
-    let suggestions = $state<AnswerSuggestionRow[]>([]);
+    let reports = $state<ProblemReportRow[]>([]);
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
-    // Feedback ids with an in-flight Accept/Reject call.
-    let busyIds = $state(new Set<number>());
+    // Feedback ids with an in-flight review call.
+    const busyIds = new SvelteSet<number>();
 
-    async function loadData(status: FeedbackStatusFilter) {
+    async function loadData(status: ProblemReportStatusFilter) {
         loading = true;
         try {
-            suggestions = await fetchAnswerSuggestions(supabase, status);
+            reports = await fetchProblemReports(supabase, status);
             errorMsg = null;
         } catch (e) {
             errorMsg = (e as Error).message || "Failed to load feedback";
@@ -37,19 +38,19 @@
     }
 
     $effect(() => {
-        loadData(statusFilter as FeedbackStatusFilter);
+        loadData(statusFilter as ProblemReportStatusFilter);
     });
 
-    // Group suggestions by problem so multiple suggestions cluster together,
+    // Group reports by problem so multiple reports cluster together,
     // preserving the newest-first order of their first appearance.
     let groups = $derived.by(() => {
-        const map = new Map<number, AnswerSuggestionRow[]>();
-        for (const s of suggestions) {
-            // Answer suggestions are always problem-scoped; skip any stray null.
-            if (s.problem_id == null) continue;
-            const list = map.get(s.problem_id) ?? [];
-            list.push(s);
-            map.set(s.problem_id, list);
+        const map = new SvelteMap<number, ProblemReportRow[]>();
+        for (const report of reports) {
+            // Problem reports are always scoped; skip any stray legacy row.
+            if (report.problem_id == null) continue;
+            const list = map.get(report.problem_id) ?? [];
+            list.push(report);
+            map.set(report.problem_id, list);
         }
         return [...map.entries()].map(([problemId, items]) => ({
             problemId,
@@ -58,47 +59,49 @@
         }));
     });
 
-    async function review(row: AnswerSuggestionRow, accept: boolean) {
+    async function review(
+        row: ProblemReportRow,
+        status: "resolved" | "dismissed",
+        applyAnswer = false,
+    ) {
         if (busyIds.has(row.id)) return;
-        busyIds = new Set(busyIds).add(row.id);
+        busyIds.add(row.id);
         try {
-            await reviewAnswerSuggestion(supabase, row.id, accept);
+            await reviewProblemReport(supabase, row.id, status, applyAnswer);
             toasts.success(
-                accept
-                    ? "Answer applied to the problem."
-                    : "Suggestion rejected.",
+                applyAnswer
+                    ? "Answer applied and report resolved."
+                    : status === "resolved"
+                      ? "Report resolved."
+                      : "Report dismissed.",
             );
             // Reflect the new state without a refetch: drop it from a scoped
             // view, or update its status in the "all" view.
             if (statusFilter === "all") {
-                suggestions = suggestions.map((s) =>
-                    s.id === row.id
-                        ? { ...s, status: accept ? "accepted" : "rejected" }
-                        : s,
+                reports = reports.map((report) =>
+                    report.id === row.id ? { ...report, status } : report,
                 );
             } else {
-                suggestions = suggestions.filter((s) => s.id !== row.id);
+                reports = reports.filter((report) => report.id !== row.id);
             }
         } catch (e) {
             toasts.error((e as Error).message || "Action failed.");
         } finally {
-            const next = new Set(busyIds);
-            next.delete(row.id);
-            busyIds = next;
+            busyIds.delete(row.id);
         }
     }
 
     const statusOptions = [
-        { value: "pending", label: "Pending" },
-        { value: "accepted", label: "Accepted" },
-        { value: "rejected", label: "Rejected" },
+        { value: "pending", label: "Open" },
+        { value: "resolved", label: "Resolved" },
+        { value: "dismissed", label: "Dismissed" },
         { value: "all", label: "All" },
     ];
 
     function statusKind(status: string) {
-        if (status === "accepted") return "correct" as const;
-        if (status === "rejected") return "incorrect" as const;
-        return "unanswered" as const;
+        if (status === "resolved") return "correct" as const;
+        if (status === "dismissed") return "incorrect" as const;
+        return "new" as const;
     }
 
     function formatDate(dateStr: string): string {
@@ -123,14 +126,14 @@
     </div>
 
     <!-- Feed -->
-    {#if loading && suggestions.length === 0}
+    {#if loading && reports.length === 0}
         <div class="flex items-center gap-2 py-16 type-secondary text-muted-foreground">
             <Icon
                 name="progress_activity"
                 class="animate-spin text-muted-foreground"
                 fontsize="1.8rem"
             />
-            Loading answer suggestions…
+            Loading problem reports…
         </div>
     {:else if errorMsg}
         <div class="border-y border-destructive/30 py-4 type-secondary text-destructive" role="alert">
@@ -138,17 +141,17 @@
         </div>
     {:else if groups.length === 0}
         <div class="flex flex-col items-start gap-1 border-y border-border/60 py-8">
-                <h2 class="type-section-title text-foreground">No answer suggestions found</h2>
+                <h2 class="type-section-title text-foreground">No problem reports found</h2>
                 <p class="type-secondary text-muted-foreground">
                     {statusFilter === "pending"
                         ? "Nothing waiting for review."
-                        : "No suggestions match this filter."}
+                        : "No reports match this filter."}
                 </p>
         </div>
     {:else}
         <div class="border-t border-border">
             {#each groups as group (group.problemId)}
-                <section class="border-b border-border py-6" aria-label={`Suggestions for problem ${group.problemId}`}>
+                <section class="border-b border-border py-6" aria-label={`Reports for problem ${group.problemId}`}>
                     <div class="pb-5">
                         {#if group.problem}
                             <Problem
@@ -180,16 +183,17 @@
                                                 "Unknown"}
                                             • {formatDate(row.created_at)}
                                         </span>
-                                        <div
-                                            class="flex items-center gap-2 type-body text-foreground"
-                                        >
-                                            <span
-                                                class="type-caption shrink-0 text-muted-foreground"
-                                                >Suggests</span
+                                        {#if row.answer_index != null}
+                                            <div
+                                                class="flex items-center gap-2 type-body text-foreground"
                                             >
-                                            {#if choice}
                                                 <span
-                                                class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary type-caption text-primary-foreground"
+                                                    class="type-caption shrink-0 text-muted-foreground"
+                                                    >Suggested answer</span
+                                                >
+                                                {#if choice}
+                                                <span
+                                                    class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary type-caption text-primary-foreground"
                                                 >
                                                     {String.fromCharCode(
                                                         65 +
@@ -201,13 +205,13 @@
                                                     text={`$${choice}$`}
                                                     class="min-w-0"
                                                 />
-                                            {:else}
-                                                <span
-                                                    class="text-muted-foreground italic"
-                                                    >choice #{row.answer_index}</span
-                                                >
-                                            {/if}
-                                        </div>
+                                                {:else}
+                                                    <span class="text-muted-foreground italic">
+                                                        choice #{row.answer_index}
+                                                    </span>
+                                                {/if}
+                                            </div>
+                                        {/if}
                                     </div>
                                     <StatusTag
                                         class="shrink-0"
@@ -217,11 +221,11 @@
                                     />
                                 </div>
 
-                                {#if row.steps}
+                                {#if row.message}
                                     <p
                                         class="border-l-2 border-border pl-3 type-secondary whitespace-pre-wrap text-muted-foreground"
                                     >
-                                        {row.steps}
+                                        {row.message}
                                     </p>
                                 {/if}
 
@@ -231,26 +235,36 @@
                                             variant="outline"
                                             size="sm"
                                             disabled={busyIds.has(row.id)}
-                                            onclick={() => review(row, false)}
+                                            onclick={() => review(row, "dismissed")}
                                         >
                                             <Icon
                                                 name="close"
                                                 class="size-[1.1em]"
                                             />
-                                            Reject
+                                            Dismiss
                                         </Button>
                                         <Button
+                                            variant="outline"
                                             size="sm"
-                                            disabled={busyIds.has(row.id) ||
-                                                row.answer_index == null}
-                                            onclick={() => review(row, true)}
+                                            disabled={busyIds.has(row.id)}
+                                            onclick={() => review(row, "resolved")}
                                         >
                                             <Icon
                                                 name="check"
                                                 class="size-[1.1em]"
                                             />
-                                            Accept
+                                            Resolve
                                         </Button>
+                                        {#if row.answer_index != null}
+                                            <Button
+                                                size="sm"
+                                                disabled={busyIds.has(row.id)}
+                                                onclick={() => review(row, "resolved", true)}
+                                            >
+                                                <Icon name="done_all" class="size-[1.1em]" />
+                                                Apply answer
+                                            </Button>
+                                        {/if}
                                     </div>
                                 {/if}
                             </div>

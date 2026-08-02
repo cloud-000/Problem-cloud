@@ -23,7 +23,7 @@
         historyIndex: number;
         historyLength: number;
         revealLinks?: boolean;
-        onOpenAnswerSubmission: () => void;
+        onOpenReport: () => void;
     }
 
     let {
@@ -38,7 +38,7 @@
         historyIndex,
         historyLength,
         revealLinks = false,
-        onOpenAnswerSubmission,
+        onOpenReport,
     }: Props = $props();
 
     let detailsOpen = $state(false);
@@ -126,9 +126,9 @@
                 <button
                     type="button"
                     class="w-fit text-left text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
-                    onclick={onOpenAnswerSubmission}
+                    onclick={onOpenReport}
                 >
-                    Suggest an answer
+                    Report or suggest an answer
                 </button>
             {/if}
             {#if testHref || problemHref}

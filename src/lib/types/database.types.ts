@@ -1199,7 +1199,6 @@ export type Database = {
           reviewed_at: string | null
           reviewed_by: string | null
           status: string
-          steps: string | null
           type: string
           user_id: string
         }
@@ -1212,7 +1211,6 @@ export type Database = {
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
-          steps?: string | null
           type: string
           user_id: string
         }
@@ -1225,7 +1223,6 @@ export type Database = {
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
-          steps?: string | null
           type?: string
           user_id?: string
         }
@@ -1529,11 +1526,12 @@ export type Database = {
         Returns: undefined
       }
       recompute_ratings: { Args: never; Returns: Json }
-      review_answer_suggestion: {
+      review_problem_report: {
         Args: {
-          p_accept: boolean
           p_answer_index?: number
+          p_apply_answer?: boolean
           p_feedback_id: number
+          p_status: string
         }
         Returns: undefined
       }

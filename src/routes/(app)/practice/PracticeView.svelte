@@ -62,7 +62,7 @@
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { coach } from "$lib/state/coach.svelte";
-   import AnswerSubmissionModal from "./AnswerSubmissionModal.svelte";
+   import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onMount } from "svelte";
    import { fade } from "svelte/transition";
    import SettingsPanel from "./SettingsPanel.svelte";
@@ -860,7 +860,7 @@
       {
          label: "Report",
          icon: "report",
-         onclick: () => {},
+         onclick: () => openProblemReport(),
       },
       {
          label: "Share",
@@ -1034,21 +1034,22 @@
       !!problem && problem.answer_index != null && problem.answer_index >= 0,
    );
 
-   function openAnswerSubmission() {
+   function openProblemReport(emphasizeAnswer = false) {
       if (!problem) return;
       if (!user) {
-         toasts.error("Sign in to suggest an answer.");
+         toasts.error("Sign in to report a problem.");
          return;
       }
       modal.show(
-         AnswerSubmissionModal,
+         ProblemReportModal,
          {
             supabase,
             user,
             problemId: problem.id,
             choices: problem.choices ?? [],
+            emphasizeAnswer,
          },
-         { title: "Suggest an answer", size: "md" },
+         { title: emphasizeAnswer ? "Report or suggest an answer" : "Report problem", size: "md" },
       );
    }
 
@@ -1883,7 +1884,7 @@
                            {historyIndex}
                            historyLength={history.length}
                            revealLinks={answerState.submitted}
-                           onOpenAnswerSubmission={openAnswerSubmission}
+                           onOpenReport={() => openProblemReport(true)}
                         />
                      {/key}
 

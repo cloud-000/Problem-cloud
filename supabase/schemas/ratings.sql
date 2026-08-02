@@ -728,7 +728,7 @@ grant execute on function public.recompute_ratings() to service_role;
 -- Admin entry point for the app. `recompute_ratings` is service_role-only (a full
 -- rebuild), but the app's Supabase client runs as `authenticated`; this thin
 -- security-definer wrapper re-checks admin_rank (defense in depth, same pattern as
--- review_answer_suggestion) and then runs the rebuild. Returns the same jsonb
+-- review_problem_report) and then runs the rebuild. Returns the same jsonb
 -- summary { players, problems, matches }.
 create or replace function public.admin_recompute_ratings()
 returns jsonb

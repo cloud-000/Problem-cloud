@@ -4,53 +4,53 @@ import type { ProblemRow } from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
 
-/** Review state of a feedback row plus the filter alias for "everything". */
-export type FeedbackStatus = "pending" | "accepted" | "rejected";
-export type FeedbackStatusFilter = FeedbackStatus | "all";
+/** Review state of a problem report plus the filter alias for "everything". */
+export type ProblemReportStatus = "pending" | "resolved" | "dismissed";
+export type ProblemReportStatusFilter = ProblemReportStatus | "all";
 
 /** A feedback row with its problem (+ test/series) and submitter embedded. */
-export type AnswerSuggestionRow = Tables<"user_submitted_feedback"> & {
+export type ProblemReportRow = Tables<"user_submitted_feedback"> & {
     problems: ProblemRow | null;
     profiles: { username: string | null } | null;
 };
 
 /**
- * Fetch `answer_suggestion` feedback for the admin dashboard, newest first, with
+ * Fetch unified `problem_report` feedback for the admin dashboard, newest first, with
  * the problem (+ test/series) and submitter username embedded. RLS returns every
  * row to admins (admin_rank > 0); pass a status to scope the list, or "all".
  */
-export async function fetchAnswerSuggestions(
+export async function fetchProblemReports(
     supabase: Supabase,
-    status: FeedbackStatusFilter = "pending",
-): Promise<AnswerSuggestionRow[]> {
+    status: ProblemReportStatusFilter = "pending",
+): Promise<ProblemReportRow[]> {
     let q = supabase
         .from("user_submitted_feedback")
         .select(
             "*, problems(*, tests(name, series_id, series(name))), profiles!user_submitted_feedback_user_id_fkey(username)",
         )
-        .eq("type", "answer_suggestion")
+        .eq("type", "problem_report")
         .order("created_at", { ascending: false });
     if (status !== "all") q = q.eq("status", status);
     const { data, error } = await q;
     if (error) throw error;
-    return (data ?? []) as unknown as AnswerSuggestionRow[];
+    return (data ?? []) as unknown as ProblemReportRow[];
 }
 
 /**
- * Act on a suggestion via the security-definer RPC: accept writes the answer onto
- * the problem and marks the row accepted; reject marks it rejected. The in-DB
- * `admin_rank` check authorizes the caller. Pass `answerIndex` to override the
- * suggested choice on accept (defaults to the row's `answer_index`).
+ * Resolve or dismiss a problem report through the security-definer RPC. A
+ * resolution can optionally apply the report's suggested answer to the problem.
  */
-export async function reviewAnswerSuggestion(
+export async function reviewProblemReport(
     supabase: Supabase,
     feedbackId: number,
-    accept: boolean,
+    status: "resolved" | "dismissed",
+    applyAnswer = false,
     answerIndex?: number | null,
 ): Promise<void> {
-    const { error } = await supabase.rpc("review_answer_suggestion", {
+    const { error } = await supabase.rpc("review_problem_report", {
         p_feedback_id: feedbackId,
-        p_accept: accept,
+        p_status: status,
+        p_apply_answer: applyAnswer,
         p_answer_index: answerIndex ?? undefined,
     });
     if (error) throw error;
@@ -69,7 +69,7 @@ export type GeneralFeedbackRow = Tables<"user_submitted_feedback"> & {
 };
 
 /**
- * Fetch site-wide feedback (everything except `answer_suggestion`) for the admin
+ * Fetch site-wide feedback (everything except `problem_report`) for the admin
  * triage tab, newest first, with the submitter username embedded. RLS returns
  * every row to admins (admin_rank > 0). Pass a status and/or category to scope
  * the list, or "all" for either. The `profiles` embed is disambiguated to the
@@ -85,7 +85,7 @@ export async function fetchGeneralFeedback(
         .select(
             "*, profiles!user_submitted_feedback_user_id_fkey(username)",
         )
-        .neq("type", "answer_suggestion")
+        .neq("type", "problem_report")
         .order("created_at", { ascending: false });
     if (status !== "all") q = q.eq("status", status);
     if (type !== "all") q = q.eq("type", type);
@@ -169,4 +169,3 @@ export async function fetchProfiles(
     if (error) throw error;
     return data ?? [];
 }
-

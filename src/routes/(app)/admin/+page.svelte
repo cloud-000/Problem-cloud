@@ -2,7 +2,7 @@
     import type { PageData } from "./$types";
     import * as Page from "$lib/components/page";
     import { Subtabs } from "$lib/components/subtabs";
-    import PracticeApproval from "./practice-approval.svelte";
+    import ProblemReports from "./problem-reports.svelte";
     import UserFeedback from "./user-feedback.svelte";
     import UserList from "./user-list.svelte";
     import Announcements from "./announcements.svelte";
@@ -11,7 +11,7 @@
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
 
-    let activeTab = $state("practice-approval");
+    let activeTab = $state("problem-reports");
 </script>
 
 <svelte:head>
@@ -27,8 +27,8 @@
     <Subtabs bind:value={activeTab} variant="line">
         <Page.Toolbar class="border-b border-border">
             <Subtabs.List>
-                <Subtabs.Trigger value="practice-approval">
-                    Answer approval
+                <Subtabs.Trigger value="problem-reports">
+                    Problem reports
                 </Subtabs.Trigger>
                 <Subtabs.Trigger value="user-feedback">Feedback</Subtabs.Trigger>
                 <Subtabs.Trigger value="users">Users</Subtabs.Trigger>
@@ -37,8 +37,8 @@
             </Subtabs.List>
         </Page.Toolbar>
 
-        <Subtabs.Content value="practice-approval">
-            <PracticeApproval {supabase} />
+        <Subtabs.Content value="problem-reports">
+            <ProblemReports {supabase} />
         </Subtabs.Content>
 
         <Subtabs.Content value="user-feedback">
