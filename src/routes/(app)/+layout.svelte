@@ -22,11 +22,7 @@
    import { topbar } from "$lib/state/topbar.svelte";
    import { shell } from "$lib/state/shell.svelte";
    import { settings } from "$lib/state/settings.svelte";
-   import {
-      CoachContextRegister,
-      CoachLauncher,
-      CoachPanel,
-   } from "$lib/components/coach";
+   import { CoachContextRegister, CoachPanel } from "$lib/components/coach";
    import {
       UtilityPanel,
       UtilityPanelRegister,
@@ -41,6 +37,8 @@
       loadSidebarExpanded,
       saveSidebarExpanded,
    } from "$lib/sidebar-persistence";
+   import { modal } from "$lib/state/modal.svelte";
+   import FeedbackModal from "./settings/FeedbackModal.svelte";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -79,65 +77,40 @@
          markRead(supabase, user.id, toast.notificationId);
    }
 
-   let tabs = [
-      { href: "/", icon: "home", label: "Home", important: true },
-      { href: "/practice", icon: "sprint", label: "Train", important: true },
-      {
-         href: "/progress",
-         icon: "insights",
-         label: "Progress",
-         important: false,
-      },
-      { href: "/library", icon: "book_5", label: "Explore", important: true },
-      {
-         href: "/history",
-         icon: "history",
-         label: "History",
-         important: false,
-      },
-      { href: "/roadmap", icon: "map", label: "Roadmap", important: false },
-      {
-         href: "/whiteboard",
-         icon: "draw",
-         label: "Whiteboard",
-         important: false,
-      },
-      {
-         href: "/leaderboard",
-         icon: "leaderboard",
-         label: "Leaderboard",
-         important: false,
-      },
-      {
-         href: "/admin",
-         icon: "admin_panel_settings",
-         label: "Admin",
-         adminOnly: true,
-         important: true,
-      },
-      {
-         href: "/find",
-         icon: "category_search",
-         label: "Find",
-         important: false,
-         betaOnly: true,
-      },
-      {
-         href: "/testing-features",
-         icon: "labs",
-         label: "Test",
-         important: false,
-         betaOnly: true,
-      },
-   ];
-   // Admin-only and beta-only tabs render based on permissions and settings.
-   let visibleTabs = $derived(
-      tabs.filter((t) => {
-         if (t.adminOnly && (profile?.admin_rank ?? 0) <= 0) return false;
-         if (t.betaOnly && !settings.showBetaFeatures) return false;
-         return true;
-      }),
-   );
+   const primaryTabs = [
+      { href: "/", icon: "home", label: "Home" },
+      { href: "/practice", icon: "sprint", label: "Practice" },
+      { href: "/library", icon: "book_5", label: "Library" },
+      { href: "/progress", icon: "insights", label: "Progress" },
+   ] as const;
+
+   const secondaryTabs = [
+      { href: "/whiteboard", icon: "draw", label: "Whiteboard" },
+      { href: "/leaderboard", icon: "leaderboard", label: "Leaderboard" },
+      { href: "/roadmap", icon: "map", label: "Product roadmap" },
+   ] as const;
+
+   function routeMatches(pathname: string, href: string) {
+      return href === "/"
+         ? pathname === "/"
+         : pathname === href || pathname.startsWith(`${href}/`);
+   }
+
+   function primaryIsActive(href: string) {
+      if (href === "/progress") {
+         return (
+            routeMatches(page.url.pathname, href) ||
+            routeMatches(page.url.pathname, "/history")
+         );
+      }
+      if (href === "/library") {
+         return (
+            routeMatches(page.url.pathname, href) ||
+            routeMatches(page.url.pathname, "/find")
+         );
+      }
+      return routeMatches(page.url.pathname, href);
+   }
    // Sidebar state
    let expanded = $state(true);
    let sidebarPreferenceLoaded = false;
@@ -163,139 +136,94 @@
    // rather than stacking on top of it.
    const showNav = $derived(!isMobilePortrait || shell.mobileNavVisible);
 
-   // Mobile portrait has five stable items; everything else belongs in More.
-   let mobilePrimaryTabs = $derived(
-      ["/", "/practice", "/library"].flatMap((href) =>
-         visibleTabs.filter((tab) => tab.href === href),
-      ),
-   );
-
    // Reference to the logout form so we can programmatically submit it on mobile portrait dropdown clicks
    let logoutForm = $state<HTMLFormElement | null>(null);
 
-   // Build options list for the "More" dropdown
-   let moreOptions = $derived.by<DropdownOption[]>(() => {
-      const list: DropdownOption[] = [];
+   function openFeedback() {
+      if (!user) return;
+      modal.show(
+         FeedbackModal,
+         { supabase, user },
+         { title: "Send feedback", size: "md" },
+      );
+   }
 
+   function addAccountOptions(list: DropdownOption[]) {
       if (profile) {
-         list.push({
-            label: profile.username || "User",
-            type: "header",
-         });
+         list.push({ label: profile.username || "User", type: "header" });
       }
       if (session?.user?.email) {
          list.push({ label: session.user.email, type: "header" });
       }
-      if (list.length > 0) list.push({ type: "divider" });
-
-      // Add every route not represented by Home, Train, or Explore.
-      const primaryHrefs = new Set(mobilePrimaryTabs.map((tab) => tab.href));
-      const extraTabs = visibleTabs.filter((tab) => !primaryHrefs.has(tab.href));
-      for (const tab of extraTabs) {
-         list.push({
-            label: tab.label,
-            icon: tab.icon,
-            onclick: () => goto(resolve(tab.href as "/")),
-         });
-      }
-
-      // Separate route options from Settings when at least one route was added.
-      if (extraTabs.length > 0) {
-         list.push({ type: "divider" });
-      }
-
-      // Add Settings
-      list.push({
-         label: "Settings",
-         icon: "settings",
-         onclick: () => goto(resolve("/settings")),
-      });
-
-      // Add Logout (if session exists)
-      if (session) {
-         list.push({ type: "divider" });
-         list.push({
-            label: "Logout",
-            icon: "logout",
-            color: "text-destructive",
-            onclick: () => {
-               logoutForm?.requestSubmit();
-            },
-         });
-      }
-
-      return list;
-   });
-
-   // Check if any item in the dropdown is active
-   let isAnyDropdownItemActive = $derived.by(() => {
-      // Check non-important tabs
-      const primaryHrefs = new Set(mobilePrimaryTabs.map((tab) => tab.href));
-      const extraTabs = visibleTabs.filter((tab) => !primaryHrefs.has(tab.href));
-      if (extraTabs.some((t) => page.url.pathname === t.href)) {
-         return true;
-      }
-      // Check Settings
-      if (page.url.pathname.startsWith("/settings")) {
-         return true;
-      }
-      // Check Test
-      if (
-         settings.showBetaFeatures &&
-         (page.url.pathname === "/testing-features" ||
-            page.url.pathname.startsWith("/testing-features/"))
-      ) {
-         return true;
-      }
-      return false;
-   });
-
-   let profileOptions = $derived.by<DropdownOption[]>(() => {
-      const list: DropdownOption[] = [];
-
-      if (profile) {
-         list.push({
-            label: profile.username || "User",
-            type: "header",
-         });
-      }
-      if (session?.user?.email) {
-         list.push({
-            label: session.user.email,
-            type: "header",
-         });
-      }
-
-      if (list.length > 0) {
-         list.push({ type: "divider" });
-      }
+      if (profile || session?.user?.email) list.push({ type: "divider" });
 
       list.push({
          label: "Settings",
          icon: "settings",
          onclick: () => goto(resolve("/settings")),
       });
-
+      if (user) {
+         list.push({
+            label: "Send feedback",
+            icon: "feedback",
+            onclick: openFeedback,
+         });
+      }
+      if ((profile?.admin_rank ?? 0) > 0) {
+         list.push({ type: "divider" });
+         list.push({
+            label: "Admin tools",
+            icon: "admin_panel_settings",
+            onclick: () => goto(resolve("/admin")),
+         });
+      }
       if (settings.showBetaFeatures) {
          list.push({
-            label: "Test",
+            label: "Developer tools",
             icon: "labs",
             onclick: () => goto(resolve("/testing-features")),
          });
       }
-
       if (session) {
          list.push({ type: "divider" });
          list.push({
-            label: "Logout",
+            label: "Log out",
             icon: "logout",
             color: "text-destructive",
-            onclick: () => {
-               logoutForm?.requestSubmit();
-            },
+            onclick: () => logoutForm?.requestSubmit(),
          });
       }
+   }
 
+   let secondaryOptions = $derived.by<DropdownOption[]>(() =>
+      secondaryTabs.map((tab) => ({
+         label: tab.label,
+         icon: tab.icon,
+         onclick: () => goto(resolve(tab.href)),
+      })),
+   );
+
+   // Mobile More also owns account access because there is no separate profile
+   // control in the compact bottom navigation.
+   let mobileMoreOptions = $derived.by<DropdownOption[]>(() => {
+      const list: DropdownOption[] = [];
+      list.push(...secondaryOptions, { type: "divider" });
+      addAccountOptions(list);
+      return list;
+   });
+
+   let isMoreActive = $derived(
+      secondaryTabs.some((tab) => routeMatches(page.url.pathname, tab.href)),
+   );
+   let isProfileActive = $derived(
+      routeMatches(page.url.pathname, "/settings") ||
+         routeMatches(page.url.pathname, "/admin") ||
+         routeMatches(page.url.pathname, "/testing-features"),
+   );
+
+   let profileOptions = $derived.by<DropdownOption[]>(() => {
+      const list: DropdownOption[] = [];
+      addAccountOptions(list);
       return list;
    });
 </script>
@@ -311,15 +239,22 @@
          <a
             href={resolve(href as "/")}
             {...props}
+            aria-current={isActive ? "page" : undefined}
             class={cn(
-               "flex items-center gap-3 w-full rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 outline-none select-none",
+               "type-secondary relative flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
                isActive
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-surface-container hover:text-foreground",
                expanded ? "justify-start" : "justify-center px-0 w-10 h-10",
             )}
          >
-            <Icon fill={isActive} class="shrink-0 transition-colors">
+            <Icon
+               fill={isActive}
+               class={cn(
+                  "shrink-0 transition-colors",
+                  isActive && "text-primary-foreground",
+               )}
+            >
                {icon}
             </Icon>
             {#if expanded}
@@ -336,49 +271,45 @@
    class="app-container flex flex-row w-full h-dvh bg-background text-foreground overflow-hidden"
 >
    {#if showNav}
-      <Sidebar.Root bind:expanded={() => expanded, setSidebarExpanded}>
-         <Sidebar.Header class={expanded ? "justify-between" : "justify-center"}>
+      <Sidebar.Root
+         bind:expanded={() => expanded, setSidebarExpanded}
+         class={expanded ? "w-60" : "w-16"}
+      >
+         <Sidebar.Header
+            class={cn(
+               "border-b-0 px-3 py-3",
+               expanded ? "justify-between" : "justify-center",
+            )}
+         >
             {#if expanded}
-               <div class="flex items-center gap-2 text-primary-foreground">
-                  <Icon class="font-bold animate-pulse" fontsize="24px">cloud</Icon
+               <a
+                  href={resolve("/")}
+                  class="type-secondary flex min-h-10 items-center gap-2 rounded-md px-1 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="ProblemCloud home"
+               >
+                  <Icon class="text-primary-foreground" fontsize="24px"
+                     >cloud</Icon
                   >
-                  <span class="text-base font-semibold tracking-tight"
-                     >ProblemCloud</span
-                  >
-               </div>
+                  <span class="font-semibold">ProblemCloud</span>
+               </a>
             {/if}
             <Sidebar.Trigger />
          </Sidebar.Header>
 
-         <Sidebar.Group heading="Navigation">
+         <Sidebar.Group class="gap-1 px-2 py-3">
             {#if isMobilePortrait}
-               {#each mobilePrimaryTabs.slice(0, 2) as tab (tab.href)}
-                  {@const isActive = page.url.pathname === tab.href}
-                  {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
-               {/each}
-               {#if aiCoachEnabled}
-                  <Sidebar.Item active={false} activeClass="" label="Coach">
-                     {#snippet child({ props })}
-                        <CoachLauncher
-                           {...props}
-                           variant="mobile"
-                           class="justify-center px-0"
-                        />
-                     {/snippet}
-                  </Sidebar.Item>
-               {/if}
-               {#each mobilePrimaryTabs.slice(2) as tab (tab.href)}
-                  {@const isActive = page.url.pathname === tab.href}
+               {#each primaryTabs as tab (tab.href)}
+                  {@const isActive = primaryIsActive(tab.href)}
                   {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
                {/each}
                <Sidebar.Item
-                  active={isAnyDropdownItemActive}
+                  active={isMoreActive || isProfileActive}
                   activeClass=""
                   label="More"
                >
                   {#snippet child({ props })}
                      <DropdownMenu
-                        options={moreOptions}
+                        options={mobileMoreOptions}
                         class="w-full h-full"
                         triggerClass="w-full h-full flex items-center justify-center"
                      >
@@ -387,15 +318,15 @@
                            {...props}
                            class={cn(
                               props.class,
-                              isAnyDropdownItemActive
-                                 ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                              isMoreActive || isProfileActive
+                                 ? "bg-primary text-primary-foreground"
                                  : "text-muted-foreground hover:bg-surface-container hover:text-foreground",
                               "justify-center px-0 w-10 h-10",
                            )}
-                           aria-label="More options"
+                           aria-label="More"
                         >
                            <Icon
-                              fill={isAnyDropdownItemActive}
+                              fill={isMoreActive || isProfileActive}
                               class="shrink-0 transition-colors"
                            >
                               more_horiz
@@ -405,22 +336,84 @@
                   {/snippet}
                </Sidebar.Item>
             {:else}
-               {#each visibleTabs as tab (tab.href)}
-                  {@const isActive = page.url.pathname === tab.href}
+               {#each primaryTabs as tab (tab.href)}
+                  {@const isActive = primaryIsActive(tab.href)}
                   {@render sidebarLink(tab.href, tab.icon, tab.label, isActive)}
                {/each}
+               <Sidebar.Item active={isMoreActive} activeClass="" label="More">
+                  {#snippet child({ props })}
+                     <DropdownMenu
+                        options={secondaryOptions}
+                        class="w-full"
+                        triggerClass="w-full"
+                     >
+                        <button
+                           type="button"
+                           {...props}
+                           class={cn(
+                              props.class,
+                              "type-secondary relative flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              isMoreActive
+                                 ? "bg-primary text-primary-foreground"
+                                 : "text-muted-foreground hover:bg-surface-container hover:text-foreground",
+                              expanded
+                                 ? "justify-start"
+                                 : "h-10 w-10 justify-center px-0",
+                           )}
+                           aria-label="More"
+                        >
+                           <Icon
+                              name="more_horiz"
+                              fill={isMoreActive}
+                              class={cn(
+                                 isMoreActive && "text-primary-foreground",
+                              )}
+                           />
+                           {#if expanded}<span>More</span>{/if}
+                        </button>
+                     </DropdownMenu>
+                  {/snippet}
+               </Sidebar.Item>
             {/if}
          </Sidebar.Group>
 
-         <Sidebar.Footer>
+         <Sidebar.Footer class="border-t border-border/50 p-2">
             {#if session}
                {#if !isMobilePortrait}
-                  {@render sidebarLink(
-                     "/settings",
-                     "settings",
-                     "Settings",
-                     page.url.pathname === "/settings",
-                  )}
+                  <DropdownMenu
+                     options={profileOptions}
+                     class="w-full"
+                     triggerClass="w-full"
+                  >
+                     <button
+                        type="button"
+                        class={cn(
+                           "flex min-h-11 w-full items-center gap-3 rounded-md p-2 text-left outline-none transition-colors hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring",
+                           expanded ? "justify-start" : "justify-center",
+                           isProfileActive && "bg-surface-container-high",
+                        )}
+                        aria-label="Profile menu"
+                     >
+                        <span
+                           class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-semibold"
+                        >
+                           {profile?.username?.charAt(0).toUpperCase() || "U"}
+                        </span>
+                        {#if expanded}
+                           <span class="min-w-0 flex-1">
+                              <span
+                                 class="type-secondary block truncate font-medium text-foreground"
+                              >
+                                 {profile?.username || "Your profile"}
+                              </span>
+                              <span
+                                 class="type-caption block truncate text-muted-foreground"
+                              >Account and settings</span>
+                           </span>
+                           <Icon name="more_horiz" class="text-muted-foreground" />
+                        {/if}
+                     </button>
+                  </DropdownMenu>
                {/if}
             {:else}
                <Sidebar.Item
@@ -445,7 +438,7 @@
    {/if}
 
    <div class="flex flex-col flex-1 h-full overflow-hidden">
-      {#if topbar.visible || !isMobilePortrait}
+      {#if topbar.visible}
          <div
             class="relative z-40 flex h-12 shrink-0 items-center justify-between gap-x-3 gap-y-2 border-b border-border/50 px-2 select-none"
          >
@@ -478,21 +471,6 @@
                   {@render topbar.rightSnippet()}
                {/if}
 
-               {#if !isMobilePortrait && aiCoachEnabled}
-                  <CoachLauncher />
-               {/if}
-
-               {#if !isMobilePortrait && session}
-                  <DropdownMenu options={profileOptions}>
-                     <button
-                        type="button"
-                        class="flex items-center justify-center size-8 rounded-full bg-primary text-primary-foreground font-semibold text-sm hover:ring-2 hover:ring-primary/20 transition-all outline-none cursor-pointer"
-                        aria-label="Profile menu"
-                     >
-                        {profile?.username?.charAt(0).toUpperCase() || "U"}
-                     </button>
-                  </DropdownMenu>
-               {/if}
             </div>
          </div>
       {/if}
