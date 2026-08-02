@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { HiddenText } from "$lib/components/hidden-text";
     import { StatusTag } from "$lib/components/status-tag";
     import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
@@ -93,6 +94,7 @@
         return problem.choices?.[answerIndex] ?? null;
     });
     let problemAnswer = $state<ProblemAnswer | null>(null);
+    let detailsAnswerBlocked = $state(true);
 
     let aopsProblemHref = $derived(aopsProblemUrl(problem.aops_id));
     let aopsTestHref = $derived(
@@ -280,10 +282,22 @@
                         {@render detail("id", problem.id)}
                         {@render detail("test id", problem.test_id)}
                         {@render detail("number", problem.n)}
-                        {@render detail(
-                            isMultipleChoice ? "answer index" : "answer",
-                            detailsAnswer,
-                        )}
+                        {#if detailsAnswer !== null}
+                            <div class="grid grid-cols-[6rem_1fr] gap-2">
+                                <span class="text-muted-foreground"
+                                    >{isMultipleChoice
+                                        ? "answer index"
+                                        : "answer"}</span
+                                >
+                                <HiddenText
+                                    bind:blocked={detailsAnswerBlocked}
+                                >
+                                    <span class="min-w-0 break-words font-mono text-foreground">
+                                        {String(detailsAnswer)}
+                                    </span>
+                                </HiddenText>
+                            </div>
+                        {/if}
                         {@render detail("verified", problem.verified)}
                         {@render detail(
                             "rating",
@@ -343,18 +357,20 @@
                     </span>
                 {/if}
 
-                <ProblemAnswer
-                    bind:this={problemAnswer}
-                    choices={problem.choices}
-                    answerIndex={problem.answer_index}
-                    bind:answer
-                    bind:selectedChoice
-                    bind:eliminated
-                    {showAnswerState}
-                    {disabled}
-                    {isInstantFeedback}
-                    {onEnter}
-                />
+                {#key problem.id}
+                    <ProblemAnswer
+                        bind:this={problemAnswer}
+                        choices={problem.choices}
+                        answerIndex={problem.answer_index}
+                        bind:answer
+                        bind:selectedChoice
+                        bind:eliminated
+                        {showAnswerState}
+                        {disabled}
+                        {isInstantFeedback}
+                        {onEnter}
+                    />
+                {/key}
             </section>
         </div>
     </div>

@@ -1921,28 +1921,30 @@
                         {/if}
                      </div>
                      <div class="w-full max-w-[48rem]">
-                        <ProblemAnswer
-                           bind:this={answerFeedback}
-                           choices={problem.choices}
-                           answerIndex={problem.answer_index}
-                           bind:answer={answerState.answer}
-                           bind:selectedChoice={answerState.selectedChoice}
-                           bind:eliminated={answerState.eliminatedChoices}
-                           showAnswerState={(behavior.revealAnswerState ||
-                              revealActive) &&
-                              answerState.submitted &&
-                              hasAnswer}
-                           disabled={behavior.freezeOnNavigate
-                              ? answerState.submitted || !isLatest || paused
-                              : revealActive || paused}
-                           onEnter={behavior.gradeImmediately
-                              ? () => submitAnswer()
-                              : isSegmented
-                                ? () => requestAdvanceSegment()
-                                : !isLatest && !paused
-                                  ? () => goForward()
-                                  : undefined}
-                        />
+                        {#key problem.id}
+                           <ProblemAnswer
+                              bind:this={answerFeedback}
+                              choices={problem.choices}
+                              answerIndex={problem.answer_index}
+                              bind:answer={answerState.answer}
+                              bind:selectedChoice={answerState.selectedChoice}
+                              bind:eliminated={answerState.eliminatedChoices}
+                              showAnswerState={(behavior.revealAnswerState ||
+                                 revealActive) &&
+                                 answerState.submitted &&
+                                 hasAnswer}
+                              disabled={behavior.freezeOnNavigate
+                                 ? answerState.submitted || !isLatest || paused
+                                 : revealActive || paused}
+                              onEnter={behavior.gradeImmediately
+                                 ? () => submitAnswer()
+                                 : isSegmented
+                                   ? () => requestAdvanceSegment()
+                                   : !isLatest && !paused
+                                     ? () => goForward()
+                                     : undefined}
+                           />
+                        {/key}
                      </div>
 
                      {#if behavior.gradeImmediately && answerState.submitted && answerState.correct !== null}

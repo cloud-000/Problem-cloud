@@ -29,6 +29,12 @@
             href: "/testing-features/latex",
         },
         {
+            icon: "visibility",
+            name: "Hidden Text",
+            description: "Click-to-reveal spoiler text with optional bound state.",
+            href: "/testing-features/hidden-text",
+        },
+        {
             icon: "tune",
             name: "Range Slider",
             description: "Two-handle range slider with push behavior.",

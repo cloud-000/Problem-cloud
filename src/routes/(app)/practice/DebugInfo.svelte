@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Switch } from "$lib/components/toggle";
     import { Icon } from "$lib/components/icon";
+    import { HiddenText } from "$lib/components/hidden-text";
     import {
         topicLabel,
         glickoMatchPreview,
@@ -170,14 +171,16 @@
                     <span class="text-muted-foreground font-mono"
                         >Answer Index</span
                     >
-                    <span
-                        class="font-mono bg-correct-container/20 text-on-correct-container px-2 py-0.5 rounded border border-correct/30 font-semibold"
-                    >
-                        {problem.answer_index}
-                        {#if problem.choices && problem.choices[problem.answer_index]}
-                            ({problem.choices[problem.answer_index]})
-                        {/if}
-                    </span>
+                    <HiddenText>
+                        <span
+                            class="font-mono bg-correct-container/20 text-on-correct-container px-2 py-0.5 rounded border border-correct/30 font-semibold"
+                        >
+                            {problem.answer_index}
+                            {#if problem.choices && problem.choices[problem.answer_index]}
+                                ({problem.choices[problem.answer_index]})
+                            {/if}
+                        </span>
+                    </HiddenText>
                 </div>
             {/if}
         </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
     import LaTeX from "$lib/components/LaTeX.svelte";
     import { Icon } from "$lib/components/icon";
+    import { HiddenText } from "$lib/components/hidden-text";
     import { Input } from "$lib/components/input";
     import { toasts } from "$lib/state/toast.svelte";
     import { cn } from "$lib/utils";
@@ -41,6 +42,8 @@
         showAnswerState && answerIndex != null && answerIndex >= 0,
     );
     let isCorrect = $derived(canShowAnswerState && checkAnswer() === true);
+    let answerBlocked = $state(true);
+    let answerStateVisible = $derived(canShowAnswerState && !answerBlocked);
     let feedback = $state<{
         result: boolean | null;
         target: number | "input" | null;
@@ -198,9 +201,9 @@
     >
         {#each normalizedChoices as choice, i (i)}
             {@const selected = selectedChoice === i}
-            {@const correct = canShowAnswerState && answerIndex === i}
+            {@const correct = answerStateVisible && answerIndex === i}
             {@const incorrect =
-                canShowAnswerState && selected && answerIndex !== i}
+                answerStateVisible && selected && answerIndex !== i}
             {@const feedbackActive = feedback?.target === i}
             {@const struck = eliminated.includes(i)}
             <div class="group/choice relative">
@@ -280,6 +283,11 @@
             </div>
         {/each}
     </div>
+    {#if canShowAnswerState}
+        <div class="mt-2">
+            <HiddenText bind:blocked={answerBlocked} />
+        </div>
+    {/if}
 {:else}
     <div
         class={cn(
@@ -293,8 +301,8 @@
             feedback?.target === "input" &&
                 feedback.result === null &&
                 "ring-3 ring-unsure/40",
-            canShowAnswerState && isCorrect && "ring-3 ring-correct/40",
-            canShowAnswerState && !isCorrect && "ring-3 ring-destructive/40",
+            answerStateVisible && isCorrect && "ring-3 ring-correct/40",
+            answerStateVisible && !isCorrect && "ring-3 ring-destructive/40",
         )}
     >
         {#if showViewMode}
@@ -305,8 +313,8 @@
                 onfocus={startEditing}
                 class={cn(
                     "dark:bg-input/30 border-input h-9 rounded-md border bg-transparent px-2.5 py-1 text-base shadow-xs w-full min-w-0 text-center flex items-center justify-center cursor-pointer transition-all hover:bg-muted/10 md:text-sm text-foreground",
-                    canShowAnswerState && isCorrect && "border-correct bg-correct/10",
-                    canShowAnswerState && !isCorrect && "border-destructive bg-destructive/10",
+                    answerStateVisible && isCorrect && "border-correct bg-correct/10",
+                    answerStateVisible && !isCorrect && "border-destructive bg-destructive/10",
                 )}
                 title="Click or focus to edit answer math"
             >
@@ -338,17 +346,17 @@
                 onkeydown={handleKeydown}
                 class={cn(
                     "text-center",
-                    canShowAnswerState &&
+                    answerStateVisible &&
                         isCorrect &&
                         "border-correct bg-correct/10 focus-visible:border-correct focus-visible:ring-correct/50",
-                    canShowAnswerState &&
+                    answerStateVisible &&
                         !isCorrect &&
                         "border-destructive bg-destructive/10 focus-visible:border-destructive focus-visible:ring-destructive/50",
                 )}
             />
         {/if}
     </div>
-    {#if canShowAnswerState && !isCorrect}
+    {#if answerStateVisible && !isCorrect}
         <div
             class="mt-2 text-sm text-muted-foreground flex items-center gap-1.5"
         >
@@ -360,6 +368,11 @@
                     >${normalizedChoices[answerIndex as number]}$</LaTeX
                 >
             </span>
+            <HiddenText bind:blocked={answerBlocked} />
+        </div>
+    {:else if canShowAnswerState}
+        <div class="mt-2">
+            <HiddenText bind:blocked={answerBlocked} />
         </div>
     {/if}
 {/if}
