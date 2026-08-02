@@ -1,18 +1,13 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
-    import {
-        DropdownMenu,
-        type DropdownOption,
-    } from "$lib/components/dropdown-menu";
     import { Icon } from "$lib/components/icon";
-    import { CoachLauncher } from "$lib/components/coach";
     import type { PlayerRating } from "$lib/library";
     import { cn } from "$lib/utils";
     import { fade } from "svelte/transition";
     import { deviceDetails } from "$lib/mobile.svelte";
-    import { coach } from "$lib/state/coach.svelte";
     import { shell } from "$lib/state/shell.svelte";
     import { MediaQuery } from "svelte/reactivity";
+    import { onMount } from "svelte";
     import { deriveFooterViewState } from "./footer-state";
 
     let {
@@ -28,8 +23,6 @@
         revealMode = false,
         segmentRevealed = false,
         onAdvanceSegment,
-        flagged,
-        moreOptions,
         submittingTest,
         cannotSubmit,
         hasAnswer,
@@ -38,6 +31,7 @@
         triesRemaining,
         playerRating,
         ratingDelta,
+        correct,
         onBack,
         onForward,
         onSkip,
@@ -63,8 +57,6 @@
         /** Reveal mode: the current segment has been graded and is showing its result. */
         segmentRevealed?: boolean;
         onAdvanceSegment?: () => void;
-        flagged: boolean;
-        moreOptions: DropdownOption[];
         submittingTest: boolean;
         cannotSubmit: boolean;
         hasAnswer: boolean;
@@ -73,6 +65,7 @@
         triesRemaining: number;
         playerRating: PlayerRating | null;
         ratingDelta: number | null;
+        correct: boolean | null;
         onBack: () => void;
         onForward: () => void;
         onSkip: () => void;
@@ -97,25 +90,18 @@
     let isMobilePortrait = $derived(
         deviceDetails.isMobile && portraitQuery.current,
     );
-    // On mobile this bar replaces the app's bottom nav, so it also hosts the
-    // Coach button the nav would otherwise carry.
-    let showCoach = $derived(isMobilePortrait && coach.enabled);
-
     // While the trainer bar is up, the app shell drops its mobile bottom nav.
-    $effect(() => shell.suppressMobileNav());
+    onMount(() => shell.suppressMobileNav());
 </script>
 
 <footer
     class={cn(
-        "sticky bottom-0 z-30 flex w-full items-center justify-between border-t border-border/50 bg-background/80 px-2 py-1",
+        "sticky bottom-0 z-30 flex min-h-14 w-full items-center justify-between border-t border-border/60 bg-background px-3 py-2",
         // Standing in for the nav bar means owning its safe-area inset (home
         // indicator / Safari toolbar).
         isMobilePortrait && "pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
     )}
 >
-    <div
-        class="absolute inset-0 -z-10 bg-background/80 backdrop-blur-(--backdrop-blur) pointer-events-none"
-    ></div>
     <div class="flex items-center gap-1">
         {#if view.showBack}
             <Button
@@ -127,23 +113,6 @@
             >
                 <Icon name="arrow_back" />
             </Button>
-        {/if}
-        <DropdownMenu options={moreOptions}>
-            <Button
-                variant="ghost"
-                aria-label="More options"
-                class={cn(
-                    "font-normal text-xs px-2.5 py-1.5 h-auto [&_svg]:size-3.5",
-                    flagged
-                        ? "text-unsure hover:text-unsure/80"
-                        : "text-muted-foreground hover:text-foreground",
-                )}
-            >
-                <Icon name="more_horiz" />
-            </Button>
-        </DropdownMenu>
-        {#if showCoach}
-            <CoachLauncher class="px-2.5 py-1.5 h-auto [&_svg]:size-3.5" />
         {/if}
         {#if view.showForward && !view.compact && view.mode !== "test"}
             <Button
@@ -214,12 +183,12 @@
                 {/if}
             {:else if !isLatest}
                 <Button
-                    variant="ghost"
+                    variant="primary"
                     onclick={onForward}
                     disabled={paused}
-                    aria-label="Next problem"
-                    class="text-muted-foreground hover:text-foreground font-normal text-xs px-2.5 py-1.5 h-auto gap-1 [&_svg]:size-3.5 disabled:opacity-30"
+                    class="h-9 gap-1.5 px-4 text-xs font-semibold"
                 >
+                    Next problem
                     <Icon name="arrow_forward" />
                 </Button>
             {:else}
@@ -244,27 +213,20 @@
                 <Icon name="last_page" />
             </Button>
         {:else if view.mode === "submitted"}
-            {#if playerRating && ratingDelta !== null}
-                <span
-                    transition:fade={{ duration: 150 }}
-                    class={cn(
-                        "text-[11px] font-semibold tabular-nums",
-                        ratingDelta > 0.5
-                            ? "text-correct"
-                            : ratingDelta < -0.5
-                              ? "text-destructive"
-                              : "text-muted-foreground",
-                    )}
-                    title="Your skill rating (change from this problem)"
-                >
-                    {Math.round(playerRating.rating)}
-                    <span class="font-normal"
-                        >({ratingDelta >= 0 ? "+" : ""}{Math.round(
-                            ratingDelta,
-                        )})</span
-                    >
-                </span>
-            {/if}
+            <span
+                transition:fade={{ duration: 150 }}
+                class={cn(
+                    "type-caption text-muted-foreground",
+                    correct === true && "text-correct",
+                    correct === false && "text-destructive",
+                )}
+            >
+                {correct === true ? "Correct" : correct === false ? "Incorrect" : "Recorded"}{#if playerRating && ratingDelta !== null}
+                    <span class="font-mono tabular-nums text-muted-foreground">
+                        · Rating {Math.round(playerRating.rating)} ({ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)})
+                    </span>
+                {/if}
+            </span>
             <Button
                 variant="primary"
                 onclick={onLoadProblem}

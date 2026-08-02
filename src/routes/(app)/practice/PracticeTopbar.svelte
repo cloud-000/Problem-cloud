@@ -1,32 +1,20 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Countdown } from "$lib/components/countdown";
-    import { Icon } from "$lib/components/icon";
-    import { RatingCounter } from "$lib/components/rating-counter";
-    import { RatingLifeBar } from "$lib/components/rating-life-bar";
-    import { SegmentBar } from "$lib/components/segment-bar";
-    import { TopbarRegister } from "$lib/components/topbar";
     import { resolve } from "$app/paths";
-    import type { PlayerRating } from "$lib/library";
+    import { Button } from "$lib/components/button";
+    import {
+        DropdownMenu,
+        type DropdownOption,
+    } from "$lib/components/dropdown-menu";
+    import { Icon } from "$lib/components/icon";
+    import { TopbarRegister } from "$lib/components/topbar";
     import { cn, formatElapsed } from "$lib/utils";
-
-    export type RatingBarHandle = { settle: () => void };
 
     let {
         sessionName,
         isTest,
-        showSettings,
-        showWhiteboard,
-        playerRating,
-        ratingBar = $bindable<RatingBarHandle | undefined>(),
-        showLiveFeedback,
-        focusModeActive,
-        correctAttempts,
-        incorrectAttempts,
-        skippedAttempts,
         testFinished,
+        historyIndex,
         historyLength,
-        answeredCount = 0,
         onOpenOverview,
         showTestClock = true,
         timeLimitSeconds,
@@ -38,31 +26,21 @@
         submitted,
         isLatest,
         paused,
-        timerMode = $bindable<"problem" | "total">(),
         elapsedMs,
         problemRemainingMs = null,
-        onToggleSettings,
+        segmentRemainingMs = null,
+        focusModeActive,
+        showWhiteboard,
+        moreOptions,
         onToggleWhiteboard,
         onTogglePause,
     }: {
         sessionName: string | null;
         isTest: boolean;
-        showSettings: boolean;
-        showWhiteboard: boolean;
-        playerRating: PlayerRating | null;
-        ratingBar?: RatingBarHandle;
-        showLiveFeedback: boolean;
-        focusModeActive: boolean;
-        correctAttempts: number;
-        incorrectAttempts: number;
-        skippedAttempts: number;
         testFinished: boolean;
+        historyIndex: number;
         historyLength: number;
-        /** Test-format: how many problems have a response so far. */
-        answeredCount?: number;
-        /** Open the problem-overview ("bubble sheet"). */
         onOpenOverview?: () => void;
-        /** Segmented tests show their clock in a per-segment header instead. */
         showTestClock?: boolean;
         timeLimitSeconds: number | null;
         remainingMs: number | null;
@@ -73,197 +51,154 @@
         submitted: boolean;
         isLatest: boolean;
         paused: boolean;
-        timerMode: "problem" | "total";
         elapsedMs: number;
-        /** Timed practice: ms left on the current problem, or null when untimed. */
         problemRemainingMs?: number | null;
-        onToggleSettings: () => void;
+        segmentRemainingMs?: number | null;
+        focusModeActive: boolean;
+        showWhiteboard: boolean;
+        moreOptions: DropdownOption[];
         onToggleWhiteboard: () => void;
         onTogglePause: () => void;
     } = $props();
 
-    const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
+    const iconClass = "size-[1em] shrink-0 leading-none";
+
+    let clockMs = $derived.by(() => {
+        if (isTest) {
+            if (!showTestClock) return segmentRemainingMs;
+            return timeLimitSeconds == null ? totalElapsedMs : remainingMs;
+        }
+        return problemRemainingMs ?? elapsedMs;
+    });
+    let clockIsRemaining = $derived(
+        isTest ? timeLimitSeconds != null || !showTestClock : problemRemainingMs != null,
+    );
+    let clockLabel = $derived(
+        isTest
+            ? showTestClock
+                ? timeLimitSeconds == null
+                    ? "Test elapsed time"
+                    : "Test time remaining"
+                : "Segment time remaining"
+            : problemRemainingMs != null
+              ? "Time remaining on this problem"
+              : "Time on this problem",
+    );
+    let clockLow = $derived(
+        clockIsRemaining && clockMs != null && clockMs <= (isTest ? 60_000 : 10_000),
+    );
+    let showClock = $derived(
+        !testFinished && (loading || problemVisible) && (!isTest || historyLength > 0),
+    );
+    let canTogglePause = $derived(
+        allowPause &&
+            problemVisible &&
+            !loading &&
+            (isTest ? !testFinished : !submitted && isLatest),
+    );
+    let displayedTime = $derived(clockMs == null ? "--:--" : formatElapsed(clockMs));
+    let timerAriaLabel = $derived(
+        `${paused ? "Paused" : clockLabel}: ${displayedTime}${canTogglePause ? paused ? ". Resume practice" : ". Pause practice" : ""}`,
+    );
 </script>
 
-<TopbarRegister left={topbarLeft} right={topbarRight} />
+<TopbarRegister left={contextLeft} right={contextRight} />
 
-{#snippet topbarLeft()}
-    <div class="flex items-center gap-2 flex-1 min-w-0">
+{#snippet contextLeft()}
+    <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <a
             href={resolve("/practice")}
-            class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
-            aria-label="Back to sessions"
+            class="inline-flex size-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Back to Practice"
+            title="Back to Practice"
         >
-            <Icon name="arrow_back" class={iconCls} />
+            <Icon name="arrow_back" class={iconClass} />
         </a>
-        {#if isTest && ((allowPause && !testFinished && problemVisible && !loading) || (showTestClock && !testFinished && historyLength > 0))}
-            <div class="flex items-center gap-1.5 shrink-0">
-                {#if allowPause && !testFinished && problemVisible && !loading}
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        class="text-muted-foreground hover:text-foreground"
-                        onclick={onTogglePause}
-                        aria-label={paused ? "Resume test" : "Pause test"}
-                        title={paused ? "Resume" : "Pause"}
-                    >
-                        <Icon name={paused ? "play_arrow" : "pause"} class={iconCls} />
-                    </Button>
-                {/if}
-                {#if showTestClock && !testFinished && historyLength > 0}
-                    {@const timed = timeLimitSeconds != null}
-                    {@const low = timed && remainingMs != null && remainingMs <= 60_000}
-                    {@const displayMs = timed ? (remainingMs ?? 0) : totalElapsedMs}
-                    <div
-                        class={cn(
-                            "inline-flex h-8 items-center justify-center rounded-md",
-                            focusModeActive ? "w-8 px-0" : "gap-1.5 px-2.5",
-                            low ? "bg-destructive/15 text-destructive" : "bg-surface-container-low",
-                        )}
-                        title={`${timed ? "Time remaining" : "Elapsed time"}: ${formatElapsed(displayMs)}`}
-                        aria-label={timed ? "Time remaining" : "Elapsed time"}
-                    >
-                        {#if !focusModeActive}
-                            <Icon name={timed ? "timer" : "schedule"} class={iconCls} />
-                        {/if}
-                        <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
-                            {formatElapsed(displayMs)}
-                        </span>
-                    </div>
-                {/if}
-            </div>
-        {:else if problemVisible || loading}
-            {@const isTotal = timerMode === "total"}
-            {@const displayMs = isTotal ? totalElapsedMs : elapsedMs}
-            <div class="flex items-center gap-1.5 shrink-0">
-                {#if allowPause}
-                    <div class="size-8 shrink-0">
-                        {#if !submitted && isLatest}
-                            <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                class="text-muted-foreground hover:text-foreground"
-                                onclick={onTogglePause}
-                                aria-label={paused ? "Resume practice" : "Pause practice"}
-                                title={paused ? "Resume" : "Pause"}
-                            >
-                                <Icon name={paused ? "play_arrow" : "pause"} class={iconCls} />
-                            </Button>
-                        {/if}
-                    </div>
-                {/if}
-                {#if problemRemainingMs != null}
-                    <Countdown
-                        remainingMs={problemRemainingMs}
-                        label="Time on this problem"
-                        icon="timer"
-                        compact={focusModeActive}
-                    />
-                {:else}
-                    <button
-                        type="button"
-                        onclick={() => (timerMode = isTotal ? "problem" : "total")}
-                        class={cn(
-                            "inline-flex h-8 items-center justify-center rounded-md bg-surface-container-low transition-colors hover:bg-surface-container",
-                            focusModeActive ? "w-8 px-0" : "gap-1 px-2.5",
-                        )}
-                        title={isTotal
-                            ? `Total session time: ${formatElapsed(displayMs)} — click for this problem`
-                            : `Time on this problem: ${formatElapsed(displayMs)} — click for session total`}
-                        aria-label={isTotal ? "Total session time" : "Time on this problem"}
-                    >
-                        {#if !focusModeActive}
-                            <Icon name={isTotal ? "timelapse" : "schedule"} class={iconCls} />
-                        {/if}
-                        <span class={cn("leading-none tabular-nums font-mono", !focusModeActive && "min-w-[5ch] text-center")}>
-                            {formatElapsed(displayMs)}
-                        </span>
-                    </button>
-                {/if}
-            </div>
+
+        {#if !focusModeActive && sessionName}
+            <span class="min-w-0 flex-1 truncate type-caption text-foreground sm:type-secondary">
+                {sessionName}
+            </span>
+        {:else}
+            <span class="min-w-0 flex-1"></span>
         {/if}
+
+        {#if showClock}
+            {#if canTogglePause}
+                <button
+                    type="button"
+                    onclick={onTogglePause}
+                    class={cn(
+                        "group inline-flex h-10 shrink-0 items-center gap-1 rounded-md px-2 font-mono type-caption tabular-nums transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                        clockLow ? "text-destructive" : "text-foreground",
+                    )}
+                    aria-label={timerAriaLabel}
+                    title={paused ? "Resume practice" : `Pause practice · ${displayedTime}`}
+                >
+                    <span>{paused ? `Paused · ${displayedTime}` : displayedTime}</span>
+                    <Icon
+                        name={paused ? "play_arrow" : "pause"}
+                        class="size-[0.9em] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                    />
+                </button>
+            {:else}
+                <span
+                    class={cn(
+                        "inline-flex h-10 shrink-0 items-center px-2 font-mono type-caption tabular-nums",
+                        clockLow ? "text-destructive" : "text-foreground",
+                    )}
+                    aria-label={timerAriaLabel}
+                    title={`${clockLabel}: ${displayedTime}`}
+                >
+                    {paused ? `Paused · ${displayedTime}` : displayedTime}
+                </span>
+            {/if}
+        {/if}
+
         {#if isTest && !testFinished && historyLength > 0}
-            <!-- Progress pill: name + answered/total + a thin progress bar, and the
-                 entry point to the problem-overview sheet. -->
             <button
                 type="button"
                 onclick={onOpenOverview}
-                class="group inline-flex shrink-0 items-center gap-2 rounded-lg border border-primary-foreground/25 bg-primary/70 px-2 py-1 transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
+                class="inline-flex h-10 shrink-0 items-center rounded-md px-2 type-caption text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                aria-label={`View all problems. Problem ${historyIndex + 1} of ${historyLength}`}
                 title="View all problems"
-                aria-label="View all problems"
             >
-                <Icon name="apps" class="size-[1em] shrink-0 text-primary-foreground" />
-                {#if sessionName}
-                    <span class="hidden max-w-32 truncate text-xs font-medium text-foreground sm:inline">{sessionName}</span>
-                {/if}
-                <SegmentBar
-                    class="hidden h-1.5 w-12 sm:block"
-                    segments={[
-                        { value: answeredCount, color: "var(--color-primary-foreground)", label: "Answered" },
-                        { value: Math.max(0, historyLength - answeredCount), color: "var(--color-surface-container-high)", label: "Unanswered" },
-                    ]}
-                />
-                <span class="text-[11px] font-medium tabular-nums text-muted-foreground">
-                    {answeredCount}<span class="opacity-60">/{historyLength}</span>
-                </span>
+                <span class="hidden sm:inline">Problem&nbsp;</span>{historyIndex + 1} of {historyLength}
             </button>
-        {:else if sessionName}
-            <span class="shrink-0 truncate text-xs opacity-50 max-w-24 sm:max-w-40">{sessionName}</span>
-        {/if}
-        <!-- Rating is hidden during a test (showLiveFeedback is off): a mock
-             shouldn't leak live skill feedback while you work. -->
-        {#if playerRating && showLiveFeedback}
-            <div class="flex items-center text-xs text-muted-foreground/50 gap-1.5 min-w-0 flex-1">
-                <RatingCounter value={playerRating.rating} class="text-foreground font-medium" />
-                <RatingLifeBar
-                    bind:this={ratingBar}
-                    {playerRating}
-                    tierSize={200}
-                    class="h-2 w-full min-w-0"
-                />
-            </div>
         {/if}
     </div>
 {/snippet}
 
-{#snippet topbarRight()}
-    <div class="flex items-center gap-2 min-w-0 flex-1 justify-end">
-        {#if showLiveFeedback && !focusModeActive}
-            <SegmentBar
-                class="min-w-15 w-full h-2"
-                segments={[
-                    { value: correctAttempts, color: "var(--color-correct)", label: "Solved" },
-                    { value: incorrectAttempts, color: "var(--color-destructive)", label: "Incorrect" },
-                    { value: skippedAttempts, color: "var(--color-unsure)", label: "Skipped" },
-                ]}
-            />
+{#snippet contextRight()}
+    <div class="flex shrink-0 items-center gap-1">
+        {#if problemVisible && !testFinished}
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                class={cn(
+                    "size-10 text-muted-foreground hover:text-foreground",
+                    showWhiteboard && "bg-muted text-foreground",
+                )}
+                onclick={onToggleWhiteboard}
+                disabled={paused}
+                aria-expanded={showWhiteboard}
+                aria-label="Toggle scratch paper"
+                title={paused ? "Scratch paper is unavailable while paused" : "Scratch paper"}
+            >
+                <Icon name="draw" class={iconClass} fill={showWhiteboard} />
+            </Button>
         {/if}
-        <Button
-            variant="ghost"
-            size="sm"
-            class={cn(
-                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
-                showWhiteboard && "bg-muted text-foreground",
-            )}
-            onclick={onToggleWhiteboard}
-            aria-expanded={showWhiteboard}
-            aria-label="Toggle scratch paper"
-            title="Scratch paper"
-        >
-            <Icon name="draw" class={iconCls} fill={showWhiteboard} />
-        </Button>
-        <Button
-            variant="ghost"
-            size="sm"
-            class={cn(
-                "text-muted-foreground hover:text-foreground text-xs font-normal gap-1.5 px-2.5 shrink-0",
-                showSettings && "bg-muted text-foreground",
-            )}
-            onclick={onToggleSettings}
-            aria-expanded={showSettings}
-            aria-label="Toggle settings"
-        >
-            <Icon name="tune" class={iconCls} />
-        </Button>
+
+        <DropdownMenu options={moreOptions}>
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                class="size-10 text-muted-foreground hover:text-foreground"
+                aria-label="More Practice options"
+                title="More options"
+            >
+                <Icon name="more_horiz" class={iconClass} />
+            </Button>
+        </DropdownMenu>
     </div>
 {/snippet}

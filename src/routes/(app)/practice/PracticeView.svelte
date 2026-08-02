@@ -15,15 +15,10 @@
    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
    import DebugInfo from "./DebugInfo.svelte";
    import {
-      topicLabel,
       type ProblemRow,
       fetchAllSeries,
       fetchPlayerRating,
       fetchProblemRating,
-      glickoExpectedScore,
-      glickoMatchPreview,
-      playerRatingIsProvisional,
-      ratingIsProvisional,
       type PlayerRating,
       type ProblemRating,
    } from "$lib/library";
@@ -50,7 +45,6 @@
       segmentElapsedMs,
       segmentRange,
    } from "$lib/segment-timing";
-   import { Countdown } from "$lib/components/countdown";
    import {
       endSession,
       fetchSession,
@@ -67,15 +61,14 @@
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+   import { coach } from "$lib/state/coach.svelte";
    import AnswerSubmissionModal from "./AnswerSubmissionModal.svelte";
    import { onMount } from "svelte";
    import { fade } from "svelte/transition";
    import SettingsPanel from "./SettingsPanel.svelte";
    import PauseOverlay from "./PauseOverlay.svelte";
    import MetadataBar from "./MetadataBar.svelte";
-   import PracticeTopbar, {
-      type RatingBarHandle,
-   } from "./PracticeTopbar.svelte";
+   import PracticeTopbar from "./PracticeTopbar.svelte";
    import PracticeFooter from "./PracticeFooter.svelte";
    import TestResults from "./TestResults.svelte";
    import {
@@ -118,7 +111,6 @@
    // the settings panel can show a per-series division/format row (unclassified
    // series contribute none). Populated by the effect below.
    let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
-   let showSettings = $derived(utilityPanel.activeView === "practice-settings");
    let showWhiteboard = $derived(utilityPanel.activeView === "whiteboard");
    const whiteboardPersistKey = "whiteboard:scratch";
    const restoredWhiteboard = WhiteboardStore.restore(whiteboardPersistKey);
@@ -830,6 +822,23 @@
 
    let moreOptions = $derived<DropdownOption[]>([
       {
+         label: "Settings",
+         icon: "tune",
+         onclick: () => utilityPanel.toggle("practice-settings"),
+      },
+      ...(!coach.enabled || (isTest && !testFinished)
+         ? []
+         : [
+              {
+                 label: "Ask Coach",
+                 icon: "auto_awesome",
+                 onclick: () => utilityPanel.toggle("coach"),
+              },
+           ]),
+      {
+         type: "divider",
+      },
+      {
          label: settingsForm.focusMode ? "Disable Focus Mode" : "Focus Mode",
          icon: settingsForm.focusMode
             ? "center_focus_strong"
@@ -884,6 +893,13 @@
       },
    ]);
 
+   function handleCoachShortcut(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "j") return;
+      if (!coach.enabled || (isTest && !testFinished)) return;
+      event.preventDefault();
+      utilityPanel.toggle("coach");
+   }
+
    // Elapsed time for the on-screen problem at a given clock reading: the live
    // count for the latest unanswered one, otherwise its frozen value. `elapsedMs`
    // passes the reactive (throttled) `timerNow` to drive the ticking display;
@@ -930,9 +946,6 @@
          priorElapsedMs,
       ),
    );
-   // The timer chip swaps between the current problem and the session total.
-   let timerMode = $state<"problem" | "total">("problem");
-
    // Test countdown: time left from the limit, or null when untimed (count up).
    let remainingMs = $derived(
       settingsForm.timeLimitSeconds == null
@@ -975,6 +988,15 @@
       isSegmented && secondsPerSegment != null
          ? countdownRemainingMs(secondsPerSegment * 1000, segmentElapsed)
          : null,
+   );
+   let pauseTimeMs = $derived(
+      isTest
+         ? isSegmented
+            ? (segmentRemainingMs ?? 0)
+            : settingsForm.timeLimitSeconds == null
+              ? totalElapsedMs
+              : (remainingMs ?? 0)
+         : (problemRemainingMs ?? elapsedMs),
    );
 
    // Total time across the test from the committed per-problem values (no live
@@ -1071,9 +1093,6 @@
    }
 
    function commitCurrent() {
-      // Leaving the current problem: finish the life-bar's change animation now
-      // so its tween/decay tail doesn't play out on the next problem.
-      ratingBar?.settle();
       const entry = history[historyIndex];
       if (!entry) return;
       // Auto-apply the suggested mastery before snapshotting, so the committed
@@ -1193,9 +1212,6 @@
    // footer next to the fresh result.
    let playerRating = $state<PlayerRating | null>(null);
    let ratingDelta = $state<number | null>(null);
-   // Life-bar instance, so navigation can finish its change animation instantly
-   // instead of letting the tween tail bleed onto the next problem.
-   let ratingBar = $state<RatingBarHandle>();
    // Guards playerRating writes against out-of-order resolution: a graded
    // wrong try followed quickly by a correct one fires two overlapping
    // fetches, and the onMount baseline fetch can straggle behind both. Only
@@ -1220,19 +1236,6 @@
          current = false;
       };
    });
-
-   // Live matchup for the metadata-row rating bar: the player's Glicko-expected
-   // solve chance for the on-screen problem. Needs both ratings, each of which
-   // appears with its first graded submission (null until then).
-   let expectedScore = $derived(
-      playerRating && problemRating
-         ? glickoExpectedScore(
-              playerRating.rating,
-              problemRating.rating,
-              problemRating.rd,
-           )
-         : null,
-   );
 
    function refreshPlayerRating(after: Promise<void>, userId: string) {
       const before = playerRating?.rating ?? null;
@@ -1525,6 +1528,7 @@
          paused = false;
       } else {
          answerState.elapsedMs = liveElapsed();
+         if (showWhiteboard) utilityPanel.close();
          paused = true;
       }
    }
@@ -1713,22 +1717,17 @@
    });
 </script>
 
+<svelte:window onkeydown={handleCoachShortcut} />
+
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
    <PracticeTopbar
-      sessionName={activeSession?.name ?? null}
+      sessionName={activeSession?.name ?? (isTest ? testName : "Quick practice")}
       {isTest}
-      {showSettings}
       {showWhiteboard}
-      {playerRating}
-      bind:ratingBar
-      showLiveFeedback={behavior.showLiveFeedback}
       {focusModeActive}
-      {correctAttempts}
-      {incorrectAttempts}
-      {skippedAttempts}
       {testFinished}
+      {historyIndex}
       historyLength={history.length}
-      {answeredCount}
       onOpenOverview={() => (overviewOpen = true)}
       showTestClock={!isSegmented}
       timeLimitSeconds={settingsForm.timeLimitSeconds}
@@ -1740,10 +1739,10 @@
       submitted={answerState.submitted}
       {isLatest}
       {paused}
-      bind:timerMode
       {elapsedMs}
       {problemRemainingMs}
-      onToggleSettings={() => utilityPanel.toggle("practice-settings")}
+      {segmentRemainingMs}
+      {moreOptions}
       onToggleWhiteboard={() => utilityPanel.toggle("whiteboard")}
       onTogglePause={togglePause}
    />
@@ -1753,7 +1752,7 @@
       class="flex flex-1 flex-col lg:flex-row gap-0 items-stretch justify-center w-full min-h-0"
    >
       <main
-         class="flex-1 w-full min-w-0 flex flex-col justify-between pt-0 min-h-0 overflow-visible"
+         class="flex-1 w-full min-w-0 flex flex-col justify-between pt-0 min-h-0 overflow-hidden"
       >
          {#if loading}
             <div
@@ -1865,51 +1864,28 @@
             </div>
          {:else}
             <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
-               {#if isSegmented && !testFinished}
-                  <div
-                     class="flex items-center justify-between gap-3 border-b border-border/50 px-6 py-2"
-                  >
-                     <div class="flex min-w-0 flex-col">
-                        <span class="text-xs font-semibold text-foreground">
-                           {segmentSize === 1
-                              ? `Problem ${currentSegment + 1} of ${segTotal}`
-                              : `Pair ${currentSegment + 1} of ${segTotal}`}
-                        </span>
-                        <span class="text-[10px] text-muted-foreground">
-                           {strictTiming
-                              ? "Locks at 0:00 — no going back"
-                              : "You may overrun — submit when ready"}
-                        </span>
-                     </div>
-                     {#if segmentRemainingMs != null}
-                        <Countdown
-                           remainingMs={segmentRemainingMs}
-                           label="Time left in this segment"
-                           icon="timer"
-                        />
-                     {/if}
-                  </div>
-               {/if}
                <div class="relative flex-1 flex flex-col min-h-0 w-full">
                   <!-- Problem statement and choices: Scrollable area -->
                   <div
-                     class="flex-1 flex flex-col justify-start items-center gap-4 w-full min-h-0 overflow-y-auto pt-0 pb-4 px-6"
+                     class="flex-1 flex flex-col items-center gap-5 w-full min-h-0 overflow-y-auto px-4 pb-6 sm:px-6"
                   >
                      <!-- Metadata row: source/series/topic on the left, review status on the right -->
-                     <MetadataBar
-                        {problem}
-                        {problemRating}
-                        {hasAnswer}
-                        showLiveFeedback={behavior.showLiveFeedback}
-                        {focusModeActive}
-                        {currentSource}
-                        {currentProgress}
-                        {isTest}
-                        {historyIndex}
-                        historyLength={history.length}
-                        revealLinks={answerState.submitted}
-                        onOpenAnswerSubmission={openAnswerSubmission}
-                     />
+                     {#key problem.id}
+                        <MetadataBar
+                           {problem}
+                           {problemRating}
+                           {hasAnswer}
+                           showLiveFeedback={behavior.showLiveFeedback}
+                           {focusModeActive}
+                           {currentSource}
+                           {currentProgress}
+                           {isTest}
+                           {historyIndex}
+                           historyLength={history.length}
+                           revealLinks={answerState.submitted}
+                           onOpenAnswerSubmission={openAnswerSubmission}
+                        />
+                     {/key}
 
                      {#if debugMode && !focusModeActive}
                         <DebugInfo
@@ -1925,13 +1901,13 @@
                         class={cn(
                            "flex min-h-fit w-full",
                            solutionShown
-                              ? "flex-none items-start justify-start"
+                              ? "flex-none items-start justify-center"
                               : "flex-1 items-center justify-center",
                         )}
                      >
                         {#if debugMode && showRawLatex && !focusModeActive}
                            <pre
-                              class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-4xl py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
+                              class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-[48rem] py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
                                             {problem.statement ?? ""}
                                         </pre>
                         {:else}
@@ -1940,11 +1916,11 @@
                                  problem.statement ?? "",
                                  isProblemMcq,
                               )}
-                              class="font-serif text-lg md:text-xl text-foreground leading-relaxed text-left w-full max-w-4xl py-2"
+                              class="type-problem w-full max-w-[48rem] py-4 text-left font-serif text-foreground"
                            />
                         {/if}
                      </div>
-                     <div class="w-full">
+                     <div class="w-full max-w-[48rem]">
                         <ProblemAnswer
                            bind:this={answerFeedback}
                            choices={problem.choices}
@@ -1971,7 +1947,7 @@
 
                      {#if behavior.gradeImmediately && answerState.submitted && answerState.correct !== null}
                         <ProblemOrganization
-                           class="w-full"
+                           class="w-full max-w-[48rem]"
                            problemId={problem.id}
                            mastery={currentProgress?.mastery ?? null}
                            engagement={currentProgress?.engagement ?? null}
@@ -2004,7 +1980,7 @@
                      {#if solutionShown}
                         {#key problem.id}
                            <ProblemSolution
-                              class="w-full"
+                              class="w-full max-w-[48rem]"
                               solutions={problem.official_solutions}
                               defaultOpen={answerState.correct === false}
                            />
@@ -2014,13 +1990,7 @@
 
                   {#if paused}
                      <PauseOverlay
-                        {isTest}
-                        {elapsedMs}
-                        {totalElapsedMs}
-                        {timerMode}
-                        {correctAttempts}
-                        {incorrectAttempts}
-                        {skippedAttempts}
+                        timeMs={pauseTimeMs}
                         canEndSession={!!activeSession && !isRoot}
                         endingSession={sessionBusy}
                         onResume={togglePause}
@@ -2085,8 +2055,6 @@
                   revealMode={revealPerSegment}
                   {segmentRevealed}
                   onAdvanceSegment={requestAdvanceSegment}
-                  flagged={answerState.flagged}
-                  {moreOptions}
                   {submittingTest}
                   {cannotSubmit}
                   {hasAnswer}
@@ -2095,6 +2063,7 @@
                   {triesRemaining}
                   {playerRating}
                   {ratingDelta}
+                  correct={answerState.correct}
                   onBack={goBack}
                   onForward={goForward}
                   onSkip={handleSkip}

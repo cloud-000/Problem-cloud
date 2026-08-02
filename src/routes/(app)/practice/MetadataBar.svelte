@@ -1,13 +1,13 @@
 <script lang="ts">
+    import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { StatusTag } from "$lib/components/status-tag";
     import {
-        topicLabel,
-        ratingIsProvisional,
-        aopsProblemUrl,
         aopsCommunityUrl,
-        type ProblemRow,
+        aopsProblemUrl,
+        ratingIsProvisional,
+        topicLabel,
         type ProblemRating,
+        type ProblemRow,
     } from "$lib/library";
     import type { ProblemProgress } from "$lib/trainer";
 
@@ -22,11 +22,6 @@
         isTest: boolean;
         historyIndex: number;
         historyLength: number;
-        /**
-         * Reveal the AoPS thread links on the test name / problem number. Fed the
-         * finalized flag so links only appear once submitting can't leak the
-         * answer; each link is still omitted when its AoPS id is missing.
-         */
         revealLinks?: boolean;
         onOpenAnswerSubmission: () => void;
     }
@@ -46,31 +41,20 @@
         onOpenAnswerSubmission,
     }: Props = $props();
 
-    const iconCls = "size-[1em] shrink-0 leading-none opacity-70";
-    // Linked segments read as clickable in the otherwise-muted bar via a hover
-    // underline plus a trailing new-tab glyph. !text-[1em] overrides the
-    // Material Symbols stylesheet's default 24px font-size.
-    const linkCls = "group inline-flex items-center gap-0.5 min-w-0";
-    const linkTextCls = "group-hover:underline underline-offset-2";
-    const linkIconCls =
-        "shrink-0 !text-[1em] leading-none opacity-60 transition-opacity group-hover:opacity-100";
-
-    let topicName = $derived(problem ? topicLabel(problem.topic) : null);
-
+    let detailsOpen = $state(false);
+    let topicName = $derived(topicLabel(problem.topic));
     let testHref = $derived(
         revealLinks ? aopsCommunityUrl(problem.tests?.aops_category_id) : null,
     );
     let problemHref = $derived(
         revealLinks ? aopsProblemUrl(problem.aops_id) : null,
     );
-
-    let lastReviewedLabel = $derived(
-        currentProgress
-            ? formatReviewDate(currentProgress.last_submission_at)
-            : null,
+    let sourceLabel = $derived(
+        problem.tests?.name
+            ? `${problem.tests.name} · Problem ${problem.n + 1}`
+            : `Problem ${problem.n + 1}`,
     );
 
-    // Compact "last reviewed" label: relative for recent, short date otherwise.
     function formatReviewDate(iso: string | null) {
         if (!iso) return null;
         const then = new Date(iso);
@@ -83,101 +67,92 @@
             day: "numeric",
         });
     }
+
+    let lastReviewedLabel = $derived(
+        formatReviewDate(currentProgress?.last_submission_at ?? null),
+    );
 </script>
 
-<div
-    class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-background/80 px-1 pt-2.5 pb-2.5 backdrop-blur-(--backdrop-blur) select-none w-full overflow-visible"
->
-    <div
-        class="flex items-center gap-2 text-xs font-semibold opacity-50 tracking-wider uppercase text-muted-foreground min-w-0"
-    >
-        {#if problem.tests?.name}
-            {#if testHref}
-                <a
-                    href={testHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class={`truncate ${linkCls}`}
-                    title={`Open ${problem.tests.name} on Art of Problem Solving`}
-                >
-                    <span class={`truncate ${linkTextCls}`}>{problem.tests.name}</span>
-                    <Icon name="open_in_new" class={linkIconCls} />
-                </a>
-            {:else}
-                <span class="truncate">{problem.tests.name}</span>
-            {/if}
-            <span class="text-border shrink-0">•</span>
-        {/if}
-        {#if problemHref}
-            <a
-                href={problemHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                class={`shrink-0 ${linkCls}`}
-                title="Open this problem on Art of Problem Solving"
+<div class="w-full max-w-full border-b border-border/60">
+    <div class="flex min-h-11 items-center justify-between gap-4 py-2">
+        <p class="min-w-0 truncate type-caption text-muted-foreground" title={sourceLabel}>
+            {sourceLabel}
+        </p>
+        {#if !focusModeActive}
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                class="size-9 shrink-0 text-muted-foreground"
+                onclick={() => (detailsOpen = !detailsOpen)}
+                aria-expanded={detailsOpen}
+                aria-label={detailsOpen ? "Hide problem details" : "Show problem details"}
+                title={detailsOpen ? "Hide details" : "Show details"}
             >
-                <span class={linkTextCls}>#{problem.n + 1}</span>
-                <Icon name="open_in_new" class={linkIconCls} />
-            </a>
-        {:else}
-            <span class="shrink-0">#{problem.n + 1}</span>
-        {/if}
-        {#if topicName}
-            <span class="text-border shrink-0">•</span>
-            <span class="truncate" title={topicName}>{topicName}</span>
-        {/if}
-        {#if problemRating}
-            <span class="text-border shrink-0">•</span>
-            <span
-                class="inline-flex items-center gap-0.5 shrink-0 tabular-nums"
-                title={`Problem Elo: ${problemRating.rating.toFixed(0)} ± ${problemRating.rd.toFixed(0)}${ratingIsProvisional(problemRating) ? " (provisional)" : ""}`}
-            >
-                {problemRating.rating.toFixed(0)}
-            </span>
+                <Icon name={detailsOpen ? "expand_less" : "expand_more"} />
+            </Button>
         {/if}
     </div>
 
-    <div
-        class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground shrink-0"
-    >
-        {#if !hasAnswer}
-            <StatusTag
-                status="unanswered"
-                size="sm"
-                class="border-unsure/60 bg-unsure/20 text-on-unsure-container [--attention-color:var(--color-unsure)] animate-attention-pulse hover:animate-none focus-visible:animate-none motion-reduce:animate-none"
-                action={{
-                    label: "Suggest",
-                    icon: "add",
-                    onclick: onOpenAnswerSubmission,
-                }}
-            />
-        {/if}
-        {#if showLiveFeedback && !focusModeActive}
-            {#if currentSource === "review"}
-                <StatusTag status="review" size="sm" />
-                {#if currentProgress}
-                    <span class="inline-flex items-center gap-1">
-                        <Icon name="visibility" class={iconCls} />
-                        Seen {currentProgress.times_seen}×
-                    </span>
-                    {#if lastReviewedLabel}
-                        <span class="text-border">•</span>
-                        <span
-                            class="inline-flex items-center gap-1"
-                            title="Last reviewed"
-                        >
-                            <Icon name="schedule" class={iconCls} />
-                            {lastReviewedLabel}
-                        </span>
-                    {/if}
-                {/if}
-            {:else}
-                <StatusTag status="new" size="sm" />
+    {#if detailsOpen && !focusModeActive}
+        <div class="grid gap-x-6 gap-y-3 border-t border-border/50 py-4 type-caption text-muted-foreground sm:grid-cols-2">
+            {#if topicName}
+                <p><span class="text-foreground">Topic</span> · {topicName}</p>
             {/if}
-        {:else if isTest}
-            <span class="font-mono">
-                {historyIndex + 1} / {historyLength}
-            </span>
-        {/if}
-    </div>
+            {#if problemRating}
+                <p class="font-mono tabular-nums">
+                    <span class="font-sans text-foreground">Problem rating</span> ·
+                    {Math.round(problemRating.rating)} ± {Math.round(problemRating.rd)}{ratingIsProvisional(problemRating)
+                        ? " · provisional"
+                        : ""}
+                </p>
+            {/if}
+            {#if showLiveFeedback}
+                <p>
+                    <span class="text-foreground">Queue</span> ·
+                    {currentSource === "review" ? "Review" : "New problem"}
+                    {#if currentProgress}
+                        · Seen {currentProgress.times_seen}×{#if lastReviewedLabel}
+                            · {lastReviewedLabel}
+                        {/if}
+                    {/if}
+                </p>
+            {:else if isTest}
+                <p class="font-mono tabular-nums">
+                    <span class="font-sans text-foreground">Test position</span> ·
+                    {historyIndex + 1} of {historyLength}
+                </p>
+            {/if}
+            {#if !hasAnswer}
+                <button
+                    type="button"
+                    class="w-fit text-left text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+                    onclick={onOpenAnswerSubmission}
+                >
+                    Suggest an answer
+                </button>
+            {/if}
+            {#if testHref || problemHref}
+                <div class="flex flex-wrap items-center gap-4">
+                    {#if testHref}
+                        <button
+                            type="button"
+                            onclick={() => window.open(testHref, "_blank", "noopener,noreferrer")}
+                            class="inline-flex items-center gap-1 text-foreground hover:underline"
+                        >
+                            Test source <Icon name="open_in_new" class="size-[1em]" />
+                        </button>
+                    {/if}
+                    {#if problemHref}
+                        <button
+                            type="button"
+                            onclick={() => window.open(problemHref, "_blank", "noopener,noreferrer")}
+                            class="inline-flex items-center gap-1 text-foreground hover:underline"
+                        >
+                            Problem source <Icon name="open_in_new" class="size-[1em]" />
+                        </button>
+                    {/if}
+                </div>
+            {/if}
+        </div>
+    {/if}
 </div>

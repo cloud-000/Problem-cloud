@@ -7,6 +7,7 @@
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
     import { Modal } from "$lib/components/modal";
+    import * as Page from "$lib/components/page";
     import { RangeSlider } from "$lib/components/range-slider";
     import { Select, type SelectOption } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
@@ -33,6 +34,7 @@
         type PracticeLaunchIntent,
     } from "$lib/practice-launch";
     import { cn } from "$lib/utils";
+    import { onMount } from "svelte";
     import SessionCard from "./SessionCard.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -42,6 +44,14 @@
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
     let busy = $state(false);
+    let activeSession = $derived(
+        sessions.find((session) => session.status === "active") ?? null,
+    );
+    let savedSessions = $derived(
+        activeSession
+            ? sessions.filter((session) => session.id !== activeSession.id)
+            : sessions,
+    );
 
     // ---- New-session dialog ----------------------------------------------------
     type SeriesOption = Awaited<ReturnType<typeof fetchAllSeries>>[number];
@@ -129,9 +139,9 @@
         revealPerSegment = false;
     }
 
-    function openDialog() {
+    function openDialog(format: "practice" | "test" = "practice") {
         if (!user || busy) return;
-        resetDialog();
+        resetDialog(format);
         dialogOpen = true;
         if (series.length === 0) loadSeries();
     }
@@ -220,9 +230,7 @@
         }
     }
 
-    $effect(() => {
-        loadSessions();
-    });
+    onMount(loadSessions);
 
     async function confirmCreate() {
         if (!user || busy || !canCreate) return;
@@ -323,134 +331,144 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 p-6 mx-auto w-full">
-    <!-- Header -->
-    <div
-        class="border-b border-border/80 pb-4 flex flex-wrap items-end justify-between gap-4"
-    >
-        <div class="space-y-1">
-            <h1
-                class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-            >
-                <Icon
-                    name="stacks"
-                    fontsize="2rem"
-                    class="text-primary-foreground"
-                />
-                Train
-            </h1>
-
-        </div>
-        {#if user}
-            <div class="flex items-center gap-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="gap-1.5"
-                    onclick={practiceFreely}
-                >
-                    <Icon name="bolt" class="size-[1.1em]" />
-                    Practice freely
-                </Button>
-                <Button
-                    size="sm"
-                    variant="primary"
-                    class="gap-1.5 shadow-sm"
-                    onclick={openDialog}
-                    disabled={busy}
-                >
-                    <Icon name="add" class="size-[1.1em]" />
-                    Start new session
-                </Button>
-            </div>
-        {/if}
-    </div>
+<Page.Root width="standard">
+    <Page.Header
+        title="Practice"
+        description="Build skill with focused problems, review, or a timed mock test."
+    />
 
     {#if !user}
         <div
-            class="flex flex-col items-center justify-center gap-4 text-center py-16"
+            class="flex flex-col items-start gap-4 border-t border-border/60 py-10"
         >
-            <div
-                class="flex size-16 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="stacks" fontsize="2.5rem" />
-            </div>
-            <div class="flex max-w-5xl flex-col gap-1">
-                <h2 class="text-lg font-semibold">
+            <div class="max-w-xl">
+                <h2 class="type-section-title">
                     Sign in to practice and track sessions
                 </h2>
-                <p class="text-sm text-muted-foreground">
+                <p class="mt-1 type-secondary text-muted-foreground">
                     Sessions group a run of practice with their own settings and
                     stats.
                 </p>
             </div>
-            <div class="flex items-center gap-2 mt-2">
-                <Button variant="outline" onclick={practiceFreely} class="px-6">
-                    Practice freely
+            <div class="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onclick={practiceFreely}>
+                    Quick practice
                 </Button>
-                <Button
-                    href="/auth/login"
-                    variant="primary"
-                    class="px-6 shadow-sm"
-                >
+                <Button href="/auth/login" variant="primary">
                     Log In
                 </Button>
             </div>
         </div>
-    {:else if loading && sessions.length === 0}
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
-            <Icon
-                name="progress_activity"
-                class="animate-spin text-muted-foreground"
-                fontsize="1.8rem"
-            />
-            <p class="text-xs text-muted-foreground">Loading sessions...</p>
-        </div>
-    {:else if errorMsg}
-        <div
-            class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-        >
-            {errorMsg}
-        </div>
-    {:else if sessions.length === 0}
-        <div
-            class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-        >
-            <div
-                class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="stacks" fontsize="1.8rem" />
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold">No sessions yet</h3>
-                <p class="text-xs text-muted-foreground mt-0.5">
-                    Start a session to group your practice, or jump straight in.
-                </p>
-            </div>
-            <div class="flex items-center gap-2 mt-1">
-                <Button size="sm" variant="outline" onclick={practiceFreely}>
-                    Practice freely
-                </Button>
-                <Button size="sm" onclick={openDialog} disabled={busy}>
-                    Start new session
-                </Button>
-            </div>
-        </div>
     {:else}
-        <div class="space-y-2">
-            {#each sessions as s (s.id)}
-                <SessionCard
-                    session={s}
-                    {supabase}
-                    {busy}
-                    onContinue={() => openSession(s)}
-                    onRename={(name) => saveRename(s, name)}
-                    onDelete={() => removeSession(s)}
-                />
-            {/each}
-        </div>
+        {#if loading && sessions.length === 0}
+            <div class="flex min-h-28 items-center gap-3 text-muted-foreground">
+                <Icon name="progress_activity" class="animate-spin" />
+                <p class="type-secondary">Loading sessions…</p>
+            </div>
+        {:else if errorMsg}
+            <div class="border-l-2 border-destructive py-2 pl-4 text-sm text-destructive">
+                <p>{errorMsg}</p>
+                <Button variant="ghost" size="sm" class="mt-2" onclick={loadSessions}>
+                    Retry
+                </Button>
+            </div>
+        {:else}
+            {#if activeSession}
+                <Page.Section
+                    title="Continue"
+                    description="Pick up where you left off."
+                >
+                    <SessionCard
+                        session={activeSession}
+                        {supabase}
+                        {busy}
+                        featured
+                        onContinue={() => openSession(activeSession)}
+                        onRename={(name) => saveRename(activeSession, name)}
+                        onDelete={() => removeSession(activeSession)}
+                    />
+                </Page.Section>
+            {/if}
+
+            <Page.Section
+                title="Quick practice"
+                description="Start immediately with your current practice settings."
+            >
+                <div class="flex items-center justify-between gap-6 border-y border-border/60 py-4">
+                    <p class="type-secondary text-muted-foreground">
+                        Jump into an ungrouped problem session.
+                    </p>
+                    <Button
+                        variant={activeSession ? "outline" : "primary"}
+                        onclick={practiceFreely}
+                        class="shrink-0 gap-1.5"
+                    >
+                        Start practice
+                        <Icon name="arrow_forward" />
+                    </Button>
+                </div>
+            </Page.Section>
+
+            <Page.Section
+                title="Saved sessions"
+                description="Resume a practice session or review completed work."
+            >
+                {#if savedSessions.length === 0}
+                    <p class="border-y border-border/60 py-5 type-secondary text-muted-foreground">
+                        {activeSession
+                            ? "No other saved sessions yet."
+                            : "No saved sessions yet. Create one for a focused goal or topic."}
+                    </p>
+                {:else}
+                    <div class="border-y border-border/60">
+                        {#each savedSessions as session (session.id)}
+                            <SessionCard
+                                {session}
+                                {supabase}
+                                {busy}
+                                onContinue={() => openSession(session)}
+                                onRename={(name) => saveRename(session, name)}
+                                onDelete={() => removeSession(session)}
+                            />
+                        {/each}
+                    </div>
+                {/if}
+            </Page.Section>
+
+            <Page.Section title="Create a session">
+                <div class="flex items-center justify-between gap-6 border-t border-border/60 pt-4">
+                    <p class="type-secondary text-muted-foreground">
+                        Save settings and progress under a named practice goal.
+                    </p>
+                    <Button
+                        variant="outline"
+                        onclick={() => openDialog("practice")}
+                        disabled={busy}
+                        class="shrink-0"
+                    >
+                        Create session
+                    </Button>
+                </div>
+            </Page.Section>
+
+            <Page.Section title="Take a mock test">
+                <div class="flex items-center justify-between gap-6 border-t border-border/60 pt-4">
+                    <p class="type-secondary text-muted-foreground">
+                        Choose a test and configure its official pacing.
+                    </p>
+                    <Button
+                        variant="ghost"
+                        onclick={() => openDialog("test")}
+                        disabled={busy}
+                        class="shrink-0"
+                    >
+                        Choose test
+                    </Button>
+                </div>
+            </Page.Section>
+        {/if}
     {/if}
-</div>
+</Page.Root>
 
 <!-- New-session dialog -->
 <Modal
