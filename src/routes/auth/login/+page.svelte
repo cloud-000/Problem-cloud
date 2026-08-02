@@ -1,71 +1,39 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button/.";
-    import { Input } from "$lib/components/input/.";
+    import { resolve } from "$app/paths";
+    import { Button } from "$lib/components/button";
+    import { Input } from "$lib/components/input";
     import type { ActionData } from "./$types";
 
     let { form }: { form: ActionData } = $props();
 
     const items = [
-        {
-            name: "email",
-            type: "email",
-            label: "Email address",
-            placeholder: "you@example.com",
-            autocomplete: "email",
-        },
-        {
-            name: "password",
-            type: "password",
-            label: "Password",
-            placeholder: "Enter your password",
-            autocomplete: "current-password",
-        },
+        { name: "email", type: "email", label: "Email address", placeholder: "you@example.com", autocomplete: "email" },
+        { name: "password", type: "password", label: "Password", placeholder: "Enter your password", autocomplete: "current-password" },
     ] as const;
 </script>
 
+<svelte:head><title>Log in — ProblemCloud</title></svelte:head>
+
 <header>
-    <p class="mb-xs text-sm font-semibold text-primary-foreground">Welcome back</p>
-    <h2 class="font-serif text-3xl font-semibold tracking-tight text-foreground">
-        Log in to your account
-    </h2>
-    <p class="mt-sm leading-relaxed text-muted-foreground">
-        Pick up where you left off and keep your momentum going.
-    </p>
+    <h1 class="type-page-title">Log in</h1>
+    <p class="mt-2 type-secondary text-muted-foreground">Continue your focused practice and progress.</p>
 </header>
 
-<div class="flex flex-col gap-md">
-    {#each items as item}
-        <label class="flex flex-col gap-sm text-sm font-medium text-foreground">
+<div class="space-y-4">
+    {#each items as item (item.name)}
+        <label class="flex flex-col gap-1.5 type-secondary font-medium text-foreground">
             <span>{item.label}</span>
-            <Input
-                name={item.name}
-                type={item.type}
-                required
-                placeholder={item.placeholder}
-                autocomplete={item.autocomplete}
-                class="h-11 rounded-lg border-outline-variant bg-surface-container-lowest px-md shadow-sm placeholder:text-muted-foreground/70 hover:border-outline focus-visible:border-primary-foreground focus-visible:ring-primary-foreground/20"
-            />
+            <Input name={item.name} type={item.type} required placeholder={item.placeholder} autocomplete={item.autocomplete} class="h-11 bg-background" />
         </label>
     {/each}
 </div>
 
 {#if form?.message}
-    <p
-        role="alert"
-        class="rounded-lg border border-error/20 bg-error-container px-md py-sm text-sm font-medium text-on-error-container"
-    >
-        {form.message}
-    </p>
+    <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form.message}</p>
 {/if}
 
-<Button type="submit" variant="default" size="lg" class="w-full rounded-lg font-semibold">
-    Log in
-</Button>
+<Button type="submit" size="lg" class="w-full">Log in</Button>
 
-<p class="text-center text-sm text-muted-foreground">
-    Don’t have an account?
-    <a
-        href="/auth/signup"
-        class="font-semibold text-primary-foreground underline-offset-4 hover:underline"
-    >Sign up</a>
+<p class="type-secondary text-muted-foreground">
+    Don’t have an account? <a href={resolve("/auth/signup")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Create account</a>
 </p>
