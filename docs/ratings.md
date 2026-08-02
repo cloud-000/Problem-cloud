@@ -8,11 +8,12 @@ and how to change it**. If you edit the SQL, update this file.
 
 ## 1. Concept
 
-Every **player** and every **problem** is a Glicko competitor with a rating `R` and a
-rating deviation `RD` (uncertainty). Every graded submission is a **match**: correct =
-the player beat the problem, incorrect = the problem beat the player. Problem difficulty
-is **not authored** — it emerges entirely from play. Everyone seeds at `R = 1500`,
-`RD = 350`.
+Every **player** and every canonical/standalone **problem** is a Glicko competitor with
+a rating `R` and a rating deviation `RD` (uncertainty). Duplicate alias placements do
+not get competitors of their own: `problems.canonical_id` identifies the row whose
+rating they share. Every graded submission is a **match**: correct = the player beat
+the problem, incorrect = the problem beat the player. Problem difficulty is **not
+authored** — it emerges entirely from play. Everyone seeds at `R = 1500`, `RD = 350`.
 
 This is **Glicko-1 run with one-match periods** — the way live chess servers run it.
 There are no rating-period buckets: both sides of a match update immediately off each
@@ -95,7 +96,7 @@ triggers/recompute do). RLS mirrors `problems`/`profiles`.
 | Table | Grain | Key columns |
 | --- | --- | --- |
 | `player_ratings` | one row per (user, scope) | `rating`, `rd`, `matches`, `last_match_at` |
-| `problem_ratings` | one row per (problem, scope) | `rating`, `rd`, `attempts`, `last_match_at` |
+| `problem_ratings` | one row per (canonical/standalone problem, scope) | `rating`, `rd`, `attempts`, `last_match_at` |
 | `problem_rating_stats` | one row per problem | `solve_count`, `ln_time_ewma` (the causal time normalizer) |
 | `rating_params` | single row | every tuning knob (§5) |
 | `player_rating_history` / `problem_rating_history` | one row per rated match per side | `at`, `rating`, `rd`, `submission_id` |
@@ -162,10 +163,11 @@ Measured cost: ~10 ms per insert (all three triggers included).
 Zero-arg, service_role-only, wrapped by `admin_recompute_ratings()` (authenticated +
 in-DB `admin_rank` check; admin UI `src/routes/(app)/admin/ratings-admin.svelte`).
 Steps: (1) re-derive the annotation columns from the log with window functions (keeps
-them consistent after an `encounter_gap` retune); (2) reset ratings/stats/history to
-seeds (TRUNCATE, not DELETE — Supabase's `safeupdate` hook); (3) fold over graded
-submissions in `(created_at, id)` order using the same pure functions and the same
-`real` quantization as the trigger; (4) persist. Returns
+them consistent after an `encounter_gap` retune); (2) remove any legacy alias rating
+rows, then reset canonical ratings/stats/history to seeds (TRUNCATE, not DELETE —
+Supabase's `safeupdate` hook); (3) fold over graded submissions in `(created_at, id)`
+order using the same pure functions and the same `real` quantization as the trigger;
+(4) persist. Returns
 `{ players, problems, matches }`.
 
 ---

@@ -590,12 +590,21 @@ begin
       from public.submissions where skipped = false and is_correct is not null
     on conflict (user_id, scope) do nothing;
 
+  -- Aliases share their canonical's rating. Remove any legacy/seed rows left by
+  -- older rebuilds before resetting and reseeding canonical problems.
+  delete from public.problem_ratings rr
+  using public.problems p
+  where rr.problem_id = p.id
+    and p.canonical_id is not null;
+
   update public.problem_ratings
      set rating = par.seed_rating, rd = par.seed_rd, attempts = 0,
          last_match_at = null, updated_at = now()
    where scope = 'overall';
   insert into public.problem_ratings (problem_id, scope, rating, rd)
-    select id, 'overall', par.seed_rating, par.seed_rd from public.problems
+    select id, 'overall', par.seed_rating, par.seed_rd
+      from public.problems
+     where canonical_id is null
     on conflict (problem_id, scope) do nothing;
 
   truncate public.player_rating_history;

@@ -5,6 +5,7 @@ import {
     statusFor,
     type ActivityStatus,
     type Mastery,
+    type PersonalProblemState,
     type ProblemProgress,
 } from "$lib/progress";
 
@@ -13,6 +14,8 @@ type Supabase = SupabaseClient<Database>;
 export type SeriesReviewProgress = ProblemProgress;
 
 export type SeriesReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
+    /** Canonical/standalone id that owns this placement's shared user state. */
+    stateProblemId: number;
     progress: SeriesReviewProgress | null;
 };
 
@@ -29,8 +32,11 @@ export type SeriesReviewTest = {
 
 export type SeriesReviewStatus = ActivityStatus;
 
-type RawReviewProblem = Pick<Tables<"problems">, "id" | "n"> & {
+type RawReviewProblem = Pick<Tables<"problems">, "id" | "n" | "canonical_id"> & {
     problem_progress?: SeriesReviewProgress[] | null;
+    canonical?: {
+        problem_progress?: SeriesReviewProgress[] | null;
+    } | null;
 };
 
 type RawReviewTest = Omit<SeriesReviewTest, "problems"> & {
@@ -44,6 +50,7 @@ const PROGRESS_FIELDS = [
     "times_skipped",
     "last_correct",
     "last_reviewed_at",
+    "last_submission_at",
     "next_review_at",
     "solved",
     "mastery",
@@ -58,7 +65,7 @@ export async function fetchSeriesReview(
     const { data, error } = await supabase
         .from("tests")
         .select(
-            `id,name,year,division,division_order,format,format_order,problems!inner(id,n,problem_progress(${PROGRESS_FIELDS}))`,
+            `id,name,year,division,division_order,format,format_order,problems!inner(id,n,canonical_id,problem_progress(${PROGRESS_FIELDS}),canonical:canonical_id(problem_progress(${PROGRESS_FIELDS})))`,
         )
         .eq("series_id", seriesId);
     if (error) throw error;
@@ -67,14 +74,61 @@ export async function fetchSeriesReview(
         .map((test) => ({
             ...test,
             problems: (test.problems ?? [])
-                .map(({ problem_progress, ...problem }) => ({
-                    ...problem,
-                    progress: problem_progress?.[0] ?? null,
-                }))
+                .map(normalizeReviewProblem)
                 .sort((a, b) => a.n - b.n),
         }))
         .filter((test) => test.problems.length > 0)
         .sort(compareReviewTests);
+}
+
+/** Resolve one test placement onto the progress owned by its canonical problem. */
+export function normalizeReviewProblem({
+    id,
+    n,
+    canonical_id,
+    problem_progress,
+    canonical,
+}: RawReviewProblem): SeriesReviewProblem {
+    const progressRows = canonical_id == null
+        ? problem_progress
+        : canonical?.problem_progress;
+    return {
+        id,
+        n,
+        stateProblemId: canonical_id ?? id,
+        progress: progressRows?.[0] ?? null,
+    };
+}
+
+const EMPTY_REVIEW_PROGRESS: SeriesReviewProgress = {
+    times_seen: 0,
+    times_correct: 0,
+    times_reviewed: 0,
+    times_skipped: 0,
+    last_correct: null,
+    last_reviewed_at: null,
+    last_submission_at: null,
+    next_review_at: null,
+    solved: false,
+    mastery: null,
+    engagement: null,
+};
+
+/** Apply an RPC organization result to every placement sharing its state owner. */
+export function applyPersonalProblemState(
+    problem: SeriesReviewProblem,
+    state: PersonalProblemState,
+): SeriesReviewProblem {
+    if (problem.stateProblemId !== state.problem_id) return problem;
+    return {
+        ...problem,
+        progress: {
+            ...EMPTY_REVIEW_PROGRESS,
+            ...problem.progress,
+            mastery: state.mastery,
+            engagement: state.engagement,
+        },
+    };
 }
 
 /** A `{ value, label }` choice for a division/format filter control. */

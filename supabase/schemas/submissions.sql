@@ -132,6 +132,35 @@ create index problem_progress_mastery_idx
 create index problem_progress_engagement_idx
   on public.problem_progress(user_id, engagement, problem_id);
 
+-- Keep every progress write on the real problem's shared-state owner. Normal
+-- submission writes already arrive canonicalized by a_canonicalize_submission,
+-- and the organization RPCs below resolve the id explicitly so they can return
+-- it to the caller. This trigger is defense in depth for service-role/internal
+-- inserts and any future write path.
+create or replace function public.canonicalize_problem_progress_problem()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_canonical bigint;
+begin
+  select canonical_id into v_canonical
+  from public.problems
+  where id = new.problem_id;
+  if v_canonical is not null then
+    new.problem_id := v_canonical;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace trigger a_canonicalize_problem_progress
+  before insert or update of problem_id on public.problem_progress
+  for each row
+  execute function public.canonicalize_problem_progress_problem();
+
 -- Maintain problem_progress from each inserted submission, applying SM-2 on
 -- graded attempts. Runs as `security definer` so it can write problem_progress
 -- even though `authenticated` has no direct write grant (same model as
@@ -312,6 +341,7 @@ set search_path = ''
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_problem_id bigint;
 begin
   if v_user_id is null then
     raise exception 'not authenticated';
@@ -321,24 +351,31 @@ begin
     raise exception 'invalid mastery';
   end if;
 
+  select coalesce(p.canonical_id, p.id) into v_problem_id
+  from public.problems p
+  where p.id = p_problem_id;
+  if not found then
+    raise exception 'problem % not found', p_problem_id;
+  end if;
+
   insert into public.problem_progress (user_id, problem_id, mastery)
-  values (v_user_id, p_problem_id, p_mastery)
+  values (v_user_id, v_problem_id, p_mastery)
   on conflict on constraint problem_progress_pkey do update
     set mastery = excluded.mastery;
 
   delete from public.problem_progress pp
   where pp.user_id = v_user_id
-    and pp.problem_id = p_problem_id
+    and pp.problem_id = v_problem_id
     and pp.times_seen = 0
     and pp.mastery is null
     and pp.engagement is null;
 
   return query
-  select p_problem_id, pp.mastery, pp.engagement
+  select v_problem_id, pp.mastery, pp.engagement
   from public.problem_progress pp
-  where pp.user_id = v_user_id and pp.problem_id = p_problem_id;
+  where pp.user_id = v_user_id and pp.problem_id = v_problem_id;
   if not found then
-    return query select p_problem_id, null::text, null::text;
+    return query select v_problem_id, null::text, null::text;
   end if;
 end;
 $$;
@@ -355,6 +392,7 @@ set search_path = ''
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_problem_id bigint;
 begin
   if v_user_id is null then
     raise exception 'not authenticated';
@@ -364,24 +402,31 @@ begin
     raise exception 'invalid engagement';
   end if;
 
+  select coalesce(p.canonical_id, p.id) into v_problem_id
+  from public.problems p
+  where p.id = p_problem_id;
+  if not found then
+    raise exception 'problem % not found', p_problem_id;
+  end if;
+
   insert into public.problem_progress (user_id, problem_id, engagement)
-  values (v_user_id, p_problem_id, p_engagement)
+  values (v_user_id, v_problem_id, p_engagement)
   on conflict on constraint problem_progress_pkey do update
     set engagement = excluded.engagement;
 
   delete from public.problem_progress pp
   where pp.user_id = v_user_id
-    and pp.problem_id = p_problem_id
+    and pp.problem_id = v_problem_id
     and pp.times_seen = 0
     and pp.mastery is null
     and pp.engagement is null;
 
   return query
-  select p_problem_id, pp.mastery, pp.engagement
+  select v_problem_id, pp.mastery, pp.engagement
   from public.problem_progress pp
-  where pp.user_id = v_user_id and pp.problem_id = p_problem_id;
+  where pp.user_id = v_user_id and pp.problem_id = v_problem_id;
   if not found then
-    return query select p_problem_id, null::text, null::text;
+    return query select v_problem_id, null::text, null::text;
   end if;
 end;
 $$;
@@ -504,8 +549,10 @@ $$;
 --   2. Drop the now-stale alias-keyed progress + rating rows (rebuilt below).
 --   3. Replay progress for every affected (user, canonical) pair.
 --   4. recompute_ratings() to rebuild all ratings from the corrected log.
--- Note: an alias-only mastery/engagement note (rare) is dropped in step 2; the
--- user can re-set it on the canonical.
+-- Before dropping alias rows, mastery and engagement are merged independently
+-- onto the canonical. The most recently updated non-null value wins; ties prefer
+-- the canonical row. This preserves the user's latest explicit choice regardless
+-- of which test placement they used.
 create or replace function public.canonicalize_existing_user_data()
 returns table (
   submissions_moved      bigint,
@@ -531,6 +578,37 @@ begin
   join public.problems p on p.id = s.problem_id
   where p.canonical_id is not null;
 
+  -- Merge explicit user intent before deleting alias progress. Mastery and
+  -- engagement are selected independently because either axis may be null.
+  create temporary table _merged_alias_intent on commit drop as
+  with mapped as (
+    select pp.user_id,
+           pp.problem_id as source_problem_id,
+           coalesce(p.canonical_id, p.id) as problem_id,
+           pp.mastery,
+           pp.engagement,
+           pp.updated_at
+    from public.problem_progress pp
+    join public.problems p on p.id = pp.problem_id
+  ), affected as (
+    select distinct user_id, problem_id
+    from mapped
+    where source_problem_id <> problem_id
+  )
+  select m.user_id,
+         m.problem_id,
+         (array_agg(m.mastery order by m.updated_at desc,
+                    (m.source_problem_id = m.problem_id) desc,
+                    m.source_problem_id desc)
+            filter (where m.mastery is not null))[1] as mastery,
+         (array_agg(m.engagement order by m.updated_at desc,
+                    (m.source_problem_id = m.problem_id) desc,
+                    m.source_problem_id desc)
+            filter (where m.engagement is not null))[1] as engagement
+  from mapped m
+  join affected a using (user_id, problem_id)
+  group by m.user_id, m.problem_id;
+
   with moved as (
     update public.submissions s
     set problem_id = p.canonical_id
@@ -539,6 +617,14 @@ begin
     returning 1
   )
   select pg_catalog.count(*) into v_moved from moved;
+
+  insert into public.problem_progress (user_id, problem_id, mastery, engagement)
+  select user_id, problem_id, mastery, engagement
+  from _merged_alias_intent
+  on conflict on constraint problem_progress_pkey do update
+    set mastery = excluded.mastery,
+        engagement = excluded.engagement,
+        updated_at = now();
 
   with d as (
     delete from public.problem_progress pp

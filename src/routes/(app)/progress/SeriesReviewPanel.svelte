@@ -7,7 +7,9 @@
     import { Select } from "$lib/components/select";
     import { fetchAllSeries, fetchByIds, type ProblemRow } from "$lib/library";
     import { fetchProgressBreakdown } from "$lib/progress-analytics";
+    import type { PersonalProblemState } from "$lib/progress";
     import {
+        applyPersonalProblemState,
         dimensionOptions,
         fetchSeriesReview,
         type SeriesReviewTest,
@@ -157,6 +159,15 @@
         selectedDivisions = [];
         selectedFormats = [];
     }
+
+    function updateProblemState(state: PersonalProblemState) {
+        tests = tests.map((test) => ({
+            ...test,
+            problems: test.problems.map((problem) =>
+                applyPersonalProblemState(problem, state),
+            ),
+        }));
+    }
 </script>
 
 <Page.Section
@@ -253,6 +264,7 @@
                     tests={filteredTests}
                     {openingProblemId}
                     onOpenProblem={openProblem}
+                    onProblemStateChange={updateProblemState}
                 />
             {/key}
         {/if}

@@ -11,11 +11,13 @@
         type SeriesReviewStatus,
         type SeriesReviewTest,
     } from "$lib/series-review";
+    import type { PersonalProblemState } from "$lib/progress";
 
     interface Props {
         selected: { test: SeriesReviewTest; problem: SeriesReviewProblem };
         openingProblemId: number | null;
         onOpenProblem: (problemId: number) => void;
+        onProblemStateChange: (state: PersonalProblemState) => void;
         onClose: () => void;
         position?: { x: number; y: number };
     }
@@ -24,6 +26,7 @@
         selected,
         openingProblemId,
         onOpenProblem,
+        onProblemStateChange,
         onClose,
         position = $bindable({ x: 0, y: 0 }),
     }: Props = $props();
@@ -241,15 +244,10 @@
                 >Set plan</span
             >
             <ProblemOrganization
-                problemId={selected.problem.id}
+                problemId={selected.problem.stateProblemId}
                 mastery={progress?.mastery ?? null}
                 engagement={progress?.engagement ?? null}
-                onchange={(state) => {
-                    if (selected?.problem.progress) {
-                        selected.problem.progress.mastery = state.mastery;
-                        selected.problem.progress.engagement = state.engagement;
-                    }
-                }}
+                onchange={onProblemStateChange}
             />
         </div>
         <Button

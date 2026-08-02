@@ -9,8 +9,10 @@
         reviewScheduleFor,
         type Engagement,
         type Mastery,
+        type PersonalProblemState,
     } from "$lib/progress";
     import {
+        applyPersonalProblemState,
         reviewIsDue,
         reviewRowLabel,
         statusForReview,
@@ -33,10 +35,12 @@
         tests,
         openingProblemId = null,
         onOpenProblem,
+        onProblemStateChange,
     }: {
         tests: SeriesReviewTest[];
         openingProblemId?: number | null;
         onOpenProblem: (problemId: number) => void;
+        onProblemStateChange: (state: PersonalProblemState) => void;
     } = $props();
 
     type Selection = { test: SeriesReviewTest; problem: SeriesReviewProblem };
@@ -240,6 +244,14 @@
         planFilter = "any";
         dueFilter = "any";
     }
+    function updateSelectedProblemState(state: PersonalProblemState) {
+        onProblemStateChange(state);
+        if (selected?.problem.stateProblemId !== state.problem_id) return;
+        selected = {
+            ...selected,
+            problem: applyPersonalProblemState(selected.problem, state),
+        };
+    }
 </script>
 
 <div class={cn("space-y-6 transition-all duration-200", selected && "pb-36 sm:pb-28")}>
@@ -403,6 +415,7 @@
             {selected}
             {openingProblemId}
             onOpenProblem={onOpenProblem}
+            onProblemStateChange={updateSelectedProblemState}
             onClose={() => (selected = null)}
             bind:position={cardPosition}
         />

@@ -63,8 +63,12 @@
     );
     let canEdit = $derived(Boolean(page.data.user && supabase));
 
-    function emit() {
-        onchange?.({ problem_id: problemId, mastery: localMastery, engagement: localEngagement });
+    function emit(resolvedProblemId = problemId) {
+        onchange?.({
+            problem_id: resolvedProblemId,
+            mastery: localMastery,
+            engagement: localEngagement,
+        });
     }
 
     async function chooseMastery(value: Mastery | null) {
@@ -77,7 +81,7 @@
             const state = await setProblemMastery(supabase, problemId, value);
             localMastery = state.mastery;
             localEngagement = state.engagement;
-            emit();
+            onchange?.(state);
         } catch (error) {
             localMastery = previous;
             emit();
@@ -97,7 +101,7 @@
             const state = await setProblemEngagement(supabase, problemId, value);
             localMastery = state.mastery;
             localEngagement = state.engagement;
-            emit();
+            onchange?.(state);
         } catch (error) {
             localEngagement = previous;
             emit();
