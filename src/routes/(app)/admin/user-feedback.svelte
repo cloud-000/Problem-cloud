@@ -120,27 +120,18 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 w-full">
-    <!-- Filters -->
-    <div
-        class="flex flex-col md:flex-row gap-4 items-end bg-surface-container-low p-4 rounded-xl border border-border/60"
-    >
-        <div class="flex flex-col gap-1.5 md:w-48 w-full">
-            <span
-                class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >Status</span
-            >
+<div class="flex w-full flex-col gap-8">
+    <div class="flex flex-col gap-4 md:flex-row md:items-end">
+        <div class="flex w-full flex-col gap-1.5 md:w-48">
+            <span class="type-caption text-muted-foreground">Status</span>
             <Select
                 options={statusOptions}
                 bind:value={statusFilter}
                 placeholder="Filter status..."
             />
         </div>
-        <div class="flex flex-col gap-1.5 md:w-48 w-full">
-            <span
-                class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >Category</span
-            >
+        <div class="flex w-full flex-col gap-1.5 md:w-48">
+            <span class="type-caption text-muted-foreground">Category</span>
             <Select
                 options={typeOptions}
                 bind:value={typeFilter}
@@ -151,58 +142,47 @@
 
     <!-- Feed -->
     {#if loading && feedback.length === 0}
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
+        <div class="flex items-center gap-2 py-16 type-secondary text-muted-foreground">
             <Icon
                 name="progress_activity"
                 class="animate-spin text-muted-foreground"
                 fontsize="1.8rem"
             />
-            <p class="text-xs text-muted-foreground">Loading feedback...</p>
+            Loading feedback…
         </div>
     {:else if errorMsg}
-        <div
-            class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-        >
+        <div class="border-y border-destructive/30 py-4 type-secondary text-destructive" role="alert">
             {errorMsg}
         </div>
     {:else if feedback.length === 0}
-        <div
-            class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-        >
-            <div
-                class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="inbox" fontsize="1.8rem" />
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold">No feedback found</h3>
-                <p class="text-xs text-muted-foreground mt-0.5">
+        <div class="flex flex-col items-start gap-1 border-y border-border/60 py-8">
+                <h2 class="type-section-title text-foreground">No feedback found</h2>
+                <p class="type-secondary text-muted-foreground">
                     {statusFilter === "pending"
                         ? "Nothing waiting for review."
                         : "No feedback matches these filters."}
                 </p>
-            </div>
         </div>
     {:else}
-        <div class="space-y-3">
+        <div class="border-t border-border">
             {#each feedback as row (row.id)}
                 {@const meta = typeMeta[row.type] ?? {
                     icon: "chat",
                     label: row.type,
                 }}
                 <div
-                    class="flex flex-col gap-3 rounded-xl border border-border/60 bg-surface-container-lowest p-4 shadow-xs"
+                    class="flex flex-col gap-3 border-b border-border py-4"
                 >
                     <div class="flex items-start justify-between gap-3">
                         <div class="flex flex-col gap-1 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span
-                                    class="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-container px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                                    class="inline-flex items-center gap-1 type-caption text-muted-foreground"
                                 >
                                     <Icon name={meta.icon} fontsize="0.9rem" />
                                     {meta.label}
                                 </span>
-                                <span class="text-xs text-muted-foreground">
+                                <span class="type-caption text-muted-foreground">
                                     {row.profiles?.username ?? "Unknown"}
                                     • {formatDate(row.created_at)}
                                 </span>
@@ -218,12 +198,12 @@
 
                     {#if row.message}
                         <p
-                            class="text-sm text-foreground whitespace-pre-wrap rounded-lg bg-surface-container-low p-3 border border-border/40"
+                            class="border-l-2 border-border pl-3 type-secondary whitespace-pre-wrap text-foreground"
                         >
                             {row.message}
                         </p>
                     {:else}
-                        <p class="text-sm text-muted-foreground italic">
+                        <p class="type-secondary italic text-muted-foreground">
                             (no message)
                         </p>
                     {/if}

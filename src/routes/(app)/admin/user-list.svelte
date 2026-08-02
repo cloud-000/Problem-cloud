@@ -48,17 +48,10 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 w-full">
-    <!-- Filter/Sort Bar -->
-    <div
-        class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-surface-container-low p-4 rounded-xl border border-border/60"
-    >
-        <div class="flex flex-col gap-1.5 sm:w-64 w-full">
-            <span
-                class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-                Sort By
-            </span>
+<div class="flex w-full flex-col gap-8">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div class="flex w-full flex-col gap-1.5 sm:w-64">
+            <span class="type-caption text-muted-foreground">Sort by</span>
             <Select
                 options={sortOptions}
                 bind:value={sortBy}
@@ -67,72 +60,52 @@
         </div>
         {#if !loading && !errorMsg}
             <div class="flex items-center gap-2 self-start sm:self-auto">
-                <span class="text-xs font-medium text-muted-foreground">
-                    Total Users:
-                </span>
-                <span
-                    class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-primary/15 text-primary-foreground text-xs font-semibold border border-primary/20"
-                >
-                    {profiles.length}
-                </span>
+                <span class="type-secondary text-muted-foreground">{profiles.length} total</span>
             </div>
         {/if}
     </div>
 
     <!-- Feed / List -->
     {#if loading && profiles.length === 0}
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
+        <div class="flex items-center gap-2 py-16 type-secondary text-muted-foreground">
             <Icon
                 name="progress_activity"
                 class="animate-spin text-muted-foreground"
                 fontsize="1.8rem"
             />
-            <p class="text-xs text-muted-foreground">Loading users...</p>
+            Loading users…
         </div>
     {:else if errorMsg}
-        <div
-            class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-        >
+        <div class="border-y border-destructive/30 py-4 type-secondary text-destructive" role="alert">
             {errorMsg}
         </div>
     {:else if profiles.length === 0}
-        <div
-            class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-        >
-            <div
-                class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="person_off" fontsize="1.8rem" />
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold">No users found</h3>
-            </div>
+        <div class="border-y border-border/60 py-8">
+            <h2 class="type-section-title text-foreground">No users found</h2>
         </div>
     {:else}
-        <div class="flex flex-col gap-3">
+        <div class="border-t border-border">
             {#each profiles as profile (profile.id)}
                 <div
-                    class="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-surface-container-lowest shadow-xs hover:border-primary-foreground/30 transition duration-200"
+                    class="flex items-center gap-4 border-b border-border py-4"
                 >
-                    <!-- Avatar icon with initial -->
                     <div
-                        class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-foreground font-semibold text-sm border border-primary/20"
+                        class="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-container type-body font-medium text-foreground"
                     >
                         {profile.username
                             ? profile.username.charAt(0).toUpperCase()
                             : "?"}
                     </div>
 
-                    <!-- Main Info -->
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="font-semibold text-foreground truncate">
+                            <span class="type-body font-medium text-foreground truncate">
                                 {profile.username || "Unknown"}
                             </span>
 
                             {#if profile.admin_rank > 0}
                                 <span
-                                    class="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary-foreground text-xs font-semibold px-2 py-0.5 border border-primary/20 leading-none"
+                                    class="inline-flex items-center gap-1 type-caption text-primary"
                                 >
                                     <Icon
                                         name="shield"
@@ -143,7 +116,7 @@
                                 </span>
                             {:else}
                                 <span
-                                    class="inline-flex items-center gap-1 rounded-full bg-surface-container text-muted-foreground text-xs font-medium px-2 py-0.5 border border-border/40 leading-none"
+                                    class="inline-flex items-center gap-1 type-caption text-muted-foreground"
                                 >
                                     <Icon
                                         name="person"
@@ -156,33 +129,31 @@
                         </div>
 
                         {#if profile.status}
-                            <p class="text-xs text-muted-foreground mt-1 truncate">
+                            <p class="mt-1 truncate type-caption text-muted-foreground">
                                 “{profile.status}”
                             </p>
                         {:else}
                             <p
-                                class="text-xs text-muted-foreground/60 mt-1 italic"
+                                class="mt-1 type-caption italic text-muted-foreground/60"
                             >
                                 No status set
                             </p>
                         {/if}
                     </div>
 
-                    <!-- Meta info (joined & active dates) -->
                     <div class="text-right shrink-0 hidden sm:flex flex-col gap-1">
                         <div>
-                            <span class="text-[9px] uppercase font-semibold tracking-wider text-muted-foreground mr-1">Joined</span>
-                            <span class="text-xs font-medium text-foreground">{formatDate(profile.created_at)}</span>
+                            <span class="mr-1 type-caption text-muted-foreground">Joined</span>
+                            <span class="type-caption text-foreground">{formatDate(profile.created_at)}</span>
                         </div>
                         <div>
-                            <span class="text-[9px] uppercase font-semibold tracking-wider text-muted-foreground mr-1">Active</span>
-                            <span class="text-xs font-medium text-foreground">{profile.last_active_at ? formatDate(profile.last_active_at) : 'Never'}</span>
+                            <span class="mr-1 type-caption text-muted-foreground">Active</span>
+                            <span class="type-caption text-foreground">{profile.last_active_at ? formatDate(profile.last_active_at) : 'Never'}</span>
                         </div>
                     </div>
-                    <!-- Small joined/active date for mobile -->
-                    <div class="text-right shrink-0 sm:hidden flex flex-col gap-0.5 text-[10px]">
-                        <span class="text-muted-foreground">J: {formatDate(profile.created_at).split(",")[0]}</span>
-                        <span class="text-muted-foreground/80">A: {profile.last_active_at ? formatDate(profile.last_active_at).split(",")[0] : 'Never'}</span>
+                    <div class="flex shrink-0 flex-col gap-0.5 text-right sm:hidden">
+                        <span class="type-caption text-muted-foreground">J: {formatDate(profile.created_at).split(",")[0]}</span>
+                        <span class="type-caption text-muted-foreground/80">A: {profile.last_active_at ? formatDate(profile.last_active_at).split(",")[0] : 'Never'}</span>
                     </div>
                 </div>
             {/each}

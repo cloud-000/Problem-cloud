@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { Icon } from "$lib/components/icon";
+    import * as Page from "$lib/components/page";
     import { Subtabs } from "$lib/components/subtabs";
     import PracticeApproval from "./practice-approval.svelte";
     import UserFeedback from "./user-feedback.svelte";
@@ -14,45 +14,28 @@
     let activeTab = $state("practice-approval");
 </script>
 
-<div class="flex flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
-    <!-- Header -->
-    <div class="border-b border-border/80 pb-4 space-y-1">
-        <h1
-            class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2"
-        >
-            <Icon
-                name="admin_panel_settings"
-                fontsize="2rem"
-                class="text-primary-foreground"
-            />
-            Admin
-        </h1>
-        <p class="text-sm text-muted-foreground">
-            Manage administrative settings, review user submissions, and
-            configure the application.
-        </p>
-    </div>
+<svelte:head>
+    <title>Admin tools · ProblemCloud</title>
+</svelte:head>
 
-    <!-- Subtabs -->
+<Page.Root width="unbounded" class="gap-8">
+    <Page.Header
+        title="Admin tools"
+        description="Review community input, manage accounts, and maintain rating data."
+    />
+
     <Subtabs bind:value={activeTab} variant="line">
-        <Subtabs.List class="mb-4">
-            <Subtabs.Trigger
-                value="practice-approval"
-                icon="assignment_turned_in"
-            >
-                Answers Added
-            </Subtabs.Trigger>
-            <Subtabs.Trigger value="user-feedback" icon="feedback">
-                Feedback
-            </Subtabs.Trigger>
-            <Subtabs.Trigger value="users" icon="group">Users</Subtabs.Trigger>
-            <Subtabs.Trigger value="announcements" icon="campaign">
-                Announcements
-            </Subtabs.Trigger>
-            <Subtabs.Trigger value="settings" icon="settings">
-                Config
-            </Subtabs.Trigger>
-        </Subtabs.List>
+        <Page.Toolbar class="border-b border-border">
+            <Subtabs.List>
+                <Subtabs.Trigger value="practice-approval">
+                    Answer approval
+                </Subtabs.Trigger>
+                <Subtabs.Trigger value="user-feedback">Feedback</Subtabs.Trigger>
+                <Subtabs.Trigger value="users">Users</Subtabs.Trigger>
+                <Subtabs.Trigger value="announcements">Announcements</Subtabs.Trigger>
+                <Subtabs.Trigger value="settings">Ratings</Subtabs.Trigger>
+            </Subtabs.List>
+        </Page.Toolbar>
 
         <Subtabs.Content value="practice-approval">
             <PracticeApproval {supabase} />
@@ -74,4 +57,4 @@
             <RatingsAdmin {supabase} />
         </Subtabs.Content>
     </Subtabs>
-</div>
+</Page.Root>

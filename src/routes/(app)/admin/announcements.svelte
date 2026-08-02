@@ -202,25 +202,21 @@
     );
 </script>
 
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
-    <!-- Form Panel -->
+<div class="grid w-full grid-cols-1 gap-10 lg:grid-cols-12 lg:items-start">
     <div
-        class="lg:col-span-5 flex flex-col gap-5 p-5 rounded-xl border border-border/60 bg-surface-container-lowest shadow-xs"
+        class="flex flex-col gap-5 lg:col-span-5"
     >
-        <div class="border-b border-border/60 pb-3">
-            <h2 class="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Icon name="campaign" class="text-primary-foreground" />
-                New Announcement
-            </h2>
-            <p class="text-xs text-muted-foreground mt-0.5">
+        <div>
+            <h2 class="type-section-title text-foreground">New announcement</h2>
+            <p class="mt-1 type-secondary text-muted-foreground">
                 Compose and broadcast a toast notification to targeted application users.
             </p>
         </div>
 
-        <form onsubmit={(e) => { e.preventDefault(); handleSend(); }} class="flex flex-col gap-4">
+        <form onsubmit={(e) => { e.preventDefault(); handleSend(); }} class="flex flex-col gap-4 border-t border-border pt-4">
             <!-- Title -->
             <div class="flex flex-col gap-1.5">
-                <label for="announcement-title" class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <label for="announcement-title" class="type-caption text-muted-foreground">
                     Title
                 </label>
                 <Input
@@ -233,7 +229,7 @@
 
             <!-- Message -->
             <div class="flex flex-col gap-1.5">
-                <label for="announcement-message" class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <label for="announcement-message" class="type-caption text-muted-foreground">
                     Message
                 </label>
                 <textarea
@@ -248,7 +244,7 @@
 
             <!-- Target Selection -->
             <div class="flex flex-col gap-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <span class="type-caption text-muted-foreground">
                     Send To
                 </span>
                 <div class="flex gap-2">
@@ -292,11 +288,11 @@
 
             <!-- Severity / Color Type -->
             <div class="flex flex-col gap-1.5">
-                <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <span class="type-caption text-muted-foreground">
                     Severity
                 </span>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {#each severityOptions as option}
+                    {#each severityOptions as option (option.value)}
                         {@const isActive = severity === option.value}
                         <button
                             type="button"
@@ -313,10 +309,10 @@
             <!-- Duration Slider -->
             <div class="flex flex-col gap-1.5">
                 <div class="flex justify-between items-center">
-                    <label for="announcement-duration" class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <label for="announcement-duration" class="type-caption text-muted-foreground">
                         Duration
                     </label>
-                    <span class="text-xs font-bold text-primary-foreground">
+                    <span class="type-caption text-primary">
                         {duration === 0 ? "Sticky (Permanent)" : `${duration} seconds`}
                     </span>
                 </div>
@@ -332,7 +328,7 @@
                         class="w-full h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer accent-primary-foreground"
                     />
                 </div>
-                <p class="text-[10px] text-muted-foreground">
+                <p class="type-caption text-muted-foreground">
                     Drag to 0 to keep the toast onscreen until the user clicks to close it.
                 </p>
             </div>
@@ -341,7 +337,7 @@
             <Button
                 type="submit"
                 disabled={sending}
-                class="mt-2 w-full flex items-center justify-center gap-2 font-semibold shadow-xs"
+                class="mt-2 w-full"
             >
                 {#if sending}
                     <Icon name="progress_activity" class="animate-spin" fontsize="1.1rem" />
@@ -354,17 +350,13 @@
         </form>
     </div>
 
-    <!-- History Panel -->
     <div
-        class="lg:col-span-7 flex flex-col gap-5 p-5 rounded-xl border border-border/60 bg-surface-container-lowest shadow-xs"
+        class="flex flex-col gap-5 lg:col-span-7"
     >
-        <div class="border-b border-border/60 pb-3 flex justify-between items-center">
+        <div class="flex items-center justify-between">
             <div>
-                <h2 class="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Icon name="history" class="text-primary-foreground" />
-                    Broadcast History
-                </h2>
-                <p class="text-xs text-muted-foreground mt-0.5">
+                <h2 class="type-section-title text-foreground">Broadcast history</h2>
+                <p class="mt-1 type-secondary text-muted-foreground">
                     View previous announcements or terminate active broadcasts.
                 </p>
             </div>
@@ -380,57 +372,52 @@
         </div>
 
         {#if loadingHistory && notificationsList.length === 0}
-            <div class="flex flex-col items-center justify-center py-16 gap-3">
+            <div class="flex items-center gap-2 border-t border-border py-16 type-secondary text-muted-foreground">
                 <Icon name="progress_activity" class="animate-spin text-muted-foreground" fontsize="1.8rem" />
-                <p class="text-xs text-muted-foreground">Loading announcements history...</p>
+                Loading announcement history…
             </div>
         {:else if notificationsList.length === 0}
-            <div class="flex flex-col items-center justify-center py-16 gap-3 text-center border border-dashed border-border/60 rounded-xl bg-surface-container-low/50">
-                <div class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground">
-                    <Icon name="campaign" fontsize="1.8rem" />
-                </div>
-                <div>
-                    <h3 class="text-sm font-semibold">No announcements found</h3>
-                    <p class="text-xs text-muted-foreground mt-0.5">
+            <div class="flex flex-col items-start gap-1 border-y border-border py-8">
+                    <h3 class="type-section-title text-foreground">No announcements found</h3>
+                    <p class="type-secondary text-muted-foreground">
                         Your sent notifications will appear here.
                     </p>
-                </div>
             </div>
         {:else}
-            <div class="flex flex-col gap-3 max-h-[600px] overflow-y-auto pr-1">
+            <div class="flex max-h-[600px] flex-col overflow-y-auto border-t border-border">
                 {#each notificationsList as item (item.id)}
                     {@const opt = severityOptions.find(o => o.value === (item.payload?.type || "info")) || severityOptions[0]}
                     <div
-                        class="flex gap-4 p-4 rounded-xl border border-border/60 bg-surface-container-lowest shadow-2xs hover:border-border transition relative"
+                        class="relative flex gap-4 border-b border-border py-4"
                     >
                         <!-- Status indicator / icon -->
-                        <div class="flex size-8 shrink-0 items-center justify-center rounded-lg border {opt.colorClass}">
+                        <div class="flex size-8 shrink-0 items-center justify-center {opt.colorClass}">
                             <Icon name={opt.icon} fontsize="1.1rem" />
                         </div>
 
                         <!-- Main Content -->
                         <div class="flex-1 min-w-0 pr-6">
                             <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-semibold text-sm text-foreground truncate">
+                                <span class="type-body font-medium text-foreground truncate">
                                     {item.title}
                                 </span>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded-full border text-xs font-semibold leading-none {opt.colorClass}">
+                                <span class="type-caption {opt.colorClass}">
                                     {opt.label}
                                 </span>
                                 {#if item.payload?.duration === 0}
-                                    <span class="text-[10px] px-1.5 py-0.5 rounded-full border border-border/80 text-muted-foreground text-xs font-medium leading-none flex items-center gap-0.5">
+                                    <span class="flex items-center gap-0.5 type-caption text-muted-foreground">
                                         <Icon name="push_pin" fontsize="0.8rem" />
                                         Sticky
                                     </span>
                                 {/if}
                             </div>
 
-                            <p class="text-xs text-muted-foreground mt-1.5 whitespace-pre-line leading-relaxed">
+                            <p class="mt-1.5 type-secondary whitespace-pre-line text-muted-foreground">
                                 {item.message}
                             </p>
 
                             <!-- Footer details -->
-                            <div class="flex items-center gap-x-3 gap-y-1 flex-wrap mt-3 text-[10px] text-muted-foreground font-medium border-t border-border/40 pt-2">
+                            <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 pt-2 type-caption text-muted-foreground">
                                 <span class="flex items-center gap-1">
                                     <Icon name="person" fontsize="0.9rem" />
                                     By: {item.sender?.username || "Unknown Admin"}

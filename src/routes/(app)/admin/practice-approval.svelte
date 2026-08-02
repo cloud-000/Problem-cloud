@@ -112,66 +112,44 @@
     }
 </script>
 
-<div class="flex flex-col gap-6 w-full">
-    <!-- Filter -->
-    <div
-        class="flex flex-col md:flex-row gap-4 items-end bg-surface-container-low p-4 rounded-xl border border-border/60"
-    >
-        <div class="flex flex-col gap-1.5 md:w-48 w-full">
-            <span
-                class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >Status</span
-            >
+<div class="flex w-full flex-col gap-8">
+    <div class="flex w-full flex-col gap-1.5 sm:w-52">
+            <span class="type-caption text-muted-foreground">Status</span>
             <Select
                 options={statusOptions}
                 bind:value={statusFilter}
                 placeholder="Filter status..."
             />
-        </div>
     </div>
 
     <!-- Feed -->
     {#if loading && suggestions.length === 0}
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
+        <div class="flex items-center gap-2 py-16 type-secondary text-muted-foreground">
             <Icon
                 name="progress_activity"
                 class="animate-spin text-muted-foreground"
                 fontsize="1.8rem"
             />
-            <p class="text-xs text-muted-foreground">Loading feedback...</p>
+            Loading answer suggestions…
         </div>
     {:else if errorMsg}
-        <div
-            class="p-4 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
-        >
+        <div class="border-y border-destructive/30 py-4 type-secondary text-destructive" role="alert">
             {errorMsg}
         </div>
     {:else if groups.length === 0}
-        <div
-            class="flex flex-col items-center justify-center py-16 gap-3 text-center"
-        >
-            <div
-                class="flex size-12 items-center justify-center rounded-full bg-surface-container text-muted-foreground"
-            >
-                <Icon name="inbox" fontsize="1.8rem" />
-            </div>
-            <div>
-                <h3 class="text-sm font-semibold">No feedback found</h3>
-                <p class="text-xs text-muted-foreground mt-0.5">
+        <div class="flex flex-col items-start gap-1 border-y border-border/60 py-8">
+                <h2 class="type-section-title text-foreground">No answer suggestions found</h2>
+                <p class="type-secondary text-muted-foreground">
                     {statusFilter === "pending"
                         ? "Nothing waiting for review."
                         : "No suggestions match this filter."}
                 </p>
-            </div>
         </div>
     {:else}
-        <div class="space-y-6">
+        <div class="border-t border-border">
             {#each groups as group (group.problemId)}
-                <div
-                    class="rounded-xl border border-border/60 bg-surface-container-lowest overflow-hidden shadow-xs"
-                >
-                    <!-- Problem context -->
-                    <div class="border-b border-border/40 p-4">
+                <section class="border-b border-border py-6" aria-label={`Suggestions for problem ${group.problemId}`}>
+                    <div class="pb-5">
                         {#if group.problem}
                             <Problem
                                 problem={group.problem}
@@ -179,40 +157,39 @@
                                 disabled={true}
                             />
                         {:else}
-                            <p class="text-xs text-muted-foreground italic">
+                            <p class="type-secondary italic text-muted-foreground">
                                 Problem #{group.problemId} could not be loaded.
                             </p>
                         {/if}
                     </div>
 
-                    <!-- Suggestions for this problem -->
-                    <div class="divide-y divide-border/40">
+                    <div class="border-t border-border/60 divide-y divide-border/60">
                         {#each group.items as row (row.id)}
                             {@const choice =
                                 row.answer_index != null &&
                                 group.problem?.choices?.[row.answer_index]}
-                            <div class="flex flex-col gap-3 p-4">
+                            <div class="flex flex-col gap-3 py-4">
                                 <div
                                     class="flex items-start justify-between gap-3"
                                 >
                                     <div class="flex flex-col gap-1 min-w-0">
                                         <span
-                                            class="text-xs text-muted-foreground"
+                                            class="type-caption text-muted-foreground"
                                         >
                                             {row.profiles?.username ??
                                                 "Unknown"}
                                             • {formatDate(row.created_at)}
                                         </span>
                                         <div
-                                            class="flex items-center gap-2 text-sm text-foreground"
+                                            class="flex items-center gap-2 type-body text-foreground"
                                         >
                                             <span
-                                                class="text-xs font-medium text-muted-foreground shrink-0"
+                                                class="type-caption shrink-0 text-muted-foreground"
                                                 >Suggests</span
                                             >
                                             {#if choice}
                                                 <span
-                                                    class="flex size-5 shrink-0 items-center justify-center rounded-full border border-primary bg-primary text-primary-foreground text-[10px] font-semibold"
+                                                class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary type-caption text-primary-foreground"
                                                 >
                                                     {String.fromCharCode(
                                                         65 +
@@ -242,7 +219,7 @@
 
                                 {#if row.steps}
                                     <p
-                                        class="text-sm text-muted-foreground whitespace-pre-wrap rounded-lg bg-surface-container-low p-3 border border-border/40"
+                                        class="border-l-2 border-border pl-3 type-secondary whitespace-pre-wrap text-muted-foreground"
                                     >
                                         {row.steps}
                                     </p>
@@ -279,7 +256,7 @@
                             </div>
                         {/each}
                     </div>
-                </div>
+                </section>
             {/each}
         </div>
     {/if}

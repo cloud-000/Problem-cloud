@@ -38,18 +38,10 @@
     );
 </script>
 
-<div class="flex flex-col gap-6 w-full">
-    <div
-        class="flex flex-col gap-5 p-5 rounded-xl border border-border/60 bg-surface-container-lowest shadow-xs max-w-2xl"
-    >
-        <div class="border-b border-border/60 pb-3">
-            <h2
-                class="text-lg font-semibold text-foreground flex items-center gap-2"
-            >
-                <Icon name="leaderboard" class="text-primary-foreground" />
-                Skill Ratings
-            </h2>
-            <p class="text-xs text-muted-foreground mt-0.5">
+<section class="flex max-w-2xl flex-col gap-6" aria-labelledby="ratings-heading">
+        <div>
+            <h2 id="ratings-heading" class="type-section-title text-foreground">Skill ratings</h2>
+            <p class="mt-1 type-secondary text-muted-foreground">
                 Rebuild every player and problem rating from the submissions log.
                 Ratings update live per submission — this replay exists as a
                 repair path, and to re-grade history after tuning the model
@@ -57,14 +49,14 @@
             </p>
         </div>
 
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-4 border-y border-border py-4">
             <div
-                class="flex items-start gap-2.5 rounded-lg border border-border/50 bg-surface-container-low p-3 text-xs text-muted-foreground"
+                class="flex items-start gap-2.5 type-secondary text-muted-foreground"
             >
                 <Icon
                     name="info"
                     fontsize="1.1rem"
-                    class="mt-px shrink-0 text-primary-foreground"
+                    class="mt-px shrink-0 text-muted-foreground"
                 />
                 <span>
                     This is a full, deterministic rebuild that replays all graded
@@ -77,7 +69,7 @@
             <Button
                 onclick={handleRecompute}
                 disabled={running}
-                class="w-full sm:w-auto flex items-center justify-center gap-2 font-semibold shadow-xs"
+                class="w-full sm:w-auto"
             >
                 {#if running}
                     <Icon
@@ -94,21 +86,17 @@
         </div>
 
         {#if lastResult}
-            <div class="flex flex-col gap-2 border-t border-border/60 pt-4">
-                <span
-                    class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                    Last rebuild
-                </span>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div class="flex flex-col gap-3">
+                <span class="type-caption text-muted-foreground">Last rebuild</span>
+                <div class="grid grid-cols-2 border-y border-border sm:grid-cols-3">
                     {#each stats as stat (stat.label)}
                         <div
-                            class="flex flex-col gap-0.5 rounded-lg border border-border/60 bg-surface-container-low p-3"
+                            class="flex flex-col gap-0.5 py-4 pr-4 even:border-l even:border-border even:pl-4 sm:border-l sm:border-border sm:px-4 sm:first:border-l-0 sm:first:pl-0"
                         >
-                            <span class="text-lg font-semibold text-foreground">
+                            <span class="type-code text-foreground">
                                 {stat.value.toLocaleString()}
                             </span>
-                            <span class="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <span class="type-caption text-muted-foreground">
                                 {stat.label}
                             </span>
                         </div>
@@ -116,5 +104,4 @@
                 </div>
             </div>
         {/if}
-    </div>
-</div>
+</section>
