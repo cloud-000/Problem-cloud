@@ -42,7 +42,7 @@
     />
 </svelte:head>
 
-<main class="py-16 md:py-24 px-6 max-w-5xl mx-auto flex flex-col items-center">
+<div class="py-16 md:py-24 px-6 max-w-5xl mx-auto flex flex-col items-center">
     <!-- Hero / Title -->
     <div class="text-center max-w-3xl mb-16 animate-fade-in">
         <div
@@ -145,7 +145,7 @@
             </p>
         </div>
     </section>
-</main>
+</div>
 
 <style>
     @keyframes fadeIn {

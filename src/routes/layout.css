@@ -155,6 +155,21 @@
     --type-code-weight: 500;
     --type-code-tracking: 0;
 
+    /* Public surfaces (the splash shell: welcome, about) sit outside the app's
+       page grammar and open with a statement rather than a page title. These
+       two roles extend the same ladder — same family, same negative tracking,
+       one step above Display — instead of letting marketing pages invent
+       per-call-site font sizes. They are not for use inside the app shell. */
+    --type-hero-size: clamp(2.25rem, 4.6vw, 3rem);
+    --type-hero-line-height: 1.06;
+    --type-hero-weight: 600;
+    --type-hero-tracking: -0.03em;
+
+    --type-lead-size: clamp(1.0625rem, 1.4vw, 1.1875rem);
+    --type-lead-line-height: 1.6;
+    --type-lead-weight: 400;
+    --type-lead-tracking: -0.005em;
+
     /* Compatibility aliases for existing utilities. Do not use these in new UI. */
     --text-h1: 32px;
     --text-h2: 24px;
@@ -449,6 +464,23 @@
     font-weight: var(--type-code-weight);
     line-height: var(--type-code-line-height);
     letter-spacing: var(--type-code-tracking);
+}
+
+/* Public-surface roles. See the note beside `--type-hero-*` in :root. */
+@utility type-hero {
+    font-family: var(--font-sans);
+    font-size: var(--type-hero-size);
+    font-weight: var(--type-hero-weight);
+    line-height: var(--type-hero-line-height);
+    letter-spacing: var(--type-hero-tracking);
+}
+
+@utility type-lead {
+    font-family: var(--font-sans);
+    font-size: var(--type-lead-size);
+    font-weight: var(--type-lead-weight);
+    line-height: var(--type-lead-line-height);
+    letter-spacing: var(--type-lead-tracking);
 }
 
 /* Legacy utilities retained while existing screens migrate to the semantic

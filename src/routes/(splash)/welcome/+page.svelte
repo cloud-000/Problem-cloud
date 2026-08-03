@@ -1,916 +1,622 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Input } from "$lib/components/input";
     import LaTeX from "$lib/components/LaTeX.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { fade, slide, fly } from "svelte/transition";
+    import { cn } from "$lib/utils";
+    import { prefersReducedMotion } from "svelte/motion";
+    import { fade, slide } from "svelte/transition";
 
     let { data } = $props();
     let session = $derived(data.session);
 
-    // Text switching variables
-    const words = ["unified", "frictionless", "seamless"];
-    let currentWordIndex = $state(0);
-
-    $effect(() => {
-        const interval = setInterval(() => {
-            currentWordIndex = (currentWordIndex + 1) % words.length;
-        }, 2200);
-        return () => clearInterval(interval);
-    });
-
-    // Problem count state
-    let problemCount = $state<number | null>(null);
-    let formattedCount = $derived.by(() => {
-        if (problemCount === null || problemCount === 0) return "10,000";
-        return new Intl.NumberFormat().format(problemCount);
-    });
-
-    $effect(() => {
-        data.supabase
-            .from("problems")
-            .select("id", { count: "exact", head: true })
-            .then(({ count, error }) => {
-                if (!error && count !== null) {
-                    problemCount = count;
-                }
-            });
-    });
-
-    // Selected category for the sandbox
-    let selectedCategory = $state<
-        "algebra" | "combinatorics" | "geometry" | "number-theory"
-    >("algebra");
-
-    // Interactive Sandbox Problems
-    const problems = {
-        algebra: {
-            title: "Algebra",
-            icon: "calculate",
+    /** One source of truth: the tab strip, the try-it panel, and the
+     *  disciplines section all read from this list. */
+    const disciplines = [
+        {
+            id: "algebra",
+            label: "Algebra",
             color: "var(--algebra)",
-            question: "Find the sum of all real solutions to the equation:",
-            math: "$$x^2 - 5x + 6 = 0$$",
-            placeholder: "Enter the sum...",
+            topics: "Polynomials · Inequalities · Sequences · Functions",
+            statement:
+                "Find the sum of all real solutions to the equation $$x^2 - 5x + 6 = 0.$$",
             answer: "5",
-            hint: "Factor the quadratic equation into $(x-2)(x-3) = 0$. The roots are $x=2$ and $x=3$.",
+            hint: "Factor as $(x-2)(x-3)=0$, so the roots are $x=2$ and $x=3$. Vieta's formulas give the same sum directly.",
         },
-        combinatorics: {
-            title: "Combinatorics",
-            icon: "groups",
+        {
+            id: "combinatorics",
+            label: "Combinatorics",
             color: "var(--combinatorics)",
-            question:
-                "A committee of $3$ people is to be chosen from a group of $5$ people. How many different committees can be formed?",
-            math: "$$\\binom{5}{3}$$",
-            placeholder: "Enter the number of committees...",
+            topics: "Counting · Probability · Graphs · Bijections",
+            statement:
+                "A committee of $3$ people is chosen from a group of $5$. How many different committees are possible?",
             answer: "10",
-            hint: "Use the combination formula: $\\binom{n}{k} = \\frac{n!}{k!(n-k)!}$. Here, calculate $\\binom{5}{3}$.",
+            hint: "Order does not matter, so count with $\\binom{n}{k}=\\frac{n!}{k!(n-k)!}$ and evaluate $\\binom{5}{3}$.",
         },
-        geometry: {
-            title: "Geometry",
-            icon: "change_history",
+        {
+            id: "geometry",
+            label: "Geometry",
             color: "var(--geometry)",
-            question:
-                "In a right triangle, the legs have lengths $5$ and $12$. What is the length of the hypotenuse?",
-            math: "$$c = \\sqrt{a^2 + b^2}$$",
-            placeholder: "Enter the hypotenuse...",
+            topics: "Triangles · Circles · Coordinates · Trigonometry",
+            statement:
+                "A right triangle has legs of length $5$ and $12$. What is the length of its hypotenuse?",
             answer: "13",
-            hint: "Use the Pythagorean theorem: $5^2 + 12^2 = 25 + 144 = 169 = 13^2$.",
+            hint: "By the Pythagorean theorem, $5^2 + 12^2 = 169$, and $169$ is a perfect square.",
         },
-        "number-theory": {
-            title: "Number Theory",
-            icon: "tag",
+        {
+            id: "number-theory",
+            label: "Number theory",
             color: "var(--number-theory)",
-            question: "What is the remainder when $2^{100}$ is divided by $3$?",
-            math: "$$2^{100} \\pmod{3}$$",
-            placeholder: "Enter the remainder...",
+            topics: "Divisibility · Modular arithmetic · Primes · Diophantine equations",
+            statement:
+                "What is the remainder when $2^{100}$ is divided by $3$?",
             answer: "1",
-            hint: "Note that $2 \\equiv -1 \\pmod 3$. Therefore, $2^{100} \\equiv (-1)^{100} \\equiv 1 \\pmod 3$.",
+            hint: "Work modulo $3$: since $2 \\equiv -1$, we get $2^{100} \\equiv (-1)^{100}$.",
         },
+    ] as const;
+
+    type DisciplineKey = (typeof disciplines)[number]["id"];
+
+    const capabilities = [
+        {
+            title: "One searchable library",
+            body: "Filter by contest, year, topic, or difficulty. Every problem keeps its source, so the original is always one click away.",
+        },
+        {
+            title: "A rating that means something",
+            body: "Each graded answer is a rated match between you and the problem. Your skill and the problem's difficulty live on the same scale.",
+        },
+        {
+            title: "Review that comes back to you",
+            body: "Solved problems return on a spaced schedule, and your history keeps every attempt and answer you have given.",
+        },
+        {
+            title: "Room to think",
+            body: "Sketch on built-in scratch paper, or bring your own model key for a coach that talks to the provider directly from your browser.",
+        },
+    ];
+
+    /** An illustration of the Progress problem matrix, drawn with the same
+     *  anatomy as the real grid in `(app)/progress/SeriesReviewGrid.svelte`:
+     *  the shade is self-assessed mastery, the mark is what you did, and the
+     *  ring means a review is due. The progress shown is invented — the
+     *  figcaption says so — but the shape (early problems solved, later ones
+     *  untouched, recent papers thinner) is what real practice looks like. */
+    const MATRIX_LEGEND = {
+        c: { mastery: "confident", mark: "check" },
+        l: { mastery: "learning", mark: "check" },
+        L: { mastery: "learning", mark: "check", due: true },
+        n: { mastery: "needs_work", mark: "close" },
+        N: { mastery: "needs_work", mark: "close", due: true },
+        a: { mastery: "unassessed", mark: "close" },
+        s: { mastery: "unassessed", mark: "remove" },
+        ".": { mastery: "unassessed", mark: null },
+    } as const satisfies Record<
+        string,
+        { mastery: string; mark: string | null; due?: boolean }
+    >;
+
+    const MASTERY_CLASS: Record<string, string> = {
+        confident: "border-correct/25 bg-correct/15 text-correct",
+        learning: "border-unsure/25 bg-unsure/15 text-unsure",
+        needs_work: "border-destructive/25 bg-destructive/15 text-destructive",
+        unassessed:
+            "border-border bg-surface-container-lowest text-muted-foreground",
     };
 
-    // User's answers for each category
-    let answers = $state<Record<string, string>>({
-        algebra: "",
-        combinatorics: "",
-        geometry: "",
-        "number-theory": "",
-    });
+    const matrixRows = [
+        { label: "2022 AMC 10A", cells: "ccccccccccllclNna.a......" },
+        { label: "2022 AMC 10B", cells: "cccccccclcllnnaan........" },
+        { label: "2023 AMC 10A", cells: "ccccccclcclLnlnas........" },
+        { label: "2023 AMC 10B", cells: "ccccccclclnnna..........." },
+        { label: "2024 AMC 10A", cells: "cccccclcnna.............." },
+    ].map((row) => ({
+        label: row.label,
+        cells: [...row.cells].map(
+            (c) => MATRIX_LEGEND[c as keyof typeof MATRIX_LEGEND],
+        ),
+    }));
 
-    // Submissions and validation states
-    let states = $state<Record<string, "idle" | "correct" | "incorrect">>({
-        algebra: "idle",
-        combinatorics: "idle",
-        geometry: "idle",
-        "number-theory": "idle",
-    });
+    const matrixColumns = Array.from({ length: 25 }, (_, i) => i + 1);
 
-    // Shake animation indicators
-    let shake = $state<Record<string, boolean>>({
-        algebra: false,
-        combinatorics: false,
-        geometry: false,
-        "number-theory": false,
-    });
+    const matrixKey = [
+        { label: "Needs work", mastery: "needs_work" },
+        { label: "Learning", mastery: "learning" },
+        { label: "Confident", mastery: "confident" },
+        { label: "Not assessed", mastery: "unassessed" },
+    ];
 
-    // Hints visibility
-    let showHint = $state<Record<string, boolean>>({
-        algebra: false,
-        combinatorics: false,
-        geometry: false,
-        "number-theory": false,
-    });
+    const questions = [
+        {
+            q: "What is ProblemCloud?",
+            a: "A practice platform for middle school, high school, and collegiate math competitions. It collects and categorizes contest problems so preparation happens in one place instead of across a dozen tabs.",
+        },
+        {
+            q: "How is the math rendered?",
+            a: "Statements are typeset with KaTeX in the browser, so equations, diagrams, and notation render quickly and read like the original paper.",
+        },
+        {
+            q: "Is it free?",
+            a: "Yes. Practicing is free, and an account adds your history, accuracy and rating tracking, and saved practice sessions.",
+        },
+    ];
 
-    function checkAnswer() {
-        const cat = selectedCategory;
-        const problem = problems[cat];
-        const trimmed = answers[cat].trim();
+    let selected = $state<DisciplineKey>("algebra");
+    let current = $derived(
+        disciplines.find((d) => d.id === selected) ?? disciplines[0],
+    );
 
-        if (!trimmed) {
-            toasts.warning("Please input an answer before submitting.");
+    type Verdict = "unanswered" | "empty" | "correct" | "wrong";
+
+    let answers = $state<Record<string, string>>({});
+    let verdicts = $state<Record<string, Verdict>>({});
+    let hintOpen = $state<Record<string, boolean>>({});
+    let shaking = $state(false);
+
+    let verdict = $derived(verdicts[selected] ?? "unanswered");
+
+    /** Transitions carry state changes here, so they shorten to zero rather
+     *  than disappearing when the user asks for reduced motion. */
+    let motion = $derived(prefersReducedMotion.current ? 0 : 1);
+
+    const number = new Intl.NumberFormat();
+    let problemLabel = $derived(
+        data.problemCount === null ? null : number.format(data.problemCount),
+    );
+    let testLabel = $derived(
+        data.testCount === null ? null : number.format(data.testCount),
+    );
+    let yearSpan = $derived(
+        data.earliestYear && data.latestYear
+            ? `${data.earliestYear}–${data.latestYear}`
+            : null,
+    );
+
+    function check() {
+        const given = (answers[selected] ?? "").trim();
+        if (!given) {
+            verdicts[selected] = "empty";
             return;
         }
 
-        if (trimmed === problem.answer) {
-            states[cat] = "correct";
-            toasts.success("Correct! That is the right answer. 🎉");
-        } else {
-            states[cat] = "incorrect";
-            shake[cat] = true;
-            toasts.error(
-                "Not quite! Double check your calculations and try again.",
-            );
-            setTimeout(() => {
-                shake[cat] = false;
-            }, 360);
+        if (given === current.answer) {
+            verdicts[selected] = "correct";
+            return;
         }
+
+        verdicts[selected] = "wrong";
+        if (prefersReducedMotion.current) return;
+        shaking = true;
+        setTimeout(() => (shaking = false), 360);
     }
 </script>
 
 <svelte:head>
-    <title>ProblemCloud — Master Math Contest Problem Solving</title>
+    <title>ProblemCloud — contest math practice in one place</title>
     <meta
         name="description"
-        content="Curated training system for math competitions. Master Algebra, Combinatorics, Geometry, and Number Theory through interactive exercises."
+        content="{problemLabel ??
+            'Thousands of'} contest math problems from MATHCOUNTS, AMC, AIME, HMMT, PUMAC and more — complete papers in one searchable library, with your history, skill rating, and review queue kept in order."
     />
 </svelte:head>
 
-<!-- Hero Section -->
-<section
-    class="relative pt-20 md:py-32 flex flex-col items-center justify-center text-center px-6 max-w-5xl mx-auto"
->
-    <div
-        class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border/80 bg-surface-container-lowest text-xs font-semibold text-muted-foreground mb-6 shadow-xs animate-fade-in"
+<div class="mx-auto w-full max-w-[1040px] px-md pb-xl md:px-xl">
+    <!-- Hero -->
+    <section
+        class="grid items-center gap-xl pt-xl pb-xl lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:pt-[4.5rem] lg:pb-[4.5rem]"
     >
-        <span class="w-1.5 h-1.5 rounded-full bg-correct"></span>
-        Now supporting Svelte 5 & Tailwind v4
-    </div>
+        <div class="rise">
+            <h1 class="type-hero text-foreground text-balance">
+                Every problem in one place.
+            </h1>
+            <p class="type-lead text-muted-foreground mt-md max-w-[46ch]">
+                Algebra, combinatorics, geometry, and number theory in one
+                searchable library — every attempt recorded, your skill rated
+                against each problem, and the next thing to review already
+                picked out.
+            </p>
 
-    <h1
-        class="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-[1.15] px-4 flex flex-col items-center"
-    >
-        <span
-            class="relative inline-block w-full max-w-[280px] md:max-w-[440px] h-[1.25em] overflow-visible my-1.5"
-        >
-            {#key currentWordIndex}
-                <span
-                    in:fly={{ y: 24, duration: 350, delay: 100 }}
-                    out:fly={{ y: -24, duration: 250 }}
-                    class="absolute inset-0 flex justify-center items-center"
+            <div class="mt-lg flex flex-wrap items-center gap-sm">
+                <Button
+                    href={session ? "/" : "/auth/signup"}
+                    size="lg"
+                    class="px-lg"
+                    id="hero-get-started-btn"
                 >
-                    <span
-                        class="text-primary-foreground capitalize inline-block whitespace-nowrap"
-                    >
-                        {words[currentWordIndex]}
-                    </span>
-                </span>
-            {/key}
-        </span>
-        <span class="text-foreground">Practice</span>
-    </h1>
-
-    <p
-        class="text-lg md:text-xl text-muted-foreground max-w-3xl mb-10 leading-relaxed"
-    >
-        Stop juggling open browser tabs, fragmented PDFs, and forum links.
-        ProblemCloud unifies contest math prep into a single, cohesive dashboard
-        that records your progress, stores your history, and provides smart
-        hints when you get stuck. We make it simple to grind, practice, and
-        study.
-    </p>
-
-    <div
-        class="flex flex-col sm:flex-row items-center gap-4 w-full justify-center"
-    >
-        <Button
-            href={session ? "/" : "/auth/signup"}
-            size="lg"
-            class="w-full sm:w-auto px-8 font-semibold shadow-md cursor-pointer"
-            id="hero-get-started-btn"
-        >
-            Get Started Free
-        </Button>
-        <Button
-            href="/library"
-            variant="outline"
-            size="lg"
-            class="w-full sm:w-auto px-8 cursor-pointer"
-            id="hero-explore-btn"
-        >
-            Explore Problems
-        </Button>
-    </div>
-</section>
-
-<!-- Over {count} Problems Strip -->
-<section
-    class="w-full py-12 bg-surface-container-low/40 border-t border-b border-border/30 transition-colors"
->
-    <div class="max-w-7xl mx-auto px-6 text-center">
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-8">
-            Over <span
-                class="text-primary-foreground font-extrabold text-3xl md:text-4xl"
-                >{formattedCount}+</span
-            > Problems from Famous Competitions
-        </h2>
-        <div class="flex flex-wrap items-center justify-center gap-4 md:gap-6">
-            <div
-                class="px-5 py-3 rounded-xl border border-border bg-surface-container-lowest flex items-center gap-3 shadow-xs hover:border-[var(--algebra)] transition-all duration-300"
-            >
-                <Icon name="verified" class="text-[var(--algebra)]" />
-                <span class="text-sm font-semibold">AMC 8 / 10 / 12</span>
+                    {session ? "Go to your dashboard" : "Start practicing"}
+                </Button>
+                <Button
+                    href="/library"
+                    variant="ghost"
+                    size="lg"
+                    class="text-muted-foreground hover:text-foreground px-md"
+                    id="hero-explore-btn"
+                >
+                    Browse the library
+                    <Icon name="arrow_forward" fontsize="18px" />
+                </Button>
             </div>
-            <div
-                class="px-5 py-3 rounded-xl border border-border bg-surface-container-lowest flex items-center gap-3 shadow-xs hover:border-[var(--combinatorics)] transition-all duration-300"
-            >
-                <Icon name="verified" class="text-[var(--combinatorics)]" />
-                <span class="text-sm font-semibold">AIME</span>
-            </div>
-            <div
-                class="px-5 py-3 rounded-xl border border-border bg-surface-container-lowest flex items-center gap-3 shadow-xs hover:border-[var(--geometry)] transition-all duration-300"
-            >
-                <Icon name="verified" class="text-[var(--geometry)]" />
-                <span class="text-sm font-semibold">Mandelbrot</span>
-            </div>
-            <div
-                class="px-5 py-3 rounded-xl border border-border bg-surface-container-lowest flex items-center gap-3 shadow-xs hover:border-[var(--number-theory)] transition-all duration-300"
-            >
-                <Icon name="verified" class="text-[var(--number-theory)]" />
-                <span class="text-sm font-semibold">Purple Comet!</span>
-            </div>
-            <div
-                class="px-5 py-3 rounded-xl border border-border bg-surface-container-lowest flex items-center gap-3 shadow-xs hover:border-primary-foreground transition-all duration-300"
-            >
-                <Icon name="verified" class="text-primary-foreground" />
-                <span class="text-sm font-semibold">HMMT & Caltech HM</span>
-            </div>
-        </div>
-    </div>
-</section>
 
-<!-- Float SVG Graphic / Mockup Section -->
-<section class="py-16 max-w-5xl mx-auto px-6 flex flex-col items-center">
-    <div
-        class="w-full max-w-3xl rounded-2xl border border-border/80 p-2 bg-surface-container-low/40 backdrop-blur-xs shadow-xl relative"
-    >
-        <div
-            class="absolute -top-3 -left-3 bg-surface-container-lowest border border-border px-3 py-1 rounded-full text-xs font-mono text-[var(--algebra)] shadow-xs"
-        >
-            f(x) = sin(x) + cos(x)
-        </div>
-        <div
-            class="absolute -bottom-3 -right-3 bg-surface-container-lowest border border-border px-3 py-1 rounded-full text-xs font-mono text-[var(--geometry)] shadow-xs"
-        >
-            a² + b² = c²
-        </div>
-        <div
-            class="bg-surface-container-lowest rounded-xl p-6 md:p-8 flex items-center justify-center overflow-hidden border border-border/40 min-h-[220px]"
-        >
-            <div
-                class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center w-full text-left"
-            >
-                <div>
-                    <span
-                        class="text-xs font-bold text-[var(--algebra)] uppercase tracking-wider block mb-2"
-                        >Sample Olympiad Problem</span
-                    >
-                    <h3 class="text-lg font-semibold mb-3">
-                        Find all solutions in positive integers.
-                    </h3>
-                    <div
-                        class="bg-surface-container-low/80 p-4 rounded-lg border border-border/50 text-sm font-serif"
-                    >
-                        <LaTeX>
-                            Determine all pairs of positive integers $(x, y)$
-                            such that: $$x^2 - y! = 2026$$
-                        </LaTeX>
-                    </div>
-                </div>
-                <div class="flex flex-col gap-3">
-                    <div
-                        class="flex items-center gap-3 p-3 rounded-lg border border-border/30 bg-surface-container-low/30"
-                    >
-                        <Icon name="check_circle" class="text-correct" />
-                        <span class="text-sm font-medium"
-                            >Automatic verification & stats</span
-                        >
-                    </div>
-                    <div
-                        class="flex items-center gap-3 p-3 rounded-lg border border-border/30 bg-surface-container-low/30"
-                    >
-                        <Icon name="draw" class="text-[var(--geometry)]" />
-                        <span class="text-sm font-medium"
-                            >Visual geometry diagrams</span
-                        >
-                    </div>
-                    <div
-                        class="flex items-center gap-3 p-3 rounded-lg border border-border/30 bg-surface-container-low/30"
-                    >
-                        <Icon
-                            name="bar_chart"
-                            class="text-[var(--number-theory)]"
-                        />
-                        <span class="text-sm font-medium"
-                            >Personalized learning roadmaps</span
-                        >
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Comparison Section -->
-<section class="py-20 max-w-7xl mx-auto px-6 border-b border-border/30">
-    <div class="text-center max-w-3xl mx-auto mb-16">
-        <h2 class="text-3xl font-bold tracking-tight mb-4">
-            Stop Juggling. Start Solving.
-        </h2>
-        <p class="text-muted-foreground">
-            We designed ProblemCloud specifically to eliminate the friction of
-            traditional contest math prep.
-        </p>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        <!-- The Old Way -->
-        <div
-            class="border border-border/50 bg-surface-container-low/20 rounded-2xl p-8 relative overflow-hidden"
-        >
-            <div
-                class="absolute top-4 right-4 text-xs font-semibold px-2 py-1 rounded-md bg-destructive/10 text-destructive border border-destructive/20"
-            >
-                The Old Way
-            </div>
-            <h3
-                class="text-xl font-bold mb-6 text-foreground flex items-center gap-2"
-            >
-                <Icon name="close" class="text-destructive" /> Chaos & Friction
-            </h3>
-            <ul class="space-y-4">
-                <li class="flex gap-3 text-sm text-muted-foreground">
-                    <Icon
-                        name="link_off"
-                        class="text-destructive flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Juggle dozens of open browser tabs, PDFs, and forum
-                        links.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-muted-foreground">
-                    <Icon
-                        name="history_toggle_off"
-                        class="text-destructive flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >No central record of which problems you solved,
-                        skipped, or got wrong.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-muted-foreground">
-                    <Icon
-                        name="question_mark"
-                        class="text-destructive flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Stuck on a problem? Spend hours digging for hints or
-                        solutions.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-muted-foreground">
-                    <Icon
-                        name="grid_view"
-                        class="text-destructive flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Manually keep track of your strengths and weaknesses on
-                        scrap paper.</span
-                    >
-                </li>
-            </ul>
-        </div>
-
-        <!-- The ProblemCloud Way -->
-        <div
-            class="border border-[var(--algebra)]/30 bg-surface-container-lowest rounded-2xl p-8 relative overflow-hidden shadow-md"
-        >
-            <div
-                class="absolute top-4 right-4 text-xs font-semibold px-2 py-1 rounded-md bg-correct/10 text-correct border border-correct/20"
-            >
-                The ProblemCloud Way
-            </div>
-            <h3
-                class="text-xl font-bold mb-6 text-foreground flex items-center gap-2"
-            >
-                <Icon name="check" class="text-correct" /> Unified & Focused
-            </h3>
-            <ul class="space-y-4">
-                <li class="flex gap-3 text-sm text-foreground">
-                    <Icon
-                        name="cloud"
-                        class="text-[var(--algebra)] flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Thousands of problems from famous contests,
-                        consolidated in one dashboard.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-foreground">
-                    <Icon
-                        name="analytics"
-                        class="text-[var(--algebra)] flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Automatically log your practice history, streaks, and
-                        correct rates.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-foreground">
-                    <Icon
-                        name="lightbulb"
-                        class="text-[var(--algebra)] flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >Immediate help with smart, incremental hints whenever
-                        you get stuck.</span
-                    >
-                </li>
-                <li class="flex gap-3 text-sm text-foreground">
-                    <Icon
-                        name="trending_up"
-                        class="text-[var(--algebra)] flex-shrink-0"
-                        fontsize="20px"
-                    />
-                    <span
-                        >A personal roadmap that points out where to study and
-                        practice next.</span
-                    >
-                </li>
-            </ul>
-        </div>
-    </div>
-</section>
-
-<!-- Features Section -->
-<section
-    id="features"
-    class="py-20 bg-surface-container-low/50 transition-colors border-t border-b border-border/50"
->
-    <div class="max-w-7xl mx-auto px-6">
-        <div class="text-center max-w-3xl mx-auto mb-16">
-            <h2 class="text-3xl font-bold tracking-tight mb-4">
-                Master Every Math Domain
-            </h2>
-            <p class="text-muted-foreground">
-                Four specialized sections packed with problems spanning all
-                levels of math competitions, from AMC 8 to IMO.
+            <p class="type-code text-muted-foreground mt-lg tabular-nums">
+                {#if problemLabel}
+                    {problemLabel} problems
+                    <span class="text-outline-variant mx-2">/</span>
+                {/if}
+                {#if testLabel}
+                    {testLabel} complete tests
+                    <span class="text-outline-variant mx-2">/</span>
+                {/if}
+                free to practice
             </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Algebra -->
+        <!-- Try it: the product itself, not a picture of it -->
+        <div class="rise rise-late">
             <div
-                class="group border border-border/60 hover:border-[var(--algebra)]/40 rounded-2xl p-6 bg-surface-container-lowest hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
-                style="border-top-width: 4px; border-top-color: var(--algebra);"
+                class="border-border bg-surface-container-lowest rounded-xl border"
             >
-                <div>
-                    <div
-                        class="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
-                        style="background-color: color-mix(in oklab, var(--algebra) 10%, transparent); color: var(--algebra)"
-                    >
-                        <Icon name="calculate" fontsize="24px" />
-                    </div>
-                    <h3
-                        class="text-lg font-bold mb-2 group-hover:text-[var(--algebra)] transition-colors"
-                    >
-                        Algebra
-                    </h3>
-                    <p
-                        class="text-sm text-muted-foreground leading-relaxed mb-4"
-                    >
-                        Equations, systems, inequalities, sequences, and
-                        polynomials. Focus on symbolic manipulation and
-                        structure.
-                    </p>
-                </div>
                 <div
-                    class="text-xs font-semibold text-muted-foreground bg-surface-container-low py-1.5 px-3 rounded-md w-fit"
+                    class="scrollbar-none border-border/70 flex gap-lg overflow-x-auto border-b px-lg"
+                    role="group"
+                    aria-label="Sample problem by discipline"
                 >
-                    Polynomials, Cauchy-Schwarz, Recurrences
-                </div>
-            </div>
-
-            <!-- Combinatorics -->
-            <div
-                class="group border border-border/60 hover:border-[var(--combinatorics)]/40 rounded-2xl p-6 bg-surface-container-lowest hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
-                style="border-top-width: 4px; border-top-color: var(--combinatorics);"
-            >
-                <div>
-                    <div
-                        class="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
-                        style="background-color: color-mix(in oklab, var(--combinatorics) 10%, transparent); color: var(--combinatorics)"
-                    >
-                        <Icon name="groups" fontsize="24px" />
-                    </div>
-                    <h3
-                        class="text-lg font-bold mb-2 group-hover:text-[var(--combinatorics)] transition-colors"
-                    >
-                        Combinatorics
-                    </h3>
-                    <p
-                        class="text-sm text-muted-foreground leading-relaxed mb-4"
-                    >
-                        Counting, probability, Pigeonhole Principle, graph
-                        theory, and grid pathing. Develop systematic reasoning.
-                    </p>
-                </div>
-                <div
-                    class="text-xs font-semibold text-muted-foreground bg-surface-container-low py-1.5 px-3 rounded-md w-fit"
-                >
-                    Permutations, Graph Coloring, Bijection
-                </div>
-            </div>
-
-            <!-- Geometry -->
-            <div
-                class="group border border-border/60 hover:border-[var(--geometry)]/40 rounded-2xl p-6 bg-surface-container-lowest hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
-                style="border-top-width: 4px; border-top-color: var(--geometry);"
-            >
-                <div>
-                    <div
-                        class="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
-                        style="background-color: color-mix(in oklab, var(--geometry) 10%, transparent); color: var(--geometry)"
-                    >
-                        <Icon name="change_history" fontsize="24px" />
-                    </div>
-                    <h3
-                        class="text-lg font-bold mb-2 group-hover:text-[var(--geometry)] transition-colors"
-                    >
-                        Geometry
-                    </h3>
-                    <p
-                        class="text-sm text-muted-foreground leading-relaxed mb-4"
-                    >
-                        Triangles, circles, polygon properties, coordinate
-                        geometry, and trigonometry. Enhance spatial
-                        relationships.
-                    </p>
-                </div>
-                <div
-                    class="text-xs font-semibold text-muted-foreground bg-surface-container-low py-1.5 px-3 rounded-md w-fit"
-                >
-                    Power of a Point, Cyclic Quadrilaterals
-                </div>
-            </div>
-
-            <!-- Number Theory -->
-            <div
-                class="group border border-border/60 hover:border-[var(--number-theory)]/40 rounded-2xl p-6 bg-surface-container-lowest hover:shadow-lg transition-all duration-300 flex flex-col justify-between"
-                style="border-top-width: 4px; border-top-color: var(--number-theory);"
-            >
-                <div>
-                    <div
-                        class="w-12 h-12 rounded-xl flex items-center justify-center mb-5"
-                        style="background-color: color-mix(in oklab, var(--number-theory) 10%, transparent); color: var(--number-theory)"
-                    >
-                        <Icon name="tag" fontsize="24px" />
-                    </div>
-                    <h3
-                        class="text-lg font-bold mb-2 group-hover:text-[var(--number-theory)] transition-colors"
-                    >
-                        Number Theory
-                    </h3>
-                    <p
-                        class="text-sm text-muted-foreground leading-relaxed mb-4"
-                    >
-                        Divisibility, modular arithmetic, prime factorization,
-                        Diophantine equations, and base representation.
-                    </p>
-                </div>
-                <div
-                    class="text-xs font-semibold text-muted-foreground bg-surface-container-low py-1.5 px-3 rounded-md w-fit"
-                >
-                    Fermat's Little Theorem, Euclidean Algorithm
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Sandbox Section -->
-<section id="sandbox" class="py-20 max-w-7xl mx-auto px-6">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-        <!-- Left Header Info -->
-        <div class="lg:col-span-5 text-left">
-            <div
-                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-bold text-primary-foreground mb-4"
-            >
-                Interactive Demo
-            </div>
-            <h2 class="text-3xl font-bold tracking-tight mb-6">
-                Interactive Practice Sandbox
-            </h2>
-            <p class="text-muted-foreground mb-6 leading-relaxed">
-                Test drive our interface. ProblemCloud formats algebraic
-                equations, indices, binomial coefficients, and modular equations
-                cleanly. Select a discipline to attempt its math challenge.
-            </p>
-            <div class="flex flex-col gap-4">
-                <div class="flex items-start gap-3">
-                    <Icon name="check" class="text-correct mt-0.5" />
-                    <div>
-                        <h4 class="text-sm font-semibold">
-                            Immediate Feedback
-                        </h4>
-                        <p class="text-xs text-muted-foreground">
-                            Answers are validated immediately using our
-                            client-side checking system.
-                        </p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3">
-                    <Icon name="help" class="text-[var(--algebra)] mt-0.5" />
-                    <div>
-                        <h4 class="text-sm font-semibold">
-                            Step-by-step Hints
-                        </h4>
-                        <p class="text-xs text-muted-foreground">
-                            Stuck on a calculation? Click the hint toggle for
-                            hints formatted in LaTeX.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Interactive Card -->
-        <div class="lg:col-span-7">
-            <div
-                class="bg-surface-container-lowest border border-border/80 rounded-2xl p-6 md:p-8 shadow-xl relative transition-all duration-300"
-            >
-                <!-- Category tab selectors -->
-                <div
-                    class="flex flex-wrap gap-2 mb-6 border-b border-border/50 pb-4"
-                >
-                    {#each Object.entries(problems) as [key, problem]}
+                    {#each disciplines as d (d.id)}
                         <button
-                            onclick={() => (selectedCategory = key as any)}
-                            class="px-3.5 py-1.5 text-xs font-semibold rounded-full border transition-all duration-200 cursor-pointer flex items-center gap-1.5"
-                            style="
-                                    background-color: {selectedCategory === key
-                                ? `color-mix(in oklab, ${problem.color} 15%, transparent)`
-                                : 'transparent'};
-                                    color: {selectedCategory === key
-                                ? problem.color
-                                : 'var(--color-muted-foreground)'};
-                                    border-color: {selectedCategory === key
-                                ? `color-mix(in oklab, ${problem.color} 30%, transparent)`
-                                : 'var(--color-border)'};
-                                "
-                            id="sandbox-tab-{key}"
+                            type="button"
+                            aria-pressed={selected === d.id}
+                            onclick={() => (selected = d.id)}
+                            class="tab type-secondary shrink-0 py-3 whitespace-nowrap"
+                            class:tab-active={selected === d.id}
+                            style:--tab-color={d.color}
+                            id="sandbox-tab-{d.id}"
                         >
-                            <Icon name={problem.icon} fontsize="14px" />
-                            {problem.title}
+                            {d.label}
                         </button>
                     {/each}
                 </div>
 
-                <!-- Problem Card Body -->
-                {#key selectedCategory}
-                    {@const problem = problems[selectedCategory]}
-                    <div
-                        class="flex flex-col gap-6"
-                        class:animate-answer-shake={shake[selectedCategory]}
-                        in:fade={{ duration: 150 }}
-                    >
-                        <div>
-                            <span
-                                class="text-xs font-bold uppercase tracking-wider text-muted-foreground"
-                            >
-                                Question Statement
-                            </span>
-                            <p class="text-sm text-foreground mt-1 mb-4">
-                                <LaTeX>{problem.question}</LaTeX>
-                            </p>
-                            <div
-                                class="bg-surface-container-low border border-border/40 p-6 rounded-xl flex items-center justify-center"
-                            >
-                                <LaTeX
-                                    class="text-xl md:text-2xl font-semibold tracking-wide text-foreground"
-                                >
-                                    {problem.math}
-                                </LaTeX>
-                            </div>
-                        </div>
+                <div class="p-lg" class:animate-answer-shake={shaking}>
+                    <p class="type-caption text-muted-foreground">
+                        Sample problem
+                    </p>
 
-                        <!-- Input and action area -->
-                        <div class="flex flex-col gap-4">
+                    {#key selected}
+                        <div
+                            in:fade={{ duration: 140 * motion }}
+                            class="mt-sm flex min-h-[7.5rem] items-center"
+                        >
+                            <LaTeX class="type-problem text-foreground w-full">
+                                {current.statement}
+                            </LaTeX>
+                        </div>
+                    {/key}
+
+                    <div class="mt-md flex items-end gap-sm">
+                        <div class="flex-1">
                             <label
                                 for="sandbox-answer-input"
-                                class="text-xs font-bold uppercase tracking-wider text-muted-foreground block"
+                                class="type-caption text-muted-foreground mb-1.5 block"
+                                >Your answer</label
                             >
-                                Your Answer
-                            </label>
-                            <div class="flex gap-3">
-                                <input
-                                    type="text"
-                                    id="sandbox-answer-input"
-                                    bind:value={answers[selectedCategory]}
-                                    placeholder={problem.placeholder}
-                                    class="flex-1 px-4 py-2 text-sm rounded-lg border border-input focus:border-primary-foreground focus:ring-3 focus:ring-primary-foreground/20 outline-hidden transition-all bg-background text-foreground"
-                                    onkeydown={(e) =>
-                                        e.key === "Enter" && checkAnswer()}
-                                />
-                                <Button
-                                    onclick={checkAnswer}
-                                    variant="default"
-                                    class="cursor-pointer"
-                                    id="sandbox-submit-btn"
-                                >
-                                    Check
-                                </Button>
-                            </div>
+                            <Input
+                                id="sandbox-answer-input"
+                                bind:value={answers[selected]}
+                                placeholder="Type a number"
+                                autocomplete="off"
+                                class="font-mono"
+                                oninput={() =>
+                                    (verdicts[selected] = "unanswered")}
+                                onkeydown={(e: KeyboardEvent) =>
+                                    e.key === "Enter" && check()}
+                            />
                         </div>
+                        <Button onclick={check} id="sandbox-submit-btn"
+                            >Check</Button
+                        >
+                    </div>
 
-                        <!-- Submission response message -->
-                        {#if states[selectedCategory] === "correct"}
-                            <div
-                                transition:slide={{ duration: 200 }}
-                                class="flex items-center gap-2 p-3 rounded-lg bg-correct/10 text-correct border border-correct/20 text-sm font-medium"
-                            >
-                                <Icon name="check_circle" />
-                                <span
-                                    >Correct! You solved the {problem.title} challenge!</span
-                                >
-                            </div>
-                        {:else}
-                            <div
-                                class="flex items-center justify-between text-xs mt-1"
-                            >
-                                <button
-                                    onclick={() =>
-                                        (showHint[selectedCategory] =
-                                            !showHint[selectedCategory])}
-                                    class="text-primary-foreground hover:underline font-semibold cursor-pointer flex items-center gap-1"
-                                    id="sandbox-hint-btn"
-                                >
-                                    <Icon name="lightbulb" fontsize="14px" />
-                                    {showHint[selectedCategory]
-                                        ? "Hide Hint"
-                                        : "Need a Hint?"}
-                                </button>
-                                {#if states[selectedCategory] === "incorrect"}
-                                    <span
-                                        class="text-destructive font-medium flex items-center gap-1"
-                                        transition:fade
-                                    >
-                                        <Icon name="cancel" fontsize="14px" /> Incorrect.
-                                        Try again.
-                                    </span>
-                                {/if}
-                            </div>
-                        {/if}
+                    <div class="mt-md flex min-h-8 items-center justify-between gap-md">
+                        <button
+                            type="button"
+                            onclick={() =>
+                                (hintOpen[selected] = !hintOpen[selected])}
+                            class="type-secondary text-muted-foreground hover:text-foreground transition-colors"
+                            aria-expanded={hintOpen[selected] ?? false}
+                            id="sandbox-hint-btn"
+                        >
+                            {hintOpen[selected] ? "Hide hint" : "Show a hint"}
+                        </button>
 
-                        <!-- Hint Textbox -->
-                        {#if showHint[selectedCategory]}
-                            <div
-                                transition:slide={{ duration: 250 }}
-                                class="p-4 rounded-xl bg-surface-container border border-border/50 text-xs text-muted-foreground leading-relaxed font-serif animate-fade-in"
+                        {#if verdict === "correct"}
+                            <span
+                                class="type-secondary text-correct flex items-center gap-1.5"
+                                transition:fade={{ duration: 160 * motion }}
                             >
-                                <span
-                                    class="font-sans font-bold uppercase tracking-wider text-[10px] text-foreground block mb-1"
-                                    >Method / Hint</span
-                                >
-                                <LaTeX>{problem.hint}</LaTeX>
-                            </div>
+                                <Icon name="check_circle" fontsize="18px" />
+                                Correct
+                            </span>
+                        {:else if verdict === "wrong"}
+                            <span
+                                class="type-secondary text-destructive"
+                                transition:fade={{ duration: 160 * motion }}
+                            >
+                                Not quite — try again
+                            </span>
+                        {:else if verdict === "empty"}
+                            <span
+                                class="type-secondary text-muted-foreground"
+                                transition:fade={{ duration: 160 * motion }}
+                            >
+                                Enter an answer first
+                            </span>
                         {/if}
                     </div>
-                {/key}
+
+                    {#if hintOpen[selected]}
+                        <div
+                            transition:slide={{ duration: 180 * motion }}
+                            class="border-border/70 mt-sm border-t pt-sm"
+                        >
+                            <LaTeX
+                                class="type-secondary text-muted-foreground font-serif"
+                            >
+                                {current.hint}
+                            </LaTeX>
+                        </div>
+                    {/if}
+                </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
-<!-- FAQ / Stats Section -->
-<section
-    id="about"
-    class="py-20 bg-surface-container-low/50 transition-colors border-t border-border/50"
->
-    <div class="max-w-4xl mx-auto px-6">
-        <h2
-            class="text-2xl md:text-3xl font-bold tracking-tight text-center mb-12"
-        >
-            Frequently Asked Questions
+    <!-- Sources: the corpus is the argument, so it is listed, not summarised -->
+    <section class="border-border/60 border-t py-xl">
+        <h2 class="type-display text-foreground max-w-[22ch] text-balance">
+            Complete contests, not a selection.
         </h2>
-
-        <div class="flex flex-col gap-6">
-            <div
-                class="border border-border/50 bg-surface-container-lowest rounded-xl p-6"
-            >
-                <h3 class="font-semibold text-base mb-2">
-                    What is ProblemCloud?
-                </h3>
-                <p class="text-sm text-muted-foreground leading-relaxed">
-                    ProblemCloud is a math learning platform optimized for
-                    middle school, high school, and collegiate math
-                    competitions. It compiles and categorizes math problems to
-                    optimize preparation for contests like the AMC, AIME, USAMO,
-                    and ARML.
-                </p>
-            </div>
-
-            <div
-                class="border border-border/50 bg-surface-container-lowest rounded-xl p-6"
-            >
-                <h3 class="font-semibold text-base mb-2">
-                    How are math formulas rendered?
-                </h3>
-                <p class="text-sm text-muted-foreground leading-relaxed">
-                    Formulas are rendered locally using the KaTeX math
-                    typesetting library. This guarantees fast performance and
-                    high-quality rendering matching standard LaTeX equations.
-                </p>
-            </div>
-
-            <div
-                class="border border-border/50 bg-surface-container-lowest rounded-xl p-6"
-            >
-                <h3 class="font-semibold text-base mb-2">
-                    Is the platform free?
-                </h3>
-                <p class="text-sm text-muted-foreground leading-relaxed">
-                    Yes! ProblemCloud is fully open-source and free to practice.
-                    Create an account to log your history, track your
-                    correct/attempted analytics, and start building custom
-                    practice templates.
-                </p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Final CTA Banner -->
-<section class="py-16 md:py-24 text-center px-6 border-t border-border/50">
-    <div class="max-w-4xl mx-auto flex flex-col items-center">
-        <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
-            Hop on
-        </h2>
-        <p class="text-muted-foreground max-w-5xl mb-8 leading-relaxed">
-            Join our community and tackle algebra, geometry, combinations, and
-            prime indices with confidence.
+        <p class="type-secondary text-muted-foreground mt-md max-w-[62ch]">
+            {#if testLabel}{testLabel} full papers{:else}Every paper{/if}
+            across {data.seriesNames.length} series{#if yearSpan}, {yearSpan}{/if}
+            — including invitationals that usually exist only as a scanned PDF.
+            Sit a whole test, or pull one problem out of it.
         </p>
+
+        <ul
+            class="type-secondary text-muted-foreground mt-lg grid grid-cols-2 gap-x-lg gap-y-1.5 sm:grid-cols-3 lg:grid-cols-4"
+        >
+            {#each data.seriesNames as name (name)}
+                <li class="truncate" title={name}>{name}</li>
+            {/each}
+        </ul>
+    </section>
+
+    <!-- What you get -->
+    <section class="border-border/60 border-t py-xl">
+        <h2 class="type-display text-foreground max-w-[20ch] text-balance">
+            Practice that keeps track of itself.
+        </h2>
+        <div class="mt-xl grid gap-x-xl gap-y-lg sm:grid-cols-2">
+            {#each capabilities as capability, i (capability.title)}
+                <div class="border-border/60 border-t pt-md">
+                    <span class="type-code text-outline-variant"
+                        >{String(i + 1).padStart(2, "0")}</span
+                    >
+                    <h3 class="type-section-title text-foreground mt-1">
+                        {capability.title}
+                    </h3>
+                    <p
+                        class="type-secondary text-muted-foreground mt-1.5 max-w-[52ch]"
+                    >
+                        {capability.body}
+                    </p>
+                </div>
+            {/each}
+        </div>
+    </section>
+
+    <!-- The problem matrix: shown, because a paragraph cannot carry it -->
+    <section class="border-border/60 border-t py-xl">
+        <h2 class="type-section-title text-foreground">Every gap in one grid</h2>
+        <p class="type-secondary text-muted-foreground mt-1.5 max-w-[68ch]">
+            A series opens as a matrix — one row per contest, one cell per
+            problem. The shade is how confident you are, the mark is what you
+            did, and a ring means the problem is due for review. The holes in a
+            decade of papers are visible at a glance, and every cell opens the
+            problem.
+        </p>
+
+        <figure class="mt-lg">
+            <div class="scrollbar-none overflow-x-auto">
+                <div class="w-max min-w-full" aria-hidden="true">
+                    <div class="flex items-center gap-1">
+                        <span class="w-28 shrink-0"></span>
+                        {#each matrixColumns as column (column)}
+                            <span
+                                class="type-caption text-outline-variant w-6 shrink-0 text-center font-mono"
+                                >{column}</span
+                            >
+                        {/each}
+                    </div>
+
+                    {#each matrixRows as row (row.label)}
+                        <div class="mt-1 flex items-center gap-1">
+                            <span
+                                class="type-caption text-muted-foreground w-28 shrink-0 truncate"
+                                >{row.label}</span
+                            >
+                            {#each row.cells as cell, i (i)}
+                                <span
+                                    class={cn(
+                                        "flex size-6 shrink-0 items-center justify-center rounded border",
+                                        MASTERY_CLASS[cell.mastery],
+                                        "due" in cell &&
+                                            cell.due &&
+                                            "ring-primary/60 ring-offset-background ring-2 ring-offset-1",
+                                    )}
+                                >
+                                    {#if cell.mark}
+                                        <Icon
+                                            name={cell.mark}
+                                            fontsize="0.8rem"
+                                        />
+                                    {:else}
+                                        <span
+                                            class="size-1 rounded-full bg-current opacity-25"
+                                        ></span>
+                                    {/if}
+                                </span>
+                            {/each}
+                        </div>
+                    {/each}
+                </div>
+            </div>
+
+            <figcaption
+                class="type-caption text-muted-foreground mt-md flex flex-wrap items-center gap-x-lg gap-y-2"
+            >
+                {#each matrixKey as key (key.mastery)}
+                    <span class="flex items-center gap-1.5">
+                        <span
+                            class={cn(
+                                "size-3.5 rounded border",
+                                MASTERY_CLASS[key.mastery],
+                            )}
+                        ></span>
+                        {key.label}
+                    </span>
+                {/each}
+                <span class="text-outline-variant"
+                    >Illustration — five AMC 10 papers with example progress.</span
+                >
+            </figcaption>
+        </figure>
+    </section>
+
+    <!-- Disciplines -->
+    <section class="border-border/60 border-t py-xl">
+        <h2 class="type-section-title text-foreground">Four disciplines</h2>
+        <div class="mt-md grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
+            {#each disciplines as d (d.id)}
+                <div class="pt-md" style="border-top: 2px solid {d.color}">
+                    <h3 class="type-section-title text-foreground">
+                        {d.label}
+                    </h3>
+                    <p class="type-secondary text-muted-foreground mt-1">
+                        {d.topics}
+                    </p>
+                </div>
+            {/each}
+        </div>
+    </section>
+
+    <!-- Questions -->
+    <section class="border-border/60 border-t py-xl">
+        <h2 class="type-section-title text-foreground">Common questions</h2>
+        <div class="mt-md">
+            {#each questions as item (item.q)}
+                <details class="faq border-border/60 border-b">
+                    <summary
+                        class="type-body text-foreground hover:text-primary-foreground flex cursor-pointer items-center justify-between gap-md py-md transition-colors"
+                    >
+                        {item.q}
+                        <Icon
+                            name="expand_more"
+                            fontsize="20px"
+                            class="chevron text-muted-foreground shrink-0"
+                        />
+                    </summary>
+                    <p class="type-secondary text-muted-foreground max-w-[70ch] pb-md">
+                        {item.a}
+                    </p>
+                </details>
+            {/each}
+        </div>
+    </section>
+
+    <!-- Close -->
+    <section
+        class="border-border/60 flex flex-col items-start gap-md border-t py-xl sm:flex-row sm:items-center sm:justify-between"
+    >
+        <div>
+            <h2 class="type-display text-foreground">Start with one problem.</h2>
+            <p class="type-secondary text-muted-foreground mt-1.5">
+                An account is free, and your history starts from the first
+                answer you submit.
+            </p>
+        </div>
         <Button
             href={session ? "/" : "/auth/signup"}
             size="lg"
-            class="px-8 font-semibold shadow-md cursor-pointer"
+            class="px-lg"
             id="bottom-cta-btn"
         >
-            Create Free Account
+            {session ? "Go to your dashboard" : "Create free account"}
         </Button>
-    </div>
-</section>
+    </section>
+</div>
 
 <style>
-    /* Keyframes for simple fadeIn animation on load */
-    @keyframes fadeIn {
+    .tab {
+        color: var(--color-muted-foreground);
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        transition:
+            color 160ms ease,
+            border-color 160ms ease;
+    }
+
+    .tab:hover {
+        color: var(--color-foreground);
+    }
+
+    .tab-active {
+        color: var(--tab-color);
+        border-bottom-color: var(--tab-color);
+    }
+
+    .faq summary {
+        list-style: none;
+    }
+
+    .faq summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .faq :global(.chevron) {
+        transition: transform 180ms ease;
+    }
+
+    .faq[open] :global(.chevron) {
+        transform: rotate(180deg);
+    }
+
+    /* One entrance, on first paint only — motion for continuity, not decor. */
+    @keyframes rise {
         from {
             opacity: 0;
-            transform: translateY(8px);
+            transform: translateY(10px);
         }
         to {
             opacity: 1;
-            transform: translateY(0);
+            transform: none;
         }
     }
 
-    .animate-fade-in {
-        animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    .rise {
+        animation: rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .rise-late {
+        animation-delay: 90ms;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .rise {
+            animation: none;
+        }
+
+        .faq :global(.chevron) {
+            transition: none;
+        }
     }
 </style>
