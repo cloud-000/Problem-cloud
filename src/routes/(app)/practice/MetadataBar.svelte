@@ -14,7 +14,6 @@
     interface Props {
         problem: ProblemRow;
         problemRating: ProblemRating | null;
-        hasAnswer: boolean;
         showLiveFeedback: boolean;
         focusModeActive: boolean;
         currentSource: string;
@@ -23,13 +22,11 @@
         historyIndex: number;
         historyLength: number;
         revealLinks?: boolean;
-        onOpenReport: () => void;
     }
 
     let {
         problem,
         problemRating,
-        hasAnswer,
         showLiveFeedback,
         focusModeActive,
         currentSource,
@@ -38,7 +35,6 @@
         historyIndex,
         historyLength,
         revealLinks = false,
-        onOpenReport,
     }: Props = $props();
 
     let detailsOpen = $state(false);
@@ -121,15 +117,6 @@
                     <span class="font-sans text-foreground">Test position</span> ·
                     {historyIndex + 1} of {historyLength}
                 </p>
-            {/if}
-            {#if !hasAnswer}
-                <button
-                    type="button"
-                    class="w-fit text-left text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
-                    onclick={onOpenReport}
-                >
-                    Report or suggest an answer
-                </button>
             {/if}
             {#if testHref || problemHref}
                 <div class="flex flex-wrap items-center gap-4">

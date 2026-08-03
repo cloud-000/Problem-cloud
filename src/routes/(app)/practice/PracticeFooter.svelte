@@ -33,6 +33,7 @@
         ratingDelta,
         correct,
         onBack,
+        onReport,
         onForward,
         onSkip,
         onJumpToLatest,
@@ -67,6 +68,7 @@
         ratingDelta: number | null;
         correct: boolean | null;
         onBack: () => void;
+        onReport: () => void;
         onForward: () => void;
         onSkip: () => void;
         onJumpToLatest: () => void;
@@ -112,6 +114,28 @@
                 class="text-muted-foreground hover:text-foreground font-normal text-xs px-2 py-1.5 h-auto [&_svg]:size-3.5 disabled:opacity-30"
             >
                 <Icon name="arrow_back" />
+            </Button>
+        {/if}
+        {#if !hasAnswer}
+            <Button
+                variant="ghost"
+                disabled={paused}
+                onclick={onReport}
+                aria-label="Report problem or suggest an answer"
+                title="Report problem or suggest an answer"
+                class={cn(
+                    "h-auto px-2 py-1.5 text-xs font-normal text-muted-foreground hover:text-foreground [&_svg]:size-3.5 disabled:opacity-30",
+                    submitted &&
+                        "text-unsure hover:text-unsure",
+                )}
+                style="--attention-color: var(--color-unsure)"
+            >
+                <span
+                    class:report-attention-icon={submitted}
+                    class="flex"
+                >
+                    <Icon name="report" />
+                </span>
             </Button>
         {/if}
         {#if view.showForward && !view.compact && view.mode !== "test"}
@@ -257,3 +281,29 @@
         {/if}
     </div>
 </footer>
+
+<style>
+    @keyframes report-icon-attention {
+        0%,
+        100% {
+            transform: scale(1);
+            text-shadow: 0 0 0 transparent;
+        }
+        45% {
+            transform: scale(1.16);
+            text-shadow: 0 0 0.45rem
+                color-mix(in oklab, var(--attention-color) 55%, transparent);
+        }
+    }
+
+    .report-attention-icon {
+        transform-origin: center;
+        animation: report-icon-attention 2.4s ease-in-out infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .report-attention-icon {
+            animation: none;
+        }
+    }
+</style>

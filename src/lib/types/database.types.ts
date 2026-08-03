@@ -1192,6 +1192,7 @@ export type Database = {
       user_submitted_feedback: {
         Row: {
           answer_index: number | null
+          answer_text: string | null
           created_at: string
           id: number
           message: string | null
@@ -1204,6 +1205,7 @@ export type Database = {
         }
         Insert: {
           answer_index?: number | null
+          answer_text?: string | null
           created_at?: string
           id?: never
           message?: string | null
@@ -1216,6 +1218,7 @@ export type Database = {
         }
         Update: {
           answer_index?: number | null
+          answer_text?: string | null
           created_at?: string
           id?: never
           message?: string | null

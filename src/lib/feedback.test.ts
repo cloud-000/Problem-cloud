@@ -14,6 +14,7 @@ describe("problemReportInsert", () => {
             problem_id: 42,
             type: "problem_report",
             answer_index: 2,
+            answer_text: null,
             message: "The keyed answer looks wrong.",
         });
     });
@@ -24,7 +25,21 @@ describe("problemReportInsert", () => {
         ).toMatchObject({ answer_index: null, message: "Bad rendering" });
         expect(
             problemReportInsert("user-id", { problemId: 42, answerIndex: 1 }),
-        ).toMatchObject({ answer_index: 1, message: null });
+        ).toMatchObject({ answer_index: 1, answer_text: null, message: null });
+    });
+
+    test("stores a custom answer separately from the report message", () => {
+        expect(
+            problemReportInsert("user-id", {
+                problemId: 42,
+                answerText: "  3\\sqrt{2}  ",
+                message: "The published answer is missing.",
+            }),
+        ).toMatchObject({
+            answer_index: null,
+            answer_text: "3\\sqrt{2}",
+            message: "The published answer is missing.",
+        });
     });
 
     test("rejects an empty report", () => {

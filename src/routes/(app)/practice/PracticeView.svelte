@@ -1875,7 +1875,6 @@
                         <MetadataBar
                            {problem}
                            {problemRating}
-                           {hasAnswer}
                            showLiveFeedback={behavior.showLiveFeedback}
                            {focusModeActive}
                            {currentSource}
@@ -1884,7 +1883,6 @@
                            {historyIndex}
                            historyLength={history.length}
                            revealLinks={answerState.submitted}
-                           onOpenReport={() => openProblemReport(true)}
                         />
                      {/key}
 
@@ -2062,6 +2060,7 @@
                   {submittingTest}
                   {cannotSubmit}
                   {hasAnswer}
+                  onReport={() => openProblemReport(true)}
                   triesUsed={answerState.triesUsed}
                   triesPerProblem={settingsForm.triesPerProblem}
                   {triesRemaining}

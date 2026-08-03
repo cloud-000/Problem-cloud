@@ -8,6 +8,7 @@ type FeedbackInsert = Database["public"]["Tables"]["user_submitted_feedback"]["I
 export interface ProblemReportInput {
     problemId: number;
     answerIndex?: number | null;
+    answerText?: string | null;
     message?: string | null;
 }
 
@@ -22,6 +23,7 @@ export function problemReportInsert(
 ): FeedbackInsert {
     const message = input.message?.trim() || null;
     const answerIndex = input.answerIndex ?? null;
+    const answerText = input.answerText?.trim() || null;
 
     if (!Number.isInteger(input.problemId) || input.problemId <= 0) {
         throw new Error("A valid problem is required.");
@@ -29,7 +31,10 @@ export function problemReportInsert(
     if (answerIndex != null && (!Number.isInteger(answerIndex) || answerIndex < 0)) {
         throw new Error("The suggested answer is invalid.");
     }
-    if (answerIndex == null && message == null) {
+    if (answerIndex != null && answerText != null) {
+        throw new Error("Choose a listed answer or enter a custom answer, not both.");
+    }
+    if (answerIndex == null && answerText == null && message == null) {
         throw new Error("Write a message or suggest an answer.");
     }
 
@@ -38,6 +43,7 @@ export function problemReportInsert(
         problem_id: input.problemId,
         type: "problem_report",
         answer_index: answerIndex,
+        answer_text: answerText,
         message,
     };
 }

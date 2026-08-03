@@ -211,6 +211,20 @@
                                                     </span>
                                                 {/if}
                                             </div>
+                                        {:else if row.answer_text}
+                                            <div
+                                                class="flex items-start gap-2 type-body text-foreground"
+                                            >
+                                                <span
+                                                    class="type-caption shrink-0 text-muted-foreground"
+                                                >
+                                                    Custom answer
+                                                </span>
+                                                <MathStatement
+                                                    text={row.answer_text}
+                                                    class="min-w-0"
+                                                />
+                                            </div>
                                         {/if}
                                     </div>
                                     <StatusTag

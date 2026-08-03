@@ -2,13 +2,14 @@
 --
 -- A generic, append-only collection of suggestions/corrections users send in.
 -- `type` discriminates the review workflow. Known values:
---   'problem_report'     — problem-scoped feedback. `answer_index` is an optional
---                          proposed correct choice; `message` carries all notes.
+--   'problem_report'     — problem-scoped feedback. `answer_index` or
+--                          `answer_text` may propose a correct answer;
+--                          `message` carries the report explanation.
 --   'bug_report'         — site-wide bug report (free-text `message`).
 --   'feature_suggestion' — site-wide feature/improvement idea (free-text `message`).
 --   'general'            — any other general feedback (free-text `message`).
 -- Problem-scoped feedback sets `problem_id` and at least one of
--- `answer_index`/`message`; site-wide
+-- `answer_index`/`answer_text`/`message`; site-wide
 -- feedback leaves `problem_id` null and uses `message`. Submitters can read their
 -- own rows; admins (admin_rank > 0) can read everything to review and act on it.
 
@@ -18,6 +19,7 @@ create table public.user_submitted_feedback (
   problem_id   bigint references public.problems(id) on delete cascade,    -- null for site-wide feedback
   type         text   not null,                -- e.g. 'problem_report', 'bug_report'
   answer_index integer,                        -- suggested correct choice (into problems.choices)
+  answer_text  text,                           -- suggested custom/free-response answer
   message      text,                           -- free-text report/feedback body
   created_at   timestamp with time zone default now() not null,
 
@@ -32,15 +34,23 @@ create table public.user_submitted_feedback (
     case type
       when 'problem_report' then
         problem_id is not null
-        and (answer_index is not null or nullif(btrim(message), '') is not null)
+        and not (
+          answer_index is not null
+          and nullif(btrim(answer_text), '') is not null
+        )
+        and (
+          answer_index is not null
+          or nullif(btrim(answer_text), '') is not null
+          or nullif(btrim(message), '') is not null
+        )
       when 'bug_report' then
-        problem_id is null and answer_index is null
+        problem_id is null and answer_index is null and answer_text is null
         and nullif(btrim(message), '') is not null
       when 'feature_suggestion' then
-        problem_id is null and answer_index is null
+        problem_id is null and answer_index is null and answer_text is null
         and nullif(btrim(message), '') is not null
       when 'general' then
-        problem_id is null and answer_index is null
+        problem_id is null and answer_index is null and answer_text is null
         and nullif(btrim(message), '') is not null
       else false
     end
