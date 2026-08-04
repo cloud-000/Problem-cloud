@@ -22,4 +22,6 @@ export interface AIChatQuickAction {
     id: string;
     label: string;
     prompt: string;
+    /** Material Symbols name, shown by the `stack` layout. Must be in app.html's subset. */
+    icon?: string;
 }

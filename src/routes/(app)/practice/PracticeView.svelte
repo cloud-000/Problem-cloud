@@ -62,6 +62,8 @@
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { coach } from "$lib/state/coach.svelte";
+   import { shell } from "$lib/state/shell.svelte";
+   import { CoachContextRegister } from "$lib/components/coach";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onMount } from "svelte";
    import { fade } from "svelte/transition";
@@ -889,12 +891,56 @@
    let coachAvailable = $derived(coach.enabled && !(isTest && !testFinished));
    let showCoach = $derived(utilityPanel.activeView === "coach");
 
-   function handleCoachShortcut(event: KeyboardEvent) {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "j") return;
-      if (!coachAvailable) return;
-      event.preventDefault();
-      utilityPanel.toggle("coach");
-   }
+   // The trainer draws its own Coach control, so the FAB has nothing to add here.
+   onMount(() => shell.suppressCoachLauncher());
+
+   // Ctrl/Cmd+J is global now, so the mid-test lock has to be published to the
+   // shell — a local window handler whose only job was swallowing the chord
+   // would be a handler that exists to cancel another handler.
+   $effect(() => {
+      if (!(isTest && !testFinished)) return;
+      return shell.suppressCoach();
+   });
+
+   // What the Coach is looking at. Sits above the layout's route layer (10), so
+   // its quick actions win and its descriptor leads the context list.
+   let coachProblemLabel = $derived(
+      problem
+         ? problem.tests?.name
+            ? `${problem.tests.name} #${problem.n}`
+            : `Problem #${problem.n}`
+         : "",
+   );
+   // The statement verbatim, choices included: `formatProblemText` strips the
+   // choice list for display, and the Coach needs to see what the student sees.
+   let coachProblemText = $derived(
+      problem
+         ? [problem.statement ?? "", ...(problem.choices ?? [])]
+              .filter(Boolean)
+              .join("\n")
+              .slice(0, 4_000)
+         : "",
+   );
+   const coachQuickActions = [
+      {
+         id: "hint",
+         label: "Give me a hint",
+         prompt: "Give me the smallest hint that gets me unstuck on this problem.",
+         icon: "lightbulb",
+      },
+      {
+         id: "approach",
+         label: "Check my approach",
+         prompt: "Here is my approach so far — tell me whether it can work, without solving it for me.",
+         icon: "checklist",
+      },
+      {
+         id: "explain",
+         label: "Explain this",
+         prompt: "Explain what this problem is asking and which ideas are in play.",
+         icon: "help",
+      },
+   ];
 
    // Elapsed time for the on-screen problem at a given clock reading: the live
    // count for the latest unanswered one, otherwise its frozen value. `elapsedMs`
@@ -1714,7 +1760,28 @@
    });
 </script>
 
-<svelte:window onkeydown={handleCoachShortcut} />
+{#if coachAvailable && problem}
+   <!-- Keyed like MetadataBar: CoachContextRegister registers on mount, so a new
+        problem needs a new instance to replace the layer. -->
+   {#key problem.id}
+      <CoachContextRegister
+         ownerId="trainer:problem"
+         source="trainer"
+         priority={20}
+         mode="problem-help"
+         descriptors={[
+            {
+               id: `problem:${problem.id}`,
+               kind: "problem",
+               authoritativeId: String(problem.id),
+               label: coachProblemLabel,
+               ephemeralText: coachProblemText,
+            },
+         ]}
+         quickActions={coachQuickActions}
+      />
+   {/key}
+{/if}
 
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
    <PracticeTopbar

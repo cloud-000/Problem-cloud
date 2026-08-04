@@ -12,6 +12,7 @@
 
 <script lang="ts">
     import { Icon } from "$lib/components/icon";
+    import AIChatQuickActions from "./ai-chat-quick-actions.svelte";
 
     let {
         controller,
@@ -35,18 +36,11 @@
         <p class="mt-1.5 max-w-2xl text-sm leading-5 text-muted-foreground">
             {description}
         </p>
-        {#if quickActions.length > 0}
-            <div class="mt-6 grid w-full gap-2.5">
-                {#each quickActions as action (action.id)}
-                    <button
-                        type="button"
-                        class="min-h-12 rounded-xl bg-surface-container-low px-3.5 py-3 text-left text-sm leading-5 transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                        onclick={() => controller.send(action.prompt)}
-                    >
-                        {action.label}
-                    </button>
-                {/each}
-            </div>
-        {/if}
+        <AIChatQuickActions
+            actions={quickActions}
+            layout="stack"
+            class="mt-6 w-full"
+            onselect={(action) => controller.send(action.prompt)}
+        />
     </div>
 </div>

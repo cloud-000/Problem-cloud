@@ -1,6 +1,5 @@
 <script lang="ts" module>
     export interface CoachLauncherProps {
-        variant?: "topbar" | "mobile" | "modal";
         class?: string;
     }
 </script>
@@ -10,44 +9,50 @@
     import { Icon } from "$lib/components/icon";
     import { cn } from "$lib/utils";
     import { coach } from "$lib/state/coach.svelte";
+    import { shell } from "$lib/state/shell.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
 
-    let { variant = "topbar", class: className }: CoachLauncherProps = $props();
+    let { class: className }: CoachLauncherProps = $props();
     let blocked = $derived(coach.initialized && coach.connectionBlocked);
-
-    function open(event: MouseEvent) {
-        utilityPanel.toggle("coach", event.currentTarget as HTMLElement);
-    }
-
-    function shortcut(event: KeyboardEvent) {
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {
-            event.preventDefault();
-            utilityPanel.toggle("coach");
-        }
-    }
+    // Ctrl/Cmd+J is invisible, so a visible control is the only thing that makes
+    // the quick-ask discoverable. Visibility is subtractive (§6.1) — routes
+    // suppress it, nothing opts in.
+    let visible = $derived(
+        coach.enabled && shell.coachLauncherVisible && utilityPanel.activeView === null,
+    );
 </script>
 
-<svelte:window onkeydown={shortcut} />
+{#if visible}
+    <!-- No launcher opens the panel directly; the panel is only ever reached by
+         escalation (§4.1). This summons the quick-ask. -->
+    <Button
+        variant="primary"
+        size="icon-lg"
+        class={cn(
+            "coach-fab fixed bottom-4 right-4 z-50 size-12 rounded-full shadow-lg",
+            className,
+        )}
+        onclick={(event: MouseEvent) =>
+            coach.toggleQuickAsk(event.currentTarget as HTMLElement)}
+        aria-label="Ask Coach"
+        aria-expanded={coach.quickAskOpen}
+        title="Ask Coach · Ctrl/Cmd+J"
+    >
+        <Icon name="auto_awesome" fill={coach.quickAskOpen} />
+        {#if blocked}
+            <span
+                class="absolute right-0.5 top-0.5 size-2 rounded-full border border-background bg-destructive"
+                aria-label="Coach needs attention"
+            ></span>
+        {/if}
+    </Button>
+{/if}
 
-<Button
-    variant="ghost"
-    size={variant === "mobile" ? "icon-lg" : variant === "modal" ? "sm" : "icon-sm"}
-    class={cn(
-        "relative text-muted-foreground hover:text-foreground",
-        variant === "mobile" && "size-10 bg-primary/10 text-primary-foreground",
-        className,
-    )}
-    onclick={open}
-    aria-label="Open Coach"
-    aria-pressed={utilityPanel.activeView === "coach"}
-    title="Open Coach · Ctrl/Cmd+J"
->
-    <Icon name="auto_awesome" fill={utilityPanel.activeView === "coach"} />
-    {#if variant === "modal"}<span>Coach</span>{/if}
-    {#if blocked}
-        <span
-            class="absolute right-0.5 top-0.5 size-2 rounded-full border border-background bg-destructive"
-            aria-label="Coach needs attention"
-        ></span>
-    {/if}
-</Button>
+<style>
+    /* Clear the mobile bottom bar (56px + the home-indicator inset). */
+    @media (max-width: 767px) and (orientation: portrait) {
+        :global(.coach-fab) {
+            bottom: calc(56px + env(safe-area-inset-bottom) + 1rem);
+        }
+    }
+</style>

@@ -22,7 +22,12 @@
    import { topbar } from "$lib/state/topbar.svelte";
    import { shell } from "$lib/state/shell.svelte";
    import { settings } from "$lib/state/settings.svelte";
-   import { CoachContextRegister, CoachPanel } from "$lib/components/coach";
+   import {
+      CoachContextRegister,
+      CoachPanel,
+      CoachQuickAsk,
+   } from "$lib/components/coach";
+   import { routeLabel } from "$lib/ai/route-context";
    import {
       UtilityPanel,
       UtilityPanelRegister,
@@ -88,6 +93,18 @@
       { href: "/whiteboard", icon: "draw", label: "Whiteboard" },
       { href: "/leaderboard", icon: "leaderboard", label: "Leaderboard" },
       { href: "/roadmap", icon: "map", label: "Product roadmap" },
+   ] as const;
+
+   // Routes the Coach's context layer can name. Without this its chips read
+   // "/library"; the sections outside the nav tabs are listed alongside them so
+   // no authenticated route the Coach can see is left as a raw pathname.
+   const coachRouteLabels = [
+      ...primaryTabs,
+      ...secondaryTabs,
+      { href: "/find", label: "Find problems" },
+      { href: "/history", label: "History" },
+      { href: "/settings", label: "Settings" },
+      { href: "/admin", label: "Admin tools" },
    ] as const;
 
    function routeMatches(pathname: string, href: string) {
@@ -226,7 +243,21 @@
       addAccountOptions(list);
       return list;
    });
+
+   // The Coach's chord lives here rather than on a launcher, so suppressing the
+   // button on one route can't kill the shortcut there. `shell.coachAvailable`
+   // carries route-local rules the layout can't see (the trainer's mid-test lock).
+   function handleCoachShortcut(event: KeyboardEvent) {
+      if (!aiCoachEnabled || event.defaultPrevented) return;
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "j")
+         return;
+      if (!shell.coachAvailable) return;
+      event.preventDefault();
+      coach.toggleQuickAsk(document.activeElement as HTMLElement | null);
+   }
 </script>
+
+<svelte:window onkeydown={handleCoachShortcut} />
 
 {#snippet sidebarLink(
    href: string,
@@ -512,12 +543,14 @@
                {
                   id: `route:${page.url.pathname}`,
                   kind: "route",
-                  label: page.url.pathname === "/" ? "Home" : page.url.pathname,
+                  label: routeLabel(page.url.pathname, coachRouteLabels),
                },
             ]}
             quickActions={[]}
          />
       {/key}
+      <!-- Mounted once, hidden while any utility view is open (§6.4). -->
+      <CoachQuickAsk />
    {/if}
    <UtilityPanel />
 

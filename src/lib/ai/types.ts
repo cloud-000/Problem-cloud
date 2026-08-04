@@ -123,6 +123,8 @@ export interface CoachQuickAction {
     id: string;
     label: string;
     prompt: string;
+    /** Material Symbols name, shown by the quick-ask's stacked action pills. */
+    icon?: string;
 }
 
 export interface CoachContextLayer {

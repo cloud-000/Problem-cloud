@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { Icon } from "$lib/components/icon/index.js";
     import { cn } from "$lib/utils.js";
+    import { placeFloating } from "$lib/components/floating";
     import type { DropdownOption } from "./dropdown-menu.js";
     import DropdownMenuList from "./DropdownMenuList.svelte";
 
@@ -33,52 +34,24 @@
     let itemEls = $state<HTMLLIElement[]>([]);
     let coords = $state({ top: 0, left: 0, visibility: "hidden" as "hidden" | "visible" });
 
-    // Function to calculate position ensuring the dropdown menu stays within window bounds
+    // Placement (flip + viewport clamping) is the shared `floating/` primitive; a
+    // root menu hangs below its trigger, a submenu sits beside its parent item.
     function calculatePosition() {
         if (!menuEl || !parentEl) return;
 
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
         const parentRect = parentEl.getBoundingClientRect();
         const menuRect = menuEl.getBoundingClientRect();
-
-        const gap = 4;
-        let top = 0;
-        let left = 0;
-
-        if (isRoot) {
-            // Root menu renders below the trigger by default
-            top = parentRect.bottom + gap;
-            left = parentRect.left;
-
-            // Flip above trigger if overflowing bottom
-            if (top + menuRect.height > viewportHeight) {
-                top = parentRect.top - gap - menuRect.height;
-            }
-
-            // Align to right edge of trigger if overflowing right
-            if (left + menuRect.width > viewportWidth) {
-                left = parentRect.right - menuRect.width;
-            }
-        } else {
-            // Submenu renders to the right of parent list item by default
-            top = parentRect.top;
-            left = parentRect.right + gap;
-
-            // Flip to the left of parent item if overflowing right
-            if (left + menuRect.width > viewportWidth) {
-                left = parentRect.left - gap - menuRect.width;
-            }
-
-            // Shift up if overflowing bottom
-            if (top + menuRect.height > viewportHeight) {
-                top = viewportHeight - menuRect.height - gap;
-            }
-        }
-
-        // Prevent rendering outside screen borders (with safety padding)
-        left = Math.max(gap, Math.min(left, viewportWidth - menuRect.width - gap));
-        top = Math.max(gap, Math.min(top, viewportHeight - menuRect.height - gap));
+        const { top, left } = placeFloating(
+            {
+                top: parentRect.top,
+                left: parentRect.left,
+                width: parentRect.width,
+                height: parentRect.height,
+            },
+            { width: menuRect.width, height: menuRect.height },
+            { width: window.innerWidth, height: window.innerHeight },
+            { side: isRoot ? "bottom" : "right", align: "start", gap: 4, padding: 4 },
+        );
 
         coords = {
             top,

@@ -21,6 +21,7 @@ import {
     upsertContextLayer,
 } from "$lib/ai/context-stack";
 import { aiCredentials } from "./ai-credentials.svelte";
+import { utilityPanel } from "./utility-panel.svelte";
 import { MOCK_PROVIDER_ID } from "$lib/ai/types";
 import type {
     AIBootstrap,
@@ -60,6 +61,8 @@ class CoachStore {
     conversationListError = $state<AIErrorPart | null>(null);
     loadingConversationId = $state<string | undefined>(undefined);
     historyViewOpen = $state(false);
+    quickAskOpen = $state(false);
+    #quickAskInvoker: HTMLElement | null = null;
     #abortController: AbortController | null = null;
     #lastPrompt = "";
     /**
@@ -103,6 +106,84 @@ class CoachStore {
 
     configure(enabled: boolean): void {
         this.enabled = enabled;
+    }
+
+    /**
+     * §6.4 — every presentation binds this same `messages` array, so two visible
+     * at once renders a streaming reply twice. At most one may show the
+     * transcript, and the panel is a real flex sibling at ≥1280px rather than an
+     * overlay, so nothing hides the quick-ask implicitly.
+     */
+    get quickAskVisible(): boolean {
+        return this.quickAskOpen && utilityPanel.activeView === null;
+    }
+
+    /**
+     * Bootstrapping is lazy and owned by whoever is summoned first: `initialize()`
+     * costs a fetch plus a /models probe against every BYOK connection, so the
+     * layout must not pay it for users who never open the Coach. It no-ops once
+     * initialized and while in flight, so multiple entry points calling it is safe.
+     */
+    openQuickAsk(invoker?: HTMLElement | null): void {
+        if (!this.enabled) return;
+        this.#quickAskInvoker =
+            invoker ??
+            (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null));
+        this.quickAskOpen = true;
+        void this.initialize();
+    }
+
+    closeQuickAsk(restoreFocus = true): void {
+        if (!this.quickAskOpen) return;
+        this.quickAskOpen = false;
+        const target = this.#quickAskInvoker;
+        this.#quickAskInvoker = null;
+        if (restoreFocus && target) queueMicrotask(() => target.focus());
+    }
+
+    /**
+     * The one chord (Ctrl/Cmd+J), resolving to whichever surface is appropriate
+     * rather than to a fixed destination. It always means "talk to the Coach":
+     * it toggles the quick-ask, toggles the panel off when the panel is the
+     * Coach surface on screen, and displaces any other utility view — which
+     * would otherwise hide the quick-ask (§6.4) and leave the chord doing
+     * nothing visible.
+     */
+    toggleQuickAsk(invoker?: HTMLElement | null): void {
+        if (this.quickAskOpen) {
+            this.closeQuickAsk();
+            return;
+        }
+        if (utilityPanel.activeView === "coach") {
+            utilityPanel.close();
+            return;
+        }
+        if (utilityPanel.activeView) utilityPanel.close(false);
+        this.openQuickAsk(invoker);
+    }
+
+    /**
+     * Escalation. There is nothing to migrate: same store, same `conversationId`,
+     * same `messages`, and `draft` is store state so a half-typed question
+     * survives too. Returns false when no panel is registered, in which case the
+     * quick-ask stays put rather than dismissing into nothing.
+     */
+    escalateToPanel(): boolean {
+        const opened = utilityPanel.open("coach", this.#quickAskInvoker);
+        if (opened) {
+            this.quickAskOpen = false;
+            this.#quickAskInvoker = null;
+        }
+        return opened;
+    }
+
+    /**
+     * Reaching an older thread would otherwise cost three gestures (summon,
+     * escalate, open history), because history lives inside the panel.
+     */
+    async escalateToHistory(): Promise<void> {
+        if (!this.escalateToPanel()) return;
+        await this.openConversationList();
     }
 
     registerContext(layer: CoachContextLayer): () => void {

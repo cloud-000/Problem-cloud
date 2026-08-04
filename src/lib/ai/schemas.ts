@@ -129,6 +129,7 @@ export function parseContextLayer(value: unknown): CoachContextLayer {
                   id: string(action.id, "quick action id", 120),
                   label: string(action.label, "quick action label", 120),
                   prompt: string(action.prompt, "quick action prompt", 1_000),
+                  icon: optionalString(action.icon, "quick action icon", 60),
               };
           })
         : [];
