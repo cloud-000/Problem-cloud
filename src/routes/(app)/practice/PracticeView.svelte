@@ -826,15 +826,6 @@
          icon: "tune",
          onclick: () => utilityPanel.toggle("practice-settings"),
       },
-      ...(!coach.enabled || (isTest && !testFinished)
-         ? []
-         : [
-              {
-                 label: "Ask Coach",
-                 icon: "auto_awesome",
-                 onclick: () => utilityPanel.toggle("coach"),
-              },
-           ]),
       {
          type: "divider",
       },
@@ -893,9 +884,14 @@
       },
    ]);
 
+   // The Coach lives in the topbar next to the scratch-paper toggle. It stays
+   // hidden while a test is still running so it can't be used mid-test.
+   let coachAvailable = $derived(coach.enabled && !(isTest && !testFinished));
+   let showCoach = $derived(utilityPanel.activeView === "coach");
+
    function handleCoachShortcut(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "j") return;
-      if (!coach.enabled || (isTest && !testFinished)) return;
+      if (!coachAvailable) return;
       event.preventDefault();
       utilityPanel.toggle("coach");
    }
@@ -1743,8 +1739,11 @@
       {elapsedMs}
       {problemRemainingMs}
       {segmentRemainingMs}
+      {coachAvailable}
+      {showCoach}
       {moreOptions}
       onToggleWhiteboard={() => utilityPanel.toggle("whiteboard")}
+      onToggleCoach={() => utilityPanel.toggle("coach")}
       onTogglePause={togglePause}
    />
 

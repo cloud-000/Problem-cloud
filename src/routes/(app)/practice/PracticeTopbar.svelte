@@ -31,8 +31,11 @@
         segmentRemainingMs = null,
         focusModeActive,
         showWhiteboard,
+        coachAvailable,
+        showCoach,
         moreOptions,
         onToggleWhiteboard,
+        onToggleCoach,
         onTogglePause,
     }: {
         sessionName: string | null;
@@ -56,8 +59,11 @@
         segmentRemainingMs?: number | null;
         focusModeActive: boolean;
         showWhiteboard: boolean;
+        coachAvailable: boolean;
+        showCoach: boolean;
         moreOptions: DropdownOption[];
         onToggleWhiteboard: () => void;
+        onToggleCoach: () => void;
         onTogglePause: () => void;
     } = $props();
 
@@ -171,6 +177,23 @@
 
 {#snippet contextRight()}
     <div class="flex shrink-0 items-center gap-1">
+        {#if coachAvailable}
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                class={cn(
+                    "size-10 text-muted-foreground hover:text-foreground",
+                    showCoach && "bg-muted text-foreground",
+                )}
+                onclick={onToggleCoach}
+                aria-expanded={showCoach}
+                aria-label="Toggle Coach"
+                title="Ask Coach"
+            >
+                <Icon name="auto_awesome" class={iconClass} fill={showCoach} />
+            </Button>
+        {/if}
+
         {#if problemVisible && !testFinished}
             <Button
                 variant="ghost"
