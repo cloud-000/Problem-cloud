@@ -19,18 +19,18 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
-    <div class="flex items-center gap-1 border-b border-border/30 px-2.5 py-2">
+    <div class="flex items-center gap-1 border-b border-border/40 px-3 py-2">
         <Button variant="ghost" size="icon-sm" onclick={() => coach.closeConversationList()} aria-label="Back to conversation">
-            <Icon name="arrow_back" />
+            <Icon name="arrow_back" fontsize={16} />
         </Button>
-        <h3 class="mr-auto text-sm font-semibold tracking-tight">History</h3>
+        <h3 class="mr-auto text-sm font-semibold tracking-tight text-foreground">History</h3>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         <Button
             variant="ghost"
             size="sm"
-            class="mb-1 w-full justify-start gap-2 text-xs"
+            class="mb-2 w-full justify-start gap-2 text-xs font-medium"
             onclick={() => coach.newConversation()}
         >
             <Icon name="add_comment" fontsize={16} />
@@ -50,7 +50,7 @@
                 <p class="text-xs leading-5 text-muted-foreground">
                     {coach.conversationListError.message}
                 </p>
-                <Button size="sm" variant="outline" class="mt-3" onclick={() => coach.retryConversationList()}>
+                <Button size="sm" variant="outline" class="mt-3 text-xs" onclick={() => coach.retryConversationList()}>
                     Try again
                 </Button>
             </div>
@@ -60,13 +60,13 @@
             </p>
         {:else}
             {#if coach.streaming}
-                <p class="mx-1 mb-1 rounded-md bg-surface-container px-2.5 py-1.5 text-[0.6875rem] leading-4 text-muted-foreground">
+                <p class="mx-1 mb-2 rounded-md bg-surface-container px-2.5 py-1.5 text-xs leading-4 text-muted-foreground">
                     {STREAMING_HINT}
                 </p>
             {/if}
             {#each groups as group (group.label)}
-                <section class="mb-2">
-                    <h4 class="px-2.5 py-1 text-[0.6875rem] font-medium tracking-wide text-muted-foreground">
+                <section class="mb-3">
+                    <h4 class="px-2.5 py-1 text-xs font-medium tracking-wide text-muted-foreground">
                         {group.label}
                     </h4>
                     <ul class="flex flex-col gap-0.5">
@@ -88,7 +88,7 @@
             {/each}
 
             {#if coach.conversationListError}
-                <p class="px-2.5 py-2 text-center text-[0.6875rem] leading-4 text-muted-foreground" role="status">
+                <p class="px-2.5 py-2 text-center text-xs leading-4 text-muted-foreground" role="status">
                     {coach.conversationListError.message}
                 </p>
             {/if}

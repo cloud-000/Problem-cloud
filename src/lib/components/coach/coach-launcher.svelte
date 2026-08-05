@@ -14,22 +14,17 @@
 
     let { class: className }: CoachLauncherProps = $props();
     let blocked = $derived(coach.initialized && coach.connectionBlocked);
-    // Ctrl/Cmd+J is invisible, so a visible control is the only thing that makes
-    // the quick-ask discoverable. Visibility is subtractive (§6.1) — routes
-    // suppress it, nothing opts in.
     let visible = $derived(
         coach.enabled && shell.coachLauncherVisible && utilityPanel.activeView === null,
     );
 </script>
 
 {#if visible}
-    <!-- No launcher opens the panel directly; the panel is only ever reached by
-         escalation (§4.1). This summons the quick-ask. -->
     <Button
         variant="primary"
         size="icon-lg"
         class={cn(
-            "coach-fab fixed bottom-4 right-4 z-50 size-12 rounded-full shadow-lg",
+            "coach-fab fixed bottom-4 right-4 z-50 size-12 rounded-full shadow-xl transition-transform active:scale-95",
             className,
         )}
         onclick={(event: MouseEvent) =>
@@ -39,10 +34,10 @@
         aria-expanded={coach.quickAskOpen}
         title="Ask Coach · Ctrl/Cmd+J"
     >
-        <Icon name="auto_awesome" fill={coach.quickAskOpen} />
+        <Icon name="auto_awesome" fontsize={20} fill={coach.quickAskOpen} />
         {#if blocked}
             <span
-                class="absolute right-0.5 top-0.5 size-2 rounded-full border border-background bg-destructive"
+                class="absolute right-1 top-1 size-2.5 rounded-full border-2 border-background bg-destructive"
                 aria-label="Coach needs attention"
             ></span>
         {/if}

@@ -2,6 +2,7 @@ import Launcher from "./coach-launcher.svelte";
 import Panel from "./coach-panel.svelte";
 import QuickAsk from "./coach-quick-ask.svelte";
 import ContextRegister from "./coach-context-register.svelte";
+import ContextChips from "./coach-context-chips.svelte";
 import ModelPicker from "./coach-model-picker.svelte";
 import ConversationList from "./coach-conversation-list.svelte";
 import ConversationRow from "./coach-conversation-row.svelte";
@@ -12,6 +13,7 @@ export {
     Panel,
     QuickAsk,
     ContextRegister,
+    ContextChips,
     ModelPicker,
     ConversationList,
     ConversationRow,
@@ -20,6 +22,7 @@ export {
     Panel as CoachPanel,
     QuickAsk as CoachQuickAsk,
     ContextRegister as CoachContextRegister,
+    ContextChips as CoachContextChips,
     ModelPicker as CoachModelPicker,
     ConversationList as CoachConversationList,
     ConversationRow as CoachConversationRow,

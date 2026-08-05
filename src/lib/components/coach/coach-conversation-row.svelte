@@ -25,6 +25,21 @@
     }: Props = $props();
 
     let menuOpen = $state(false);
+    let menuRef = $state<HTMLElement | null>(null);
+    let menuButtonRef = $state<HTMLElement | null>(null);
+
+    function handleWindowClick(event: MouseEvent) {
+        if (!menuOpen) return;
+        const target = event.target as Node | null;
+        if (
+            menuRef &&
+            !menuRef.contains(target) &&
+            menuButtonRef &&
+            !menuButtonRef.contains(target)
+        ) {
+            menuOpen = false;
+        }
+    }
 
     function closeMenu(event: KeyboardEvent) {
         if (!menuOpen || event.key !== "Escape") return;
@@ -51,7 +66,7 @@
     }
 </script>
 
-<svelte:window onkeydown={closeMenu} />
+<svelte:window onkeydown={closeMenu} onclick={handleWindowClick} />
 
 <div class="group relative">
     <button
@@ -77,11 +92,11 @@
             {#if loading}
                 <Icon name="progress_activity" fontsize={14} class="shrink-0 animate-spin text-muted-foreground" />
             {:else}
-                <span class="shrink-0 text-[0.6875rem] text-muted-foreground">{updatedLabel}</span>
+                <span class="shrink-0 text-xs text-muted-foreground">{updatedLabel}</span>
             {/if}
         </span>
         {#if conversation.preview}
-            <span class="line-clamp-1 text-[0.6875rem] leading-4 text-muted-foreground">
+            <span class="line-clamp-1 text-xs text-muted-foreground">
                 {conversation.preview}
             </span>
         {/if}
@@ -90,32 +105,35 @@
         {/if}
     </button>
 
-    <button
-        type="button"
-        class={cn(
-            "absolute right-1 top-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground",
-            "opacity-0 transition-opacity hover:bg-surface-container-high hover:text-foreground",
-            "group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary",
-            menuOpen && "opacity-100",
-            disabled && "hidden",
-        )}
-        aria-label="Conversation options"
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        disabled={disabled}
-        onclick={() => (menuOpen = !menuOpen)}
-    >
-        <Icon name="more_horiz" fontsize={16} />
-    </button>
+    <div bind:this={menuButtonRef} class="absolute right-1 top-1.5">
+        <button
+            type="button"
+            class={cn(
+                "flex size-6 items-center justify-center rounded-md text-muted-foreground",
+                "opacity-0 transition-opacity hover:bg-surface-container-high hover:text-foreground",
+                "group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary",
+                menuOpen && "opacity-100",
+                disabled && "hidden",
+            )}
+            aria-label="Conversation options"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            disabled={disabled}
+            onclick={() => (menuOpen = !menuOpen)}
+        >
+            <Icon name="more_horiz" fontsize={16} />
+        </button>
+    </div>
 
     {#if menuOpen}
         <div
+            bind:this={menuRef}
             class="absolute right-1 top-8 z-70 w-36 rounded-lg border border-border/70 bg-surface-container-lowest p-1 shadow-xl"
             role="menu"
         >
             <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-container"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium text-foreground hover:bg-surface-container"
                 role="menuitem"
                 onclick={archive}
             >
