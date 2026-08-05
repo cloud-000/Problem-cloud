@@ -186,9 +186,9 @@
                     showCoach && "bg-muted text-foreground",
                 )}
                 onclick={onToggleCoach}
-                aria-expanded={showCoach}
-                aria-label="Toggle Coach"
-                title="Ask Coach"
+                aria-pressed={showCoach}
+                aria-label={showCoach ? "Return to answer mode" : "Switch to Coach mode"}
+                title={showCoach ? "Return to answer mode" : "Coach mode"}
             >
                 <Icon name="auto_awesome" class={iconClass} fill={showCoach} />
             </Button>

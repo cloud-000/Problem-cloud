@@ -1,0 +1,86 @@
+<script lang="ts" module>
+    import type { AIChatQuickAction } from "$lib/components/ai-chat";
+
+    export interface CoachInlineProps {
+        quickActions?: readonly AIChatQuickAction[];
+        composerRef?: HTMLTextAreaElement | null;
+        class?: string;
+    }
+</script>
+
+<script lang="ts">
+    import { onMount } from "svelte";
+    import {
+        AIChatComposer,
+        AIChatEmptyState,
+        AIChatMessageList,
+        AIChatQuickActions,
+    } from "$lib/components/ai-chat";
+    import { coach } from "$lib/state/coach.svelte";
+    import { cn } from "$lib/utils";
+    import CoachConnectionGate from "./coach-connection-gate.svelte";
+    import CoachContextTray from "./coach-context-tray.svelte";
+
+    let {
+        quickActions = [],
+        composerRef = $bindable(null),
+        class: className,
+    }: CoachInlineProps = $props();
+
+    onMount(() => {
+        void coach.initialize();
+    });
+</script>
+
+<section
+    data-slot="coach-inline"
+    class={cn(
+        "flex h-full min-h-0 flex-col bg-background",
+        className,
+    )}
+    aria-label="Coach mode"
+>
+    {#if coach.loading && !coach.initialized}
+        <div
+            class="flex flex-1 items-center justify-center text-xs text-muted-foreground"
+            aria-live="polite"
+        >
+            Loading Coach…
+        </div>
+    {:else if !coach.bootstrap || coach.connectionBlocked}
+        <CoachContextTray />
+        <CoachConnectionGate />
+    {:else}
+        <CoachContextTray />
+        {#if coach.messages.length === 0}
+            <AIChatEmptyState
+                controller={coach}
+                title="Work through this problem"
+                description="Ask for a small hint, check an approach, or talk through the ideas without leaving the problem."
+                quickActions={[]}
+            />
+        {:else}
+            <AIChatMessageList
+                controller={coach}
+                assistantLabel="Coach"
+                conversationLabel="Coach conversation"
+            />
+        {/if}
+        <AIChatQuickActions
+            actions={quickActions}
+            layout="row"
+            disabled={coach.streaming}
+            class="shrink-0 px-3 pb-1 pt-2 sm:px-4"
+            onselect={(action) => coach.send(action.prompt)}
+        />
+        <AIChatComposer
+            controller={coach}
+            assistantLabel="Coach"
+            placeholder="Ask Coach about this problem…"
+            bind:textareaRef={composerRef}
+        />
+        <div class="sr-only" aria-live="polite">
+            {coach.liveAnnouncement}
+        </div>
+    {/if}
+</section>

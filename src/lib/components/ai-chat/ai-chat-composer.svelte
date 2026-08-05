@@ -5,6 +5,7 @@
         controller: AIChatController;
         placeholder?: string;
         assistantLabel?: string;
+        textareaRef?: HTMLTextAreaElement | null;
     }
 </script>
 
@@ -18,15 +19,15 @@
         controller,
         placeholder = "Ask anything…",
         assistantLabel = "Assistant",
+        textareaRef = $bindable(null),
     }: AIChatComposerProps = $props();
-    let textarea = $state<HTMLTextAreaElement | null>(null);
 
     function resizeTextarea() {
-        if (!textarea) return;
-        textarea.style.height = "auto";
-        const nextHeight = Math.min(textarea.scrollHeight, 160);
-        textarea.style.height = `${nextHeight}px`;
-        textarea.style.overflowY = textarea.scrollHeight > 160 ? "auto" : "hidden";
+        if (!textareaRef) return;
+        textareaRef.style.height = "auto";
+        const nextHeight = Math.min(textareaRef.scrollHeight, 160);
+        textareaRef.style.height = `${nextHeight}px`;
+        textareaRef.style.overflowY = textareaRef.scrollHeight > 160 ? "auto" : "hidden";
     }
 
     $effect(() => {
@@ -63,7 +64,7 @@
         class="overflow-visible rounded-2xl bg-surface-container-low/80 shadow-sm transition-[background-color,box-shadow] focus-within:bg-surface-container focus-within:shadow-md"
     >
         <textarea
-            bind:this={textarea}
+            bind:this={textareaRef}
             bind:value={controller.draft}
             rows="1"
             class="block max-h-40 min-h-12 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0"

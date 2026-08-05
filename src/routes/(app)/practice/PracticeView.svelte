@@ -63,7 +63,7 @@
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { coach } from "$lib/state/coach.svelte";
    import { shell } from "$lib/state/shell.svelte";
-   import { CoachContextRegister } from "$lib/components/coach";
+   import { CoachContextRegister, CoachInline } from "$lib/components/coach";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onMount } from "svelte";
    import { fade } from "svelte/transition";
@@ -886,10 +886,46 @@
       },
    ]);
 
-   // The Coach lives in the topbar next to the scratch-paper toggle. It stays
-   // hidden while a test is still running so it can't be used mid-test.
+   // The Coach lives inline in the answer region. The topbar button and the
+   // footer control are mirrored toggles for this state; neither opens a panel.
    let coachAvailable = $derived(coach.enabled && !(isTest && !testFinished));
-   let showCoach = $derived(utilityPanel.activeView === "coach");
+   let coachModeAvailable = $derived(
+      coachAvailable && !!problem && !(isTest && testFinished),
+   );
+   let coachModeProblemId = $state<number | null>(null);
+   let coachMode = $derived(
+      coachModeAvailable && coachModeProblemId === problem?.id,
+   );
+   let coachComposer = $state<HTMLTextAreaElement | null>(null);
+
+   function setCoachMode(enabled: boolean) {
+      if (!problem || !coachModeAvailable) return;
+      coachModeProblemId = enabled ? problem.id : null;
+      if (!enabled) return;
+      coach.closeQuickAsk(false);
+      if (utilityPanel.activeView === "coach") utilityPanel.close(false);
+      void coach.initialize();
+      queueMicrotask(() => coachComposer?.focus());
+   }
+
+   function toggleCoachMode() {
+      setCoachMode(!coachMode);
+   }
+
+   // The global chord resolves to the inline composer while this mode is
+   // active, and quick-ask escalation resolves into this mode throughout the
+   // trainer. Registering one route-owned target prevents duplicate transcripts.
+   $effect(() => {
+      const targetProblemId = problem?.id;
+      if (!coachModeAvailable || targetProblemId == null) return;
+      return coach.registerInlineTarget({
+         isActive: () => coachModeProblemId === targetProblemId,
+         open: () => {
+            if (problem?.id === targetProblemId) setCoachMode(true);
+         },
+         focusComposer: () => coachComposer?.focus(),
+      });
+   });
 
    // The trainer draws its own Coach control, so the FAB has nothing to add here.
    onMount(() => shell.suppressCoachLauncher());
@@ -1161,6 +1197,7 @@
       currentSource = entry.source;
       currentProgress = entry.progress;
       answerState = restorePracticeAnswerState(entry);
+      coachModeProblemId = null;
       masteryTouched = false;
       segmentRevealed = false;
 
@@ -1806,11 +1843,11 @@
       {elapsedMs}
       {problemRemainingMs}
       {segmentRemainingMs}
-      {coachAvailable}
-      {showCoach}
+      coachAvailable={coachModeAvailable}
+      showCoach={coachMode}
       {moreOptions}
       onToggleWhiteboard={() => utilityPanel.toggle("whiteboard")}
-      onToggleCoach={() => utilityPanel.toggle("coach")}
+      onToggleCoach={toggleCoachMode}
       onTogglePause={togglePause}
    />
 
@@ -1932,9 +1969,16 @@
          {:else}
             <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
                <div class="relative flex-1 flex flex-col min-h-0 w-full">
-                  <!-- Problem statement and choices: Scrollable area -->
+                  <!-- In Coach mode this becomes a capped, independently
+                       scrollable statement shelf. The transcript below owns
+                       the remaining height, including on mobile portrait. -->
                   <div
-                     class="flex-1 flex flex-col items-center gap-5 w-full min-h-0 overflow-y-auto px-4 pb-6 sm:px-6"
+                     class={cn(
+                        "flex w-full flex-col items-center gap-5 overflow-y-auto px-4 sm:px-6",
+                        coachMode
+                           ? "max-h-[min(42dvh,22rem)] shrink-0 overscroll-contain border-b border-border/60 pb-4"
+                           : "min-h-0 flex-1 pb-6",
+                     )}
                   >
                      <!-- Metadata row: source/series/topic on the left, review status on the right -->
                      {#key problem.id}
@@ -1965,7 +2009,7 @@
                      <div
                         class={cn(
                            "flex min-h-fit w-full",
-                           solutionShown
+                           coachMode || solutionShown
                               ? "flex-none items-start justify-center"
                               : "flex-1 items-center justify-center",
                         )}
@@ -1985,76 +2029,89 @@
                            />
                         {/if}
                      </div>
-                     <div class="w-full max-w-[48rem]">
-                        {#key problem.id}
-                           <ProblemAnswer
-                              bind:this={answerFeedback}
-                              choices={problem.choices}
-                              answerIndex={problem.answer_index}
-                              bind:answer={answerState.answer}
-                              bind:selectedChoice={answerState.selectedChoice}
-                              bind:eliminated={answerState.eliminatedChoices}
-                              showAnswerState={(behavior.revealAnswerState ||
-                                 revealActive) &&
-                                 answerState.submitted &&
-                                 hasAnswer}
-                              disabled={behavior.freezeOnNavigate
-                                 ? answerState.submitted || !isLatest || paused
-                                 : revealActive || paused}
-                              onEnter={behavior.gradeImmediately
-                                 ? () => submitAnswer()
-                                 : isSegmented
-                                   ? () => requestAdvanceSegment()
-                                   : !isLatest && !paused
-                                     ? () => goForward()
-                                     : undefined}
-                           />
-                        {/key}
-                     </div>
+                     {#if !coachMode}
+                        <div class="w-full max-w-[48rem]">
+                           {#key problem.id}
+                              <ProblemAnswer
+                                 bind:this={answerFeedback}
+                                 choices={problem.choices}
+                                 answerIndex={problem.answer_index}
+                                 bind:answer={answerState.answer}
+                                 bind:selectedChoice={answerState.selectedChoice}
+                                 bind:eliminated={answerState.eliminatedChoices}
+                                 showAnswerState={(behavior.revealAnswerState ||
+                                    revealActive) &&
+                                    answerState.submitted &&
+                                    hasAnswer}
+                                 disabled={behavior.freezeOnNavigate
+                                    ? answerState.submitted || !isLatest || paused
+                                    : revealActive || paused}
+                                 onEnter={behavior.gradeImmediately
+                                    ? () => submitAnswer()
+                                    : isSegmented
+                                      ? () => requestAdvanceSegment()
+                                      : !isLatest && !paused
+                                        ? () => goForward()
+                                        : undefined}
+                              />
+                           {/key}
+                        </div>
 
-                     {#if behavior.gradeImmediately && answerState.submitted && answerState.correct !== null}
-                        <ProblemOrganization
-                           class="w-full max-w-[48rem]"
-                           problemId={problem.id}
-                           mastery={currentProgress?.mastery ?? null}
-                           engagement={currentProgress?.engagement ?? null}
-                           prompt={!currentProgress?.mastery}
-                           promptPresentation="persistent"
-                           {suggestedMastery}
-                           onchange={(state) => {
-                              masteryTouched = true;
-                              currentProgress = currentProgress ?? {
-                                 times_seen: 1,
-                                 times_reviewed: 1,
-                                 times_correct: answerState.correct ? 1 : 0,
-                                 times_skipped: 0,
-                                 last_submission_at: new Date().toISOString(),
-                                 last_reviewed_at: new Date().toISOString(),
-                                 last_correct: answerState.correct,
-                                 next_review_at: null,
-                                 solved: answerState.correct === true,
-                                 mastery: null,
-                                 engagement: null,
-                              };
-                              currentProgress.mastery = state.mastery;
-                              currentProgress.engagement = state.engagement;
-                           }}
-                        />
-                     {/if}
-
-                     <!-- Official worked solutions, revealed once the problem
-                                 is finalized. Auto-opens on a wrong answer; keyed per
-                                 problem so its open/selection state re-seeds. -->
-                     {#if solutionShown}
-                        {#key problem.id}
-                           <ProblemSolution
+                        {#if behavior.gradeImmediately && answerState.submitted && answerState.correct !== null}
+                           <ProblemOrganization
                               class="w-full max-w-[48rem]"
-                              solutions={problem.official_solutions}
-                              defaultOpen={answerState.correct === false}
+                              problemId={problem.id}
+                              mastery={currentProgress?.mastery ?? null}
+                              engagement={currentProgress?.engagement ?? null}
+                              prompt={!currentProgress?.mastery}
+                              promptPresentation="persistent"
+                              {suggestedMastery}
+                              onchange={(state) => {
+                                 masteryTouched = true;
+                                 currentProgress = currentProgress ?? {
+                                    times_seen: 1,
+                                    times_reviewed: 1,
+                                    times_correct: answerState.correct ? 1 : 0,
+                                    times_skipped: 0,
+                                    last_submission_at: new Date().toISOString(),
+                                    last_reviewed_at: new Date().toISOString(),
+                                    last_correct: answerState.correct,
+                                    next_review_at: null,
+                                    solved: answerState.correct === true,
+                                    mastery: null,
+                                    engagement: null,
+                                 };
+                                 currentProgress.mastery = state.mastery;
+                                 currentProgress.engagement = state.engagement;
+                              }}
                            />
-                        {/key}
+                        {/if}
+
+                        <!-- Official worked solutions, revealed once the problem
+                             is finalized. Auto-opens on a wrong answer; keyed per
+                             problem so its open/selection state re-seeds. -->
+                        {#if solutionShown}
+                           {#key problem.id}
+                              <ProblemSolution
+                                 class="w-full max-w-[48rem]"
+                                 solutions={problem.official_solutions}
+                                 defaultOpen={answerState.correct === false}
+                              />
+                           {/key}
+                        {/if}
                      {/if}
                   </div>
+
+                  {#if coachMode}
+                     <div
+                        class="mx-auto flex min-h-0 w-full max-w-[52rem] flex-1 flex-col px-1 sm:px-3"
+                     >
+                        <CoachInline
+                           quickActions={coachQuickActions}
+                           bind:composerRef={coachComposer}
+                        />
+                     </div>
+                  {/if}
 
                   {#if paused}
                      <PauseOverlay
@@ -2133,6 +2190,8 @@
                   {playerRating}
                   {ratingDelta}
                   correct={answerState.correct}
+                  coachAvailable={coachModeAvailable}
+                  {coachMode}
                   onBack={goBack}
                   onForward={goForward}
                   onSkip={handleSkip}
@@ -2140,6 +2199,7 @@
                   onLoadProblem={() => loadProblem()}
                   onSubmitAnswer={() => submitAnswer()}
                   onSubmitTest={requestSubmitTest}
+                  onToggleCoach={toggleCoachMode}
                />
             </div>
          {/if}

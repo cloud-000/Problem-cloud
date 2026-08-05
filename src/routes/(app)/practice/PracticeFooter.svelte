@@ -32,6 +32,8 @@
         playerRating,
         ratingDelta,
         correct,
+        coachAvailable = false,
+        coachMode = false,
         onBack,
         onReport,
         onForward,
@@ -40,6 +42,7 @@
         onLoadProblem,
         onSubmitAnswer,
         onSubmitTest,
+        onToggleCoach,
     }: {
         gradeImmediately: boolean;
         isLatest: boolean;
@@ -67,6 +70,8 @@
         playerRating: PlayerRating | null;
         ratingDelta: number | null;
         correct: boolean | null;
+        coachAvailable?: boolean;
+        coachMode?: boolean;
         onBack: () => void;
         onReport: () => void;
         onForward: () => void;
@@ -75,6 +80,7 @@
         onLoadProblem: () => void;
         onSubmitAnswer: () => void;
         onSubmitTest: () => void;
+        onToggleCoach?: () => void;
     } = $props();
 
     let view = $derived(
@@ -98,13 +104,13 @@
 
 <footer
     class={cn(
-        "sticky bottom-0 z-30 flex min-h-14 w-full items-center justify-between border-t border-border/60 bg-background px-3 py-2",
+        "sticky bottom-0 z-30 grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-border/60 bg-background px-3 py-2",
         // Standing in for the nav bar means owning its safe-area inset (home
         // indicator / Safari toolbar).
         isMobilePortrait && "pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
     )}
 >
-    <div class="flex items-center gap-1">
+    <div class="flex min-w-0 items-center gap-1 justify-self-start">
         {#if view.showBack}
             <Button
                 variant="ghost"
@@ -151,7 +157,36 @@
         {/if}
     </div>
 
-    <div class="flex items-center gap-2">
+    {#if view.mode === "answering" && coachAvailable}
+        <Button
+            variant="outline"
+            aria-pressed={coachMode}
+            aria-label={coachMode
+                ? "Switch to answer mode"
+                : "Switch to Coach mode"}
+            onclick={() => onToggleCoach?.()}
+            class="h-9 gap-0.5 justify-self-center rounded-lg p-1 text-[11px] font-semibold"
+            title={coachMode
+                ? "Return to answer mode"
+                : "Switch to Coach mode"}
+        >
+            <span
+                class={cn(
+                    "rounded-md px-2 py-1 transition-colors",
+                    !coachMode &&
+                        "bg-primary text-primary-foreground shadow-sm",
+                )}
+            >Answer</span>
+            <span
+                class={cn(
+                    "rounded-md px-2 py-1 transition-colors",
+                    coachMode && "bg-muted text-foreground",
+                )}
+            >Coach</span>
+        </Button>
+    {/if}
+
+    <div class="col-start-3 flex min-w-0 items-center gap-2 justify-self-end">
         {#if view.mode === "test"}
             {#if segmented}
                 {#if canSegmentForward}

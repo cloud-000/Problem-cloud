@@ -5,6 +5,7 @@ import ContextRegister from "./coach-context-register.svelte";
 import ModelPicker from "./coach-model-picker.svelte";
 import ConversationList from "./coach-conversation-list.svelte";
 import ConversationRow from "./coach-conversation-row.svelte";
+import Inline from "./coach-inline.svelte";
 
 export {
     Launcher,
@@ -14,6 +15,7 @@ export {
     ModelPicker,
     ConversationList,
     ConversationRow,
+    Inline,
     Launcher as CoachLauncher,
     Panel as CoachPanel,
     QuickAsk as CoachQuickAsk,
@@ -21,7 +23,9 @@ export {
     ModelPicker as CoachModelPicker,
     ConversationList as CoachConversationList,
     ConversationRow as CoachConversationRow,
+    Inline as CoachInline,
 };
 export type { CoachLauncherProps } from "./coach-launcher.svelte";
 export type { CoachQuickAskProps } from "./coach-quick-ask.svelte";
 export type { CoachContextRegisterProps } from "./coach-context-register.svelte";
+export type { CoachInlineProps } from "./coach-inline.svelte";

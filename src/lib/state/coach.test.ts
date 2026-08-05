@@ -153,6 +153,52 @@ describe("coach chord", () => {
         expect(coach.quickAskVisible).toBe(true);
         utilityPanel.unregister("whiteboard", "test:whiteboard");
     });
+
+    test("§6.4: focuses the active inline composer instead of summoning", async () => {
+        let focusCalls = 0;
+        const unregister = coach.registerInlineTarget({
+            isActive: () => true,
+            open: () => {},
+            focusComposer: () => {
+                focusCalls += 1;
+            },
+        });
+
+        coach.toggleQuickAsk(null);
+        await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+
+        expect(coach.quickAskOpen).toBe(false);
+        expect(focusCalls).toBe(1);
+        unregister();
+    });
+});
+
+describe("trainer inline escalation", () => {
+    test("continues a quick ask in Coach mode without opening the panel", async () => {
+        let opened = false;
+        let focused = false;
+        const unregister = coach.registerInlineTarget({
+            isActive: () => opened,
+            open: () => {
+                opened = true;
+            },
+            focusComposer: () => {
+                focused = true;
+            },
+        });
+        coach.openQuickAsk(null);
+
+        expect(coach.inlineTargetAvailable).toBe(true);
+        expect(coach.continueInInline()).toBe(true);
+        await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+
+        expect(opened).toBe(true);
+        expect(focused).toBe(true);
+        expect(coach.quickAskOpen).toBe(false);
+        expect(utilityPanel.activeView).toBe(null);
+        unregister();
+        expect(coach.inlineTargetAvailable).toBe(false);
+    });
 });
 
 describe("coach bootstrap ownership", () => {

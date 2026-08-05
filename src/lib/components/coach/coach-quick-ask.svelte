@@ -204,10 +204,13 @@
         <button
             type="button"
             class="flex min-h-8 flex-1 items-center gap-1.5 rounded-xl px-2 text-xs text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground"
-            onclick={() => coach.escalateToPanel()}
+            onclick={() =>
+                coach.inlineTargetAvailable
+                    ? coach.continueInInline()
+                    : coach.escalateToPanel()}
         >
             <Icon name="open_in_full" fontsize={15} />
-            <span>Continue in panel</span>
+            <span>{coach.inlineTargetAvailable ? "Continue in Coach mode" : "Continue in panel"}</span>
         </button>
         <button
             type="button"

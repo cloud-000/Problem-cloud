@@ -40,6 +40,12 @@ import type {
 
 const CONVERSATION_PAGE_SIZE = 20;
 
+interface InlineCoachTarget {
+    isActive: () => boolean;
+    open: () => void;
+    focusComposer: () => void;
+}
+
 class CoachStore {
     enabled = $state(false);
     initialized = $state(false);
@@ -63,6 +69,7 @@ class CoachStore {
     historyViewOpen = $state(false);
     quickAskOpen = $state(false);
     #quickAskInvoker: HTMLElement | null = null;
+    #inlineTarget: InlineCoachTarget | null = null;
     #abortController: AbortController | null = null;
     #lastPrompt = "";
     /**
@@ -150,6 +157,11 @@ class CoachStore {
      * nothing visible.
      */
     toggleQuickAsk(invoker?: HTMLElement | null): void {
+        if (this.#inlineTarget?.isActive()) {
+            this.closeQuickAsk(false);
+            queueMicrotask(() => this.#inlineTarget?.focusComposer());
+            return;
+        }
         if (this.quickAskOpen) {
             this.closeQuickAsk();
             return;
@@ -160,6 +172,34 @@ class CoachStore {
         }
         if (utilityPanel.activeView) utilityPanel.close(false);
         this.openQuickAsk(invoker);
+    }
+
+    /**
+     * A route may provide an inline presentation for this one global
+     * conversation. While that presentation is active, the global Coach chord
+     * focuses its composer instead of rendering the same transcript again in
+     * the quick-ask.
+     */
+    registerInlineTarget(target: InlineCoachTarget): () => void {
+        this.#inlineTarget = target;
+        return () => {
+            if (this.#inlineTarget === target) this.#inlineTarget = null;
+        };
+    }
+
+    /** Continue a quick ask in the route's inline presentation, when it has one. */
+    continueInInline(): boolean {
+        const target = this.#inlineTarget;
+        if (!target) return false;
+        this.closeQuickAsk(false);
+        if (utilityPanel.activeView === "coach") utilityPanel.close(false);
+        target.open();
+        queueMicrotask(() => target.focusComposer());
+        return true;
+    }
+
+    get inlineTargetAvailable(): boolean {
+        return this.#inlineTarget !== null;
     }
 
     /**
