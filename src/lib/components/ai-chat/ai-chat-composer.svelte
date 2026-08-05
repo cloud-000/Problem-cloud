@@ -11,11 +11,13 @@
 </script>
 
 <script lang="ts">
-    import { tick } from "svelte";
+    import type { Attachment } from "svelte/attachments";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { cn } from "$lib/utils";
     import AIChatModelPicker from "./ai-chat-model-picker.svelte";
+
+    const MAX_HEIGHT = 160;
 
     let {
         controller,
@@ -25,18 +27,42 @@
         class: className,
     }: AIChatComposerProps = $props();
 
-    function resizeTextarea() {
-        if (!textareaRef) return;
-        textareaRef.style.height = "auto";
-        const nextHeight = Math.min(textareaRef.scrollHeight, 160);
-        textareaRef.style.height = `${nextHeight}px`;
-        textareaRef.style.overflowY = textareaRef.scrollHeight > 160 ? "auto" : "hidden";
+    function fitToContent(node: HTMLTextAreaElement) {
+        // At zero content width even the placeholder wraps to about one
+        // character per line, so scrollHeight overshoots and pins the box at
+        // max height. That is the state on mount inside a panel whose reveal
+        // transition animates width up from 0 — `trackWidth` re-measures as
+        // soon as real width lands.
+        if (node.clientWidth === 0) return;
+        node.style.height = "auto";
+        const nextHeight = Math.min(node.scrollHeight, MAX_HEIGHT);
+        node.style.height = `${nextHeight}px`;
+        node.style.overflowY = node.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
     }
 
-    $effect(() => {
-        controller.draft;
-        void tick().then(resizeTextarea);
-    });
+    // Reads no reactive state, so it sets up once per mount rather than being
+    // rebuilt on every keystroke. Width changes (panel reveal, panel drag,
+    // viewport resize) re-wrap the draft; height changes are ignored, since
+    // `fitToContent` writes height itself and would otherwise feed itself.
+    const trackWidth: Attachment<HTMLTextAreaElement> = (node) => {
+        let width = node.clientWidth;
+        const observer = new ResizeObserver(() => {
+            if (node.clientWidth === width) return;
+            width = node.clientWidth;
+            fitToContent(node);
+        });
+        observer.observe(node);
+        fitToContent(node);
+        return () => observer.disconnect();
+    };
+
+    // Re-runs on every draft change, covering programmatic ones like `send()`
+    // clearing the draft, which raise no DOM event. Nothing to tear down, so
+    // the per-keystroke re-run costs only the measurement.
+    const trackDraft: Attachment<HTMLTextAreaElement> = (node) => {
+        void controller.draft;
+        fitToContent(node);
+    };
 
     function keydown(event: KeyboardEvent) {
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -81,8 +107,9 @@
             class="block max-h-40 min-h-12 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0"
             {placeholder}
             aria-label={`Message ${assistantLabel}`}
-            oninput={resizeTextarea}
             onkeydown={keydown}
+            {@attach trackWidth}
+            {@attach trackDraft}
         ></textarea>
         <div class="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1">
             <AIChatModelPicker {controller} />
