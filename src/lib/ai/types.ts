@@ -242,10 +242,29 @@ export interface AIChatRequestBody {
     contexts: CoachContextDescriptor[];
     task: AITaskType;
     /**
-     * Client-supplied prior turns, accepted only when history is disabled and never
-     * persisted. Ignored for persisted conversations, whose history is server-loaded.
+     * Whether this turn may be written to history at all. Defaults to true; a one-shot
+     * (§1) sends false so the server streams without ever creating a conversation row.
+     * Saving preferences still override it — false never becomes true.
+     */
+    persist?: boolean;
+    /**
+     * Client-supplied prior turns, accepted only when the turn is not persisted and
+     * never stored. Ignored for persisted conversations, whose history is server-loaded.
      */
     ephemeralHistory?: AIEphemeralMessage[];
+}
+
+/**
+ * A one-shot's in-memory transcript, handed over when it is escalated (§1).
+ *
+ * Promotion is a flush, not an id negotiation: the browser already minted the
+ * conversation id, so this creates the conversation with the turns it already has.
+ * Every message carries the id the transcript uses, which makes the flush idempotent.
+ */
+export interface AIConversationFlushRequest {
+    conversationId?: string;
+    contexts: CoachContextDescriptor[];
+    messages: NormalizedAIMessage[];
 }
 
 /** A finished BYOK turn, handed to the server purely to be saved. */
@@ -290,6 +309,11 @@ export interface ConversationDetailResponse {
     };
 }
 
+/**
+ * No `conversation` field, deliberately: assist threads do not auto-resume (§1).
+ * Opening the Coach starts a fresh thread and history is one click away, so bootstrap
+ * has no transcript to carry. Work threads resume by anchor, not by recency (§2).
+ */
 export interface AIBootstrap {
     enabled: boolean;
     /** Every connection the caller supplied, each with its own probed state. */
@@ -297,8 +321,4 @@ export interface AIBootstrap {
     models: NormalizedAIModel[];
     defaultModel: AIModelReference;
     historyEnabled: boolean;
-    conversation?: {
-        id: string;
-        messages: NormalizedAIMessage[];
-    };
 }

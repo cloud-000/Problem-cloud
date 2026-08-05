@@ -6,6 +6,8 @@ import {
     EPHEMERAL_HISTORY_MAX_MESSAGES,
     EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS,
     EPHEMERAL_HISTORY_MAX_TOTAL_CHARS,
+    FLUSH_MAX_MESSAGES,
+    FLUSH_MAX_TOTAL_CHARS,
 } from "./schemas";
 import type {
     AIEphemeralMessage,
@@ -86,6 +88,35 @@ export function boundCoachHistory(messages: NormalizedAIMessage[]): NormalizedAI
         if (!text) continue;
         if (selected.length >= EPHEMERAL_HISTORY_MAX_MESSAGES) break;
         if (chars + text.length > EPHEMERAL_HISTORY_MAX_TOTAL_CHARS) break;
+        chars += text.length;
+        selected.push(message);
+    }
+    return selected.reverse();
+}
+
+/**
+ * The turns of an escalated one-shot that may be written to history (§1).
+ *
+ * Mirrors the flush validator's bounds so a request the client builds is never
+ * rejected, and drops what the schema will not accept anyway: a still-streaming
+ * message (the flush waits for the stream to finish, but an aborted one can linger),
+ * a non-conversational role, and a turn with no text to show. Truncation drops the
+ * oldest turns, so the part of the thread the user is looking at always survives.
+ */
+export function flushableTranscript(
+    messages: NormalizedAIMessage[],
+    limit = FLUSH_MAX_MESSAGES,
+): NormalizedAIMessage[] {
+    const selected: NormalizedAIMessage[] = [];
+    let chars = 0;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.role !== "user" && message.role !== "assistant") continue;
+        if (message.status === "streaming") continue;
+        const text = messageText(message);
+        if (!text) continue;
+        if (selected.length >= limit) break;
+        if (chars + text.length > FLUSH_MAX_TOTAL_CHARS && selected.length > 0) break;
         chars += text.length;
         selected.push(message);
     }

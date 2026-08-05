@@ -1,12 +1,20 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { AISchemaError, parseConversationFlushRequest } from "$lib/ai/schemas";
+import { messageText } from "$lib/ai/conversations";
+import type { AIConversationFlushRequest } from "$lib/ai/types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import {
     ConversationCursorError,
     decodeCursor,
     parseLimit,
 } from "$lib/server/ai/conversation-cursor";
-import { ensureConversation, listConversations, preferencesFor } from "$lib/server/ai/persistence";
+import {
+    ensureConversation,
+    listConversations,
+    preferencesFor,
+    saveTranscript,
+} from "$lib/server/ai/persistence";
 import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -36,17 +44,43 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     }
 };
 
+/**
+ * Creates a conversation, optionally with the turns it already has.
+ *
+ * This is the flush an escalated one-shot performs (§1): the thread existed only in
+ * the browser, so promoting it is a single write of the whole transcript rather than
+ * an id negotiation — the browser minted the id before its first token, and every
+ * message carries the id the transcript uses, so a repeated flush writes nothing new.
+ */
 export const POST: RequestHandler = async ({ locals, request, url }) => {
     const user = await requireAIUser(locals);
     assertSameOrigin(request, url);
     assertRateLimit(user.id, "ai.conversations.create", 20);
     if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
+
+    let body: AIConversationFlushRequest = { contexts: [], messages: [] };
+    if (request.headers.get("content-type")?.includes("application/json")) {
+        try {
+            body = parseConversationFlushRequest(await request.json());
+        } catch (error) {
+            const message = error instanceof AISchemaError ? error.message : "Invalid JSON request";
+            return stableError("invalid_request", message, 400);
+        }
+    }
+
     try {
         const preferences = await preferencesFor(user.id);
         if (!preferences.history_enabled) {
-            return json({ id: crypto.randomUUID(), persisted: false });
+            return json({ id: body.conversationId ?? crypto.randomUUID(), persisted: false });
         }
-        const id = await ensureConversation(user.id, undefined, []);
+        const firstPrompt = body.messages.find((message) => message.role === "user");
+        const id = await ensureConversation(
+            user.id,
+            body.conversationId,
+            body.contexts,
+            firstPrompt && messageText(firstPrompt),
+        );
+        await saveTranscript(id, body.messages);
         return json({ id, persisted: true }, { status: 201 });
     } catch {
         return stableError("conversation_unavailable", "A new conversation could not be created", 503);

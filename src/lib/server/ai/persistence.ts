@@ -54,13 +54,6 @@ function admin(): SupabaseClient<Database> {
     return adminClient;
 }
 
-/**
- * Transcript loaded into the Coach at bootstrap. The full thread is never needed to
- * resume typing into it, and an unbounded load makes the first Coach open cost every
- * message the user has ever sent.
- */
-export const BOOTSTRAP_MESSAGE_LIMIT = 30;
-
 export async function preferencesFor(userId: string) {
     const client = admin();
     const { data, error } = await client
@@ -135,40 +128,15 @@ function normalizedMessage(message: MessageRow): NormalizedAIMessage {
     };
 }
 
-/**
- * A conversation's messages, oldest first. With a `limit` the *newest* rows are taken
- * and flipped, so truncation drops the oldest turns rather than the ones the user is
- * looking at.
- */
-async function messagesFor(
-    conversationId: string,
-    limit?: number,
-): Promise<NormalizedAIMessage[]> {
-    const ascending = limit === undefined;
-    let query = admin()
+/** A conversation's messages, oldest first. */
+async function messagesFor(conversationId: string): Promise<NormalizedAIMessage[]> {
+    const { data, error } = await admin()
         .from("ai_messages")
         .select(MESSAGE_COLUMNS)
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending });
-    if (limit !== undefined) query = query.limit(limit);
-    const { data, error } = await query;
+        .order("created_at", { ascending: true });
     if (error) throw error;
-    const messages = (data ?? []).map(normalizedMessage);
-    return ascending ? messages : messages.reverse();
-}
-
-export async function latestConversation(userId: string, limit = BOOTSTRAP_MESSAGE_LIMIT) {
-    const { data: conversation, error } = await admin()
-        .from("ai_conversations")
-        .select("id")
-        .eq("user_id", userId)
-        .is("archived_at", null)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (error) throw error;
-    if (!conversation) return undefined;
-    return { id: conversation.id, messages: await messagesFor(conversation.id, limit) };
+    return (data ?? []).map(normalizedMessage);
 }
 
 /**
@@ -389,6 +357,39 @@ export async function saveUserMessage(
     if (error) throw error;
     await touchConversation(conversationId);
     return id;
+}
+
+/**
+ * Writes a one-shot's in-memory transcript when it is escalated (§1).
+ *
+ * The whole thread lands in one statement, keyed on the ids the browser's transcript
+ * already uses, so a re-flush resolves to the same rows instead of duplicating turns.
+ * `created_at` is taken from the transcript rather than left to default: every row
+ * would otherwise share this instant and the thread would come back in an arbitrary
+ * order. The values describe the caller's own conversation, so a skewed clock can
+ * only reorder their own turns.
+ */
+export async function saveTranscript(
+    conversationId: string,
+    messages: NormalizedAIMessage[],
+): Promise<void> {
+    if (messages.length === 0) return;
+    const { error } = await admin()
+        .from("ai_messages")
+        .upsert(
+            messages.map((message) => ({
+                id: message.id,
+                conversation_id: conversationId,
+                role: message.role,
+                content_parts: message.parts as unknown as Json,
+                status: message.status,
+                resolved_model: message.resolvedModel ?? null,
+                created_at: new Date(message.createdAt).toISOString(),
+            })),
+            { onConflict: "id", ignoreDuplicates: true },
+        );
+    if (error) throw error;
+    await touchConversation(conversationId);
 }
 
 export async function saveAssistantMessage(input: {

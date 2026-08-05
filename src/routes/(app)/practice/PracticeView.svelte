@@ -904,6 +904,9 @@
       if (!enabled) return;
       coach.closeQuickAsk(false);
       if (utilityPanel.activeView === "coach") utilityPanel.close(false);
+      // The trainer owns a thread, so entering Coach mode promotes whatever the
+      // quick-ask was holding in memory into a real conversation (§1).
+      coach.present("inline");
       void coach.initialize();
       queueMicrotask(() => coachComposer?.focus());
    }

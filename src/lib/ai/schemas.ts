@@ -5,6 +5,7 @@ import type {
     AIBootstrap,
     AIChatRequestBody,
     AIConnectionCredential,
+    AIConversationFlushRequest,
     AIContextMode,
     AIContextSource,
     AIEphemeralMessage,
@@ -292,7 +293,53 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
             "agentic",
             "vision",
         ]),
+        persist: input.persist === undefined ? true : boolean(input.persist, "persist"),
         ephemeralHistory: ephemeralHistory.length > 0 ? ephemeralHistory : undefined,
+    };
+}
+
+/** A flush carries a whole transcript, so it is bounded more tightly than a turn. */
+export const FLUSH_MAX_MESSAGES = 40;
+export const FLUSH_MAX_TOTAL_CHARS = 200_000;
+
+export function parseConversationFlushRequest(value: unknown): AIConversationFlushRequest {
+    const input = record(value, "flush request");
+    const contexts = Array.isArray(input.contexts) ? input.contexts.map(parseContextDescriptor) : [];
+    if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
+
+    const rawMessages = input.messages === undefined || input.messages === null ? [] : input.messages;
+    if (!Array.isArray(rawMessages)) throw new AISchemaError("messages must be an array");
+    if (rawMessages.length > FLUSH_MAX_MESSAGES) {
+        throw new AISchemaError(`a flush cannot exceed ${FLUSH_MAX_MESSAGES} messages`);
+    }
+
+    let total = 0;
+    const messages = rawMessages.map((item) => {
+        const message = parseNormalizedMessage(item);
+        // These become uuid primary keys and a timestamptz sort key. Both come from the
+        // browser's own transcript, so a malformed one is a client bug worth a 400
+        // rather than an opaque 503 from the database.
+        if (!UUID_PATTERN.test(message.id)) throw new AISchemaError("message id must be a UUID");
+        if (!Number.isFinite(Date.parse(message.createdAt))) {
+            throw new AISchemaError("message created at must be a timestamp");
+        }
+        if (message.role !== "user" && message.role !== "assistant") {
+            throw new AISchemaError("flushed messages must be user or assistant turns");
+        }
+        if (message.status === "streaming") {
+            throw new AISchemaError("an unfinished message cannot be flushed");
+        }
+        for (const part of message.parts) if (part.type === "text") total += part.text.length;
+        if (total > FLUSH_MAX_TOTAL_CHARS) {
+            throw new AISchemaError(`a flush cannot exceed ${FLUSH_MAX_TOTAL_CHARS} characters`);
+        }
+        return message;
+    });
+
+    return {
+        conversationId: optionalUuid(input.conversationId, "conversation id"),
+        contexts,
+        messages,
     };
 }
 
@@ -521,17 +568,6 @@ export function parseNormalizedMessage(value: unknown): NormalizedAIMessage {
 export function parseBootstrap(value: unknown): AIBootstrap {
     const input = record(value, "bootstrap");
     if (!Array.isArray(input.models)) throw new AISchemaError("models must be an array");
-    let conversation: AIBootstrap["conversation"];
-    if (input.conversation !== undefined && input.conversation !== null) {
-        const rawConversation = record(input.conversation, "conversation");
-        if (!Array.isArray(rawConversation.messages)) {
-            throw new AISchemaError("conversation messages must be an array");
-        }
-        conversation = {
-            id: string(rawConversation.id, "conversation id", 80),
-            messages: rawConversation.messages.map(parseNormalizedMessage),
-        };
-    }
     if (!Array.isArray(input.connections)) throw new AISchemaError("connections must be an array");
     if (input.connections.length > MAX_CONNECTIONS) {
         throw new AISchemaError("too many connections");
@@ -542,7 +578,6 @@ export function parseBootstrap(value: unknown): AIBootstrap {
         models: input.models.map(parseNormalizedModel),
         defaultModel: parseModelReference(input.defaultModel),
         historyEnabled: boolean(input.historyEnabled, "history enabled"),
-        conversation,
     };
 }
 

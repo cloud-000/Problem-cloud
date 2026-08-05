@@ -8,9 +8,17 @@ import {
     boundCoachHistory,
     boundEphemeralHistory,
     dedupeById,
+    flushableTranscript,
     latestPreview,
     PREVIEW_MAX_CHARS,
 } from "$lib/ai/conversations";
+import {
+    promoteTier,
+    tierForPresentation,
+    tierPersists,
+    type CoachPresentation,
+    type CoachTier,
+} from "$lib/ai/session/tier";
 import { catalogFor, type AIModelCatalog } from "$lib/ai/catalog";
 import { resolveModel } from "$lib/ai/router";
 import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/client-registry";
@@ -54,6 +62,12 @@ class CoachStore {
     bootstrap = $state<AIBootstrap | null>(null);
     messages = $state<NormalizedAIMessage[]>([]);
     conversationId = $state<string | undefined>(undefined);
+    /**
+     * Which family the active thread belongs to (§1). A session starts as a one-shot —
+     * the quick-ask is the cheapest way in — and is promoted the moment it is escalated
+     * into a presentation that owns a thread. Nothing here is a user-facing toggle.
+     */
+    tier = $state<CoachTier>("one-shot");
     draft = $state("");
     #selectedModel = $state<AIModelReference>("auto");
     streaming = $state(false);
@@ -73,6 +87,12 @@ class CoachStore {
     #inlineTarget: InlineCoachTarget | null = null;
     #abortController: AbortController | null = null;
     #lastPrompt = "";
+    /**
+     * A promotion that arrived mid-stream. The flush waits for the turn to finish so it
+     * writes the whole answer rather than the half of it that had arrived — the in-flight
+     * turn captured no conversation id, so this flush is the only thing that will save it.
+     */
+    #pendingFlush = false;
     /**
      * Bumped whenever the active conversation changes identity. Every in-flight
      * request captures the value at start and drops its results if it no longer
@@ -138,6 +158,15 @@ class CoachStore {
     /** Saved history is unavailable when the user has turned conversation saving off. */
     get historyEnabled(): boolean {
         return this.bootstrap?.historyEnabled ?? false;
+    }
+
+    /**
+     * Whether this thread is written down at all. A one-shot never is, however the
+     * user's saving preference is set: the tier decides that no row exists, and the
+     * preference decides whether a thread that has one may be written to.
+     */
+    get persisted(): boolean {
+        return this.historyEnabled && tierPersists(this.tier);
     }
 
     configure(enabled: boolean): void {
@@ -223,6 +252,7 @@ class CoachStore {
         this.closeQuickAsk(false);
         if (utilityPanel.activeView === "coach") utilityPanel.close(false);
         target.open();
+        this.present("inline");
         queueMicrotask(() => target.focusComposer());
         return true;
     }
@@ -232,16 +262,19 @@ class CoachStore {
     }
 
     /**
-     * Escalation. There is nothing to migrate: same store, same `conversationId`,
-     * same `messages`, and `draft` is store state so a half-typed question
-     * survives too. Returns false when no panel is registered, in which case the
-     * quick-ask stays put rather than dismissing into nothing.
+     * Escalation. Nothing about the conversation migrates: same store, same
+     * `conversationId`, same `messages`, and `draft` is store state so a half-typed
+     * question survives too. What does change is the tier — the thread stops being a
+     * one-shot and the turns it already has are flushed to the server. Returns false
+     * when no panel is registered, in which case the quick-ask stays put rather than
+     * dismissing into nothing.
      */
     escalateToPanel(): boolean {
         const opened = utilityPanel.open("coach", this.#quickAskInvoker);
         if (opened) {
             this.quickAskOpen = false;
             this.#quickAskInvoker = null;
+            this.present("panel");
         }
         return opened;
     }
@@ -309,10 +342,9 @@ class CoachStore {
             // Assigned to the field, not the setter: this is the stored preference
             // arriving, so echoing it straight back would be a pointless write.
             this.#selectedModel = server.defaultModel;
-            if (server.conversation) {
-                this.conversationId = server.conversation.id;
-                this.messages = server.conversation.messages;
-            }
+            // No transcript is adopted here: assist threads do not auto-resume (§1).
+            // Bootstrapping used to drop the newest thread on whoever opened the Coach
+            // next, so an unrelated question inherited a week-old conversation.
             this.initialized = true;
         } catch (error) {
             this.error = this.normalizeError(error, "bootstrap_unavailable");
@@ -386,6 +418,9 @@ class CoachStore {
                     message,
                     contexts,
                     task: "general",
+                    // A one-shot streams without leaving a row behind. The server would
+                    // otherwise mint a conversation of its own for an unidentified turn.
+                    persist: conversationId !== undefined,
                     ephemeralHistory,
                 };
                 const response = await fetch("/api/ai/chat", {
@@ -414,7 +449,17 @@ class CoachStore {
                 this.liveAnnouncement = "Coach response failed";
             }
         } finally {
-            if (generation === this.#generation) this.streaming = false;
+            if (generation === this.#generation) {
+                this.streaming = false;
+                // Escalated while this turn was streaming: now that the answer is whole,
+                // the promoted thread can be written down in one piece.
+                if (this.#pendingFlush) {
+                    this.#pendingFlush = false;
+                    if (this.conversationId) {
+                        void this.#flushTranscript(this.conversationId, generation);
+                    }
+                }
+            }
             if (this.#abortController === controller) this.#abortController = null;
         }
     }
@@ -437,11 +482,74 @@ class CoachStore {
      * thread whole. The BYOK path used to adopt the id returned by the best-effort
      * save, so a save that failed (offline, 503, rate limit) left the next turn
      * creating a *second* conversation and silently splitting the thread.
+     *
+     * A one-shot has no identity to mint: returning undefined is what keeps it out of
+     * the database entirely, on both the BYOK and the proxied path.
      */
     #ensureConversationId(): string | undefined {
-        if (!this.historyEnabled) return undefined;
+        if (!this.persisted) return undefined;
         this.conversationId ??= crypto.randomUUID();
         return this.conversationId;
+    }
+
+    /**
+     * Announces where the Coach is now being shown. Every surface that owns a thread —
+     * the panel, a route's inline presentation — calls this when it takes over, which is
+     * how a tier is decided: by the presentation, never by a user-facing toggle. The
+     * quick-ask does not call it, because a quick-ask that is never escalated is
+     * precisely the thread that stays in memory.
+     */
+    present(presentation: CoachPresentation): void {
+        this.#promote(tierForPresentation(presentation));
+    }
+
+    /**
+     * Promotion (§1). Escalating a one-shot is the moment a thread starts existing:
+     * it takes the escalated presentation's tier, mints its id, and hands over the
+     * transcript it already has in a single request.
+     *
+     * Only a one-shot is ever promoted. A thread that already has rows keeps its tier
+     * — there is no assist → work promotion, and demoting one back into memory would
+     * orphan what it has already written.
+     */
+    #promote(target: CoachTier): void {
+        const wasEphemeral = !tierPersists(this.tier);
+        this.tier = promoteTier(this.tier, target);
+        if (!wasEphemeral || !this.persisted) return;
+        // An empty thread has nothing to flush; its first send creates the row.
+        if (this.messages.length === 0) return;
+        const conversationId = this.#ensureConversationId();
+        if (!conversationId) return;
+        if (this.streaming) {
+            this.#pendingFlush = true;
+            return;
+        }
+        void this.#flushTranscript(conversationId, this.#generation);
+    }
+
+    /**
+     * Writes an escalated one-shot's transcript. Best-effort, exactly like `#persistTurn`:
+     * the turns are already on screen, so a failed flush costs the user their history of
+     * this thread and never the thread itself — the next send still writes into the same
+     * conversation, because its id was minted at promotion.
+     */
+    async #flushTranscript(conversationId: string, generation: number): Promise<void> {
+        if (generation !== this.#generation) return;
+        const messages = flushableTranscript(this.messages);
+        if (messages.length === 0) return;
+        try {
+            await fetch("/api/ai/conversations", {
+                method: "POST",
+                headers: { "content-type": "application/json", accept: "application/json" },
+                body: JSON.stringify({
+                    conversationId,
+                    contexts: this.activeContexts,
+                    messages,
+                }),
+            });
+        } catch {
+            // History is best-effort; a failed flush must never surface to the user.
+        }
     }
 
     /**
@@ -595,11 +703,11 @@ class CoachStore {
     }
 
     /**
-     * Prior turns for a history-disabled chat. Only sent when saving is off;
-     * persisted conversations use server-loaded history instead.
+     * Prior turns for a chat the server keeps no copy of — a one-shot, or any chat
+     * while saving is off. Persisted conversations use server-loaded history instead.
      */
     private ephemeralHistory(): AIEphemeralMessage[] | undefined {
-        if (this.historyEnabled) return undefined;
+        if (this.persisted) return undefined;
         const history = boundEphemeralHistory(this.messages);
         return history.length > 0 ? history : undefined;
     }
@@ -608,7 +716,14 @@ class CoachStore {
         if (this.#lastPrompt) await this.send(this.#lastPrompt);
     }
 
-    /** Clears the active chat. Creation stays lazy — the first send inserts the row. */
+    /**
+     * Clears the active chat. Creation stays lazy — the first send of a persisted
+     * thread inserts the row, and a one-shot never inserts one at all.
+     *
+     * The tier is kept: a new chat started from the panel is another assist thread, and
+     * one started from the trainer is another work thread. Only a fresh summons decides
+     * a tier, and nothing here changes where the Coach is being shown.
+     */
     newConversation(): void {
         this.#invalidateActiveRequest();
         this.conversationId = undefined;
@@ -616,6 +731,7 @@ class CoachStore {
         this.error = null;
         this.detachedContextIds = [];
         this.historyViewOpen = false;
+        this.#pendingFlush = false;
     }
 
     async openConversationList(): Promise<void> {
@@ -689,6 +805,11 @@ class CoachStore {
             this.error = null;
             this.detachedContextIds = [];
             this.historyViewOpen = false;
+            // Whatever it was opened from, a thread pulled out of history already has
+            // rows: it can never be treated as a one-shot again. Phase 2's `kind` column
+            // is what will tell an assist thread from a work one here.
+            this.tier = "assist";
+            this.#pendingFlush = false;
         } catch (error) {
             if (generation !== this.#generation) return;
             this.conversationListError = this.normalizeError(error, "conversation_not_found");

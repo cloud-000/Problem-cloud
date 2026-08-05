@@ -12,7 +12,10 @@ import {
     parseContextLayer,
     parseCredentialEnvelope,
     parseConversationDetail,
+    parseConversationFlushRequest,
     parseConversationList,
+    FLUSH_MAX_MESSAGES,
+    FLUSH_MAX_TOTAL_CHARS,
     parseEphemeralHistory,
     parseModelReference,
     parseToolDefinition,
@@ -22,7 +25,23 @@ describe("AI runtime schemas", () => {
     test("accepts a minimal provider-neutral chat request", () => {
         expect(
             parseChatRequest({ model: "auto", message: "Hello", task: "general", contexts: [] }),
-        ).toEqual({ model: "auto", message: "Hello", task: "general", contexts: [] });
+        ).toEqual({
+            model: "auto",
+            message: "Hello",
+            task: "general",
+            contexts: [],
+            // Recording a turn is the default; only a one-shot opts out (§1).
+            persist: true,
+        });
+    });
+
+    test("a one-shot turn asks not to be recorded", () => {
+        expect(parseChatRequest({ model: "auto", message: "Hello", persist: false }).persist).toBe(
+            false,
+        );
+        expect(() =>
+            parseChatRequest({ model: "auto", message: "Hello", persist: "no" }),
+        ).toThrow(AISchemaError);
     });
 
     test("rejects provider-shaped and oversized request data", () => {
@@ -316,5 +335,71 @@ describe("conversation list and detail responses", () => {
         });
         expect(payload.conversation.messages[0].parts[0]).toEqual({ type: "text", text: "Hello" });
         expect(() => parseConversationDetail({ conversation: { id: "x" } })).toThrow(AISchemaError);
+    });
+});
+
+describe("one-shot flush requests", () => {
+    const uuid = (last: string) => `0197b1c0-0000-4000-8000-00000000000${last}`;
+    const flushed = (overrides: Record<string, unknown> = {}) => ({
+        id: uuid("1"),
+        role: "user",
+        parts: [{ type: "text", text: "Hello" }],
+        status: "complete",
+        createdAt: "2026-08-05T10:00:00.000Z",
+        ...overrides,
+    });
+
+    test("accepts a transcript the browser already holds", () => {
+        const body = parseConversationFlushRequest({
+            conversationId: uuid("0"),
+            contexts: [],
+            messages: [flushed(), flushed({ id: uuid("2"), role: "assistant" })],
+        });
+        expect(body.conversationId).toBe(uuid("0"));
+        expect(body.messages).toHaveLength(2);
+    });
+
+    test("an empty body still creates a conversation", () => {
+        expect(parseConversationFlushRequest({})).toEqual({
+            conversationId: undefined,
+            contexts: [],
+            messages: [],
+        });
+    });
+
+    test("rejects what the database could only reject as a 503", () => {
+        // Ids land in a uuid primary key and createdAt in a timestamptz sort key.
+        expect(() =>
+            parseConversationFlushRequest({ messages: [flushed({ id: "message-1" })] }),
+        ).toThrow(AISchemaError);
+        expect(() =>
+            parseConversationFlushRequest({ messages: [flushed({ createdAt: "whenever" })] }),
+        ).toThrow(AISchemaError);
+        expect(() =>
+            parseConversationFlushRequest({ messages: [flushed({ role: "system" })] }),
+        ).toThrow(AISchemaError);
+    });
+
+    test("an unfinished turn cannot be flushed", () => {
+        // Promotion waits for the stream, so a streaming message here is a client bug —
+        // and storing one would leave a permanently half-written answer in history.
+        expect(() =>
+            parseConversationFlushRequest({ messages: [flushed({ status: "streaming" })] }),
+        ).toThrow(AISchemaError);
+    });
+
+    test("bounds a transcript by turns and by characters", () => {
+        const many = Array.from({ length: FLUSH_MAX_MESSAGES + 1 }, (_, index) =>
+            flushed({ id: uuid(String(index % 10)) }),
+        );
+        expect(() => parseConversationFlushRequest({ messages: many })).toThrow(AISchemaError);
+
+        const huge = Array.from({ length: 3 }, (_, index) =>
+            flushed({
+                id: uuid(String(index)),
+                parts: [{ type: "text", text: "x".repeat(FLUSH_MAX_TOTAL_CHARS / 2) }],
+            }),
+        );
+        expect(() => parseConversationFlushRequest({ messages: huge })).toThrow(AISchemaError);
     });
 });

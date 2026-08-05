@@ -1,6 +1,6 @@
 # AI Coach — Sessions, Context & Tools
 
-> **Status: Phase 0 shipped; §1–§6 are the target state, not yet built.** This is
+> **Status: Phases 0–1 shipped; §2–§6 are the target state, not yet built.** This is
 > the authoritative explainer for how Coach conversations are anchored,
 > persisted, and fed context. Phases land incrementally (§8, which marks what has
 > shipped); `CLAUDE.md` is updated as each one ships, so until a phase is marked
@@ -16,6 +16,10 @@ requests going straight from the browser to the provider.
 
 Every Coach conversation is one of three tiers. The tier is decided by *where the
 Coach was summoned and whether it was escalated*, never by a user-facing toggle.
+
+The tier itself lives in `$lib/ai/session/tier.ts` (pure) and on `coach.tier`; a
+surface that owns a thread declares itself with `coach.present("panel" | "inline")`,
+which is the only thing that promotes a one-shot.
 
 | | **Work** | **Assist** | **One-shot** |
 | --- | --- | --- | --- |
@@ -46,13 +50,22 @@ tokens) is injected on every tier. Anything deeper is a tool call.
 ### Promotion
 
 A one-shot holds its transcript **in memory only**. Escalating a quick-ask to the
-panel or the trainer flushes that transcript to the server in a single request,
-creating the conversation with the turns it already has.
+panel or the trainer flushes that transcript to the server in a single request
+(`POST /api/ai/conversations`), creating the conversation with the turns it
+already has.
 
 This works only because **the client mints the conversation UUID up front**.
 Promotion is a flush, not an id negotiation. There is no assist → work promotion
 (decided 2026-08-05): starting practice from an assist thread opens a *new* work
-thread for the problem and leaves the assist thread alone.
+thread for the problem and leaves the assist thread alone. Nothing demotes a
+persisted thread back into memory either — it already has rows.
+
+Escalating **mid-stream** defers the flush until the turn finishes: the in-flight
+turn captured no conversation id, so that flush is the only thing that will ever
+save it, and firing early would store a half-written answer. Like every other
+write on this path, the flush is best-effort — a failed one costs the user the
+earlier turns of the thread, never the thread itself, because the id was minted
+at promotion and the next send writes into the same conversation.
 
 ---
 
@@ -312,7 +325,8 @@ For reviewers comparing against the code as of 2026-08-05:
 | Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte:952` | §3 `AttemptFact` |
 | `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts:152` | §3 policy |
 | `task` hardcoded `"general"` on both send paths | `coach.svelte.ts:342,410` | §6 |
-| Bootstrap always resumes the newest thread, entire transcript unbounded | `persistence.ts:135` | §1 (assist opens fresh); **transcript bounded ✅ Phase 0** (`BOOTSTRAP_MESSAGE_LIMIT`) |
+| Bootstrap always resumes the newest thread, entire transcript unbounded | `persistence.ts:135` | **✅ Phase 1** — bootstrap carries no transcript at all; assist opens fresh and history is one click away |
+| Every conversation is written down, including a throwaway quick-ask | `chat/+server.ts`, `coach.svelte.ts` | **✅ Phase 1** — a one-shot mints no id and sends `persist: false`; no row exists until it is escalated |
 | BYOK learns its `conversationId` only after a best-effort write; a failed write silently splits the thread | `coach.svelte.ts:472-503` | **✅ Phase 0** — `#ensureConversationId()` mints it before the first token |
 | `newConversation()` mid-stream re-creates a thread from the aborted turn | `coach.svelte.ts:472-503` | **✅ Phase 0** — `{conversationId, generation}` captured at send start, persistence generation-guarded |
 | Memory message ids ≠ DB ids; no idempotency on save | `messages/+server.ts:60` | **✅ Phase 0** — client-supplied ids + `on conflict do nothing` |
@@ -327,8 +341,8 @@ Each phase is independently shippable and leaves the app working.
 
 | # | Scope | Schema? |
 | --- | --- | --- |
-| **0** ✅ | Correctness only: capture `{conversationId, generation}` at send start; client-minted conversation + message ids; idempotent saves; persist `defaultModel`; bound the bootstrap transcript | no |
-| **1** | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
+| **0** ✅ | Correctness only: capture `{conversationId, generation}` at send start; client-minted conversation + message ids; idempotent saves; persist `defaultModel`; bound the bootstrap transcript (bounding since superseded — Phase 1 removed the bootstrap transcript outright) | no |
+| **1** ✅ | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
 | **2** | Anchors + lifecycle (§2, §4, §5): the four columns, the unique index, the "continue or new?" prompt | **yes** |
 | **3** | Typed facts, policy, snapshots (§3) | **yes** (`context_snapshot`) |
 | **4** | Read-only tools (§6); `task` derived rather than constant | no |

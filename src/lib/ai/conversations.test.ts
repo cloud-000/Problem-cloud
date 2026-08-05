@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
     boundEphemeralHistory,
     dedupeById,
+    flushableTranscript,
     groupConversations,
     latestPreview,
 } from "./conversations";
@@ -9,6 +10,8 @@ import {
     EPHEMERAL_HISTORY_MAX_MESSAGES,
     EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS,
     EPHEMERAL_HISTORY_MAX_TOTAL_CHARS,
+    FLUSH_MAX_MESSAGES,
+    parseConversationFlushRequest,
     parseEphemeralHistory,
 } from "./schemas";
 import type { ConversationSummary, NormalizedAIMessage } from "./types";
@@ -135,5 +138,32 @@ describe("client ephemeral history bounds", () => {
 
     test("excludes roles the provider contract does not carry", () => {
         expect(boundEphemeralHistory([message("system", "hidden"), message("tool", "hidden")])).toEqual([]);
+    });
+});
+
+describe("flushableTranscript", () => {
+    test("keeps the turns an escalated one-shot should write down", () => {
+        const messages = [message("user", "how do I start?"), message("assistant", "try factoring")];
+        expect(flushableTranscript(messages)).toEqual(messages);
+    });
+
+    test("drops what the flush validator would reject", () => {
+        const streaming: NormalizedAIMessage = { ...message("assistant", "half"), status: "streaming" };
+        const kept = message("user", "kept");
+        expect(
+            flushableTranscript([message("system", "hidden"), streaming, message("user", ""), kept]),
+        ).toEqual([kept]);
+    });
+
+    test("truncation drops the oldest turns and stays within the validator's bounds", () => {
+        const messages = Array.from({ length: FLUSH_MAX_MESSAGES + 3 }, (_, index) =>
+            message(index % 2 === 0 ? "user" : "assistant", `turn ${index}`),
+        );
+        const flushed = flushableTranscript(messages);
+        expect(flushed).toHaveLength(FLUSH_MAX_MESSAGES);
+        expect(flushed.at(-1)).toEqual(messages.at(-1)!);
+        expect(() =>
+            parseConversationFlushRequest({ contexts: [], messages: flushed }),
+        ).not.toThrow();
     });
 });

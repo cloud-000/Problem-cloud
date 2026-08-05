@@ -5,7 +5,7 @@ import { parseBootstrap } from "$lib/ai/schemas";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import { catalogFor } from "$lib/ai/catalog";
 import { providerRegistry } from "$lib/server/ai/providers/registry";
-import { latestConversation, preferencesFor } from "$lib/server/ai/persistence";
+import { preferencesFor } from "$lib/server/ai/persistence";
 import { assertRateLimit, requireAIUser, stableError } from "$lib/server/ai/security";
 
 /**
@@ -23,18 +23,18 @@ export const GET: RequestHandler = async ({ locals }) => {
             catalogFor(providerRegistry()),
             preferencesFor(user.id),
         ]);
-        const conversation = preferences.history_enabled
-            ? await latestConversation(user.id)
-            : undefined;
         // No server-owned connection is a normal state, not a failure: the user's own
         // connections may still make the Coach fully usable.
+        //
+        // No transcript either: assist threads do not auto-resume (§1). Opening the
+        // Coach starts fresh and history is one click away, so bootstrap no longer
+        // hands back whichever thread happened to be newest.
         const bootstrap: AIBootstrap = {
             enabled: true,
             connections: providers,
             models,
             defaultModel: preferences.default_model as AIBootstrap["defaultModel"],
             historyEnabled: preferences.history_enabled,
-            conversation,
         };
         return json(parseBootstrap(bootstrap), { headers: { "cache-control": "no-store" } });
     } catch {

@@ -124,6 +124,7 @@ beforeEach(() => {
     coach.draft = "";
     coach.messages = [];
     coach.conversationId = undefined;
+    coach.tier = "one-shot";
 });
 
 describe("coach quick-ask presentation", () => {
@@ -325,6 +326,8 @@ const CONNECTED_BYOK = {
 };
 
 const persistCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/messages"));
+const flushCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/conversations"));
+const chatCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/chat"));
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("coach conversation identity", () => {
@@ -335,6 +338,8 @@ describe("coach conversation identity", () => {
         ];
         coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
         coach.newConversation();
+        // These are the behaviors of a thread that has rows; a one-shot has none.
+        coach.present("panel");
         recorded = [];
         persistStatus = 200;
         streamGate = null;
@@ -385,6 +390,132 @@ describe("coach conversation identity", () => {
         await sending;
 
         expect(persistCalls()).toHaveLength(0);
+        expect(coach.conversationId).toBeUndefined();
+        expect(coach.messages).toHaveLength(0);
+    });
+});
+
+describe("coach tiers", () => {
+    beforeEach(async () => {
+        await coach.initialize();
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+        coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
+        coach.newConversation();
+        coach.tier = "one-shot";
+        recorded = [];
+        persistStatus = 200;
+        streamGate = null;
+    });
+
+    test("§1: a quick-ask that is never escalated leaves nothing behind", () => {
+        // Saving is *on*: the tier is what decides no row exists, not the preference.
+        expect(coach.historyEnabled).toBe(true);
+        coach.openQuickAsk(null);
+        expect(coach.tier).toBe("one-shot");
+        expect(coach.persisted).toBe(false);
+    });
+
+    test("a one-shot turn mints no conversation and saves nothing", async () => {
+        coach.openQuickAsk(null);
+        await coach.send("just a quick one");
+        expect(coach.conversationId).toBeUndefined();
+        expect(persistCalls()).toHaveLength(0);
+        expect(flushCalls()).toHaveLength(0);
+        expect(coach.messages).toHaveLength(2);
+    });
+
+    test("the proxied path is told not to record a one-shot", async () => {
+        // No credential of the user's own, so this turn goes through /api/ai/chat —
+        // which would otherwise mint a conversation of its own for an unidentified turn.
+        wireConnections = [];
+        await coach.send("just a quick one");
+        expect(chatCalls()[0]?.body.persist).toBe(false);
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+    });
+
+    test("escalating flushes the turns the thread already has", async () => {
+        coach.openQuickAsk(null);
+        await coach.send("quick question");
+        expect(flushCalls()).toHaveLength(0);
+
+        expect(coach.escalateToPanel()).toBe(true);
+        expect(coach.tier).toBe("assist");
+        await tick();
+
+        const [flush] = flushCalls();
+        const flushed = flush.body.messages as { role: string; status: string }[];
+        expect(flush.body.conversationId).toBe(coach.conversationId);
+        expect(flushed.map((message) => message.role)).toEqual(["user", "assistant"]);
+
+        // And the thread keeps writing into the conversation the flush created.
+        await coach.send("follow-up");
+        expect(persistCalls()[0].body.conversationId).toBe(coach.conversationId);
+    });
+
+    test("escalating mid-stream flushes the whole answer, not half of it", async () => {
+        // The in-flight turn captured no conversation id, so this flush is the only
+        // thing that will ever save it — flushing early would store a half-written reply.
+        streamGate = Promise.withResolvers<void>();
+        const sending = coach.send("hello");
+        await tick();
+
+        coach.escalateToPanel();
+        expect(coach.conversationId).toBeDefined();
+        expect(flushCalls()).toHaveLength(0);
+
+        streamGate.resolve();
+        await sending;
+        await tick();
+
+        const [flush] = flushCalls();
+        const flushed = flush.body.messages as { status: string }[];
+        expect(flushed).toHaveLength(2);
+        expect(flushed[1].status).toBe("complete");
+    });
+
+    test("continuing inline opens a work thread", () => {
+        const unregister = coach.registerInlineTarget({
+            isActive: () => false,
+            open: () => {},
+            focusComposer: () => {},
+        });
+        coach.openQuickAsk(null);
+        expect(coach.continueInInline()).toBe(true);
+        expect(coach.tier).toBe("work");
+        unregister();
+    });
+
+    test("a persisted thread is never demoted back into memory", async () => {
+        coach.present("panel");
+        // A new chat started from the panel is another assist thread, not a one-shot.
+        coach.newConversation();
+        expect(coach.tier).toBe("assist");
+        coach.openQuickAsk(null);
+        expect(coach.tier).toBe("assist");
+        // No assist → work promotion either.
+        coach.present("inline");
+        expect(coach.tier).toBe("assist");
+    });
+
+    test("saving turned off keeps an escalated thread in memory too", async () => {
+        coach.bootstrap = { ...structuredClone(CONNECTED_BYOK), historyEnabled: false } as never;
+        await coach.send("first");
+        coach.escalateToPanel();
+        await tick();
+        await coach.send("second");
+
+        expect(coach.tier).toBe("assist");
+        expect(coach.persisted).toBe(false);
+        expect(coach.conversationId).toBeUndefined();
+        expect([...flushCalls(), ...persistCalls()]).toHaveLength(0);
+    });
+
+    test("§1: bootstrapping resumes nothing", async () => {
+        await coach.initialize(true);
         expect(coach.conversationId).toBeUndefined();
         expect(coach.messages).toHaveLength(0);
     });

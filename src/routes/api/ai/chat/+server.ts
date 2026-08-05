@@ -54,7 +54,9 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             return stableError("connection_unavailable", "The selected AI connection is unavailable", 409);
         }
 
-        const shouldPersist = preferences.history_enabled;
+        // A one-shot asks not to be recorded (§1) and there is no row to write into;
+        // saving preferences still veto it, so `persist: false` never becomes true.
+        const shouldPersist = preferences.history_enabled && body.persist !== false;
         let conversationId = body.conversationId;
         let history: NormalizedAIMessage[] = [];
         if (shouldPersist) {
@@ -71,8 +73,8 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             await saveUserMessage(conversationId, body.message, body.userMessageId);
         } else {
             conversationId = crypto.randomUUID();
-            // Persisted conversations never trust a client transcript; history-disabled
-            // chats have no server copy, so bounded validated turns are the only source.
+            // Persisted conversations never trust a client transcript; an unrecorded
+            // chat has no server copy, so bounded validated turns are the only source.
             history = ephemeralMessages(body.ephemeralHistory);
         }
 
