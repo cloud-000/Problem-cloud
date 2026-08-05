@@ -4,8 +4,7 @@
 </script>
 
 {#if coach.activeContexts.length > 0}
-    <div class="flex shrink-0 items-center overflow-x-auto border-b border-border/40 px-3 py-2 text-xs bg-surface-container-lowest/50">
+    <div class="flex shrink-0 items-center overflow-x-auto border-b border-border/40 bg-transparent px-3 py-2 text-xs">
         <CoachContextChips />
     </div>
 {/if}
-

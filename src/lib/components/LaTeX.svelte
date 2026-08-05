@@ -73,7 +73,7 @@
     });
 </script>
 
-<div bind:this={sourceEl} hidden aria-hidden="true">
+<div bind:this={sourceEl} hidden aria-hidden="true" class="hidden">
     {@render children?.()}
 </div>
 <div

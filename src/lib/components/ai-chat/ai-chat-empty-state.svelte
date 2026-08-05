@@ -26,20 +26,20 @@
 <div
     class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8"
 >
-    <div class="flex w-full max-w-2xl flex-col items-center text-center">
+    <div class="flex w-full max-w-lg flex-col items-center text-center">
         <div
-            class="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary-foreground"
+            class="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"
         >
-            <Icon name={icon} fontsize={22} />
+            <Icon name={icon} fontsize={20} fill />
         </div>
-        <h3 class="mt-4 text-xl font-semibold tracking-tight">{title}</h3>
-        <p class="mt-1.5 max-w-2xl text-sm leading-5 text-muted-foreground">
+        <h3 class="mt-3.5 text-base font-semibold tracking-tight text-foreground">{title}</h3>
+        <p class="mt-1.5 max-w-sm text-xs leading-5 text-muted-foreground">
             {description}
         </p>
         <AIChatQuickActions
             actions={quickActions}
             layout="stack"
-            class="mt-6 w-full"
+            class="mt-5 w-full"
             onselect={(action) => controller.send(action.prompt)}
         />
     </div>

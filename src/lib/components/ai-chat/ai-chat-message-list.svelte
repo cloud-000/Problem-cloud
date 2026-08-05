@@ -5,16 +5,19 @@
         controller: AIChatController;
         assistantLabel?: string;
         conversationLabel?: string;
+        class?: string;
     }
 </script>
 
 <script lang="ts">
     import AIChatMessage from "./ai-chat-message.svelte";
+    import { cn } from "$lib/utils";
 
     let {
         controller,
         assistantLabel = "Assistant",
         conversationLabel = "AI conversation",
+        class: className,
     }: AIChatMessageListProps = $props();
     let container = $state<HTMLDivElement | null>(null);
     let contentHeight = $state(0);
@@ -31,7 +34,7 @@
 
 <div
     bind:this={container}
-    class="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"
+    class={cn("min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4", className)}
     aria-label={conversationLabel}
 >
     <div bind:offsetHeight={contentHeight}>

@@ -11,8 +11,6 @@
     import { Icon } from "$lib/components/icon";
 
     let { controller }: AIChatModelPickerProps = $props();
-    // Auto stays ungrouped and first; every real model sits under the connection it came
-    // from, so two connections serving the same model id stay tellable apart.
     let options = $derived([
         { value: "auto", label: "Auto · Recommended" },
         ...controller.models.map((model) => ({
@@ -40,7 +38,7 @@
                 fontsize={14}
                 class="shrink-0 text-muted-foreground"
             />
-            <span class="truncate text-[11px] font-medium">
+            <span class="truncate text-xs font-medium">
                 {option.value === "auto" ? "Auto" : option.label}
             </span>
         </span>
@@ -57,7 +55,7 @@
         background: transparent !important;
         padding: 0 0.375rem !important;
         box-shadow: none !important;
-        font-size: 0.6875rem !important;
+        font-size: 0.75rem !important;
     }
 
     :global([data-slot="ai-chat-model-picker"]:hover),

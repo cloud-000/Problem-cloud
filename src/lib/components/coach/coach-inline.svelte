@@ -35,7 +35,7 @@
 <section
     data-slot="coach-inline"
     class={cn(
-        "flex h-full min-h-0 flex-col bg-background",
+        "flex h-full min-h-0 flex-col bg-transparent",
         className,
     )}
     aria-label="Coach mode"
@@ -64,21 +64,24 @@
                 controller={coach}
                 assistantLabel="Coach"
                 conversationLabel="Coach conversation"
+                class="pb-11"
             />
         {/if}
-        <AIChatQuickActions
-            actions={quickActions}
-            layout="row"
-            disabled={coach.streaming}
-            class="shrink-0 px-3 pb-1 pt-2 sm:px-4"
-            onselect={(action) => coach.send(action.prompt)}
-        />
-        <AIChatComposer
-            controller={coach}
-            assistantLabel="Coach"
-            placeholder="Ask Coach about this problem…"
-            bind:textareaRef={composerRef}
-        />
+        <div class="relative shrink-0">
+            <AIChatQuickActions
+                actions={quickActions}
+                layout="row"
+                disabled={coach.streaming}
+                class="absolute inset-x-0 bottom-full z-10 px-3 pb-1 pt-2 sm:px-4"
+                onselect={(action) => coach.send(action.prompt)}
+            />
+            <AIChatComposer
+                controller={coach}
+                assistantLabel="Coach"
+                placeholder="Ask Coach about this problem…"
+                bind:textareaRef={composerRef}
+            />
+        </div>
         <div class="sr-only" aria-live="polite">
             {coach.liveAnnouncement}
         </div>

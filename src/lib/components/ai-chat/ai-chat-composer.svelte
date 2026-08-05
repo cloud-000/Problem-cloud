@@ -51,7 +51,7 @@
             <span>{controller.error.message}</span>
             {#if controller.error.retryable}
                 <button
-                    class="shrink-0 font-semibold hover:underline"
+                    class="shrink-0 font-medium hover:underline"
                     type="button"
                     onclick={() => controller.retry()}
                 >
@@ -61,7 +61,7 @@
         </div>
     {/if}
     <div
-        class="overflow-visible rounded-2xl bg-surface-container-low/80 shadow-sm transition-[background-color,box-shadow] focus-within:bg-surface-container focus-within:shadow-md"
+        class="overflow-visible rounded-2xl border border-border/50 bg-surface-container-lowest shadow-xs transition-colors focus-within:border-border/80 focus-within:shadow-md"
     >
         <textarea
             bind:this={textareaRef}
@@ -73,13 +73,8 @@
             oninput={resizeTextarea}
             onkeydown={keydown}
         ></textarea>
-        <div class="flex min-h-10 items-center gap-2 px-2 pb-2 pt-1">
+        <div class="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1">
             <AIChatModelPicker {controller} />
-            <span
-                class="ml-auto whitespace-nowrap text-[10px] text-muted-foreground/70"
-            >
-                Enter ↵ · Shift+Enter newline
-            </span>
             <Button
                 variant="primary"
                 size="icon-sm"
@@ -93,6 +88,7 @@
             >
                 <Icon
                     name={controller.streaming ? "stop" : "arrow_upward"}
+                    fontsize={16}
                     fill
                 />
             </Button>

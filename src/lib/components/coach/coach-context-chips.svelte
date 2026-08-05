@@ -15,7 +15,7 @@
         <span class="shrink-0 font-medium text-muted-foreground">Using</span>
         {#each coach.activeContexts as context (context.id)}
             <span
-                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-container px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-container-high"
+                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-container/30 px-2.5 py-0.5 text-xs font-medium text-foreground backdrop-blur-(--backdrop-blur) transition-colors hover:bg-surface-container-high/45"
             >
                 <span class="max-w-44 truncate">{context.label}</span>
                 <button
