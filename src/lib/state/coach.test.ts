@@ -23,11 +23,83 @@ const BOOTSTRAP = {
     historyEnabled: false,
 };
 
+/**
+ * A BYOK connection the store can select. Empty by default so every test above keeps
+ * taking the server-proxied path, exactly as it did before these stubs existed.
+ */
+let wireConnections: unknown[] = [];
+mock.module("./ai-credentials.svelte", () => ({
+    aiCredentials: {
+        get wireConnections() {
+            return wireConnections;
+        },
+        get connections() {
+            return [];
+        },
+        get hasAny() {
+            return wireConnections.length > 0;
+        },
+    },
+}));
+
+/** Emits `message.start`, waits on the gate, then closes — so a test can interleave. */
+let streamGate: PromiseWithResolvers<void> | null = null;
+mock.module("$lib/ai/providers/client-registry", () => ({
+    clientProviderRegistry: () => [],
+    clientProviderById: () => ({
+        id: "byok",
+        label: "BYOK",
+        authMethods: ["api_key"],
+        stream: async (request: { signal?: AbortSignal }) =>
+            new ReadableStream({
+                async start(controller) {
+                    controller.enqueue({
+                        type: "message.start",
+                        messageId: "assistant-1",
+                        conversationId: "provider-invented-id",
+                        model: "byok:model-a",
+                    });
+                    controller.enqueue({ type: "message.delta", messageId: "assistant-1", delta: "hi" });
+                    if (streamGate) await streamGate.promise;
+                    // Mirrors OpenAICompatAdapter: a cancel surfaces as a stream error,
+                    // which is the path that reaches #persistTurn with "cancelled".
+                    if (request.signal?.aborted) {
+                        controller.error(new DOMException("The operation was aborted", "AbortError"));
+                        return;
+                    }
+                    controller.enqueue({
+                        type: "message.done",
+                        messageId: "assistant-1",
+                        status: "complete",
+                    });
+                    controller.close();
+                },
+            }),
+    }),
+}));
+
+interface RecordedRequest {
+    url: string;
+    body: Record<string, unknown>;
+}
+
 let bootstrapCalls = 0;
-globalThis.fetch = mock(async (input: RequestInfo | URL) => {
-    if (String(input).includes("/api/ai/bootstrap")) {
+let recorded: RecordedRequest[] = [];
+let persistStatus = 200;
+globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (init?.body) {
+        recorded.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+    }
+    if (url.includes("/api/ai/bootstrap")) {
         bootstrapCalls += 1;
         return new Response(JSON.stringify(BOOTSTRAP), {
+            headers: { "content-type": "application/json" },
+        });
+    }
+    if (url.includes("/api/ai/messages")) {
+        return new Response(JSON.stringify({ conversationId: "server-invented-id" }), {
+            status: persistStatus,
             headers: { "content-type": "application/json" },
         });
     }
@@ -211,5 +283,129 @@ describe("coach bootstrap ownership", () => {
         await coach.initialize();
         expect(bootstrapCalls).toBe(1);
         expect(coach.initialized).toBe(true);
+    });
+});
+
+const CONNECTED_BYOK = {
+    enabled: true,
+    connections: [
+        {
+            id: "byok",
+            label: "BYOK",
+            authMethods: ["api_key"] as const,
+            capabilities: {
+                chat: true,
+                streaming: true,
+                tools: false,
+                vision: false,
+                structuredOutput: false,
+            },
+            connectionState: "connected" as const,
+        },
+    ],
+    models: [
+        {
+            reference: "byok:model-a" as const,
+            providerId: "byok",
+            id: "model-a",
+            label: "Model A",
+            capabilities: {
+                chat: true,
+                streaming: true,
+                tools: false,
+                vision: false,
+                structuredOutput: false,
+            },
+            tags: [],
+            available: true,
+        },
+    ],
+    defaultModel: "auto" as const,
+    historyEnabled: true,
+};
+
+const persistCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/messages"));
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("coach conversation identity", () => {
+    beforeEach(async () => {
+        await coach.initialize();
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+        coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
+        coach.newConversation();
+        recorded = [];
+        persistStatus = 200;
+        streamGate = null;
+    });
+
+    test("a failed save cannot split the thread", async () => {
+        // The id used to arrive from this response, so a 503 left the next turn
+        // creating a second conversation and silently splitting the thread.
+        persistStatus = 503;
+
+        await coach.send("first");
+        const conversationId = coach.conversationId;
+        expect(conversationId).toMatch(/^[0-9a-f-]{36}$/i);
+
+        await coach.send("second");
+
+        expect(coach.conversationId).toBe(conversationId);
+        const saves = persistCalls();
+        expect(saves).toHaveLength(2);
+        expect(saves[0].body.conversationId).toBe(conversationId);
+        expect(saves[1].body.conversationId).toBe(conversationId);
+    });
+
+    test("the id the provider echoes back is never adopted", async () => {
+        await coach.send("hello");
+        expect(coach.conversationId).not.toBe("provider-invented-id");
+        expect(coach.conversationId).not.toBe("server-invented-id");
+    });
+
+    test("the transcript and the saved turn share message ids", async () => {
+        await coach.send("hello");
+        const [save] = persistCalls();
+        const user = coach.messages.find((message) => message.role === "user");
+        expect(save.body.userMessageId).toBe(user?.id);
+        expect((save.body.assistant as Record<string, unknown>).id).toBe("assistant-1");
+    });
+
+    test("a turn abandoned mid-stream is not written to the cleared thread", async () => {
+        streamGate = Promise.withResolvers<void>();
+        const sending = coach.send("hello");
+        await tick();
+
+        // Starting a new conversation used to let the abandoned turn's save run with a
+        // freshly-read conversationId — minting a conversation from the partial turn and
+        // adopting it, clobbering the empty thread the user just asked for.
+        coach.newConversation();
+        streamGate.resolve();
+        await sending;
+
+        expect(persistCalls()).toHaveLength(0);
+        expect(coach.conversationId).toBeUndefined();
+        expect(coach.messages).toHaveLength(0);
+    });
+});
+
+describe("coach model preference", () => {
+    beforeEach(async () => {
+        await coach.initialize();
+        recorded = [];
+    });
+
+    test("choosing a model persists it", () => {
+        coach.selectedModel = "byok:model-a";
+        const patch = recorded.find((entry) => entry.url.includes("/api/ai/preferences"));
+        expect(patch?.body.defaultModel).toBe("byok:model-a");
+    });
+
+    test("re-selecting the same model writes nothing", () => {
+        coach.selectedModel = "byok:model-a";
+        recorded = [];
+        coach.selectedModel = "byok:model-a";
+        expect(recorded).toHaveLength(0);
     });
 });

@@ -54,6 +54,13 @@ function admin(): SupabaseClient<Database> {
     return adminClient;
 }
 
+/**
+ * Transcript loaded into the Coach at bootstrap. The full thread is never needed to
+ * resume typing into it, and an unbounded load makes the first Coach open cost every
+ * message the user has ever sent.
+ */
+export const BOOTSTRAP_MESSAGE_LIMIT = 30;
+
 export async function preferencesFor(userId: string) {
     const client = admin();
     const { data, error } = await client
@@ -74,12 +81,18 @@ export async function preferencesFor(userId: string) {
     return defaults;
 }
 
-export async function updateHistoryPreference(userId: string, historyEnabled: boolean) {
+/** Patches only the preferences supplied; absent fields are left as they are. */
+export async function updatePreferences(
+    userId: string,
+    patch: { historyEnabled?: boolean; defaultModel?: string },
+) {
     await preferencesFor(userId);
-    const { error } = await admin()
-        .from("ai_preferences")
-        .update({ history_enabled: historyEnabled, updated_at: new Date().toISOString() })
-        .eq("user_id", userId);
+    const update: Database["public"]["Tables"]["ai_preferences"]["Update"] = {
+        updated_at: new Date().toISOString(),
+    };
+    if (patch.historyEnabled !== undefined) update.history_enabled = patch.historyEnabled;
+    if (patch.defaultModel !== undefined) update.default_model = patch.defaultModel;
+    const { error } = await admin().from("ai_preferences").update(update).eq("user_id", userId);
     if (error) throw error;
 }
 
@@ -122,17 +135,29 @@ function normalizedMessage(message: MessageRow): NormalizedAIMessage {
     };
 }
 
-async function messagesFor(conversationId: string): Promise<NormalizedAIMessage[]> {
-    const { data, error } = await admin()
+/**
+ * A conversation's messages, oldest first. With a `limit` the *newest* rows are taken
+ * and flipped, so truncation drops the oldest turns rather than the ones the user is
+ * looking at.
+ */
+async function messagesFor(
+    conversationId: string,
+    limit?: number,
+): Promise<NormalizedAIMessage[]> {
+    const ascending = limit === undefined;
+    let query = admin()
         .from("ai_messages")
         .select(MESSAGE_COLUMNS)
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending });
+    if (limit !== undefined) query = query.limit(limit);
+    const { data, error } = await query;
     if (error) throw error;
-    return (data ?? []).map(normalizedMessage);
+    const messages = (data ?? []).map(normalizedMessage);
+    return ascending ? messages : messages.reverse();
 }
 
-export async function latestConversation(userId: string) {
+export async function latestConversation(userId: string, limit = BOOTSTRAP_MESSAGE_LIMIT) {
     const { data: conversation, error } = await admin()
         .from("ai_conversations")
         .select("id")
@@ -143,7 +168,7 @@ export async function latestConversation(userId: string) {
         .maybeSingle();
     if (error) throw error;
     if (!conversation) return undefined;
-    return { id: conversation.id, messages: await messagesFor(conversation.id) };
+    return { id: conversation.id, messages: await messagesFor(conversation.id, limit) };
 }
 
 /**
@@ -284,26 +309,44 @@ export async function archiveConversation(userId: string, conversationId: string
     if (!data) throw new AIPersistenceError("conversation_not_found", "Conversation not found");
 }
 
-export async function createConversation(
+/**
+ * Returns the caller's conversation, creating it if this is its first turn.
+ *
+ * The id is normally minted by the browser before the first token, so a conversation
+ * has a stable identity from the outset instead of learning one from a later response.
+ * Insert-if-absent then verify ownership: an id that collides with another user's row
+ * inserts nothing and fails the ownership check, so a guessed id can never reach
+ * someone else's conversation.
+ */
+export async function ensureConversation(
     userId: string,
+    conversationId: string | undefined,
     contexts: CoachContextDescriptor[],
     titleSource?: string,
 ): Promise<string> {
-    const id = crypto.randomUUID();
+    const id = conversationId ?? crypto.randomUUID();
     const title = titleSource?.trim().slice(0, 80) || "New conversation";
-    const { error } = await admin().from("ai_conversations").insert({
-        id,
-        user_id: userId,
-        title,
-        mode: "general",
-        context_summary: contexts.map(({ id: contextId, kind, authoritativeId, label }) => ({
-            id: contextId,
-            kind,
-            authoritativeId,
-            label,
-        })),
-    });
+    const { error } = await admin()
+        .from("ai_conversations")
+        .upsert(
+            {
+                id,
+                user_id: userId,
+                title,
+                mode: "general",
+                context_summary: contexts.map(
+                    ({ id: contextId, kind, authoritativeId, label }) => ({
+                        id: contextId,
+                        kind,
+                        authoritativeId,
+                        label,
+                    }),
+                ),
+            },
+            { onConflict: "id", ignoreDuplicates: true },
+        );
     if (error) throw error;
+    await ensureOwnedConversation(userId, id);
     return id;
 }
 
@@ -320,15 +363,29 @@ export async function ensureOwnedConversation(userId: string, conversationId: st
     }
 }
 
-export async function saveUserMessage(conversationId: string, message: string): Promise<string> {
-    const id = crypto.randomUUID();
-    const { error } = await admin().from("ai_messages").insert({
-        id,
-        conversation_id: conversationId,
-        role: "user",
-        content_parts: [{ type: "text", text: message }],
-        status: "complete",
-    });
+/**
+ * @param id The browser's id for this turn. Supplying it makes the write idempotent —
+ * a retried save (the client may re-POST a turn whose first attempt failed) resolves to
+ * the same row instead of duplicating the prompt — and keeps the in-memory transcript
+ * and the stored one addressable by the same id.
+ */
+export async function saveUserMessage(
+    conversationId: string,
+    message: string,
+    id: string = crypto.randomUUID(),
+): Promise<string> {
+    const { error } = await admin()
+        .from("ai_messages")
+        .upsert(
+            {
+                id,
+                conversation_id: conversationId,
+                role: "user",
+                content_parts: [{ type: "text", text: message }],
+                status: "complete",
+            },
+            { onConflict: "id", ignoreDuplicates: true },
+        );
     if (error) throw error;
     await touchConversation(conversationId);
     return id;

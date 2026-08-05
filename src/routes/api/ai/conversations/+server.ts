@@ -6,7 +6,7 @@ import {
     decodeCursor,
     parseLimit,
 } from "$lib/server/ai/conversation-cursor";
-import { createConversation, listConversations, preferencesFor } from "$lib/server/ai/persistence";
+import { ensureConversation, listConversations, preferencesFor } from "$lib/server/ai/persistence";
 import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         if (!preferences.history_enabled) {
             return json({ id: crypto.randomUUID(), persisted: false });
         }
-        const id = await createConversation(user.id, []);
+        const id = await ensureConversation(user.id, undefined, []);
         return json({ id, persisted: true }, { status: 201 });
     } catch {
         return stableError("conversation_unavailable", "A new conversation could not be created", 503);

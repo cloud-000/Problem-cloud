@@ -6,8 +6,7 @@ import { catalogFor } from "$lib/ai/catalog";
 import { AIModelRoutingError, resolveModel } from "$lib/ai/router";
 import {
     conversationHistory,
-    createConversation,
-    ensureOwnedConversation,
+    ensureConversation,
     preferencesFor,
     saveAssistantMessage,
     saveUserMessage,
@@ -59,14 +58,17 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         let conversationId = body.conversationId;
         let history: NormalizedAIMessage[] = [];
         if (shouldPersist) {
-            if (conversationId) {
-                await ensureOwnedConversation(user.id, conversationId);
-                // Load before saving the new prompt so history holds only prior turns.
-                history = await conversationHistory(user.id, conversationId);
-            } else {
-                conversationId = await createConversation(user.id, body.contexts, body.message);
-            }
-            await saveUserMessage(conversationId, body.message);
+            // The browser owns the id; this creates the row on its first turn and
+            // verifies ownership on every later one.
+            conversationId = await ensureConversation(
+                user.id,
+                conversationId,
+                body.contexts,
+                body.message,
+            );
+            // Load before saving the new prompt so history holds only prior turns.
+            history = await conversationHistory(user.id, conversationId);
+            await saveUserMessage(conversationId, body.message, body.userMessageId);
         } else {
             conversationId = crypto.randomUUID();
             // Persisted conversations never trust a client transcript; history-disabled

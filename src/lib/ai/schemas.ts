@@ -58,6 +58,19 @@ function optionalString(value: unknown, label: string, maxLength: number): strin
     return string(value, label, maxLength);
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Conversation and message ids are minted by the browser and land in `uuid` columns,
+ * so they are checked here rather than left to fail as an opaque 503 at the database.
+ */
+function optionalUuid(value: unknown, label: string): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    const id = string(value, label, 36);
+    if (!UUID_PATTERN.test(id)) throw new AISchemaError(`${label} must be a UUID`);
+    return id;
+}
+
 function oneOf<T extends string>(value: unknown, label: string, values: readonly T[]): T {
     if (typeof value !== "string" || !values.includes(value as T)) {
         throw new AISchemaError(`${label} is invalid`);
@@ -268,7 +281,8 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
     if (!message) throw new AISchemaError("message cannot be blank");
     const ephemeralHistory = parseEphemeralHistory(input.ephemeralHistory);
     return {
-        conversationId: optionalString(input.conversationId, "conversation id", 80),
+        conversationId: optionalUuid(input.conversationId, "conversation id"),
+        userMessageId: optionalUuid(input.userMessageId, "user message id"),
         model: parseModelReference(input.model ?? "auto"),
         message,
         contexts,
@@ -304,10 +318,12 @@ export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
     const assistant = record(input.assistant, "assistant turn");
     const rawError = assistant.error;
     return {
-        conversationId: optionalString(input.conversationId, "conversation id", 80),
+        conversationId: optionalUuid(input.conversationId, "conversation id"),
+        userMessageId: optionalUuid(input.userMessageId, "user message id"),
         contexts,
         message,
         assistant: {
+            id: optionalUuid(assistant.id, "assistant message id"),
             // A cancelled turn can legitimately carry no text at all.
             text: typeof assistant.text === "string" ? assistant.text.slice(0, 200_000) : "",
             model: parseModelReference(assistant.model),

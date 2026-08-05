@@ -3,8 +3,7 @@ import type { RequestHandler } from "./$types";
 import { AISchemaError, parsePersistTurnRequest } from "$lib/ai/schemas";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import {
-    createConversation,
-    ensureOwnedConversation,
+    ensureConversation,
     preferencesFor,
     saveAssistantMessage,
     saveUserMessage,
@@ -40,16 +39,18 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         // Saving is off: honour it silently rather than erroring a turn the user has read.
         if (!preferences.history_enabled) return json({ conversationId: null });
 
-        let conversationId = body.conversationId;
-        if (conversationId) {
-            await ensureOwnedConversation(user.id, conversationId);
-        } else {
-            conversationId = await createConversation(user.id, body.contexts, body.message);
-        }
+        const conversationId = await ensureConversation(
+            user.id,
+            body.conversationId,
+            body.contexts,
+            body.message,
+        );
 
-        await saveUserMessage(conversationId, body.message);
+        // Both ids come from the browser's transcript, so a retried save resolves to the
+        // same two rows rather than duplicating the turn.
+        await saveUserMessage(conversationId, body.message, body.userMessageId);
         await saveAssistantMessage({
-            id: crypto.randomUUID(),
+            id: body.assistant.id ?? crypto.randomUUID(),
             conversationId,
             text: body.assistant.text,
             status: body.assistant.status,

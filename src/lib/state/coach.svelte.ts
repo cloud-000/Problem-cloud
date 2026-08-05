@@ -32,6 +32,7 @@ import type {
     AIMessageStatus,
     AIModelReference,
     AIUsage,
+    CoachContextDescriptor,
     CoachContextLayer,
     ConversationSummary,
     NormalizedAIEvent,
@@ -54,7 +55,7 @@ class CoachStore {
     messages = $state<NormalizedAIMessage[]>([]);
     conversationId = $state<string | undefined>(undefined);
     draft = $state("");
-    selectedModel = $state<AIModelReference>("auto");
+    #selectedModel = $state<AIModelReference>("auto");
     streaming = $state(false);
     error = $state<AIErrorPart | null>(null);
     contextLayers = $state<CoachContextLayer[]>([]);
@@ -82,6 +83,34 @@ class CoachStore {
 
     get activeContexts() {
         return activeContextDescriptors(this.contextLayers, new Set(this.detachedContextIds));
+    }
+
+    get selectedModel(): AIModelReference {
+        return this.#selectedModel;
+    }
+
+    /**
+     * Picking a model is a preference, not a per-session choice: the picker used to
+     * reset to the bootstrap default on every reload because nothing ever wrote
+     * `default_model` back. Persisting is best-effort — a failed write costs the user
+     * the memory of the choice, never the choice itself.
+     */
+    set selectedModel(reference: AIModelReference) {
+        if (reference === this.#selectedModel) return;
+        this.#selectedModel = reference;
+        void this.#persistDefaultModel(reference);
+    }
+
+    async #persistDefaultModel(defaultModel: AIModelReference): Promise<void> {
+        try {
+            await fetch("/api/ai/preferences", {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ defaultModel }),
+            });
+        } catch {
+            // Remembering the picker is a convenience; never surface a failure.
+        }
     }
 
     get quickActions() {
@@ -277,7 +306,9 @@ class CoachStore {
                 connections: [...serverConnections, ...clientCatalog.providers],
                 models: [...serverModels, ...clientCatalog.models],
             };
-            this.selectedModel = server.defaultModel;
+            // Assigned to the field, not the setter: this is the stored preference
+            // arriving, so echoing it straight back would be a pointless write.
+            this.#selectedModel = server.defaultModel;
             if (server.conversation) {
                 this.conversationId = server.conversation.id;
                 this.messages = server.conversation.messages;
@@ -315,15 +346,21 @@ class CoachStore {
 
         // Built before the new prompt joins the transcript so it carries prior turns only.
         const ephemeralHistory = this.ephemeralHistory();
+        const userMessageId = crypto.randomUUID();
         this.messages.push({
-            id: crypto.randomUUID(),
+            id: userMessageId,
             role: "user",
             parts: [{ type: "text", text: message }],
             status: "complete",
             createdAt: new Date().toISOString(),
         });
 
+        // Everything the turn will need is captured here, before the first await.
+        // Persistence must never re-read `this.conversationId` after an await: a
+        // conversation cleared or switched mid-stream would otherwise receive the turn.
         const generation = this.#generation;
+        const conversationId = this.#ensureConversationId();
+        const contexts = this.activeContexts;
         const controller = new AbortController();
         this.#abortController = controller;
 
@@ -332,13 +369,22 @@ class CoachStore {
             // the server owns still goes through /api/ai/chat.
             const credential = this.#credentialForSelection();
             if (credential) {
-                await this.#sendDirect(message, credential, controller, generation);
+                await this.#sendDirect({
+                    message,
+                    userMessageId,
+                    conversationId,
+                    contexts,
+                    credential,
+                    controller,
+                    generation,
+                });
             } else {
                 const body: AIChatRequestBody = {
-                    conversationId: this.conversationId,
+                    conversationId,
+                    userMessageId,
                     model: this.selectedModel,
                     message,
-                    contexts: this.activeContexts,
+                    contexts,
                     task: "general",
                     ephemeralHistory,
                 };
@@ -385,16 +431,34 @@ class CoachStore {
     }
 
     /**
+     * The conversation's identity, decided in the browser before the first token.
+     *
+     * Minting it here rather than learning it from a later response is what keeps a
+     * thread whole. The BYOK path used to adopt the id returned by the best-effort
+     * save, so a save that failed (offline, 503, rate limit) left the next turn
+     * creating a *second* conversation and silently splitting the thread.
+     */
+    #ensureConversationId(): string | undefined {
+        if (!this.historyEnabled) return undefined;
+        this.conversationId ??= crypto.randomUUID();
+        return this.conversationId;
+    }
+
+    /**
      * Streams from the user's provider without touching our server. `applyEvent` is the
      * same handler the proxied path feeds, so the transcript behaves identically either
      * way; only the transport differs.
      */
-    async #sendDirect(
-        message: string,
-        credential: AIConnectionCredential,
-        controller: AbortController,
-        generation: number,
-    ): Promise<void> {
+    async #sendDirect(turn: {
+        message: string;
+        userMessageId: string;
+        conversationId: string | undefined;
+        contexts: CoachContextDescriptor[];
+        credential: AIConnectionCredential;
+        controller: AbortController;
+        generation: number;
+    }): Promise<void> {
+        const { message, credential, controller, generation } = turn;
         const model = resolveModel(this.selectedModel, "general", this.models);
         const adapter = clientProviderById(credential.id, [credential]);
         if (!adapter) throw new Error("The selected AI connection is unavailable");
@@ -405,15 +469,16 @@ class CoachStore {
 
         const stream = await adapter.stream({
             requestId: crypto.randomUUID(),
-            conversationId: this.conversationId,
+            conversationId: turn.conversationId,
             model: model.reference,
             task: "general",
             message,
-            contexts: this.activeContexts,
+            contexts: turn.contexts,
             history,
             signal: controller.signal,
         });
 
+        let assistantMessageId = "";
         let assistantText = "";
         let status: AIMessageStatus = "streaming";
         let usage: AIUsage | undefined;
@@ -430,17 +495,19 @@ class CoachStore {
                     await reader.cancel();
                     return;
                 }
-                if (event.type === "message.delta") assistantText += event.delta;
+                if (event.type === "message.start") assistantMessageId = event.messageId;
+                else if (event.type === "message.delta") assistantText += event.delta;
                 else if (event.type === "usage") usage = event.usage;
                 else if (event.type === "error") {
                     streamError = { code: event.code, message: event.message, retryable: event.retryable };
                 } else if (event.type === "message.done") status = event.status;
-                this.applyEvent(event, generation, false);
+                this.applyEvent(event, generation);
             }
         } catch (error) {
             // The turn still happened: record what streamed before persisting upward.
             if (error instanceof DOMException && error.name === "AbortError") {
-                await this.#persistTurn(message, {
+                await this.#persistTurn(turn, {
+                    id: assistantMessageId,
                     text: assistantText,
                     model: model.reference,
                     providerId: credential.id,
@@ -453,7 +520,8 @@ class CoachStore {
             reader.releaseLock();
         }
 
-        await this.#persistTurn(message, {
+        await this.#persistTurn(turn, {
+            id: assistantMessageId,
             text: assistantText,
             model: model.reference,
             providerId: credential.id,
@@ -470,8 +538,15 @@ class CoachStore {
      * what keeps role, model, and status unspoofable.
      */
     async #persistTurn(
-        message: string,
+        turn: {
+            message: string;
+            userMessageId: string;
+            conversationId: string | undefined;
+            contexts: CoachContextDescriptor[];
+            generation: number;
+        },
         assistant: {
+            id: string;
             text: string;
             model: string;
             providerId: string;
@@ -480,23 +555,24 @@ class CoachStore {
             error?: { code: string; message: string; retryable: boolean };
         },
     ): Promise<void> {
-        if (!this.historyEnabled) return;
+        if (!this.historyEnabled || !turn.conversationId) return;
+        // The active conversation moved on while this turn was in flight — cleared by
+        // `newConversation()` or replaced by `selectConversation()`. Writing now would
+        // either resurrect the thread the user just left or file the turn under the
+        // wrong one, so the turn is dropped exactly as its stream events were.
+        if (turn.generation !== this.#generation) return;
         try {
-            const response = await fetch("/api/ai/messages", {
+            await fetch("/api/ai/messages", {
                 method: "POST",
                 headers: { "content-type": "application/json", accept: "application/json" },
                 body: JSON.stringify({
-                    conversationId: this.conversationId,
-                    contexts: this.activeContexts,
-                    message,
+                    conversationId: turn.conversationId,
+                    userMessageId: turn.userMessageId,
+                    contexts: turn.contexts,
+                    message: turn.message,
                     assistant,
                 }),
             });
-            if (!response.ok) return;
-            const payload = await response.json();
-            if (typeof payload?.conversationId === "string") {
-                this.conversationId = payload.conversationId;
-            }
         } catch {
             // History is best-effort; a failed write must never surface as a failed answer.
         }
@@ -689,22 +765,14 @@ class CoachStore {
         }
     }
 
-    /**
-     * @param adoptConversationId Only the server mints conversation rows. A proxied reply
-     * carries the real id; a BYOK reply carries one the adapter invented locally, and the
-     * persisted id arrives later from /api/ai/messages — adopting the invented one would
-     * make the next send reference a row that does not exist.
-     */
-    private applyEvent(
-        event: NormalizedAIEvent,
-        generation: number,
-        adoptConversationId = true,
-    ): void {
+    private applyEvent(event: NormalizedAIEvent, generation: number): void {
         if (generation !== this.#generation) return;
         if (event.type === "message.start") {
-            // History-disabled replies carry a throwaway id that was never persisted;
-            // adopting it would make the next send reference a non-existent row.
-            if (this.historyEnabled && adoptConversationId) this.conversationId = event.conversationId;
+            // `event.conversationId` is deliberately ignored: identity is minted by
+            // `#ensureConversationId()` before the request, so a value echoed back by a
+            // stream is never authoritative. A history-disabled reply carries a throwaway
+            // id that was never persisted, and adopting it would make the next send
+            // reference a row that does not exist.
             this.messages.push({
                 id: event.messageId,
                 role: "assistant",

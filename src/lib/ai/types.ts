@@ -233,7 +233,10 @@ export interface AIEphemeralMessage {
 }
 
 export interface AIChatRequestBody {
+    /** Minted by the browser before the first token; the server creates the row if absent. */
     conversationId?: string;
+    /** The browser's id for this prompt, which makes the save idempotent. */
+    userMessageId?: string;
     model: AIModelReference;
     message: string;
     contexts: CoachContextDescriptor[];
@@ -248,9 +251,12 @@ export interface AIChatRequestBody {
 /** A finished BYOK turn, handed to the server purely to be saved. */
 export interface AIPersistTurnRequest {
     conversationId?: string;
+    userMessageId?: string;
     contexts: CoachContextDescriptor[];
     message: string;
     assistant: {
+        /** The id the transcript already uses, so memory and storage agree. */
+        id?: string;
         text: string;
         model: string;
         providerId: string;
