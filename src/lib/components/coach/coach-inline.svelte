@@ -31,6 +31,11 @@
     // height becomes the transcript's bottom clearance.
     let composerHeight = $state(0);
 
+    // The section runs full-bleed so the transcript's scrollbar sits on the
+    // trainer's outer edge (aligned with the statement shelf above); the
+    // readable column is a rail *inside* each row instead.
+    const rail = "mx-auto w-full max-w-[52rem]";
+
     onMount(() => {
         void coach.initialize();
     });
@@ -53,10 +58,10 @@
             Loading Coach…
         </div>
     {:else if !coach.bootstrap || coach.connectionBlocked}
-        <CoachContextTray />
+        <div class={cn(rail, "shrink-0")}><CoachContextTray /></div>
         <CoachConnectionGate />
     {:else}
-        <CoachContextTray />
+        <div class={cn(rail, "shrink-0")}><CoachContextTray /></div>
         {#if coach.messages.length === 0}
             <AIChatEmptyState
                 controller={coach}
@@ -69,11 +74,13 @@
                 controller={coach}
                 assistantLabel="Coach"
                 conversationLabel="Coach conversation"
+                class="[scrollbar-gutter:stable_both-edges]"
+                contentClass={rail}
             />
         {/if}
         <div
             bind:clientHeight={composerHeight}
-            class="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+            class="pointer-events-none absolute inset-x-0 bottom-0 z-10 mx-auto max-w-[52rem]"
         >
             <AIChatQuickActions
                 actions={quickActions}

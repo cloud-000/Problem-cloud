@@ -2103,9 +2103,10 @@
                   </div>
 
                   {#if coachMode}
-                     <div
-                        class="mx-auto flex min-h-0 w-full max-w-[52rem] flex-1 flex-col px-1 sm:px-3"
-                     >
+                     <!-- Full-bleed on purpose: the Coach owns its own centered
+                          rail internally so its transcript scrollbar rides the
+                          same outer edge as the statement shelf above. -->
+                     <div class="flex min-h-0 w-full flex-1 flex-col">
                         <CoachInline
                            quickActions={coachQuickActions}
                            bind:composerRef={coachComposer}
