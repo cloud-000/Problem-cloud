@@ -34,6 +34,7 @@
         )}
         onclick={(event: MouseEvent) =>
             coach.toggleQuickAsk(event.currentTarget as HTMLElement)}
+        onpointerdown={(event: PointerEvent) => event.stopPropagation()}
         aria-label="Ask Coach"
         aria-expanded={coach.quickAskOpen}
         title="Ask Coach · Ctrl/Cmd+J"

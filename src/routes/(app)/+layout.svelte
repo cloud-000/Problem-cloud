@@ -24,6 +24,7 @@
    import { settings } from "$lib/state/settings.svelte";
    import {
       CoachContextRegister,
+      CoachLauncher,
       CoachPanel,
       CoachQuickAsk,
    } from "$lib/components/coach";
@@ -48,6 +49,12 @@
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
    let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled && session));
+   let coachFabVisible = $derived(
+      aiCoachEnabled &&
+         coach.enabled &&
+         shell.coachLauncherVisible &&
+         utilityPanel.activeView === null,
+   );
    let appScrollViewport = $state<HTMLElement | null>(null);
    setAppScrollViewport({ getElement: () => appScrollViewport });
 
@@ -551,14 +558,16 @@
       {/key}
       <!-- Mounted once, hidden while any utility view is open (§6.4). -->
       <CoachQuickAsk />
+      <CoachLauncher />
    {/if}
    <UtilityPanel />
 
    <ToastContainer
       onDismiss={onToastClose}
-      class={utilityPanel.activeView
-         ? "utility-panel-toast-offset z-70"
-         : ""}
+      class={cn(
+         utilityPanel.activeView && "utility-panel-toast-offset z-70",
+         coachFabVisible && "coach-fab-toast-offset",
+      )}
       style={`--utility-panel-width: ${utilityPanel.renderedWidth}px; --utility-panel-height: ${utilityPanel.renderedHeight}px`}
    />
    <ModalContainer />
@@ -571,9 +580,17 @@
       }
    }
 
+   :global(.coach-fab-toast-offset) {
+      bottom: 4.5rem;
+   }
+
    @media (max-width: 767px) and (orientation: portrait) {
       :global(.utility-panel-toast-offset) {
          bottom: calc(var(--utility-panel-height) + 1rem);
+      }
+
+      :global(.coach-fab-toast-offset) {
+         bottom: calc(56px + env(safe-area-inset-bottom) + 4.5rem);
       }
    }
 

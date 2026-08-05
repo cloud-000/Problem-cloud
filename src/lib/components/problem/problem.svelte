@@ -48,6 +48,7 @@
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
         onOrganizationChange?: (state: PersonalProblemState) => void;
+        onAsk?: (invoker: HTMLElement) => void;
     };
 
     let {
@@ -67,6 +68,7 @@
         class: className,
         onEnter,
         onOrganizationChange,
+        onAsk,
     }: Props = $props();
 
     // Show the raw statement string instead of the rendered math. Debug-only.
@@ -233,6 +235,22 @@
             )}
             aria-label="Problem actions"
         >
+            {#if onAsk}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="px-2 text-muted-foreground"
+                    onclick={(event: MouseEvent) =>
+                        onAsk(event.currentTarget as HTMLElement)}
+                    aria-label="Ask about this problem"
+                >
+                    <Icon name="auto_awesome" />
+                    <span class="hidden h-4 items-center leading-none lg:inline-flex"
+                        >Ask</span
+                    >
+                </Button>
+            {/if}
+
             {#if debug}
                 <Toggle
                     variant="ghost"

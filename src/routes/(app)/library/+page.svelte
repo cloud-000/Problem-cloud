@@ -22,6 +22,8 @@
     import { LibraryStore } from "$lib/state/library.svelte";
     import Filters from "./Filters.svelte";
     import ResultList from "./ResultList.svelte";
+    import { CoachContextRegister } from "$lib/components/coach";
+    import { coach } from "$lib/state/coach.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase } = $derived(data);
@@ -140,6 +142,79 @@
     let hasMore = $state(false);
     let errorMsg = $state<string | null>(null);
     let queryKey = $state(0);
+
+    const coachQuickActions = [
+        {
+            id: "choose-result",
+            label: "Help me choose",
+            prompt: "Help me choose a useful next item from these Library results and explain why.",
+            icon: "lightbulb",
+        },
+        {
+            id: "compare-results",
+            label: "Compare the top results",
+            prompt: "Compare the top Library results by likely difficulty and learning value.",
+            icon: "insights",
+        },
+        {
+            id: "refine-search",
+            label: "Suggest a narrower search",
+            prompt: "Based on these filters and results, suggest how I could narrow the Library search for a focused practice set.",
+            icon: "tune",
+        },
+    ];
+
+    function coachResultSummary(row: SeriesRow | TestRow | ProblemRow): string {
+        if (store.current.level === "series") {
+            const series = row as SeriesRow;
+            return `${series.name} (series ${series.id})`;
+        }
+        if (store.current.level === "tests") {
+            const test = row as TestRow;
+            return [test.name, test.series?.name, test.year, test.type]
+                .filter((value) => value != null && value !== "")
+                .join(" · ");
+        }
+        const problem = row as ProblemRow;
+        const metadata = [
+            problem.tests?.name
+                ? `${problem.tests.name} #${problem.n + 1}`
+                : `Problem ${problem.id}`,
+            topicLabel(problem.topic) ?? problem.topic,
+            problem.rating ? `rating ${Math.round(problem.rating.rating)}` : null,
+            problem.progress?.mastery
+                ? `mastery ${problem.progress.mastery.replaceAll("_", " ")}`
+                : null,
+        ]
+            .filter(Boolean)
+            .join(" · ");
+        const prompt = [problem.statement ?? "", ...(problem.choices ?? [])]
+            .filter(Boolean)
+            .join(" | ")
+            .slice(0, 600);
+        return prompt ? `${metadata}\n  ${prompt}` : metadata;
+    }
+
+    let coachContextText = $derived.by(() => {
+        const lines = [`View: ${store.current.level}`];
+        if (store.current.context.series)
+            lines.push(`Series scope: ${store.current.context.series.name}`);
+        if (store.current.context.test)
+            lines.push(`Test scope: ${store.current.context.test.name}`);
+        if (searchValue.trim()) lines.push(`Search: ${searchValue.trim()}`);
+        if (activeFilterChips.length > 0) {
+            lines.push("Active filters:");
+            for (const chip of activeFilterChips) lines.push(`- ${chip.label}`);
+        }
+        const visibleResults = resultsLevel === store.current.level ? results.slice(0, 8) : [];
+        lines.push(`Loaded results: ${results.length}${hasMore ? "+" : ""}`);
+        if (visibleResults.length > 0) {
+            lines.push("Top results:");
+            for (const result of visibleResults)
+                lines.push(`- ${coachResultSummary(result)}`);
+        }
+        return lines.join("\n").slice(0, 4_000);
+    });
 
     // Latest-loaded page index and a token that discards stale responses.
     let page = 0;
@@ -319,6 +394,24 @@
     <title>Library · ProblemCloud</title>
 </svelte:head>
 
+{#if coach.enabled}
+    <CoachContextRegister
+        ownerId="library:results"
+        source="route"
+        priority={20}
+        mode="general"
+        descriptors={[
+            {
+                id: "library:results",
+                kind: "route",
+                label: `${store.current.level[0]?.toUpperCase()}${store.current.level.slice(1)} results`,
+                ephemeralText: coachContextText,
+            },
+        ]}
+        quickActions={coachQuickActions}
+    />
+{/if}
+
 <Page.Root bind:ref={pageRoot} width="unbounded" class="gap-0">
     <Page.Header
         title="Library"
@@ -480,16 +573,18 @@
                 : "min-w-0"}
         >
             <div class="min-w-0">
-                <ResultList
-                    {store}
-                    {results}
-                    {resultsLevel}
-                    {loading}
-                    error={errorMsg}
-                    isInstantFeedback
-                    onEndReached={!loading && hasMore ? loadMore : undefined}
-                    resetKey={queryKey}
-                />
+                {#key queryKey}
+                    <ResultList
+                        {store}
+                        {results}
+                        {resultsLevel}
+                        {loading}
+                        error={errorMsg}
+                        isInstantFeedback
+                        onEndReached={!loading && hasMore ? loadMore : undefined}
+                        resetKey={queryKey}
+                    />
+                {/key}
 
                 {#if loadingMore}
                     <div class="flex h-12 items-center justify-center type-secondary text-muted-foreground">

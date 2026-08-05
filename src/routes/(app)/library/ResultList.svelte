@@ -15,6 +15,9 @@
     import type { Engagement, Mastery, PersonalProblemState } from "$lib/progress";
     import type { LibraryStore } from "$lib/state/library.svelte";
     import { practiceLaunchHref } from "$lib/practice-launch";
+    import { CoachContextRegister } from "$lib/components/coach";
+    import { coach } from "$lib/state/coach.svelte";
+    import { utilityPanel } from "$lib/state/utility-panel.svelte";
 
     type ResultRow = SeriesRow | TestRow | ProblemRow;
     class ProblemDraft {
@@ -58,6 +61,37 @@
     // the result snippet, so it must remain non-reactive: mutating a SvelteMap
     // during template evaluation triggers `state_unsafe_mutation`.
     const problemDrafts = new Map<number, ProblemDraft>();
+    let askedProblem = $state<ProblemRow | null>(null);
+    const coachQuickActions = [
+        {
+            id: "hint",
+            label: "Give me a hint",
+            prompt: "Give me the smallest hint that gets me unstuck on this problem.",
+            icon: "lightbulb",
+        },
+        {
+            id: "approach",
+            label: "Check my approach",
+            prompt: "Here is my approach so far — tell me whether it can work, without solving it for me.",
+            icon: "checklist",
+        },
+        {
+            id: "explain",
+            label: "Explain this",
+            prompt: "Explain what this problem is asking and which ideas may be relevant, without giving away the solution.",
+            icon: "help",
+        },
+    ];
+
+    function askAboutProblem(problem: ProblemRow, invoker: HTMLElement) {
+        askedProblem = problem;
+        if (utilityPanel.activeView === "coach") {
+            void coach.initialize();
+            return;
+        }
+        if (utilityPanel.activeView) utilityPanel.close(false);
+        coach.openQuickAsk(invoker);
+    }
 
     function problemDraft(problem: ProblemRow): ProblemDraft {
         const existing = problemDrafts.get(problem.id);
@@ -206,9 +240,39 @@
             mastery={draft.mastery}
             engagement={draft.engagement}
             onOrganizationChange={(state) => updateOrganization(draft, state)}
+            onAsk={coach.enabled
+                ? (invoker) => askAboutProblem(problem, invoker)
+                : undefined}
         />
     {/if}
 {/snippet}
+
+{#if askedProblem}
+    <CoachContextRegister
+        ownerId="library:problem"
+        source="selection"
+        priority={30}
+        mode="problem-help"
+        descriptors={[
+            {
+                id: `problem:${askedProblem.id}`,
+                kind: "problem",
+                authoritativeId: String(askedProblem.id),
+                label: askedProblem.tests?.name
+                    ? `${askedProblem.tests.name} #${askedProblem.n + 1}`
+                    : `Problem #${askedProblem.n + 1}`,
+                ephemeralText: [
+                    askedProblem.statement ?? "",
+                    ...(askedProblem.choices ?? []),
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+                    .slice(0, 4_000),
+            },
+        ]}
+        quickActions={coachQuickActions}
+    />
+{/if}
 
 {#if error}
     <p class="py-8 type-secondary text-destructive">{error}</p>
