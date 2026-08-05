@@ -6,6 +6,7 @@
         placeholder?: string;
         assistantLabel?: string;
         textareaRef?: HTMLTextAreaElement | null;
+        class?: string;
     }
 </script>
 
@@ -13,6 +14,7 @@
     import { tick } from "svelte";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { cn } from "$lib/utils";
     import AIChatModelPicker from "./ai-chat-model-picker.svelte";
 
     let {
@@ -20,6 +22,7 @@
         placeholder = "Ask anything…",
         assistantLabel = "Assistant",
         textareaRef = $bindable(null),
+        class: className,
     }: AIChatComposerProps = $props();
 
     function resizeTextarea() {
@@ -43,10 +46,18 @@
     }
 </script>
 
-<div class="shrink-0 bg-transparent px-3 pb-3 pt-2">
+<!-- The wrapper's padding is click-through so a composer floating over the
+     transcript never eats scroll gestures around its edges; the card and the
+     error banner opt back in. -->
+<div
+    class={cn(
+        "pointer-events-none shrink-0 bg-transparent px-3 pb-3 pt-2",
+        className,
+    )}
+>
     {#if controller.error}
         <div
-            class="mb-2 flex items-start justify-between gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            class="pointer-events-auto mb-2 flex items-start justify-between gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
             <span>{controller.error.message}</span>
             {#if controller.error.retryable}
@@ -61,7 +72,7 @@
         </div>
     {/if}
     <div
-        class="overflow-visible rounded-2xl border border-border/50 bg-surface-container-lowest shadow-xs transition-colors focus-within:border-border/80 focus-within:shadow-md"
+        class="pointer-events-auto overflow-visible rounded-2xl border border-border/50 bg-surface-container-lowest shadow-xs transition-colors focus-within:border-border/80 focus-within:shadow-md"
     >
         <textarea
             bind:this={textareaRef}

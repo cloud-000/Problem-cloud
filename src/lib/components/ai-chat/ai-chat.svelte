@@ -36,11 +36,16 @@
         leading,
         class: className,
     }: AIChatProps = $props();
+
+    // Published to descendants as --ai-chat-composer-h so the transcript can
+    // reserve exactly as much bottom clearance as the floating composer needs.
+    let composerHeight = $state(0);
 </script>
 
 <div
     data-slot="ai-chat"
-    class={cn("flex h-full min-h-0 flex-col bg-background", className)}
+    class={cn("relative flex h-full min-h-0 flex-col bg-background", className)}
+    style="--ai-chat-composer-h: {composerHeight}px;"
 >
     {@render header?.()}
     {@render leading?.()}
@@ -59,7 +64,12 @@
             {conversationLabel}
         />
     {/if}
-    <AIChatComposer {controller} {placeholder} {assistantLabel} />
+    <div
+        bind:clientHeight={composerHeight}
+        class="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+    >
+        <AIChatComposer {controller} {placeholder} {assistantLabel} />
+    </div>
     <div class="sr-only" aria-live="polite">
         {controller.liveAnnouncement}
     </div>

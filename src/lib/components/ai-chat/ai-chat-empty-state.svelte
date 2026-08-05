@@ -24,7 +24,8 @@
 </script>
 
 <div
-    class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8"
+    class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 pt-8"
+    style="padding-bottom: calc(var(--ai-chat-composer-h, 0px) + 2rem);"
 >
     <div class="flex w-full max-w-lg flex-col items-center text-center">
         <div

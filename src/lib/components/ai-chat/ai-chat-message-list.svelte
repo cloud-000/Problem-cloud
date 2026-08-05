@@ -34,10 +34,16 @@
 
 <div
     bind:this={container}
-    class={cn("min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4", className)}
+    class={cn("min-h-0 flex-1 overflow-y-auto px-3 pt-3 sm:px-4", className)}
     aria-label={conversationLabel}
 >
-    <div bind:offsetHeight={contentHeight}>
+    <!-- Clearance for a composer floating over the transcript. It lives on the
+         measured content (not the scroll container) so a growing composer
+         re-triggers the stick-to-bottom effect. -->
+    <div
+        bind:offsetHeight={contentHeight}
+        style="padding-bottom: var(--ai-chat-composer-h, 0.75rem);"
+    >
         {#each controller.messages as message (message.id)}
             <AIChatMessage {message} {assistantLabel} />
         {/each}

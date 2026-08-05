@@ -27,6 +27,10 @@
         class: className,
     }: CoachInlineProps = $props();
 
+    // Mirrors AIChat: the composer floats over the transcript, and its measured
+    // height becomes the transcript's bottom clearance.
+    let composerHeight = $state(0);
+
     onMount(() => {
         void coach.initialize();
     });
@@ -35,9 +39,10 @@
 <section
     data-slot="coach-inline"
     class={cn(
-        "flex h-full min-h-0 flex-col bg-transparent",
+        "relative flex h-full min-h-0 flex-col bg-transparent",
         className,
     )}
+    style="--ai-chat-composer-h: {composerHeight}px;"
     aria-label="Coach mode"
 >
     {#if coach.loading && !coach.initialized}
@@ -64,15 +69,17 @@
                 controller={coach}
                 assistantLabel="Coach"
                 conversationLabel="Coach conversation"
-                class="pb-11"
             />
         {/if}
-        <div class="relative shrink-0">
+        <div
+            bind:clientHeight={composerHeight}
+            class="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+        >
             <AIChatQuickActions
                 actions={quickActions}
                 layout="row"
                 disabled={coach.streaming}
-                class="absolute inset-x-0 bottom-full z-10 px-3 pb-1 pt-2 sm:px-4"
+                class="pointer-events-auto px-3 pb-1 pt-2 sm:px-4"
                 onselect={(action) => coach.send(action.prompt)}
             />
             <AIChatComposer
