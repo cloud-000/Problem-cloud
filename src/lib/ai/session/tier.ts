@@ -36,6 +36,20 @@ export function tierPersists(tier: CoachTier): boolean {
 }
 
 /**
+ * The tiers that reach the database, and so the values `ai_conversations.kind` may take
+ * (§2). Deriving the column's domain from the tier union rather than restating it is
+ * what keeps the two from drifting apart.
+ */
+export type CoachThreadKind = Exclude<CoachTier, "one-shot">;
+
+export const COACH_THREAD_KINDS = ["work", "assist"] as const satisfies readonly CoachThreadKind[];
+
+/** The `kind` a tier is stored under, or null for a thread that is never stored. */
+export function threadKindFor(tier: CoachTier): CoachThreadKind | null {
+    return tierPersists(tier) ? (tier as CoachThreadKind) : null;
+}
+
+/**
  * The tier a thread takes when it is escalated into `target`.
  *
  * Promotion only ever leaves `one-shot`: once a thread is persisted its tier is

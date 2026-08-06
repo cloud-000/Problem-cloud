@@ -1,3 +1,6 @@
+import type { WorkAnchor } from "./session/anchor";
+import type { CoachThreadKind } from "./session/tier";
+
 export type AICoachConnectionState =
     | "connected"
     | "disconnected"
@@ -232,6 +235,35 @@ export interface AIEphemeralMessage {
     text: string;
 }
 
+/**
+ * Which thread a request is writing into (§2/§4), sent on every path that can create a
+ * conversation row. Absent means an assist thread with no anchor — the default a panel
+ * or an escalated quick-ask takes.
+ *
+ * The anchor travels on the wire rather than being derived server-side because only the
+ * browser knows where the Coach was summoned; the server's job is to store it and let
+ * the unique index enforce one live work thread per sitting.
+ */
+export interface AIThreadIdentity {
+    kind: CoachThreadKind;
+    /** Set only for `work`. Carries the canonical problem id. */
+    anchor?: WorkAnchor;
+}
+
+/** A live work thread found by anchor, offered back as "continue or start new chat?". */
+export interface WorkThreadSummary {
+    id: string;
+    title: string;
+    preview: string;
+    messageCount: number;
+    /** Drives §5's staleness cutoff; the client turns it into `idleMs`. */
+    lastActiveAt: string;
+}
+
+export interface WorkThreadResponse {
+    conversation: WorkThreadSummary | null;
+}
+
 export interface AIChatRequestBody {
     /** Minted by the browser before the first token; the server creates the row if absent. */
     conversationId?: string;
@@ -252,6 +284,8 @@ export interface AIChatRequestBody {
      * never stored. Ignored for persisted conversations, whose history is server-loaded.
      */
     ephemeralHistory?: AIEphemeralMessage[];
+    /** Which thread this turn belongs to; applied only when the row is first created. */
+    thread?: AIThreadIdentity;
 }
 
 /**
@@ -265,6 +299,7 @@ export interface AIConversationFlushRequest {
     conversationId?: string;
     contexts: CoachContextDescriptor[];
     messages: NormalizedAIMessage[];
+    thread?: AIThreadIdentity;
 }
 
 /** A finished BYOK turn, handed to the server purely to be saved. */
@@ -273,6 +308,7 @@ export interface AIPersistTurnRequest {
     userMessageId?: string;
     contexts: CoachContextDescriptor[];
     message: string;
+    thread?: AIThreadIdentity;
     assistant: {
         /** The id the transcript already uses, so memory and storage agree. */
         id?: string;
@@ -303,6 +339,9 @@ export interface ConversationDetailResponse {
     conversation: {
         id: string;
         title: string;
+        /** Which family the stored thread belongs to, so reopening it restores its tier. */
+        kind: CoachThreadKind;
+        anchor?: WorkAnchor;
         createdAt: string;
         updatedAt: string;
         messages: NormalizedAIMessage[];

@@ -38,8 +38,29 @@ export function assertRateLimit(
     if (current.count > limit) error(429, { message: "Too many AI requests" });
 }
 
-export function stableError(code: string, message: string, status = 400): Response {
-    return json({ error: { code, message } }, { status });
+export function stableError(
+    code: string,
+    message: string,
+    status = 400,
+    /** Extra top-level fields. Used by the work-anchor conflict to name the winning thread. */
+    extra?: Record<string, unknown>,
+): Response {
+    return json({ ...extra, error: { code, message } }, { status });
+}
+
+/**
+ * A work-anchor collision (§2): another surface already owns this problem in this
+ * sitting. The winner's id is named so the caller can attach to it — the "continue"
+ * branch of the resume prompt, reached from a lost race. Structurally typed rather than
+ * importing the error, to keep the service-role client out of this module.
+ */
+export function anchorConflictResponse(conflict: { conversationId: string }): Response {
+    return stableError(
+        "work_anchor_conflict",
+        "Another Coach thread already owns this problem in this session",
+        409,
+        { conversationId: conflict.conversationId },
+    );
 }
 
 export function requestIp(event: Pick<RequestEvent, "getClientAddress">): string {

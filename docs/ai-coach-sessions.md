@@ -1,10 +1,11 @@
 # AI Coach — Sessions, Context & Tools
 
-> **Status: Phases 0–1 shipped; §2–§6 are the target state, not yet built.** This is
-> the authoritative explainer for how Coach conversations are anchored,
-> persisted, and fed context. Phases land incrementally (§8, which marks what has
-> shipped); `CLAUDE.md` is updated as each one ships, so until a phase is marked
-> done the code is still the old model described in §7.
+> **Status: Phases 0–2 shipped (§2, §4, §5 are live); §3 and §6 are the target
+> state, not yet built.** This is the authoritative explainer for how Coach
+> conversations are anchored, persisted, and fed context. Phases land
+> incrementally (§8, which marks what has shipped); `CLAUDE.md` is updated as each
+> one ships, so until a phase is marked done the code is still the old model
+> described in §7.
 
 The BYOK rule from `CLAUDE.md` is unchanged and overrides anything here: **a
 user's own key never leaves their browser.** Everything below is compatible with
@@ -430,7 +431,6 @@ Deliberately a pure, isolated module: the rule is expected to change.
 // $lib/ai/session/lifecycle.ts
 export interface WorkAnchorState {
     submitted: boolean;
-    revealed: boolean;
     skipped: boolean;
     leftAnchor: boolean;
     idleMs: number;   // now - last_active_at
@@ -439,9 +439,9 @@ export interface WorkAnchorState {
 /** How long an unconcluded thread stays offerable. Tuning knob, not a rule. */
 export const WORK_STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 
-/** Has the work this thread was opened for concluded? v1: submitting concludes it. */
+/** Has the work this thread was opened for concluded? Submitting or skipping does it. */
 export function workConcluded(s: WorkAnchorState): boolean {
-    return s.submitted;
+    return s.submitted || s.skipped;
 }
 
 /** May the thread be resumed if the user returns to the anchor? Drives the prompt. */
@@ -455,15 +455,14 @@ export function workArchivable(s: WorkAnchorState): boolean {
 }
 ```
 
-**`skipped` and `revealed` are carried but unused — resolve that before phase 2
-ships.** As written, `workConcluded` reads only `submitted`, which leaves a
-skipped problem's thread live and holding its index slot until staleness or a
-return visit clears it. A skip writes a real `submissions` row and is an explicit
-"I'm done with this", so it should probably conclude the work too
-(`return s.submitted || s.skipped`). `revealed` is doing nothing here at all — it
-belongs to §6's `get_solution` gate, not the lifecycle. Either wire them in or
-drop them from the interface; a spec field that no function reads is a promise
-the code isn't keeping.
+**`skipped` concludes the work; `revealed` is not a lifecycle field at all
+(resolved 2026-08-05).** A skip writes a real `submissions` row and is an explicit
+"I'm done with this" — left out of `workConcluded`, its thread would stay live and
+hold the anchor's index slot until staleness or a return visit cleared it.
+`revealed` was dropped from the interface rather than wired in: showing the answer
+is a *solution-access* gate (§6's `get_solution`), not the end of a sitting, and a
+student who reveals and then asks "why?" is exactly who the thread is for. A spec
+field no function reads is a promise the code isn't keeping.
 
 **Staleness is why `workResumable` is not just `!workConcluded`.** A thread
 abandoned without submitting never concludes, so without a cutoff it stays
@@ -478,6 +477,30 @@ student most wants to ask "why?" — so the thread stays live and writable while
 they remain on the problem, and is archived only when they move on. Returning to
 the problem later therefore starts clean, and the old discussion is still in
 history.
+
+### Where phase 2 lives
+
+The pure rules are `$lib/ai/session/{anchor,lifecycle}.ts`; everything else is
+plumbing around them.
+
+| Seam | Code |
+| --- | --- |
+| Anchor a sitting, decide the prompt | `coach.openWorkThread(anchor, state)` — promotes, looks up, offers or retires |
+| Answer the prompt | `coach.resumeWorkThread()` / `coach.startNewWorkThread()`; UI in `coach-resume-prompt.svelte` |
+| Leave the anchor | `coach.releaseWorkAnchor(state)` — the only caller of `workArchivable` |
+| Trainer wiring | `PracticeView.svelte` `setCoachMode` + the release `$effect`; `recordSkip` sets `skipped` |
+| The lookup | `GET /api/ai/work-thread` → `workConversationForAnchor` |
+| Create with a kind/anchor | `ensureConversation({ thread })`, which also raises `AIWorkAnchorConflict` |
+| Bump `last_active_at` | `touchConversation`, and nothing else |
+
+Two things a reader will otherwise look for and not find:
+
+- **Staleness is decided in the browser, not in the lookup.** `workResumable` also
+  needs attempt state that only the trainer holds, so the endpoint returns the row
+  with `last_active_at` and the one pure rule runs in one place.
+- **`nulls not distinct` is hand-written in the migration.** pgdelta does not emit
+  it, so a regenerated migration will silently drop it — and the index then stops
+  bounding the sessionless case it exists for.
 
 ---
 
@@ -543,6 +566,8 @@ the time phases 0–1 shipped.
 | `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts` `parseContextLayer` | §3 policy |
 | `ai_conversations.mode` hardcoded `'general'`; `context_summary` snapshots context per *conversation* | `persistence.ts` `ensureConversation` | §2 `kind` + §3 per-turn `context_snapshot`; both columns dropped in phase 3 |
 | `task` hardcoded `"general"` on both send paths | `coach.svelte.ts`, server and BYOK sends | §6 |
+| A reopened thread is relabelled `assist` whatever it was | `coach.svelte.ts` `selectConversation` | **✅ Phase 2** — `kind` comes back with the row, and a work thread re-adopts its anchor |
+| Nothing anchors a thread to a problem; the trainer's Coach is one global thread | `PracticeView.svelte` `setCoachMode` | **✅ Phase 2** — `openWorkThread` anchors the sitting, and returning to it offers "continue or start new chat?" |
 | Bootstrap always resumes the newest thread, entire transcript unbounded | `persistence.ts` `messagesFor` | **✅ Phase 1** — bootstrap carries no transcript at all; assist opens fresh and history is one click away |
 | Every conversation is written down, including a throwaway quick-ask | `chat/+server.ts`, `coach.svelte.ts` | **✅ Phase 1** — a one-shot mints no id and sends `persist: false`; no row exists until it is escalated |
 | BYOK learns its `conversationId` only after a best-effort write; a failed write silently splits the thread | `coach.svelte.ts` `#ensureConversationId` | **✅ Phase 0** — minted before the first token |
@@ -561,7 +586,7 @@ Each phase is independently shippable and leaves the app working.
 | --- | --- | --- |
 | **0** ✅ | Correctness only: capture `{conversationId, generation}` at send start; client-minted conversation + message ids; idempotent saves; persist `defaultModel`; bound the bootstrap transcript (bounding since superseded — Phase 1 removed the bootstrap transcript outright) | no |
 | **1** ✅ | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
-| **2** | Anchors + lifecycle (§2, §4, §5): the four columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** |
+| **2** ✅ | Anchors + lifecycle (§2, §4, §5): the four columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** — `+kind`, `+problem_id`, `+practice_session_id`, `+last_active_at`, `+ai_conversations_work_anchor_idx` |
 | **3** | Typed facts, policy, snapshots (§3); the `concluded_submission_id` back-pointer (§4); drop the superseded `mode` / `context_summary` (§2) | **yes** — `+context_snapshot`, `+concluded_submission_id`, `−mode`, `−context_summary` |
 | **4** | Read-only tools (§6); `task` derived rather than constant | no |
 | **5** | Split `CoachStore` into session / transport / recorder / history / presence | no |

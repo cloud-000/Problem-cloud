@@ -178,7 +178,11 @@ export type Database = {
           context_summary: Json
           created_at: string
           id: string
+          kind: string
+          last_active_at: string
           mode: string
+          practice_session_id: number | null
+          problem_id: number | null
           title: string
           updated_at: string
           user_id: string
@@ -188,7 +192,11 @@ export type Database = {
           context_summary?: Json
           created_at?: string
           id?: string
+          kind?: string
+          last_active_at?: string
           mode?: string
+          practice_session_id?: number | null
+          problem_id?: number | null
           title?: string
           updated_at?: string
           user_id: string
@@ -198,12 +206,30 @@ export type Database = {
           context_summary?: Json
           created_at?: string
           id?: string
+          kind?: string
+          last_active_at?: string
           mode?: string
+          practice_session_id?: number | null
+          problem_id?: number | null
           title?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_conversations_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "problems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "user_problem_index"
+            referencedColumns: ["problem_id"]
+          },
           {
             foreignKeyName: "ai_conversations_user_id_fkey"
             columns: ["user_id"]

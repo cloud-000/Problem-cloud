@@ -64,8 +64,9 @@ enabled = true
 schema_paths = [
     "./schemas/profiles.sql",
     "./schemas/notifications.sql",
-    "./schemas/ai_coach.sql",
     "./schemas/problems.sql",
+    # After problems.sql: work threads anchor on problems(id) (docs/ai-coach-sessions.md §2).
+    "./schemas/ai_coach.sql",
     "./schemas/practice_sessions.sql",
     "./schemas/submissions.sql",
     "./schemas/user_submitted_feedback.sql",

@@ -3,12 +3,13 @@ import type { RequestHandler } from "./$types";
 import { AISchemaError, parsePersistTurnRequest } from "$lib/ai/schemas";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import {
+    AIWorkAnchorConflict,
     ensureConversation,
     preferencesFor,
     saveAssistantMessage,
     saveUserMessage,
 } from "$lib/server/ai/persistence";
-import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 
 /**
  * Saves a turn the browser streamed itself from the user's own provider.
@@ -39,12 +40,13 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         // Saving is off: honour it silently rather than erroring a turn the user has read.
         if (!preferences.history_enabled) return json({ conversationId: null });
 
-        const conversationId = await ensureConversation(
-            user.id,
-            body.conversationId,
-            body.contexts,
-            body.message,
-        );
+        const conversationId = await ensureConversation({
+            userId: user.id,
+            conversationId: body.conversationId,
+            contexts: body.contexts,
+            titleSource: body.message,
+            thread: body.thread,
+        });
 
         // Both ids come from the browser's transcript, so a retried save resolves to the
         // same two rows rather than duplicating the turn.
@@ -61,7 +63,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         });
 
         return json({ conversationId });
-    } catch {
+    } catch (error) {
+        if (error instanceof AIWorkAnchorConflict) {
+            return anchorConflictResponse(error);
+        }
         return stableError("persist_unavailable", "Coach could not save this conversation", 503);
     }
 };

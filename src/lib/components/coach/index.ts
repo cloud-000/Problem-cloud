@@ -7,6 +7,7 @@ import ModelPicker from "./coach-model-picker.svelte";
 import ConversationList from "./coach-conversation-list.svelte";
 import ConversationRow from "./coach-conversation-row.svelte";
 import Inline from "./coach-inline.svelte";
+import ResumePrompt from "./coach-resume-prompt.svelte";
 
 export {
     Launcher,
@@ -18,6 +19,7 @@ export {
     ConversationList,
     ConversationRow,
     Inline,
+    ResumePrompt,
     Launcher as CoachLauncher,
     Panel as CoachPanel,
     QuickAsk as CoachQuickAsk,
@@ -27,6 +29,7 @@ export {
     ConversationList as CoachConversationList,
     ConversationRow as CoachConversationRow,
     Inline as CoachInline,
+    ResumePrompt as CoachResumePrompt,
 };
 export type { CoachLauncherProps } from "./coach-launcher.svelte";
 export type { CoachQuickAskProps } from "./coach-quick-ask.svelte";

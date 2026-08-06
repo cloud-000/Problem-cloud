@@ -4,11 +4,15 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { parseMessagePart } from "$lib/ai/schemas";
 import type {
     AIMessageStatus,
+    AIThreadIdentity,
     AIUsage,
     CoachContextDescriptor,
     ConversationSummary,
     NormalizedAIMessage,
+    WorkThreadSummary,
 } from "$lib/ai/types";
+import type { WorkAnchor } from "$lib/ai/session/anchor";
+import type { CoachThreadKind } from "$lib/ai/session/tier";
 import type { Database, Json } from "$lib/types/database.types";
 import { messageText, partsText, PREVIEW_MAX_CHARS } from "$lib/ai/conversations";
 import {
@@ -36,6 +40,24 @@ export class AIPersistenceError extends Error {
         this.name = "AIPersistenceError";
     }
 }
+
+/**
+ * Two surfaces opened the same problem in the same sitting and both minted an id (§2).
+ *
+ * The work-anchor index raises rather than letting the insert fork the thread, so the
+ * loser is told which conversation actually owns the anchor. That is the same "continue"
+ * branch the resume prompt takes, reached from a lost race instead of a choice.
+ */
+export class AIWorkAnchorConflict extends Error {
+    readonly code = "work_anchor_conflict";
+    constructor(readonly conversationId: string) {
+        super("Another Coach thread already owns this problem in this session");
+        this.name = "AIWorkAnchorConflict";
+    }
+}
+
+/** Postgres unique-violation. The insert lost a race; the row it collided with is live. */
+const UNIQUE_VIOLATION = "23505";
 
 let adminClient: SupabaseClient<Database> | null = null;
 
@@ -219,16 +241,28 @@ async function previewsFor(
 export async function conversationById(userId: string, conversationId: string) {
     const { data, error } = await admin()
         .from("ai_conversations")
-        .select("id, title, created_at, updated_at")
+        .select("id, title, kind, problem_id, practice_session_id, created_at, updated_at")
         .eq("id", conversationId)
         .eq("user_id", userId)
         .is("archived_at", null)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw new AIPersistenceError("conversation_not_found", "Conversation not found");
+    const kind: CoachThreadKind = data.kind === "work" ? "work" : "assist";
     return {
         id: data.id,
         title: data.title,
+        kind,
+        // A work thread whose problem was deleted comes back anchorless rather than
+        // half-anchored: `on delete set null` nulls the column, and the thread is still
+        // the user's to read.
+        anchor:
+            kind === "work" && data.problem_id !== null
+                ? {
+                      problemId: data.problem_id,
+                      practiceSessionId: data.practice_session_id,
+                  }
+                : undefined,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         messages: await messagesFor(data.id),
@@ -286,14 +320,18 @@ export async function archiveConversation(userId: string, conversationId: string
  * inserts nothing and fails the ownership check, so a guessed id can never reach
  * someone else's conversation.
  */
-export async function ensureConversation(
-    userId: string,
-    conversationId: string | undefined,
-    contexts: CoachContextDescriptor[],
-    titleSource?: string,
-): Promise<string> {
-    const id = conversationId ?? crypto.randomUUID();
-    const title = titleSource?.trim().slice(0, 80) || "New conversation";
+export async function ensureConversation(input: {
+    userId: string;
+    conversationId?: string;
+    contexts: CoachContextDescriptor[];
+    titleSource?: string;
+    /** Which family the row is created as (§2). Ignored for a conversation that exists. */
+    thread?: AIThreadIdentity;
+}): Promise<string> {
+    const { userId, contexts, thread } = input;
+    const id = input.conversationId ?? crypto.randomUUID();
+    const title = input.titleSource?.trim().slice(0, 80) || "New conversation";
+    const anchor = thread?.kind === "work" ? thread.anchor : undefined;
     const { error } = await admin()
         .from("ai_conversations")
         .upsert(
@@ -302,6 +340,9 @@ export async function ensureConversation(
                 user_id: userId,
                 title,
                 mode: "general",
+                kind: thread?.kind ?? "assist",
+                problem_id: anchor?.problemId ?? null,
+                practice_session_id: anchor?.practiceSessionId ?? null,
                 context_summary: contexts.map(
                     ({ id: contextId, kind, authoritativeId, label }) => ({
                         id: contextId,
@@ -313,9 +354,55 @@ export async function ensureConversation(
             },
             { onConflict: "id", ignoreDuplicates: true },
         );
-    if (error) throw error;
+    if (error) {
+        // `ignoreDuplicates` speaks only for the primary key, so the work-anchor index
+        // still raises — deliberately, since the alternative is two live threads for one
+        // sitting. Resolve it to whichever row won and hand that id back.
+        if (error.code === UNIQUE_VIOLATION && anchor) {
+            const existing = await workConversationForAnchor(userId, anchor);
+            if (existing && existing.id !== id) throw new AIWorkAnchorConflict(existing.id);
+        }
+        throw error;
+    }
     await ensureOwnedConversation(userId, id);
     return id;
+}
+
+/**
+ * The live work thread for an anchor, if there is one. At most one can exist — that is
+ * what `ai_conversations_work_anchor_idx` enforces — so this is a lookup, not a search.
+ *
+ * Staleness is deliberately not applied here: §5's `workResumable` also needs attempt
+ * state that only the trainer holds, so the row (with `last_active_at`) is returned and
+ * the one pure rule decides in one place, client-side.
+ */
+export async function workConversationForAnchor(
+    userId: string,
+    anchor: WorkAnchor,
+): Promise<WorkThreadSummary | null> {
+    const query = admin()
+        .from("ai_conversations")
+        .select("id, title, last_active_at")
+        .eq("user_id", userId)
+        .eq("kind", "work")
+        .eq("problem_id", anchor.problemId)
+        .is("archived_at", null);
+    // Library work has no session. `is` rather than `eq`, because `= null` matches
+    // nothing in SQL — the index's `nulls not distinct` makes that slot a real one.
+    const { data, error } = await (anchor.practiceSessionId === null
+        ? query.is("practice_session_id", null)
+        : query.eq("practice_session_id", anchor.practiceSessionId)
+    ).maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const preview = (await previewsFor([data.id])).get(data.id);
+    return {
+        id: data.id,
+        title: data.title,
+        preview: preview?.preview ?? "",
+        messageCount: preview?.messageCount ?? 0,
+        lastActiveAt: data.last_active_at,
+    };
 }
 
 export async function ensureOwnedConversation(userId: string, conversationId: string): Promise<void> {
@@ -419,10 +506,18 @@ export async function saveAssistantMessage(input: {
     await touchConversation(input.conversationId);
 }
 
+/**
+ * Marks a thread as having just been worked in.
+ *
+ * `last_active_at` is bumped here and nowhere else, which is the whole point of it being
+ * separate from `updated_at`: §5 measures a thread's *idleness*, so a value written only
+ * at creation would make a thread the student used all afternoon read as stale.
+ */
 async function touchConversation(conversationId: string): Promise<void> {
+    const now = new Date().toISOString();
     const { error } = await admin()
         .from("ai_conversations")
-        .update({ updated_at: new Date().toISOString() })
+        .update({ updated_at: now, last_active_at: now })
         .eq("id", conversationId);
     if (error) throw error;
 }

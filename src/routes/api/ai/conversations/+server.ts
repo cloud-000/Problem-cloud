@@ -10,12 +10,13 @@ import {
     parseLimit,
 } from "$lib/server/ai/conversation-cursor";
 import {
+    AIWorkAnchorConflict,
     ensureConversation,
     listConversations,
     preferencesFor,
     saveTranscript,
 } from "$lib/server/ai/persistence";
-import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 
 export const GET: RequestHandler = async ({ locals, url }) => {
     const user = await requireAIUser(locals);
@@ -74,15 +75,19 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             return json({ id: body.conversationId ?? crypto.randomUUID(), persisted: false });
         }
         const firstPrompt = body.messages.find((message) => message.role === "user");
-        const id = await ensureConversation(
-            user.id,
-            body.conversationId,
-            body.contexts,
-            firstPrompt && messageText(firstPrompt),
-        );
+        const id = await ensureConversation({
+            userId: user.id,
+            conversationId: body.conversationId,
+            contexts: body.contexts,
+            titleSource: firstPrompt && messageText(firstPrompt),
+            thread: body.thread,
+        });
         await saveTranscript(id, body.messages);
         return json({ id, persisted: true }, { status: 201 });
-    } catch {
+    } catch (error) {
+        if (error instanceof AIWorkAnchorConflict) {
+            return anchorConflictResponse(error);
+        }
         return stableError("conversation_unavailable", "A new conversation could not be created", 503);
     }
 };

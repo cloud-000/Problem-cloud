@@ -62,10 +62,11 @@
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { coach } from "$lib/state/coach.svelte";
+   import { anchorFor } from "$lib/ai/session/anchor";
    import { shell } from "$lib/state/shell.svelte";
    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
    import ProblemReportModal from "./ProblemReportModal.svelte";
-   import { onMount } from "svelte";
+   import { onDestroy, onMount, untrack } from "svelte";
    import { fade } from "svelte/transition";
    import SettingsPanel from "./SettingsPanel.svelte";
    import PauseOverlay from "./PauseOverlay.svelte";
@@ -898,15 +899,26 @@
    );
    let coachComposer = $state<HTMLTextAreaElement | null>(null);
 
+   // Whether the work the Coach thread was opened for has concluded (§5). Tracked
+   // separately from `answerState` because it has to outlive the on-screen
+   // problem: both a skip and a departure load the next problem — resetting the
+   // answer state — before the anchor is released, so reading it at release time
+   // would always report an unconcluded sitting.
+   let coachAnchorState = $state({ submitted: false, skipped: false });
+
    function setCoachMode(enabled: boolean) {
       if (!problem || !coachModeAvailable) return;
       coachModeProblemId = enabled ? problem.id : null;
       if (!enabled) return;
       coach.closeQuickAsk(false);
       if (utilityPanel.activeView === "coach") utilityPanel.close(false);
-      // The trainer owns a thread, so entering Coach mode promotes whatever the
-      // quick-ask was holding in memory into a real conversation (§1).
-      coach.present("inline");
+      coachAnchorState = { submitted: answerState.submitted, skipped: false };
+      // The trainer owns a thread anchored to this sitting, so entering Coach mode
+      // promotes whatever the quick-ask was holding in memory (§1) and then asks
+      // whether this problem already has a live thread to continue (§2).
+      void coach.openWorkThread(anchorFor(problem, currentSessionId), {
+         ...coachAnchorState,
+      });
       void coach.initialize();
       queueMicrotask(() => coachComposer?.focus());
    }
@@ -914,6 +926,35 @@
    function toggleCoachMode() {
       setCoachMode(!coachMode);
    }
+
+   // Submitting concludes the sitting, and does so while the student is still on
+   // the problem — where the thread deliberately stays live and writable, since
+   // that is the moment they most want to ask "why?".
+   $effect(() => {
+      if (coachModeProblemId !== problem?.id || !answerState.submitted) return;
+      coachAnchorState.submitted = true;
+   });
+
+   // Moving off the anchor is what retires a concluded thread (§5); an unconcluded
+   // one stays live and is offered back on return. Toggling Coach mode off is
+   // deliberately not a release — the student is still on the problem, so
+   // reopening rejoins the same thread.
+   $effect(() => {
+      const onScreen = problem?.id;
+      untrack(() => {
+         if (coachModeProblemId == null || coachModeProblemId === onScreen) return;
+         const state = { ...coachAnchorState };
+         coachModeProblemId = null;
+         coachAnchorState = { submitted: false, skipped: false };
+         void coach.releaseWorkAnchor(state);
+      });
+   });
+
+   // Leaving the trainer entirely is the same departure as changing problem.
+   onDestroy(() => {
+      if (coachModeProblemId == null) return;
+      void coach.releaseWorkAnchor(coachAnchorState);
+   });
 
    // The global chord resolves to the inline composer while this mode is
    // active, and quick-ask escalation resolves into this mode throughout the
@@ -1427,6 +1468,11 @@
    // without advancing — the caller decides what to load next.
    function recordSkip() {
       if (!problem) return;
+
+      // An explicit "I'm done with this" concludes the Coach thread for this
+      // sitting too (§5). Recorded here rather than read off `answerState`
+      // because the next problem loads immediately after.
+      if (coachModeProblemId === problem.id) coachAnchorState.skipped = true;
 
       const elapsed = liveElapsed();
       answerState.attemptIndex = attempts.length;

@@ -86,6 +86,20 @@ interface RecordedRequest {
 let bootstrapCalls = 0;
 let recorded: RecordedRequest[] = [];
 let persistStatus = 200;
+/** What the anchor lookup answers with; null is "this sitting has no thread yet". */
+let workThread: Record<string, unknown> | null = null;
+let workThreadCalls: string[] = [];
+/**
+ * Arms one work-anchor 409 (§2): the next write that could create a row is told another
+ * surface already owns this sitting, and which conversation won.
+ */
+let anchorConflictWinner: string | null = null;
+const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+    });
+
 globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (init?.body) {
@@ -93,14 +107,55 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
     }
     if (url.includes("/api/ai/bootstrap")) {
         bootstrapCalls += 1;
-        return new Response(JSON.stringify(BOOTSTRAP), {
-            headers: { "content-type": "application/json" },
-        });
+        return json(BOOTSTRAP);
+    }
+    if (url.includes("/api/ai/work-thread")) {
+        workThreadCalls.push(url);
+        return json({ conversation: workThread });
+    }
+    if (
+        anchorConflictWinner &&
+        (url.includes("/api/ai/messages") ||
+            url.endsWith("/api/ai/conversations") ||
+            url.includes("/api/ai/chat"))
+    ) {
+        const winner = anchorConflictWinner;
+        anchorConflictWinner = null;
+        return json(
+            {
+                conversationId: winner,
+                error: { code: "work_anchor_conflict", message: "already owned" },
+            },
+            409,
+        );
     }
     if (url.includes("/api/ai/messages")) {
         return new Response(JSON.stringify({ conversationId: "server-invented-id" }), {
             status: persistStatus,
             headers: { "content-type": "application/json" },
+        });
+    }
+    // A conversation detail read: /api/ai/conversations/<id>
+    const detail = /\/api\/ai\/conversations\/([^?]+)$/.exec(url);
+    if (detail && (!init?.method || init.method === "GET")) {
+        return json({
+            conversation: {
+                id: detail[1],
+                title: "Earlier chat",
+                kind: "work",
+                anchor: { problemId: 42, practiceSessionId: 7 },
+                createdAt: "2026-08-05T00:00:00.000Z",
+                updatedAt: "2026-08-05T00:00:00.000Z",
+                messages: [
+                    {
+                        id: "11111111-1111-4111-8111-111111111111",
+                        role: "user",
+                        parts: [{ type: "text", text: "where do I start?" }],
+                        status: "complete",
+                        createdAt: "2026-08-05T00:00:00.000Z",
+                    },
+                ],
+            },
         });
     }
     return new Response("{}", { headers: { "content-type": "application/json" } });
@@ -326,7 +381,11 @@ const CONNECTED_BYOK = {
 };
 
 const persistCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/messages"));
-const flushCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/conversations"));
+const flushCalls = () => recorded.filter((entry) => entry.url.endsWith("/api/ai/conversations"));
+const archiveCalls = () =>
+    recorded.filter(
+        (entry) => entry.url.includes("/api/ai/conversations/") && entry.body.archived === true,
+    );
 const chatCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/chat"));
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -518,6 +577,175 @@ describe("coach tiers", () => {
         await coach.initialize(true);
         expect(coach.conversationId).toBeUndefined();
         expect(coach.messages).toHaveLength(0);
+    });
+});
+
+describe("coach work threads", () => {
+    const ANCHOR = { problemId: 42, practiceSessionId: 7 };
+    const OPEN = { submitted: false, skipped: false };
+    const offeredThread = (idleMs: number) => ({
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "Earlier chat",
+        preview: "where do I start?",
+        messageCount: 2,
+        lastActiveAt: new Date(Date.now() - idleMs).toISOString(),
+    });
+
+    beforeEach(async () => {
+        await coach.initialize();
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+        coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
+        coach.newConversation();
+        coach.tier = "one-shot";
+        coach.workAnchor = null;
+        coach.resumePrompt = null;
+        workThread = null;
+        workThreadCalls = [];
+        anchorConflictWinner = null;
+        recorded = [];
+        streamGate = null;
+    });
+
+    test("a sitting with no thread opens blank, with no prompt", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(coach.tier).toBe("work");
+        expect(coach.workAnchor).toEqual(ANCHOR);
+        expect(coach.resumePrompt).toBeNull();
+        expect(workThreadCalls).toHaveLength(1);
+    });
+
+    test("§5: an unconcluded thread is offered back", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+        // Offering it is not attaching to it: nothing is adopted until the user answers.
+        expect(coach.conversationId).toBeUndefined();
+        expect(coach.messages).toHaveLength(0);
+    });
+
+    test("§5: a concluded thread is not offered, and releases its anchor slot", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, { submitted: true, skipped: false });
+        expect(coach.resumePrompt).toBeNull();
+        // It still held the unique-index slot, so the fresh thread could not be
+        // created until it was retired.
+        expect(archiveCalls()).toHaveLength(1);
+    });
+
+    test("§5: a stale thread is retired rather than offered", async () => {
+        workThread = offeredThread(13 * 60 * 60 * 1000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(coach.resumePrompt).toBeNull();
+        expect(archiveCalls()).toHaveLength(1);
+    });
+
+    test("re-entering Coach mode on the same sitting rejoins without asking", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        workThreadCalls = [];
+        // This is also what keeps a thread live and writable after submitting — the
+        // moment the student most wants to ask "why?".
+        await coach.openWorkThread({ ...ANCHOR }, { submitted: true, skipped: false });
+        expect(workThreadCalls).toHaveLength(0);
+        expect(coach.resumePrompt).toBeNull();
+    });
+
+    test("continuing attaches to the offered thread and its transcript", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.resumeWorkThread();
+        expect(coach.conversationId).toBe(workThread.id as string);
+        expect(coach.messages).toHaveLength(1);
+        // Reopened by anchor, so it comes back as the work thread it was stored as.
+        expect(coach.tier).toBe("work");
+        expect(coach.workAnchor).toEqual(ANCHOR);
+        expect(coach.resumePrompt).toBeNull();
+    });
+
+    test("declining archives the old thread but keeps the anchor", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.startNewWorkThread();
+        expect(archiveCalls()).toHaveLength(1);
+        expect(coach.conversationId).toBeUndefined();
+        expect(coach.messages).toHaveLength(0);
+        // A new chat started from the trainer is another thread about the same sitting.
+        expect(coach.workAnchor).toEqual(ANCHOR);
+        expect(coach.tier).toBe("work");
+    });
+
+    test("a work turn tells the server which sitting it belongs to", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.send("hint please");
+        expect(persistCalls()[0].body.thread).toEqual({ kind: "work", anchor: ANCHOR });
+    });
+
+    test("an assist turn carries no anchor", async () => {
+        coach.present("panel");
+        await coach.send("what should I review?");
+        expect(persistCalls()[0].body.thread).toEqual({ kind: "assist" });
+    });
+
+    test("§2: losing the anchor race attaches to the winner instead of forking", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        anchorConflictWinner = "33333333-3333-4333-8333-333333333333";
+        await coach.send("hint please");
+
+        const saves = persistCalls();
+        expect(saves).toHaveLength(2);
+        // The retry files the same turn into the thread that actually owns the sitting.
+        expect(saves[1].body.conversationId).toBe("33333333-3333-4333-8333-333333333333");
+        expect(coach.conversationId).toBe("33333333-3333-4333-8333-333333333333");
+    });
+
+    test("leaving a concluded anchor retires the thread", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.send("hint please");
+        recorded = [];
+        await coach.releaseWorkAnchor({ submitted: true, skipped: false });
+
+        expect(archiveCalls()).toHaveLength(1);
+        expect(coach.workAnchor).toBeNull();
+        expect(coach.messages).toHaveLength(0);
+        // The work presentation is over, so an unanchored quick-ask cannot write a
+        // work row afterwards.
+        expect(coach.tier).toBe("one-shot");
+    });
+
+    test("leaving an unconcluded anchor keeps the thread for a return visit", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.send("hint please");
+        recorded = [];
+        await coach.releaseWorkAnchor({ submitted: false, skipped: false });
+        expect(archiveCalls()).toHaveLength(0);
+        expect(coach.workAnchor).toBeNull();
+    });
+
+    test("a skip concludes the sitting the same way a submission does", async () => {
+        await coach.openWorkThread(ANCHOR, OPEN);
+        await coach.send("hint please");
+        recorded = [];
+        await coach.releaseWorkAnchor({ submitted: false, skipped: true });
+        expect(archiveCalls()).toHaveLength(1);
+    });
+
+    test("out-typing the lookup keeps the question, not the old thread", async () => {
+        // The offer lapses rather than proposing to discard what they just asked.
+        workThread = offeredThread(60_000);
+        const opening = coach.openWorkThread(ANCHOR, OPEN);
+        await coach.send("hint please");
+        await opening;
+        expect(coach.resumePrompt).toBeNull();
+        expect(coach.messages).toHaveLength(2);
+    });
+
+    test("an offer for an anchor the student already left is not sprung on them", async () => {
+        workThread = offeredThread(60_000);
+        const opening = coach.openWorkThread(ANCHOR, OPEN);
+        await coach.releaseWorkAnchor(OPEN);
+        await opening;
+        expect(coach.resumePrompt).toBeNull();
     });
 });
 

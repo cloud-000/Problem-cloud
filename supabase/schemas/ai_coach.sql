@@ -1,4 +1,4 @@
--- Phase 1 AI Coach persistence. Authenticated clients may read only their own safe
+-- AI Coach persistence (phases 1–2). Authenticated clients may read only their own safe
 -- records; all writes are made by authenticated server endpoints using the
 -- service role so roles, provider metadata, and completion status cannot be spoofed.
 --
@@ -25,6 +25,29 @@ create table public.ai_conversations (
   mode             text not null default 'general'
                      check (mode in ('general', 'problem_help', 'progress', 'review')),
   context_summary  jsonb not null default '[]'::jsonb,
+  -- Which family this thread belongs to (docs/ai-coach-sessions.md §1). Drives resume
+  -- behavior and retention. A one-shot never reaches this table at all.
+  kind             text not null default 'assist' check (kind in ('work', 'assist')),
+  -- What a work thread is about; null for assist. Anchored on the CANONICAL problem
+  -- (coalesce(canonical_id, id)) for the same reason submissions are: an alias
+  -- placement must not fork the thread.
+  --
+  -- `set null`, not `cascade`: §3 wants a deleted problem to resolve into a degraded
+  -- fact the renderer can explain. Cascade would take the user's own writing with it
+  -- before anything had a chance to degrade.
+  problem_id       bigint references public.problems(id) on delete set null,
+  -- Which sitting. This is what makes "resume the same attempt" mean something: the
+  -- same problem in a NEW practice session is a NEW thread, not the old one.
+  -- Deliberately NOT an FK — an opaque sitting discriminator. Users may delete their
+  -- own practice sessions, and an FK would either cascade away the chat history or,
+  -- under `set null`, make the delete fail against the partial unique index below. A
+  -- dangling id is harmless: the anchor is only looked up while that session is live.
+  practice_session_id bigint,
+  -- Retention + staleness, without overloading updated_at. Also drives §5's
+  -- resumability cutoff, which is why every turn-saving write bumps it and nothing
+  -- else touches it: set only at creation it would measure a thread's AGE, and a
+  -- thread worked in all afternoon would read as stale.
+  last_active_at   timestamp with time zone not null default now(),
   archived_at      timestamp with time zone,
   created_at       timestamp with time zone not null default now(),
   updated_at       timestamp with time zone not null default now()
@@ -33,6 +56,26 @@ create table public.ai_conversations (
 create index ai_conversations_user_updated_idx
   on public.ai_conversations(user_id, updated_at desc)
   where archived_at is null;
+
+-- At most one live work thread per (user, problem, practice session). The trainer's
+-- "continue or start new chat?" prompt is a UI consequence of this constraint, not a
+-- separate mechanism. Both extra clauses are load-bearing:
+--
+--   * `nulls not distinct` (PG15+) — Postgres treats NULLs as distinct in a unique
+--     index by default, so without it "this problem, no practice session" would admit
+--     unlimited live threads: the exact case the index exists to bound.
+--   * `problem_id is not null` — what makes `on delete set null` safe above. Threads
+--     orphaned by a problem delete fall out of the index (so two different deleted
+--     problems don't collide on (user, null, session)) and never match the resume
+--     lookup, which is correct: there is no longer an anchor to resume onto.
+--
+-- Note there is deliberately no `check (kind <> 'work' or problem_id is not null)`:
+-- it looks like the obvious integrity constraint and would make deleting a problem
+-- fail, since `on delete set null` produces exactly that state on purpose.
+create unique index ai_conversations_work_anchor_idx
+  on public.ai_conversations (user_id, problem_id, practice_session_id)
+  nulls not distinct
+  where kind = 'work' and archived_at is null and problem_id is not null;
 
 create table public.ai_messages (
   id                uuid primary key default gen_random_uuid(),

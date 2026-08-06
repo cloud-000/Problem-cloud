@@ -5,6 +5,7 @@ import { aiCoachEnabled } from "$lib/server/ai/config";
 import { catalogFor } from "$lib/ai/catalog";
 import { AIModelRoutingError, resolveModel } from "$lib/ai/router";
 import {
+    AIWorkAnchorConflict,
     conversationHistory,
     ensureConversation,
     preferencesFor,
@@ -12,7 +13,7 @@ import {
     saveUserMessage,
 } from "$lib/server/ai/persistence";
 import { providerRegistry } from "$lib/server/ai/providers/registry";
-import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 import { encodeEventStream } from "$lib/server/ai/stream";
 
 /** Converts already-validated ephemeral turns into the normalized provider shape. */
@@ -62,12 +63,13 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         if (shouldPersist) {
             // The browser owns the id; this creates the row on its first turn and
             // verifies ownership on every later one.
-            conversationId = await ensureConversation(
-                user.id,
+            conversationId = await ensureConversation({
+                userId: user.id,
                 conversationId,
-                body.contexts,
-                body.message,
-            );
+                contexts: body.contexts,
+                titleSource: body.message,
+                thread: body.thread,
+            });
             // Load before saving the new prompt so history holds only prior turns.
             history = await conversationHistory(user.id, conversationId);
             await saveUserMessage(conversationId, body.message, body.userMessageId);
@@ -142,6 +144,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             },
         });
     } catch (error) {
+        if (error instanceof AIWorkAnchorConflict) return anchorConflictResponse(error);
         if (error instanceof AIModelRoutingError) return stableError(error.code, error.message, 409);
         return stableError("chat_unavailable", "Coach could not start the request", 503);
     }

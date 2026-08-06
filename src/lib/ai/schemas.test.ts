@@ -18,7 +18,9 @@ import {
     FLUSH_MAX_TOTAL_CHARS,
     parseEphemeralHistory,
     parseModelReference,
+    parseThreadIdentity,
     parseToolDefinition,
+    parseWorkThreadResponse,
 } from "./schemas";
 
 describe("AI runtime schemas", () => {
@@ -401,5 +403,108 @@ describe("one-shot flush requests", () => {
             }),
         );
         expect(() => parseConversationFlushRequest({ messages: huge })).toThrow(AISchemaError);
+    });
+});
+
+
+describe("thread identity", () => {
+    test("an assist thread has no anchor", () => {
+        expect(parseThreadIdentity({ kind: "assist" })).toEqual({ kind: "assist" });
+    });
+
+    test("a work anchor carries the problem and the sitting", () => {
+        expect(
+            parseThreadIdentity({
+                kind: "work",
+                anchor: { problemId: 42, practiceSessionId: 7 },
+            }),
+        ).toEqual({ kind: "work", anchor: { problemId: 42, practiceSessionId: 7 } });
+    });
+
+    test("library work has a null sitting rather than a missing one", () => {
+        // Null is a single index slot (`nulls not distinct`), so it has to survive
+        // the round trip as null rather than as undefined.
+        expect(parseThreadIdentity({ kind: "work", anchor: { problemId: 42 } })?.anchor)
+            .toEqual({ problemId: 42, practiceSessionId: null });
+    });
+
+    test("an assist thread may not smuggle an anchor into the work index", () => {
+        expect(() =>
+            parseThreadIdentity({ kind: "assist", anchor: { problemId: 42 } }),
+        ).toThrow(AISchemaError);
+    });
+
+    test("a one-shot is not a storable kind", () => {
+        expect(() => parseThreadIdentity({ kind: "one-shot" })).toThrow(AISchemaError);
+    });
+
+    test("rejects ids that would land in a bigint column wrong", () => {
+        // A stringified id is the dangerous one: `practice_session_id` has no FK, so a
+        // bad value would store fine and never match the anchor lookup again.
+        expect(() =>
+            parseThreadIdentity({ kind: "work", anchor: { problemId: "42" } }),
+        ).toThrow(AISchemaError);
+        expect(() =>
+            parseThreadIdentity({ kind: "work", anchor: { problemId: 4.2 } }),
+        ).toThrow(AISchemaError);
+    });
+
+    test("a chat request carries the thread it writes into", () => {
+        const request = parseChatRequest({
+            message: "hint please",
+            thread: { kind: "work", anchor: { problemId: 42, practiceSessionId: 7 } },
+        });
+        expect(request.thread?.anchor?.problemId).toBe(42);
+    });
+});
+
+describe("work thread lookups", () => {
+    test("no thread for this sitting is an ordinary answer", () => {
+        expect(parseWorkThreadResponse({ conversation: null }).conversation).toBeNull();
+    });
+
+    test("parses the offered thread", () => {
+        const payload = parseWorkThreadResponse({
+            conversation: {
+                id: "conversation-1",
+                title: "AMC 10A #18",
+                preview: "where do I start?",
+                messageCount: 4,
+                lastActiveAt: "2026-08-05T10:00:00Z",
+            },
+        });
+        expect(payload.conversation?.lastActiveAt).toBe("2026-08-05T10:00:00Z");
+    });
+});
+
+describe("stored thread kind", () => {
+    test("a reopened work thread comes back with its anchor", () => {
+        const payload = parseConversationDetail({
+            conversation: {
+                id: "conversation-1",
+                title: "AMC 10A #18",
+                kind: "work",
+                anchor: { problemId: 42, practiceSessionId: 7 },
+                createdAt: "2026-08-05T10:00:00Z",
+                updatedAt: "2026-08-05T11:00:00Z",
+                messages: [],
+            },
+        });
+        expect(payload.conversation.kind).toBe("work");
+        expect(payload.conversation.anchor).toEqual({ problemId: 42, practiceSessionId: 7 });
+    });
+
+    test("a conversation with no kind reads as assist", () => {
+        const payload = parseConversationDetail({
+            conversation: {
+                id: "conversation-1",
+                title: "Factoring",
+                createdAt: "2026-08-05T10:00:00Z",
+                updatedAt: "2026-08-05T11:00:00Z",
+                messages: [],
+            },
+        });
+        expect(payload.conversation.kind).toBe("assist");
+        expect(payload.conversation.anchor).toBeUndefined();
     });
 });

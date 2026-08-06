@@ -20,6 +20,7 @@
     import { cn } from "$lib/utils";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
+    import CoachResumePrompt from "./coach-resume-prompt.svelte";
 
     let {
         quickActions = [],
@@ -62,6 +63,13 @@
         <CoachConnectionGate />
     {:else}
         <div class={cn(rail, "shrink-0")}><CoachContextTray /></div>
+        {#if coach.resumePrompt}
+            <!-- Above the transcript, not over it: the choice is which thread to attach
+                 to, and the blank Coach behind it is already usable. -->
+            <div class={cn(rail, "shrink-0 px-3 pb-1 sm:px-4")}>
+                <CoachResumePrompt />
+            </div>
+        {/if}
         {#if coach.messages.length === 0}
             <AIChatEmptyState
                 controller={coach}

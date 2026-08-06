@@ -1,5 +1,6 @@
 import { AI_PRESET_IDS, presetFor } from "./presets";
 import { MOCK_PROVIDER_ID } from "./types";
+import { COACH_THREAD_KINDS, type CoachThreadKind } from "./session/tier";
 import type {
     AIAgentPermissions,
     AIBootstrap,
@@ -16,6 +17,7 @@ import type {
     AIPresetId,
     AIProviderSummary,
     AITaskType,
+    AIThreadIdentity,
     AIUsage,
     AIToolDefinition,
     ConversationDetailResponse,
@@ -26,6 +28,7 @@ import type {
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIModel,
+    WorkThreadResponse,
 } from "./types";
 
 /** Bounds applied to client-supplied history for history-disabled chats. */
@@ -172,6 +175,43 @@ export function parseContextLayer(value: unknown): CoachContextLayer {
     };
 }
 
+/**
+ * A row id from the browser. Rejected here rather than left to fail as an opaque 503:
+ * these land in `bigint` columns, and a float or a stringified id would either error at
+ * the database or — worse for `practice_session_id`, which has no FK — store a value
+ * the anchor lookup can never match again.
+ */
+function rowId(value: unknown, label: string): number {
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+        throw new AISchemaError(`${label} must be a positive integer`);
+    }
+    return value;
+}
+
+/**
+ * Which thread a request writes into (§2). An anchor is accepted only for `work`: a
+ * `kind`/anchor mismatch is a client bug, and silently keeping the anchor would file an
+ * assist thread into the work-anchor index — the one place a wrong value is not inert.
+ */
+export function parseThreadIdentity(value: unknown): AIThreadIdentity | undefined {
+    if (value === undefined || value === null) return undefined;
+    const input = record(value, "thread");
+    const kind = oneOf<CoachThreadKind>(input.kind, "thread kind", COACH_THREAD_KINDS);
+    if (input.anchor === undefined || input.anchor === null) return { kind };
+    if (kind !== "work") throw new AISchemaError("only a work thread may carry an anchor");
+    const anchor = record(input.anchor, "anchor");
+    return {
+        kind,
+        anchor: {
+            problemId: rowId(anchor.problemId, "anchor problem id"),
+            practiceSessionId:
+                anchor.practiceSessionId === undefined || anchor.practiceSessionId === null
+                    ? null
+                    : rowId(anchor.practiceSessionId, "anchor practice session id"),
+        },
+    };
+}
+
 export function parseEphemeralHistory(value: unknown): AIEphemeralMessage[] {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) throw new AISchemaError("ephemeral history must be an array");
@@ -295,6 +335,7 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
         ]),
         persist: input.persist === undefined ? true : boolean(input.persist, "persist"),
         ephemeralHistory: ephemeralHistory.length > 0 ? ephemeralHistory : undefined,
+        thread: parseThreadIdentity(input.thread),
     };
 }
 
@@ -340,6 +381,7 @@ export function parseConversationFlushRequest(value: unknown): AIConversationFlu
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         contexts,
         messages,
+        thread: parseThreadIdentity(input.thread),
     };
 }
 
@@ -369,6 +411,7 @@ export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
         contexts,
         message,
+        thread: parseThreadIdentity(input.thread),
         assistant: {
             id: optionalUuid(assistant.id, "assistant message id"),
             // A cancelled turn can legitimately carry no text at all.
@@ -422,13 +465,41 @@ export function parseConversationDetail(value: unknown): ConversationDetailRespo
     if (!Array.isArray(conversation.messages)) {
         throw new AISchemaError("conversation messages must be an array");
     }
+    const thread = parseThreadIdentity({
+        kind: conversation.kind ?? "assist",
+        anchor: conversation.anchor,
+    });
     return {
         conversation: {
             id: string(conversation.id, "conversation id", 80),
             title: string(conversation.title, "conversation title", 200),
+            kind: thread?.kind ?? "assist",
+            anchor: thread?.anchor,
             createdAt: string(conversation.createdAt, "created at", 80),
             updatedAt: string(conversation.updatedAt, "updated at", 80),
             messages: conversation.messages.map(parseNormalizedMessage),
+        },
+    };
+}
+
+/**
+ * The live work thread for an anchor, or null when there is none (§2). A null answer is
+ * the common case — it is what "no prompt, blank Coach" is made of — so it is a normal
+ * response rather than a 404.
+ */
+export function parseWorkThreadResponse(value: unknown): WorkThreadResponse {
+    const input = record(value, "work thread");
+    if (input.conversation === undefined || input.conversation === null) {
+        return { conversation: null };
+    }
+    const conversation = record(input.conversation, "conversation");
+    return {
+        conversation: {
+            id: string(conversation.id, "conversation id", 80),
+            title: string(conversation.title, "conversation title", 200),
+            preview: typeof conversation.preview === "string" ? conversation.preview : "",
+            messageCount: number(conversation.messageCount, "message count"),
+            lastActiveAt: string(conversation.lastActiveAt, "last active at", 80),
         },
     };
 }
