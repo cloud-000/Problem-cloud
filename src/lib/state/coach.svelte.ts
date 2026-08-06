@@ -40,6 +40,7 @@ import {
     upsertContextLayer,
 } from "$lib/ai/context/registry";
 import { renderHistorySnapshots, renderSnapshot } from "$lib/ai/context/resolve";
+import { inspectTurn, type TurnInspection } from "$lib/ai/context/inspect";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import { aiCredentials } from "./ai-credentials.svelte";
@@ -164,6 +165,42 @@ class CoachStore {
     configureContextResolver(client: SupabaseClient<Database>, userId?: string): void {
         this.#contextClient = client;
         this.#contextUserId = userId;
+    }
+
+    /**
+     * Debug-only: `messages[0]` — the system message the next send leads with.
+     *
+     * Deliberately fed from the same two values `send()` captures before its first await
+     * — `activeContextSnapshot` and `contextPolicy` — so an empty result here means the
+     * surface registered no layer, not that the view looked in the wrong place.
+     */
+    async inspectSystemMessage(): Promise<TurnInspection | null> {
+        if (!this.#contextClient) return null;
+        return inspectTurn(this.#contextClient, {
+            refs: this.activeContextSnapshot,
+            policy: this.contextPolicy,
+            delivery: "system",
+            userId: this.#contextUserId,
+        });
+    }
+
+    /**
+     * Debug-only: the context a turn already in the transcript carried, in the form it is
+     * actually delivered — prefixed into that turn's own user message on replay, which is
+     * why it renders at the turn's position rather than as another system message.
+     *
+     * The policy is the *current* one: §3 stores refs per turn but not the policy that
+     * rendered them, so this is exact for content and an assumption for redaction.
+     */
+    async inspectMessageContext(messageId: string): Promise<TurnInspection | null> {
+        const message = this.messages.find((item) => item.id === messageId);
+        if (!this.#contextClient || !message) return null;
+        return inspectTurn(this.#contextClient, {
+            refs: message.contextSnapshot ?? [],
+            policy: this.contextPolicy,
+            delivery: "inlined",
+            userId: this.#contextUserId,
+        });
     }
 
     get selectedModel(): AIModelReference {

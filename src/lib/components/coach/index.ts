@@ -3,6 +3,8 @@ import Panel from "./coach-panel.svelte";
 import QuickAsk from "./coach-quick-ask.svelte";
 import ContextRegister from "./coach-context-register.svelte";
 import ContextChips from "./coach-context-chips.svelte";
+import SystemRow from "./coach-system-row.svelte";
+import DebugToggle from "./coach-debug-toggle.svelte";
 import ModelPicker from "./coach-model-picker.svelte";
 import ConversationList from "./coach-conversation-list.svelte";
 import ConversationRow from "./coach-conversation-row.svelte";
@@ -15,6 +17,8 @@ export {
     QuickAsk,
     ContextRegister,
     ContextChips,
+    SystemRow,
+    DebugToggle,
     ModelPicker,
     ConversationList,
     ConversationRow,
@@ -25,6 +29,8 @@ export {
     QuickAsk as CoachQuickAsk,
     ContextRegister as CoachContextRegister,
     ContextChips as CoachContextChips,
+    SystemRow as CoachSystemRow,
+    DebugToggle as CoachDebugToggle,
     ModelPicker as CoachModelPicker,
     ConversationList as CoachConversationList,
     ConversationRow as CoachConversationRow,
@@ -34,4 +40,6 @@ export {
 export type { CoachLauncherProps } from "./coach-launcher.svelte";
 export type { CoachQuickAskProps } from "./coach-quick-ask.svelte";
 export type { CoachContextRegisterProps } from "./coach-context-register.svelte";
+export type { CoachSystemRowProps } from "./coach-system-row.svelte";
+export type { CoachDebugToggleProps } from "./coach-debug-toggle.svelte";
 export type { CoachInlineProps } from "./coach-inline.svelte";

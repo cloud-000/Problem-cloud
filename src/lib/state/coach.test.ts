@@ -859,3 +859,162 @@ describe("coach model preference", () => {
         expect(recorded).toHaveLength(0);
     });
 });
+
+describe("coach context inspection", () => {
+    /** Chainable and awaitable, so both `.maybeSingle()` and `await …limit(n)` resolve. */
+    const stubSupabase = (tables: Record<string, unknown[]>) => {
+        const from = (table: string) => {
+            const rows = tables[table] ?? [];
+            const chain: Record<string, unknown> = {
+                select: () => chain,
+                eq: () => chain,
+                order: () => chain,
+                limit: () => chain,
+                maybeSingle: () => Promise.resolve({ data: rows[0] ?? null }),
+                then: (resolve: (value: { data: unknown[] }) => unknown) => resolve({ data: rows }),
+            };
+            return chain;
+        };
+        return { from } as never;
+    };
+
+    const problemRow = {
+        id: 42,
+        statement: "How many ways?",
+        choices: ["10", "20", "30", "40", "50"],
+        answer_index: 2,
+        answer_status: "verified",
+        topic: "combinatorics",
+        problem_ratings: [{ scope: "overall", rating: 1500 }],
+        tests: { name: "AMC 10A", series: { name: "AMC" } },
+    };
+
+    const trainerLayer = (policy: "coaching" | "test-locked") => ({
+        ownerId: "trainer:problem",
+        source: "trainer" as const,
+        priority: 20,
+        policy,
+        quickActions: [],
+        descriptors: [
+            {
+                id: "problem:42",
+                label: "AMC 10A #18",
+                ref: { kind: "problem" as const, id: 42 },
+            },
+            {
+                id: "attempt:42",
+                label: "Current attempt",
+                ref: {
+                    kind: "attempt" as const,
+                    problemId: 42,
+                    answer: "B",
+                    triesUsed: 1,
+                    submitted: false,
+                    revealed: false,
+                    elapsedMs: 65_000,
+                },
+            },
+        ],
+    });
+
+    test("reports no inspection until the app shell wires a resolver", async () => {
+        expect(await coach.inspectSystemMessage()).toBeNull();
+    });
+
+    test("messages[0] carries the prompt, the policy, and the surface's facts", async () => {
+        coach.configureContextResolver(
+            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
+            undefined,
+        );
+        const release = coach.registerContext(trainerLayer("coaching"));
+
+        const inspection = await coach.inspectSystemMessage();
+        expect(inspection?.policy).toBe("coaching");
+        expect(inspection?.delivery).toBe("system");
+        expect(inspection?.factCount).toBe(2);
+        expect(inspection?.text).toContain("You are the ProblemCloud coach");
+        expect(inspection?.text).toContain("Guide the student toward their own solution");
+        // Phase 3's whole claim, asserted where the store assembles it rather than
+        // one layer down: attempt state reaches the model.
+        expect(inspection?.text).toContain("Current answer: B");
+        expect(inspection?.text).toContain("Answer key: C. 30");
+        release();
+    });
+
+    test("the highest-priority layer's policy redacts messages[0]", async () => {
+        coach.configureContextResolver(
+            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
+            undefined,
+        );
+        const release = coach.registerContext(trainerLayer("test-locked"));
+
+        const inspection = await coach.inspectSystemMessage();
+        expect(inspection?.policy).toBe("test-locked");
+        expect(inspection?.text).not.toContain("Answer key");
+        // The prompt is never the thing that gets redacted — only the facts are.
+        expect(inspection?.text).toContain("You are the ProblemCloud coach");
+        release();
+    });
+
+    test("a past turn renders from its own snapshot, not the live layer", async () => {
+        coach.configureContextResolver(
+            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
+            undefined,
+        );
+        // The live layer is about a different problem than the turn already in the
+        // transcript. Rendering that turn from the live layer would make the view agree
+        // with itself and lie about what was sent.
+        const release = coach.registerContext(trainerLayer("coaching"));
+        coach.messages = [
+            {
+                id: "turn-1",
+                role: "user",
+                parts: [{ type: "text", text: "why is my answer wrong?" }],
+                status: "complete",
+                createdAt: "2026-08-05T00:00:00.000Z",
+                contextSnapshot: [
+                    {
+                        kind: "attempt",
+                        problemId: 7,
+                        answer: "E",
+                        triesUsed: 3,
+                        submitted: true,
+                        revealed: true,
+                        elapsedMs: 12_000,
+                    },
+                ],
+            },
+        ];
+
+        const inspection = await coach.inspectMessageContext("turn-1");
+        // Prefixed into its own user message, never re-sent as a second system message.
+        expect(inspection?.delivery).toBe("inlined");
+        expect(inspection?.text.startsWith("[Facts active for this historical turn]")).toBe(true);
+        expect(inspection?.text).toContain("Current answer: E");
+        expect(inspection?.text).not.toContain("You are the ProblemCloud coach");
+        expect(inspection?.text).not.toContain("How many ways?");
+        release();
+        coach.messages = [];
+    });
+
+    test("a turn that carried nothing renders as empty, not as a bare prompt", async () => {
+        coach.configureContextResolver(
+            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
+            undefined,
+        );
+        coach.messages = [
+            {
+                id: "turn-2",
+                role: "user",
+                parts: [{ type: "text", text: "hello" }],
+                status: "complete",
+                createdAt: "2026-08-05T00:00:00.000Z",
+            },
+        ];
+
+        const inspection = await coach.inspectMessageContext("turn-2");
+        expect(inspection?.factCount).toBe(0);
+        expect(inspection?.text).toBe("");
+        coach.messages = [];
+    });
+});

@@ -1,10 +1,19 @@
 <script lang="ts" module>
+    import type { Snippet } from "svelte";
+    import type { NormalizedAIMessage } from "$lib/ai/types";
     import type { AIChatController } from "./types";
 
     export interface AIChatMessageListProps {
         controller: AIChatController;
         assistantLabel?: string;
         conversationLabel?: string;
+        /** Rendered above the first turn, inside the scrolled content rail. Together
+         *  with `messageBefore` this is the seam a specialization interleaves its own
+         *  rows into the transcript through, at the positions they occupy in the request
+         *  (the Coach renders the system message here). */
+        leading?: Snippet;
+        /** Rendered as a sibling above each turn. Render nothing to skip a message. */
+        messageBefore?: Snippet<[NormalizedAIMessage]>;
         class?: string;
         /** Class for the measured content rail inside the scroll container.
          *  Use it to constrain message width while the scrollbar stays on the
@@ -21,6 +30,8 @@
         controller,
         assistantLabel = "Assistant",
         conversationLabel = "AI conversation",
+        leading,
+        messageBefore,
         class: className,
         contentClass,
     }: AIChatMessageListProps = $props();
@@ -50,7 +61,9 @@
         class={contentClass}
         style="padding-bottom: var(--ai-chat-composer-h, 0.75rem);"
     >
+        {@render leading?.()}
         {#each controller.messages as message (message.id)}
+            {@render messageBefore?.(message)}
             <AIChatMessage {message} {assistantLabel} />
         {/each}
     </div>

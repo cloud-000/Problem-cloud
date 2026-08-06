@@ -61,6 +61,7 @@
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+   import { settings } from "$lib/state/settings.svelte";
    import { coach } from "$lib/state/coach.svelte";
    import { anchorFor } from "$lib/ai/session/anchor";
    import { shell } from "$lib/state/shell.svelte";
@@ -629,7 +630,11 @@
    let olderLoading = $state(false);
 
    let problem = $state<ProblemRow | null>(null);
-   let debugMode = $state(false);
+   // Whether this screen's debug panel is open. Local and per-visit: the account-wide
+   // `settings.debugMode` decides only whether the menu offers it at all, and turning
+   // that off closes whatever was open rather than leaving an orphaned panel.
+   let debugPanelOpen = $state(false);
+   let debugMode = $derived(settings.debugMode && debugPanelOpen);
    let showRawLatex = $state(false);
    let loading = $state(true);
    let error = $state<string | null>(null);
@@ -882,16 +887,22 @@
                  onclick: () => goForward(),
               },
            ]),
-      {
-         type: "divider",
-      },
-      {
-         label: debugMode ? "Disable Debug" : "Debug",
-         icon: "bug_report",
-         onclick: () => {
-            debugMode = !debugMode;
-         },
-      },
+      // Debug affordances are offered only while the account-wide switch is on
+      // (Settings → Developer), so the menu stays a student's menu by default.
+      ...(settings.debugMode
+         ? [
+              {
+                 type: "divider" as const,
+              },
+              {
+                 label: debugMode ? "Disable Debug" : "Debug",
+                 icon: "bug_report",
+                 onclick: () => {
+                    debugPanelOpen = !debugPanelOpen;
+                 },
+              },
+           ]
+         : []),
    ]);
 
    // The Coach lives inline in the answer region. The topbar button and the
@@ -2070,7 +2081,7 @@
                            {playerRating}
                            {problemRating}
                            bind:showRawLatex
-                           onClose={() => (debugMode = false)}
+                           onClose={() => (debugPanelOpen = false)}
                         />
                      {/if}
 

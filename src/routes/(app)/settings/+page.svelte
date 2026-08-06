@@ -86,6 +86,31 @@
     </Page.Section>
 
     <Page.Section
+        title="Developer"
+        description="Inspect what ProblemCloud is doing under the hood on this device."
+    >
+        <div class="border-y border-border/60">
+            <div class="flex items-center justify-between gap-6 py-4">
+                <div class="min-w-0">
+                    <label for="debug-mode-switch" class="type-body font-medium text-foreground">
+                        Debug mode
+                    </label>
+                    <p class="mt-0.5 type-secondary text-muted-foreground">
+                        Offer debug controls where they exist — the trainer's problem and rating
+                        panel, and a switch in the Coach that reveals the system prompt and the
+                        context sent with each message. Each one still has its own toggle.
+                    </p>
+                </div>
+                <Switch
+                    bind:checked={settings.debugMode}
+                    id="debug-mode-switch"
+                    class="shrink-0"
+                />
+            </div>
+        </div>
+    </Page.Section>
+
+    <Page.Section
         title="Account"
         description="Details associated with your current ProblemCloud account."
     >

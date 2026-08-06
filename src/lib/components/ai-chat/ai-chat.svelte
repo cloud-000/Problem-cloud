@@ -1,5 +1,6 @@
 <script lang="ts" module>
     import type { Snippet } from "svelte";
+    import type { NormalizedAIMessage } from "$lib/ai/types";
     import type { AIChatController, AIChatQuickAction } from "./types";
 
     export interface AIChatProps {
@@ -13,6 +14,10 @@
         quickActions?: readonly AIChatQuickAction[];
         header?: Snippet;
         leading?: Snippet;
+        /** Rendered above the first turn, inside the transcript's scroll rail. */
+        transcriptLeading?: Snippet;
+        /** Rendered above every turn; see `AIChatMessageListProps.messageBefore`. */
+        messageBefore?: Snippet<[NormalizedAIMessage]>;
         class?: string;
     }
 </script>
@@ -34,6 +39,8 @@
         quickActions = [],
         header,
         leading,
+        transcriptLeading,
+        messageBefore,
         class: className,
     }: AIChatProps = $props();
 
@@ -62,6 +69,8 @@
             {controller}
             {assistantLabel}
             {conversationLabel}
+            leading={transcriptLeading}
+            {messageBefore}
         />
     {/if}
     <div
