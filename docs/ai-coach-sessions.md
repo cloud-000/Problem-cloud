@@ -1,6 +1,6 @@
 # AI Coach — Sessions, Context & Tools
 
-> **Status: Phases 0–3 shipped (§1–§5 are live); §6 is the next target and is not
+> **Status: Phases 0–3.1 shipped (§1–§5 are live); §6 is the next target and is not
 > yet built.** This is the authoritative explainer for how Coach
 > conversations are anchored, persisted, and fed context. Phases land
 > incrementally (§8, which marks what has shipped); `CLAUDE.md` is updated as each
@@ -35,7 +35,7 @@ sessionless slot of the anchor index (§2).
 | Anchored to | one problem in one practice session | nothing | nothing |
 | Persisted | yes | yes | **never — no DB row exists** |
 | Auto-resumed | **yes, by prompt** (§2 index, §5 rule) — including after it concludes | no — new thread each open, history one click away | n/a |
-| Context style | **context-heavy, tool-light** | **context-light, tool-heavy** | tool-only |
+| Context style | **minimal problem scope, tools on demand** | **tool-driven** | tool-only |
 | Retention | retired from its anchor on conclusion (§5), still browsable | `ai_preferences.retention_days` | n/a |
 
 ### Why the split exists
@@ -43,8 +43,9 @@ sessionless slot of the anchor index (§2).
 The two families need *different delivery mechanisms*, not just different
 prompts:
 
-- **Content context** (problem, test, series) is finite, cacheable, resolvable
-  from an id, and sitting in front of the user. It is **injected**.
+- **Essential content context** (the statement and choices of the problem sitting in
+  front of the user) is finite, cacheable, and resolvable from an id. It is injected
+  once per distinct context epoch in a compiled request.
 - **User context** (progress, stats, submission history, settings) is unbounded
   and always changing. It is **fetched by tool**, on demand.
 
@@ -52,8 +53,12 @@ prompts:
 it needs `search_problems()`. This is why today's `AIContextMode` and `AITaskType`
 are dead code — there was no tool layer for them to route to.
 
-A thin `UserProfileFact` (rating, active session, recent topics — a few hundred
-tokens) is injected on every tier. Anything deeper is a tool call.
+There is no always-present user-profile exception. Rating, active session, recent
+topics, route name, and progress summaries do not help solve the current problem and
+are fetched by tools only when the conversation calls for them.
+Library/progress quick actions that depended on ambient page dumps stay absent until
+those tools ship; presenting an action the model cannot currently fulfill is worse than
+temporarily presenting the ordinary composer.
 
 ### Promotion
 
@@ -299,22 +304,22 @@ union. Surfaces publish *facts*; one renderer decides what the model sees.
 ```
 $lib/ai/context/
   facts.ts     ProblemFact | TestFact | SeriesFact | AttemptFact | UserProfileFact
-  resolve.ts   {kind, id} → fact, browser-side, from the library store
-  render.ts    fact[] + policy → prompt sections (budgeted, deterministic)
+  resolve.ts   {kind, id} → fact; snapshots → reference-keyed context frames
+  render.ts    fact[] + policy → minimal, section-budgeted prompt text
   policy.ts    'coaching' | 'test-locked' | 'assist' — what may be shown and said
   registry.ts  the layer stack (today's context-stack.ts, unchanged)
 ```
 
 Two consequences worth stating plainly:
 
-- **`AttemptFact` is what makes coaching possible.** It carries the submitted
-  answer, tries used, and submitted/revealed state. Without it the Coach cannot
-  say "your 42 came from dropping the factor of 2" — it can only lecture. Today
-  the trainer sends statement + choices and nothing else.
-- **`policy` is what `AIContextMode` was always meant to be.** Under
-  `test-locked` the same renderer omits the answer key and the prompt forbids
-  full solutions. The policy is enforced at the render seam, so no surface can
-  forget it.
+- **`AttemptFact` is an explicit attachment, not ambient telemetry.** A normal hint
+  does not need the typed answer, tries used, submitted/revealed state, or elapsed
+  time. A quick action may attach the current attempt to one turn, and Phase 4 exposes
+  it through browser-side `get_current_attempt` when the model needs to diagnose work.
+- **`policy` is what `AIContextMode` was always meant to be.** The baseline renderer
+  never receives an answer key. Under `test-locked`, the system prompt forbids full
+  solutions and the tool registry withholds answer-bearing tools, so no surface can
+  forget the restriction.
 
 ### Three layers: reference, resolved, rendered
 
@@ -331,9 +336,15 @@ type FactRef =
 //    through get_solution (§6) so it enters the thread only when earned.
 interface ProblemFact {
     kind: "problem"; id: number;
-    statement: string; choices: string[] | null; answer: string | null;
-    topic: string; source: string; rating: number | null;
+    statement: string; choices: string[] | null;
     warnings: FactWarning[];
+}
+
+interface ContextSnapshotV2 {
+    version: 2;
+    policy: Policy;
+    scope: FactRef[];        // shared environment, deduplicated into epochs
+    attachments: FactRef[]; // delivered only on the owning turn
 }
 
 // 3. RENDERED — prompt text. A pure function per kind. Never stored.
@@ -342,32 +353,62 @@ function renderProblem(fact: ProblemFact, policy: Policy): string;
 
 ### Snapshots — reference what can be re-derived, store what cannot
 
-`ai_messages.context_snapshot` stores **references**, not rendered prose. Per
-user turn it holds something like
-`[{kind:"problem",id:12345},{kind:"attempt",…}]` — a few dozen bytes. The
-resolve → render pipeline runs on **every** turn, including replays of old ones.
+`ai_messages.context_snapshot` stores **references**, not rendered prose. New turns use
+the versioned V2 envelope above. Legacy arrays remain readable and are normalized into
+V2 on load, so this refinement needs no schema migration.
 
 The rule: **snapshot what cannot be re-derived, reference what can.** A problem
 is always re-fetchable by id, so only its id is kept. An in-progress attempt
 (the answer typed but not submitted, tries burned) exists nowhere else once the
 trainer's memory is gone, so its values are kept.
 
-This is what makes context correctable at runtime:
+Snapshots are provenance; they are not an instruction to repeat every fact. The request
+compiler applies the same transcript bound on the browser-direct and server-backed paths
+*before* resolving a ref, then spends one shared 12,000-character context budget in this
+order:
+
+1. the current effective problem scope, emitted exactly once beside the current prompt;
+2. current-turn attachments, which always retain visible space;
+3. historical attachments, still beside their owning user turns; and
+4. older distinct scope epochs, newest first and only with the budget left over.
+
+Scope equality is the canonical reference identity (`kind:id`), not rendered prose. Two
+different problems with identical statements therefore remain different epochs, while a
+content correction does not manufacture a new one. If the retained transcript begins in
+the middle of an older epoch, its first user snapshot is the rebase candidate; the current
+scope still wins the budget and remains at the current prompt.
+
+Budgeting operates on fact sections, never an arbitrary slice of an assembled frame.
+Shortened sections carry `[truncated]` (or `[statement truncated]`), truncation stops
+outside supported LaTeX delimiters, and problem rendering reserves space for choices so
+a long statement cannot silently remove them. Current and historical attachments may be
+shortened under aggregate pressure, but they are not relocated or silently erased. Older
+scope frames are the only best-effort context and may be omitted entirely.
+
+A ten-turn thread on one problem therefore contains one statement beside the current
+prompt, not ten historical copies plus a system-prompt copy. The stable system message
+contains behavior and the current policy only; dynamic context sits at user positions
+and is explicitly labelled as application context.
+
+This is what keeps context correctable at runtime:
 
 - **Format changes propagate everywhere.** One pure function per kind, so
   editing it changes new turns, replayed history, and every surface at once —
   and the invariants become testable
-  (`expect(render(fact, "test-locked")).not.toContain(fact.answer)`).
+  (`expect(render(problem)).toContain(problem.statement)`).
 - **Content corrections heal old threads.** Fix a wrong solution in `problems`
   and the next turn of a three-week-old thread resolves the corrected text. Had
   the rendered prose been stored, every old thread would repeat the error
   forever.
 - **Errors surface instead of hiding.** The resolver returns a *degraded* fact
-  rather than throwing, and the renderer states the degradation: a deleted
-  problem, an `answer_status = 'source_missing'` answer, or a **pending
-  `user_submitted_feedback` row of `type = 'problem_report'`** — which resolves
-  into "this problem's answer has been reported as incorrect (suggested: C);
-  treat it as unverified" rather than letting the Coach assert a wrong answer.
+  rather than throwing, so a deleted problem becomes an explicit unavailable-context
+  frame. Answer-key verification is deferred with answer access itself to the solution
+  tool; the baseline resolver does not query either.
+
+**Provider boundary:** OpenAI-compatible chat-completions APIs are stateless, so the
+compiled request still travels on every model call. Eliminating retransmission across
+calls would require provider-specific continuation ids and is not the provider-neutral
+baseline. The stable prefix remains friendly to provider prompt caching.
 
 **Trade-off:** live re-rendering gives up exact reproducibility — you cannot
 later prove what the model saw before a correction landed. That is accepted, not
@@ -584,6 +625,7 @@ Four things a reader will otherwise look for and not find:
 $lib/ai/tools/
   registry.ts   name → { schema, consequence, policy gate, run }
   problem.ts    get_solution
+  attempt.ts    get_current_attempt (browser-side ephemeral state)
   library.ts    search_problems, get_problem
   progress.ts   get_progress, get_weak_topics
 ```
@@ -597,6 +639,11 @@ the mock provider emits both), it is simply unused.
 Once tools exist, `AITaskType` stops being a constant: it is derived from the
 tier's policy plus the selected model's capabilities, and `resolveModel`'s
 `task === "agentic"` capability filter finally engages.
+
+`get_current_attempt` is browser-side because an answer still being typed, its tries,
+and elapsed time do not exist in the database. That also keeps BYOK direct: the tool
+reads trainer state in the same browser that calls the provider. Models without tool
+support use an explicit one-turn `AttemptFact` attachment from the relevant quick action.
 
 ### `get_solution` — why the worked solution is a tool, not context
 
@@ -635,8 +682,8 @@ the time phases 0–1 shipped.
 
 | Current behavior | Where | Replaced by |
 | --- | --- | --- |
-| Context injected into the current system prompt only; never durable | `prompt.ts` `buildSystemMessage`, and `ai_messages` has no context column | **✅ Phase 3** — typed refs in per-turn snapshots are resolved and rendered on every replay |
-| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | **✅ Phase 3** — `ProblemFact` + `AttemptFact` |
+| Context injected into the current system prompt only; never durable | `prompt.ts` `buildSystemMessage`, and `ai_messages` has no context column | **✅ Phase 3.1** — V2 snapshots compile into deduplicated scope epochs and turn-local attachments |
+| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | **✅ Phase 3.1** — minimal `ProblemFact`; attempt state is explicit/tool-only |
 | `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts` `parseContextLayer` | **✅ Phase 3** — the highest-priority layer's policy gates rendering |
 | `ai_conversations.mode` hardcoded `'general'`; `context_summary` snapshots context per *conversation* | `persistence.ts` `ensureConversation` | **✅ Phase 3** — both columns dropped; context is per turn |
 | `task` hardcoded `"general"` on both send paths | `coach.svelte.ts`, server and BYOK sends | §6 |
@@ -662,6 +709,7 @@ Each phase is independently shippable and leaves the app working.
 | **1** ✅ | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
 | **2** ✅ | Anchors + lifecycle (§2, §4, §5): the five columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** — `+kind`, `+problem_id`, `+practice_session_id`, `+last_active_at`, `+retired_at`, `+ai_conversations_work_anchor_idx` |
 | **3** ✅ | Typed facts, policy, snapshots (§3); the `concluded_submission_id` back-pointer (§4); drop the superseded `mode` / `context_summary` (§2) | **yes** — `+context_snapshot`, `+concluded_submission_id`, `−mode`, `−context_summary` |
+| **3.1** ✅ | Minimal problem scope; V2 scope/attachment snapshots; reference-keyed scope compilation, priority budgeting, and truncation rebasing; remove ambient profile/route/attempt telemetry | no — the existing jsonb payload is versioned in place |
 | **4** | Read-only tools (§6); `task` derived rather than constant | no |
 | **5** | Split `CoachStore` into session / transport / recorder / history / presence | no |
 

@@ -115,6 +115,7 @@ export function toAnyModelMessages(
     history: NormalizedAIMessage[],
     message: string,
     system: string,
+    currentContext = "",
 ): Message[] {
     const turns: { role: "user" | "assistant"; content: string }[] = [];
 
@@ -128,7 +129,7 @@ export function toAnyModelMessages(
             .trim();
         if (!text) continue;
         if (entry.role === "user" && entry.renderedContext) {
-            text = `[Facts active for this historical turn]\n${entry.renderedContext}\n\n[Student]\n${text}`;
+            text = `[Application context]\n${entry.renderedContext}\n\n[Student]\n${text}`;
         }
 
         const previous = turns.at(-1);
@@ -136,9 +137,12 @@ export function toAnyModelMessages(
         else turns.push({ role: entry.role, content: text });
     }
 
+    const current = currentContext
+        ? `[Application context]\n${currentContext}\n\n[Student]\n${message}`
+        : message;
     const last = turns.at(-1);
-    if (last?.role === "user") last.content += `\n\n${message}`;
-    else turns.push({ role: "user", content: message });
+    if (last?.role === "user") last.content += `\n\n${current}`;
+    else turns.push({ role: "user", content: current });
 
     return [{ role: "system", content: system }, ...turns];
 }
@@ -270,8 +274,15 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
         const messages = toAnyModelMessages(
             request.history,
             request.message,
-            buildSystemMessage(request.renderedContext, request.policy),
+            buildSystemMessage(request.policy),
+            request.renderedContext,
         );
+        if (import.meta.env.DEV) {
+            // The exact provider payload, after context-epoch compilation and role
+            // normalization. Deliberately development-only: messages contain the
+            // student's transcript and must not become production telemetry.
+            console.debug("[AI Coach] messages sent to provider", messages);
+        }
 
         const model = registry.languageModel(`${this.id}:${modelId}`);
 

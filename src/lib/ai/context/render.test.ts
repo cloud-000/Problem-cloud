@@ -7,17 +7,35 @@ const problem: ProblemFact = {
     id: 42,
     statement: "What is $6\\cdot 7$?",
     choices: ["40", "41", "42", "43"],
-    answer: "C. 42",
-    topic: "Algebra",
-    source: "Example Test · Example 1",
-    rating: 1234,
     warnings: [],
 };
 
 describe("typed context rendering", () => {
-    test("test-locked policy omits the answer at the enforcement seam", () => {
-        expect(renderProblem(problem, "coaching")).toContain("Answer key: C. 42");
-        expect(renderProblem(problem, "test-locked")).not.toContain("Answer key:");
+    test("problem scope contains only the statement and choices", () => {
+        const rendered = renderProblem(problem, "coaching");
+        expect(rendered).toContain("What is $6\\cdot 7$?");
+        expect(rendered).toContain("C. 42");
+        expect(rendered).not.toContain("Problem 42");
+        expect(rendered).not.toContain("Answer key");
+    });
+
+    test("oversized choices stay identifiable and truncate visibly", () => {
+        const rendered = renderProblem(
+            {
+                ...problem,
+                choices: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"].map(
+                    (choice) => `${choice} ${"detail ".repeat(300)}`,
+                ),
+            },
+            "coaching",
+        );
+
+        expect(rendered).toContain("A. Alpha");
+        expect(rendered).toContain("B. Beta");
+        expect(rendered).toContain("C. Gamma");
+        expect(rendered).toContain("D. Delta");
+        expect(rendered).toContain("E. Epsilon");
+        expect(rendered).toContain("[truncated]");
     });
 
     test("attempt facts preserve ephemeral work that cannot be re-derived", () => {

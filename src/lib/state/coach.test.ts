@@ -971,7 +971,7 @@ describe("coach context inspection", () => {
         expect(await coach.inspectSystemMessage()).toBeNull();
     });
 
-    test("messages[0] carries the prompt, the policy, and the surface's facts", async () => {
+    test("messages[0] carries the stable prompt and policy, not dynamic facts", async () => {
         coach.configureContextResolver(
             stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
             undefined,
@@ -984,10 +984,8 @@ describe("coach context inspection", () => {
         expect(inspection?.factCount).toBe(2);
         expect(inspection?.text).toContain("You are the ProblemCloud coach");
         expect(inspection?.text).toContain("Guide the student toward their own solution");
-        // Phase 3's whole claim, asserted where the store assembles it rather than
-        // one layer down: attempt state reaches the model.
-        expect(inspection?.text).toContain("Current answer: B");
-        expect(inspection?.text).toContain("Answer key: C. 30");
+        expect(inspection?.text).not.toContain("Current answer: B");
+        expect(inspection?.text).not.toContain("How many ways?");
         release();
     });
 
@@ -1022,8 +1020,11 @@ describe("coach context inspection", () => {
                 parts: [{ type: "text", text: "why is my answer wrong?" }],
                 status: "complete",
                 createdAt: "2026-08-05T00:00:00.000Z",
-                contextSnapshot: [
-                    {
+                contextSnapshot: {
+                    version: 2,
+                    policy: "coaching",
+                    scope: [],
+                    attachments: [{
                         kind: "attempt",
                         problemId: 7,
                         answer: "E",
@@ -1031,15 +1032,15 @@ describe("coach context inspection", () => {
                         submitted: true,
                         revealed: true,
                         elapsedMs: 12_000,
-                    },
-                ],
+                    }],
+                },
             },
         ];
 
         const inspection = await coach.inspectMessageContext("turn-1");
         // Prefixed into its own user message, never re-sent as a second system message.
         expect(inspection?.delivery).toBe("inlined");
-        expect(inspection?.text.startsWith("[Facts active for this historical turn]")).toBe(true);
+        expect(inspection?.text.startsWith("[Application context]")).toBe(true);
         expect(inspection?.text).toContain("Current answer: E");
         expect(inspection?.text).not.toContain("You are the ProblemCloud coach");
         expect(inspection?.text).not.toContain("How many ways?");

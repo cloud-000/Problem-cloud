@@ -1,3 +1,5 @@
+import type { Policy } from "./policy";
+
 /** Stable, compact references. This is the only context shape persisted with a turn. */
 export type FactRef =
     | { kind: "problem"; id: number }
@@ -15,6 +17,30 @@ export type FactRef =
     | { kind: "user-profile" }
     | { kind: "selection"; text: string };
 
+/**
+ * Versioned payload stored in `ai_messages.context_snapshot`.
+ *
+ * Scope describes the durable environment a run of turns shares. Attachments are
+ * intentionally one-turn-only. Keeping them separate lets the request compiler emit a
+ * problem once per context epoch without losing explicit selections or attempt details.
+ */
+export interface ContextSnapshot {
+    version: 2;
+    policy: Policy;
+    scope: FactRef[];
+    attachments: FactRef[];
+}
+
+export function contextSnapshot(refs: FactRef[], policy: Policy): ContextSnapshot {
+    const scope: FactRef[] = [];
+    const attachments: FactRef[] = [];
+    for (const ref of refs) {
+        if (ref.kind === "problem" || ref.kind === "test" || ref.kind === "series") scope.push(ref);
+        else attachments.push(ref);
+    }
+    return { version: 2, policy, scope, attachments };
+}
+
 export interface FactWarning {
     code: "missing" | "answer_missing" | "answer_unverified";
     message: string;
@@ -25,10 +51,6 @@ export interface ProblemFact {
     id: number;
     statement: string;
     choices: string[] | null;
-    answer: string | null;
-    topic: string;
-    source: string;
-    rating: number | null;
     warnings: FactWarning[];
 }
 

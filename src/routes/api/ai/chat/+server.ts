@@ -89,7 +89,6 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             user.id,
             body.contextSnapshot,
             history,
-            body.policy,
         );
         const providerStream = await provider.stream({
             requestId: crypto.randomUUID(),

@@ -49,7 +49,7 @@ const attempt: FactRef = {
 describe("inspectTurn", () => {
     const supabase = stubSupabase({ problems: [PROBLEM], user_submitted_feedback: [] });
 
-    test("the system delivery is the whole system message, prompt and facts together", async () => {
+    test("the system delivery is stable and excludes dynamic facts", async () => {
         const inspection = await inspectTurn(supabase, {
             refs: [attempt],
             policy: "coaching",
@@ -58,11 +58,7 @@ describe("inspectTurn", () => {
 
         expect(inspection.text).toContain("You are the ProblemCloud coach");
         expect(inspection.text).toContain("Guide the student toward their own solution");
-        // The whole point of AttemptFact: values that exist nowhere else once the
-        // trainer's memory is gone have to survive into the prompt.
-        expect(inspection.text).toContain("Current answer: B");
-        expect(inspection.text).toContain("Wrong tries used: 1");
-        expect(inspection.text).toContain("Elapsed: 65 seconds");
+        expect(inspection.text).not.toContain("Current answer: B");
         expect(inspection.factCount).toBe(1);
     });
 
@@ -84,7 +80,7 @@ describe("inspectTurn", () => {
         });
 
         // Matches what `toAnyModelMessages` prefixes onto a historical user message.
-        expect(inspection.text.startsWith("[Facts active for this historical turn]")).toBe(true);
+        expect(inspection.text.startsWith("[Application context]")).toBe(true);
         expect(inspection.text).toContain("Current answer: B");
         expect(inspection.text).not.toContain("You are the ProblemCloud coach");
     });
@@ -99,13 +95,13 @@ describe("inspectTurn", () => {
         expect(inspection.factCount).toBe(0);
     });
 
-    test("shows the answer key under coaching and its absence under test-locked", async () => {
+    test("never injects the answer key", async () => {
         const coaching = await inspectTurn(supabase, {
             refs: [{ kind: "problem", id: 42 }],
             policy: "coaching",
             delivery: "system",
         });
-        expect(coaching.text).toContain("Answer key: C. 30");
+        expect(coaching.text).not.toContain("Answer key");
 
         const locked = await inspectTurn(supabase, {
             refs: [{ kind: "problem", id: 42 }],
@@ -114,7 +110,7 @@ describe("inspectTurn", () => {
         });
         // Not merely hidden in the UI — absent from the string the model receives.
         expect(locked.text).not.toContain("Answer key");
-        expect(locked.text).toContain("How many ways?");
+        expect(locked.text).not.toContain("How many ways?");
         expect(locked.text).toContain("Do not reveal the answer key");
     });
 
@@ -123,7 +119,7 @@ describe("inspectTurn", () => {
         const inspection = await inspectTurn(empty, {
             refs: [{ kind: "problem", id: 999 }],
             policy: "coaching",
-            delivery: "system",
+            delivery: "inlined",
         });
         expect(inspection.text).toContain("no longer available");
     });

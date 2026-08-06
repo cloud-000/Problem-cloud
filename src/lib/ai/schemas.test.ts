@@ -31,7 +31,12 @@ describe("AI runtime schemas", () => {
             model: "auto",
             message: "Hello",
             task: "general",
-            contextSnapshot: [],
+            contextSnapshot: {
+                version: 2,
+                policy: "assist",
+                scope: [],
+                attachments: [],
+            },
             policy: "assist",
             // Recording a turn is the default; only a one-shot opts out (§1).
             persist: true,
@@ -179,15 +184,16 @@ describe("AI runtime schemas", () => {
                 },
             ],
         });
-        expect(parsed.contextSnapshot).toHaveLength(2);
+        expect(parsed.contextSnapshot.scope).toEqual([{ kind: "problem", id: 42 }]);
+        expect(parsed.contextSnapshot.attachments).toHaveLength(1);
+        expect(parsed.contextSnapshot.policy).toBe("coaching");
         expect(parsed.policy).toBe("coaching");
         const stripped = parseChatRequest({
                 model: "auto",
                 message: "Nope",
                 contextSnapshot: [{ kind: "problem", id: 42, rendered: "trust me" }],
             });
-        expect(stripped.contextSnapshot[0]).toEqual({ kind: "problem", id: 42 });
-        expect(parsed.contextSnapshot[0]).toEqual({ kind: "problem", id: 42 });
+        expect(stripped.contextSnapshot.scope[0]).toEqual({ kind: "problem", id: 42 });
     });
 
     test("validates normalized stream events", () => {

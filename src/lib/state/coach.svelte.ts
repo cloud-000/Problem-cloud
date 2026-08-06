@@ -33,13 +33,13 @@ import { resolveModel } from "$lib/ai/router";
 import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/client-registry";
 import {
     activeContextDescriptors,
-    activeFactRefs,
+    activeContextSnapshot,
     activePolicy,
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
 } from "$lib/ai/context/registry";
-import { renderHistorySnapshots, renderSnapshot } from "$lib/ai/context/resolve";
+import { compileContextFrames } from "$lib/ai/context/resolve";
 import { inspectTurn, type TurnInspection } from "$lib/ai/context/inspect";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
@@ -62,7 +62,7 @@ import type {
     NormalizedAIEvent,
     NormalizedAIMessage,
     WorkThreadSummary,
-    FactRef,
+    ContextSnapshot,
     Policy,
 } from "$lib/ai/types";
 
@@ -157,11 +157,8 @@ class CoachStore {
         return activeContextDescriptors(this.contextLayers, new Set(this.detachedContextIds));
     }
 
-    get activeContextSnapshot(): FactRef[] {
-        const refs = activeFactRefs(this.contextLayers, new Set(this.detachedContextIds));
-        return this.#contextUserId && !refs.some((ref) => ref.kind === "user-profile")
-            ? [...refs, { kind: "user-profile" }]
-            : refs;
+    get activeContextSnapshot(): ContextSnapshot {
+        return activeContextSnapshot(this.contextLayers, new Set(this.detachedContextIds));
     }
 
     get contextPolicy(): Policy {
@@ -174,16 +171,16 @@ class CoachStore {
     }
 
     /**
-     * Debug-only: `messages[0]` — the system message the next send leads with.
+     * Debug-only: `messages[0]` — the stable system message the next send leads with.
      *
      * Deliberately fed from the same two values `send()` captures before its first await
-     * — `activeContextSnapshot` and `contextPolicy` — so an empty result here means the
-     * surface registered no layer, not that the view looked in the wrong place.
+     * Dynamic facts are deliberately absent; they are compiled into user-positioned
+     * context frames by `compileContextFrames`.
      */
     async inspectSystemMessage(): Promise<TurnInspection | null> {
         if (!this.#contextClient) return null;
         return inspectTurn(this.#contextClient, {
-            refs: this.activeContextSnapshot,
+            refs: [...this.activeContextSnapshot.scope, ...this.activeContextSnapshot.attachments],
             policy: this.contextPolicy,
             delivery: "system",
             userId: this.#contextUserId,
@@ -191,9 +188,9 @@ class CoachStore {
     }
 
     /**
-     * Debug-only: the context a turn already in the transcript carried, in the form it is
-     * actually delivered — prefixed into that turn's own user message on replay, which is
-     * why it renders at the turn's position rather than as another system message.
+     * Debug-only: the raw context a historical turn carried. The request compiler may
+     * suppress its scope when the previous retained turn already established it; explicit
+     * attachments remain local to this turn.
      *
      * The policy is the *current* one: §3 stores refs per turn but not the policy that
      * rendered them, so this is exact for content and an assumption for redaction.
@@ -202,7 +199,9 @@ class CoachStore {
         const message = this.messages.find((item) => item.id === messageId);
         if (!this.#contextClient || !message) return null;
         return inspectTurn(this.#contextClient, {
-            refs: message.contextSnapshot ?? [],
+            refs: message.contextSnapshot
+                ? [...message.contextSnapshot.scope, ...message.contextSnapshot.attachments]
+                : [],
             policy: this.contextPolicy,
             delivery: "inlined",
             userId: this.#contextUserId,
@@ -916,7 +915,7 @@ class CoachStore {
         message: string;
         userMessageId: string;
         conversationId: string | undefined;
-        contextSnapshot: FactRef[];
+        contextSnapshot: ContextSnapshot;
         policy: Policy;
         thread: AIThreadIdentity | undefined;
         credential: AIConnectionCredential;
@@ -934,19 +933,28 @@ class CoachStore {
         const client = this.#contextClient;
         if (
             !client &&
-            (turn.contextSnapshot.length > 0 || rawHistory.some((item) => item.contextSnapshot?.length))
+            (turn.contextSnapshot.scope.length > 0 ||
+                turn.contextSnapshot.attachments.length > 0 ||
+                rawHistory.some(
+                    (item) =>
+                        item.contextSnapshot &&
+                        (item.contextSnapshot.scope.length > 0 ||
+                            item.contextSnapshot.attachments.length > 0),
+                ))
         ) {
             throw new Error("Coach context resolver is unavailable");
         }
         // The app shell configures the browser resolver before any real send. Keeping
         // the empty-fact path independent also makes one-shots and isolated store tests
         // work without inventing a database dependency they do not use.
-        const [history, renderedContext] = client
-            ? await Promise.all([
-                  renderHistorySnapshots(client, rawHistory, turn.policy, this.#contextUserId),
-                  renderSnapshot(client, turn.contextSnapshot, turn.policy, this.#contextUserId),
-              ])
-            : [rawHistory, ""];
+        const compiled = client
+            ? await compileContextFrames(
+                  client,
+                  rawHistory,
+                  turn.contextSnapshot,
+                  this.#contextUserId,
+              )
+            : { history: rawHistory, renderedContext: "" };
 
         const stream = await adapter.stream({
             requestId: crypto.randomUUID(),
@@ -955,8 +963,8 @@ class CoachStore {
             task: "general",
             message,
             policy: turn.policy,
-            renderedContext,
-            history,
+            renderedContext: compiled.renderedContext,
+            history: compiled.history,
             signal: controller.signal,
         });
 
@@ -1024,7 +1032,7 @@ class CoachStore {
             message: string;
             userMessageId: string;
             conversationId: string | undefined;
-            contextSnapshot: FactRef[];
+            contextSnapshot: ContextSnapshot;
             thread: AIThreadIdentity | undefined;
             generation: number;
         },

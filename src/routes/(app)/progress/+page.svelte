@@ -34,8 +34,6 @@
         fetchProblemStateSummary,
         type ProblemStateSummary,
     } from "$lib/progress";
-    import { CoachContextRegister } from "$lib/components/coach";
-    import { coach } from "$lib/state/coach.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -231,51 +229,6 @@
     // Full topic list, most-practiced first.
     let topicRows = $derived([...rows].sort((a, b) => b.graded - a.graded));
 
-    const progressCoachActions = [
-        {
-            id: "focus-area",
-            label: "What should I focus on?",
-            prompt: "Use this progress breakdown to identify the most useful focus area and explain the evidence.",
-            icon: "target",
-        },
-        {
-            id: "explain-progress",
-            label: "Explain these trends",
-            prompt: "Explain the important patterns in this progress breakdown in plain language.",
-            icon: "insights",
-        },
-        {
-            id: "next-session",
-            label: "Plan my next session",
-            prompt: "Suggest a focused next practice session from this progress breakdown.",
-            icon: "sprint",
-        },
-    ];
-
-    let progressContextText = $derived.by(() => {
-        const rangeLabel = rangeOptions.find((option) => option.value === range)?.label ?? range;
-        const selectedSeries = selectedSeriesIds
-            .map((id) => seriesOptions.find((option) => option.value === id)?.label ?? id)
-            .join(", ");
-        const lines = [
-            `Range: ${rangeLabel}`,
-            `Series: ${selectedSeries || "All series"}`,
-            `Problems practiced: ${totals.distinct}`,
-            `First-try accuracy: ${pct(overallFirst)}`,
-            `Eventual accuracy: ${pct(overallAcc)}`,
-            `Average time: ${fmtTime(overallAvg)}`,
-        ];
-        if (rows.length > 0) {
-            lines.push("Topic breakdown:");
-            for (const row of rows.slice(0, 16)) {
-                lines.push(
-                    `- ${topicLabel(row.bucket_label)}: ${subFor(row)}; first try ${pct(firstAccuracy(row))}; eventual ${pct(accuracy(row))}; average ${fmtTime(avgTimeMs(row))}`,
-                );
-            }
-        }
-        return lines.join("\n").slice(0, 4_000);
-    });
-
     function subFor(r: TopicStat): string {
         const probs = `${r.distinct_problems} problem${r.distinct_problems === 1 ? "" : "s"}`;
         return `${probs} · ${r.graded} attempt${r.graded === 1 ? "" : "s"}`;
@@ -324,23 +277,6 @@
 </script>
 
 <svelte:head><title>Progress · ProblemCloud</title></svelte:head>
-
-{#if coach.enabled && user}
-    <CoachContextRegister
-        ownerId="progress:breakdown"
-        source="route"
-        priority={20}
-        policy="assist"
-        descriptors={[
-            {
-                id: "progress:breakdown",
-                label: "Progress breakdown",
-                ref: { kind: "selection", text: progressContextText },
-            },
-        ]}
-        quickActions={progressCoachActions}
-    />
-{/if}
 
 <Page.Root width="standard">
     <Page.Header

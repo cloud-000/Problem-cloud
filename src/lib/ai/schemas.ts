@@ -24,6 +24,7 @@ import type {
     ConversationSummary,
     CoachContextDescriptor,
     CoachContextLayer,
+    ContextSnapshot,
     FactRef,
     Policy,
     NormalizedAIEvent,
@@ -158,15 +159,47 @@ export function parseFactRef(value: unknown): FactRef {
     };
 }
 
-function parseFactSnapshot(value: unknown): FactRef[] {
+function parsePolicy(value: unknown): Policy {
+    return oneOf(value ?? "assist", "context policy", ["coaching", "test-locked", "assist"] as const);
+}
+
+function parseFactList(value: unknown, label: string): FactRef[] {
     if (value === undefined || value === null) return [];
-    if (!Array.isArray(value)) throw new AISchemaError("context snapshot must be an array");
-    if (value.length > 12) throw new AISchemaError("too many context facts");
+    if (!Array.isArray(value)) throw new AISchemaError(`${label} must be an array`);
+    if (value.length > 12) throw new AISchemaError(`too many ${label} facts`);
     return value.map(parseFactRef);
 }
 
-function parsePolicy(value: unknown): Policy {
-    return oneOf(value ?? "assist", "context policy", ["coaching", "test-locked", "assist"] as const);
+/** Accepts legacy ref arrays while every newly-written turn uses the V2 envelope. */
+export function parseContextSnapshot(value: unknown, fallbackPolicy: Policy = "assist"): ContextSnapshot {
+    if (value === undefined || value === null) {
+        return { version: 2, policy: fallbackPolicy, scope: [], attachments: [] };
+    }
+    if (Array.isArray(value)) {
+        const refs = parseFactList(value, "context snapshot");
+        return {
+            version: 2,
+            policy: fallbackPolicy,
+            scope: refs.filter((ref) => ref.kind === "problem" || ref.kind === "test" || ref.kind === "series"),
+            attachments: refs.filter((ref) => ref.kind !== "problem" && ref.kind !== "test" && ref.kind !== "series"),
+        };
+    }
+    const input = record(value, "context snapshot");
+    if (input.version !== 2) throw new AISchemaError("context snapshot version is invalid");
+    const scope = parseFactList(input.scope, "context scope");
+    const attachments = parseFactList(input.attachments, "context attachments");
+    if (scope.some((ref) => ref.kind !== "problem" && ref.kind !== "test" && ref.kind !== "series")) {
+        throw new AISchemaError("context scope contains a turn-local fact");
+    }
+    if (attachments.some((ref) => ref.kind === "problem" || ref.kind === "test" || ref.kind === "series")) {
+        throw new AISchemaError("context attachments contain a scope fact");
+    }
+    return {
+        version: 2,
+        policy: parsePolicy(input.policy ?? fallbackPolicy),
+        scope,
+        attachments,
+    };
 }
 
 export function parseContextLayer(value: unknown): CoachContextLayer {
@@ -350,13 +383,15 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
     const message = string(input.message, "message", 8_000).trim();
     if (!message) throw new AISchemaError("message cannot be blank");
     const ephemeralHistory = parseEphemeralHistory(input.ephemeralHistory);
+    const policy = parsePolicy(input.policy);
+    const snapshot = parseContextSnapshot(input.contextSnapshot, policy);
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
         model: parseModelReference(input.model ?? "auto"),
         message,
-        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
-        policy: parsePolicy(input.policy),
+        contextSnapshot: { ...snapshot, policy },
+        policy,
         task: oneOf<AITaskType>(input.task ?? "general", "task", [
             "general",
             "problem_help",
@@ -432,7 +467,7 @@ export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
-        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
+        contextSnapshot: parseContextSnapshot(input.contextSnapshot),
         message,
         thread: parseThreadIdentity(input.thread),
         assistant: {
@@ -656,7 +691,7 @@ export function parseNormalizedMessage(value: unknown): NormalizedAIMessage {
         ] as const),
         createdAt: string(input.createdAt, "created at", 80),
         resolvedModel: optionalString(input.resolvedModel, "resolved model", 200),
-        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
+        contextSnapshot: parseContextSnapshot(input.contextSnapshot),
     };
 }
 

@@ -1007,15 +1007,6 @@
    // Shared with the library's chip so the number can't drift between them. The label
    // is UI-only; model context resolves from the typed problem reference below.
    let coachProblemLabel = $derived(problem ? problemLabel(problem) : "");
-   let coachAttemptAnswer = $derived(
-      !problem
-         ? null
-         : isProblemMcq
-           ? answerState.selectedChoice == null
-              ? null
-              : `${String.fromCharCode(65 + answerState.selectedChoice)}. ${problem.choices?.[answerState.selectedChoice] ?? ""}`
-           : answerState.answer.trim() || null,
-   );
    const coachQuickActions = [
       {
          id: "hint",
@@ -1879,19 +1870,6 @@
                id: `problem:${problem.id}`,
                label: coachProblemLabel,
                ref: { kind: "problem", id: problem.canonical_id ?? problem.id },
-            },
-            {
-               id: `attempt:${problem.id}`,
-               label: "Current attempt",
-               ref: {
-                  kind: "attempt",
-                  problemId: problem.canonical_id ?? problem.id,
-                  answer: coachAttemptAnswer,
-                  triesUsed: answerState.triesUsed,
-                  submitted: answerState.submitted,
-                  revealed: answerState.submitted || revealActive,
-                  elapsedMs,
-               },
             },
          ]}
          quickActions={coachQuickActions}

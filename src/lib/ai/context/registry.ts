@@ -1,4 +1,4 @@
-import type { FactRef } from "./facts";
+import { contextSnapshot, type ContextSnapshot, type FactRef } from "./facts";
 import type { Policy } from "./policy";
 import type { CoachContextDescriptor, CoachContextLayer, CoachQuickAction } from "../types";
 
@@ -35,6 +35,13 @@ export function activeFactRefs(
     detachedIds: ReadonlySet<string> = new Set(),
 ): FactRef[] {
     return activeContextDescriptors(layers, detachedIds).map((descriptor) => descriptor.ref);
+}
+
+export function activeContextSnapshot(
+    layers: CoachContextLayer[],
+    detachedIds: ReadonlySet<string> = new Set(),
+): ContextSnapshot {
+    return contextSnapshot(activeFactRefs(layers, detachedIds), activePolicy(layers));
 }
 
 /** The highest-priority surface owns the enforcement policy for the turn. */

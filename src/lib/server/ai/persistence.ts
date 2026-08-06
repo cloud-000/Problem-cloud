@@ -1,12 +1,12 @@
 import { env } from "$env/dynamic/private";
 import { PUBLIC_SUPABASE_URL } from "$env/static/public";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { parseMessagePart } from "$lib/ai/schemas";
+import { parseContextSnapshot, parseMessagePart } from "$lib/ai/schemas";
 import type {
     AIMessageStatus,
     AIThreadIdentity,
     AIUsage,
-    FactRef,
+    ContextSnapshot,
     ConversationSummary,
     NormalizedAIMessage,
     WorkThreadSummary,
@@ -15,8 +15,7 @@ import type { WorkAnchor } from "$lib/ai/session/anchor";
 import type { CoachThreadKind } from "$lib/ai/session/tier";
 import type { Database, Json } from "$lib/types/database.types";
 import { messageText, partsText, PREVIEW_MAX_CHARS } from "$lib/ai/conversations";
-import { renderHistorySnapshots, renderSnapshot } from "$lib/ai/context/resolve";
-import type { Policy } from "$lib/ai/context/policy";
+import { compileContextFrames } from "$lib/ai/context/resolve";
 import {
     encodeCursor,
     type ConversationCursor,
@@ -150,9 +149,7 @@ function normalizedMessage(message: MessageRow): NormalizedAIMessage {
         status: normalizedMessageStatus(message.status),
         createdAt: message.created_at,
         resolvedModel: message.resolved_model ?? undefined,
-        contextSnapshot: Array.isArray(message.context_snapshot)
-            ? (message.context_snapshot as unknown as FactRef[])
-            : [],
+        contextSnapshot: parseContextSnapshot(message.context_snapshot),
     };
 }
 
@@ -305,16 +302,11 @@ export async function conversationHistory(
 
 export async function resolveTurnContext(
     userId: string,
-    contextSnapshot: FactRef[],
+    contextSnapshot: ContextSnapshot,
     history: NormalizedAIMessage[],
-    policy: Policy,
 ): Promise<{ renderedContext: string; history: NormalizedAIMessage[] }> {
     const client = admin();
-    const [renderedContext, renderedHistory] = await Promise.all([
-        renderSnapshot(client, contextSnapshot, policy, userId),
-        renderHistorySnapshots(client, history, policy, userId),
-    ]);
-    return { renderedContext, history: renderedHistory };
+    return compileContextFrames(client, history, contextSnapshot, userId);
 }
 
 /**
@@ -474,7 +466,12 @@ export async function saveUserMessage(
     conversationId: string,
     message: string,
     id: string = crypto.randomUUID(),
-    contextSnapshot: FactRef[] = [],
+    contextSnapshot: ContextSnapshot = {
+        version: 2,
+        policy: "assist",
+        scope: [],
+        attachments: [],
+    },
 ): Promise<string> {
     const { error } = await admin()
         .from("ai_messages")

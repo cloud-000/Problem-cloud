@@ -1,9 +1,9 @@
 import type { WorkAnchor } from "./session/anchor";
 import type { CoachThreadKind } from "./session/tier";
-import type { CoachContextDescriptor, FactRef } from "./context/facts";
+import type { CoachContextDescriptor, ContextSnapshot, FactRef } from "./context/facts";
 import type { Policy } from "./context/policy";
 
-export type { CoachContextDescriptor, FactRef } from "./context/facts";
+export type { CoachContextDescriptor, ContextSnapshot, FactRef } from "./context/facts";
 export type { Policy } from "./context/policy";
 
 export type AICoachConnectionState =
@@ -116,9 +116,9 @@ export interface NormalizedAIMessage {
     status: AIMessageStatus;
     createdAt: string;
     resolvedModel?: string;
-    /** Durable refs captured with a user turn; empty on assistant messages. */
-    contextSnapshot?: FactRef[];
-    /** Runtime-only rendering of that snapshot for provider replay. Never stored. */
+    /** Durable, versioned context captured with a user turn; absent on assistant messages. */
+    contextSnapshot?: ContextSnapshot;
+    /** Runtime-only context frame compiled for this position. Never stored. */
     renderedContext?: string;
 }
 
@@ -282,7 +282,7 @@ export interface AIChatRequestBody {
     userMessageId?: string;
     model: AIModelReference;
     message: string;
-    contextSnapshot: FactRef[];
+    contextSnapshot: ContextSnapshot;
     policy: Policy;
     task: AITaskType;
     /**
@@ -317,7 +317,7 @@ export interface AIConversationFlushRequest {
 export interface AIPersistTurnRequest {
     conversationId?: string;
     userMessageId?: string;
-    contextSnapshot: FactRef[];
+    contextSnapshot: ContextSnapshot;
     message: string;
     thread?: AIThreadIdentity;
     assistant: {

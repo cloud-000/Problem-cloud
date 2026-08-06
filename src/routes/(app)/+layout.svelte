@@ -22,13 +22,7 @@
    import { topbar } from "$lib/state/topbar.svelte";
    import { shell } from "$lib/state/shell.svelte";
    import { settings } from "$lib/state/settings.svelte";
-   import {
-      CoachContextRegister,
-      CoachLauncher,
-      CoachPanel,
-      CoachQuickAsk,
-   } from "$lib/components/coach";
-   import { routeLabel } from "$lib/ai/route-context";
+   import { CoachLauncher, CoachPanel, CoachQuickAsk } from "$lib/components/coach";
    import {
       UtilityPanel,
       UtilityPanelRegister,
@@ -111,18 +105,6 @@
       { href: "/leaderboard", icon: "leaderboard", label: "Leaderboard" },
       { href: "/roadmap", icon: "map", label: "Product roadmap" },
    ] as const;
-
-   // Routes the Coach's context layer can name. Without this its chips read
-   // "/library"; the sections outside the nav tabs are listed alongside them so
-   // no authenticated route the Coach can see is left as a raw pathname.
-   let coachRouteLabels = $derived([
-      ...primaryTabs,
-      ...secondaryTabs,
-      { href: "/find", label: "Find problems" },
-      { href: "/history", label: "History" },
-      { href: "/settings", label: "Settings" },
-      { href: "/admin", label: "Admin tools" },
-   ]);
 
    function routeMatches(pathname: string, href: string) {
       return href === "/"
@@ -550,25 +532,6 @@
       >
          <CoachPanel />
       </UtilityPanelRegister>
-      {#key page.url.pathname}
-         <CoachContextRegister
-            ownerId={`route:${page.url.pathname}`}
-            source="route"
-            priority={10}
-            policy="assist"
-            descriptors={[
-               {
-                  id: `route:${page.url.pathname}`,
-                  label: routeLabel(page.url.pathname, coachRouteLabels),
-                  ref: {
-                     kind: "selection",
-                     text: `Current app area: ${routeLabel(page.url.pathname, coachRouteLabels)}`,
-                  },
-               },
-            ]}
-            quickActions={[]}
-         />
-      {/key}
       <!-- Mounted once, hidden while any utility view is open (§6.4). -->
       <CoachQuickAsk />
       <CoachLauncher />

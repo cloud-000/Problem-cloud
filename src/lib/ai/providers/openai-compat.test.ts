@@ -110,6 +110,20 @@ describe("any-model history mapping", () => {
             { role: "user", content: "Q2" },
         ]);
     });
+
+    test("places the compiled current scope in the provider payload once", () => {
+        const messages = toAnyModelMessages(
+            [historyMessage("user", "Earlier question")],
+            "Current question",
+            "SYSTEM",
+            "Problem currently in view:\nStatement 42",
+        );
+        const payload = messages.map((message) => String(message.content)).join("\n");
+
+        expect(payload.split("Statement 42")).toHaveLength(2);
+        expect(payload.split("[Application context]")).toHaveLength(2);
+        expect(messages.at(-1)?.content).toContain("Current question");
+    });
 });
 
 describe("any-model provider adapter", () => {

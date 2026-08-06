@@ -11,7 +11,7 @@ export function policyInstructions(policy: Policy): string[] {
     if (policy === "coaching") {
         return [
             "Guide the student toward their own solution with the smallest useful next hint.",
-            "Use attempt details to diagnose their work; give a full solution only when explicitly requested.",
+            "When attempt details are available, use them to diagnose the work; give a full solution only when explicitly requested.",
         ];
     }
     return [

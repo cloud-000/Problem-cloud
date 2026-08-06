@@ -9,9 +9,8 @@ import { buildSystemMessage } from "../prompt";
 /**
  * Where a turn's context sits in the request. The two are not interchangeable, and the
  * difference is why a transcript can show system content in order without inventing one:
- * there is exactly **one** system message, at index 0, carrying the current turn's facts,
- * and a past turn's facts are prefixed into that turn's own user message by
- * `toAnyModelMessages` — never re-sent as a second system message.
+ * there is exactly **one** stable system message at index 0. Dynamic context is prefixed
+ * into a user message only at a scope boundary by the context-frame compiler.
  */
 export type ContextDelivery = "system" | "inlined";
 
@@ -59,13 +58,13 @@ export async function inspectTurn(
         policy,
         delivery,
         factCount: facts.length,
-        // Both strings are built the way the adapter builds them: `buildSystemMessage`
-        // for messages[0], and `toAnyModelMessages`' history prefix for a replayed turn.
+        // The system message is deliberately context-free. The inlined view shows the
+        // raw frame material before epoch deduplication by `compileContextFrames`.
         text:
             delivery === "system"
-                ? buildSystemMessage(renderedContext, policy)
+                ? buildSystemMessage(policy)
                 : renderedContext
-                  ? `[Facts active for this historical turn]\n${renderedContext}`
+                  ? `[Application context]\n${renderedContext}`
                   : "",
     };
 }
