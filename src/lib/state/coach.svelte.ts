@@ -34,13 +34,16 @@ import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/cl
 import {
     activeContextDescriptors,
     activeContextSnapshot,
-    activePolicy,
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
 } from "$lib/ai/context/registry";
 import { compileContextFrames } from "$lib/ai/context/resolve";
-import { inspectTurn, type TurnInspection } from "$lib/ai/context/inspect";
+import {
+    inspectCompiledMessageContext,
+    inspectTurn,
+    type TurnInspection,
+} from "$lib/ai/context/inspect";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import { aiCredentials } from "./ai-credentials.svelte";
@@ -63,7 +66,6 @@ import type {
     NormalizedAIMessage,
     WorkThreadSummary,
     ContextSnapshot,
-    Policy,
 } from "$lib/ai/types";
 
 const CONVERSATION_PAGE_SIZE = 20;
@@ -138,7 +140,6 @@ class CoachStore {
     #initializing: Promise<void> | null = null;
     #lastPrompt = "";
     #contextClient: SupabaseClient<Database> | null = null;
-    #contextUserId: string | undefined;
     /**
      * A promotion that arrived mid-stream. The flush waits for the turn to finish so it
      * writes the whole answer rather than the half of it that had arrived — the in-flight
@@ -161,13 +162,8 @@ class CoachStore {
         return activeContextSnapshot(this.contextLayers, new Set(this.detachedContextIds));
     }
 
-    get contextPolicy(): Policy {
-        return activePolicy(this.contextLayers);
-    }
-
-    configureContextResolver(client: SupabaseClient<Database>, userId?: string): void {
+    configureContextResolver(client: SupabaseClient<Database>): void {
         this.#contextClient = client;
-        this.#contextUserId = userId;
     }
 
     /**
@@ -179,32 +175,22 @@ class CoachStore {
      */
     async inspectSystemMessage(): Promise<TurnInspection | null> {
         if (!this.#contextClient) return null;
+        const snapshot = this.activeContextSnapshot;
         return inspectTurn(this.#contextClient, {
-            refs: [...this.activeContextSnapshot.scope, ...this.activeContextSnapshot.attachments],
-            policy: this.contextPolicy,
+            refs: [...snapshot.scope, ...snapshot.attachments],
+            policy: snapshot.policy,
             delivery: "system",
-            userId: this.#contextUserId,
         });
     }
 
-    /**
-     * Debug-only: the raw context a historical turn carried. The request compiler may
-     * suppress its scope when the previous retained turn already established it; explicit
-     * attachments remain local to this turn.
-     *
-     * The policy is the *current* one: §3 stores refs per turn but not the policy that
-     * rendered them, so this is exact for content and an assumption for redaction.
-     */
+    /** Debug-only: the compiled frame this historical turn contributes on the next send. */
     async inspectMessageContext(messageId: string): Promise<TurnInspection | null> {
         const message = this.messages.find((item) => item.id === messageId);
         if (!this.#contextClient || !message) return null;
-        return inspectTurn(this.#contextClient, {
-            refs: message.contextSnapshot
-                ? [...message.contextSnapshot.scope, ...message.contextSnapshot.attachments]
-                : [],
-            policy: this.contextPolicy,
-            delivery: "inlined",
-            userId: this.#contextUserId,
+        return inspectCompiledMessageContext(this.#contextClient, {
+            messages: this.messages,
+            current: this.activeContextSnapshot,
+            messageId,
         });
     }
 
@@ -505,7 +491,6 @@ class CoachStore {
         const ephemeralHistory = this.ephemeralHistory();
         const userMessageId = crypto.randomUUID();
         const contextSnapshot = this.activeContextSnapshot;
-        const policy = this.contextPolicy;
         this.messages.push({
             id: userMessageId,
             role: "user",
@@ -534,7 +519,6 @@ class CoachStore {
                     userMessageId,
                     conversationId,
                     contextSnapshot,
-                    policy,
                     thread,
                     credential,
                     controller,
@@ -547,7 +531,6 @@ class CoachStore {
                     model: this.selectedModel,
                     message,
                     contextSnapshot,
-                    policy,
                     thread,
                     task: "general",
                     // A one-shot streams without leaving a row behind. The server would
@@ -916,7 +899,6 @@ class CoachStore {
         userMessageId: string;
         conversationId: string | undefined;
         contextSnapshot: ContextSnapshot;
-        policy: Policy;
         thread: AIThreadIdentity | undefined;
         credential: AIConnectionCredential;
         controller: AbortController;
@@ -948,12 +930,7 @@ class CoachStore {
         // the empty-fact path independent also makes one-shots and isolated store tests
         // work without inventing a database dependency they do not use.
         const compiled = client
-            ? await compileContextFrames(
-                  client,
-                  rawHistory,
-                  turn.contextSnapshot,
-                  this.#contextUserId,
-              )
+            ? await compileContextFrames(client, rawHistory, turn.contextSnapshot)
             : { history: rawHistory, renderedContext: "" };
 
         const stream = await adapter.stream({
@@ -962,7 +939,7 @@ class CoachStore {
             model: model.reference,
             task: "general",
             message,
-            policy: turn.policy,
+            policy: turn.contextSnapshot.policy,
             renderedContext: compiled.renderedContext,
             history: compiled.history,
             signal: controller.signal,

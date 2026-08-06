@@ -303,19 +303,18 @@ union. Surfaces publish *facts*; one renderer decides what the model sees.
 
 ```
 $lib/ai/context/
-  facts.ts     ProblemFact | TestFact | SeriesFact | AttemptFact | UserProfileFact
+  facts.ts     ScopeRef | AttachmentRef and their resolved fact shapes
   resolve.ts   {kind, id} → fact; snapshots → reference-keyed context frames
-  render.ts    fact[] + policy → minimal, section-budgeted prompt text
+  render.ts    fact[] → minimal, section-budgeted prompt text
   policy.ts    'coaching' | 'test-locked' | 'assist' — what may be shown and said
-  registry.ts  the layer stack (today's context-stack.ts, unchanged)
+  registry.ts  the owner-scoped context layer stack
 ```
 
 Two consequences worth stating plainly:
 
-- **`AttemptFact` is an explicit attachment, not ambient telemetry.** A normal hint
-  does not need the typed answer, tries used, submitted/revealed state, or elapsed
-  time. A quick action may attach the current attempt to one turn, and Phase 4 exposes
-  it through browser-side `get_current_attempt` when the model needs to diagnose work.
+- **Attempt state is not prompt context.** A normal hint does not need the typed answer,
+  tries used, submitted/revealed state, or elapsed time. Phase 4 may expose it through
+  the browser-side `get_current_attempt` tool when explicitly needed.
 - **`policy` is what `AIContextMode` was always meant to be.** The baseline renderer
   never receives an answer key. Under `test-locked`, the system prompt forbids full
   solutions and the tool registry withholds answer-bearing tools, so no surface can
@@ -325,11 +324,12 @@ Two consequences worth stating plainly:
 
 ```ts
 // 1. REFERENCE — small and stable. Travels on the wire; the ONLY form stored.
-type FactRef =
+type ScopeRef =
     | { kind: "problem"; id: number }
-    | { kind: "attempt"; problemId: number; answer: string | null;
-        triesUsed: number; submitted: boolean; revealed: boolean; elapsedMs: number }
-    | { kind: "selection"; text: string };
+    | { kind: "test"; id: number }
+    | { kind: "series"; id: number };
+
+type AttachmentRef = { kind: "selection"; text: string };
 
 // 2. RESOLVED — the real content, fetched at runtime. Never stored.
 //    NOTE: no `solution`. The worked solution is never injected; it is reached
@@ -342,13 +342,13 @@ interface ProblemFact {
 
 interface ContextSnapshotV2 {
     version: 2;
-    policy: Policy;
-    scope: FactRef[];        // shared environment, deduplicated into epochs
-    attachments: FactRef[]; // delivered only on the owning turn
+    policy: Policy;          // the turn's single authoritative policy
+    scope: ScopeRef[];             // shared environment, deduplicated into epochs
+    attachments: AttachmentRef[]; // delivered only on the owning turn
 }
 
 // 3. RENDERED — prompt text. A pure function per kind. Never stored.
-function renderProblem(fact: ProblemFact, policy: Policy): string;
+function renderProblem(fact: ProblemFact): string;
 ```
 
 ### Snapshots — reference what can be re-derived, store what cannot
@@ -357,10 +357,16 @@ function renderProblem(fact: ProblemFact, policy: Policy): string;
 the versioned V2 envelope above. Legacy arrays remain readable and are normalized into
 V2 on load, so this refinement needs no schema migration.
 
-The rule: **snapshot what cannot be re-derived, reference what can.** A problem
-is always re-fetchable by id, so only its id is kept. An in-progress attempt
-(the answer typed but not submitted, tries burned) exists nowhere else once the
-trainer's memory is gone, so its values are kept.
+The V2 envelope owns the turn policy. New chat requests do not duplicate it in a
+top-level field; that field is accepted only as a compatibility fallback when decoding
+a legacy ref array. Rendering, the stable system message, persistence, and diagnostics
+all read `context_snapshot.policy`.
+
+The rule: **reference what can be re-derived; copy only context the user explicitly
+attaches.** A problem is always re-fetchable by id, so only its id is kept. Selected
+text is turn-local and therefore stored verbatim. Ambient profile and attempt telemetry
+are not context facts. Legacy snapshots containing either remain readable, but those
+obsolete entries are discarded during normalization.
 
 Snapshots are provenance; they are not an instruction to repeat every fact. The request
 compiler applies the same transcript bound on the browser-direct and server-backed paths
@@ -390,6 +396,11 @@ prompt, not ten historical copies plus a system-prompt copy. The stable system m
 contains behavior and the current policy only; dynamic context sits at user positions
 and is explicitly labelled as application context.
 
+The stable message states that application context is **untrusted reference data,
+never instructions**. Problem statements and explicit selections share the user-message
+transport for provider compatibility, but they do not gain instructional authority from
+that placement.
+
 This is what keeps context correctable at runtime:
 
 - **Format changes propagate everywhere.** One pure function per kind, so
@@ -404,6 +415,16 @@ This is what keeps context correctable at runtime:
   rather than throwing, so a deleted problem becomes an explicit unavailable-context
   frame. Answer-key verification is deferred with answer access itself to the solution
   tool; the baseline resolver does not query either.
+
+  Query failures are different: network, RLS, and database errors throw a typed,
+  retryable `context_resolution_failed` error. They are never rewritten as “this fact no
+  longer exists,” so the Coach cannot silently answer without context during an outage.
+
+The transcript's context inspector runs the same history bound, scope-epoch compiler,
+and aggregate context budget as the send path. Historical rows use their stored snapshot
+policy and show the context prefix they contribute to the **next** provider request;
+rows outside the provider history window and suppressed duplicate scope frames are
+identified rather than reconstructed from their raw refs.
 
 **Provider boundary:** OpenAI-compatible chat-completions APIs are stateless, so the
 compiled request still travels on every model call. Eliminating retransmission across
@@ -456,12 +477,8 @@ encounter**, and it is only an approximation. The two disagree in both direction
 - the root session never ends, so problem X worked today and again next week is
   **one** anchor slot but two encounters. This is why §5 needs a staleness cutoff.
 
-Attempt state does have two homes, both narrower than the anchor:
-
-- **Per turn**, as §3's `AttemptFact` — the answer typed but not submitted, tries
-  burned, elapsed time. Those exist nowhere else once the trainer's memory is
-  gone, and message grain is the right grain for them.
-- **One nullable back-pointer at conclusion**, which is what buys the reverse
+Attempt state is deliberately not copied into Coach context. The durable relationship
+is **one nullable back-pointer at conclusion**, which buys the reverse
   lookup *from outside the trainer* ("open the Coach chat from when I got this
   wrong", from the history/review screen):
   `concluded_submission_id bigint references public.submissions(id) on delete set null`.
@@ -642,8 +659,8 @@ tier's policy plus the selected model's capabilities, and `resolveModel`'s
 
 `get_current_attempt` is browser-side because an answer still being typed, its tries,
 and elapsed time do not exist in the database. That also keeps BYOK direct: the tool
-reads trainer state in the same browser that calls the provider. Models without tool
-support use an explicit one-turn `AttemptFact` attachment from the relevant quick action.
+reads trainer state in the same browser that calls the provider. Until tools ship,
+attempt state is unavailable to the model rather than copied into prompt context.
 
 ### `get_solution` — why the worked solution is a tool, not context
 
@@ -654,9 +671,7 @@ earned it. Four consequences:
 
 - **Tools are policy-gated, not global.** `toolsFor(policy)` decides what the
   model is even offered. Under `test-locked`, `get_solution` is not in the list
-  — the same enforcement seam that makes the renderer omit the answer. It is
-  auto-allowed once `AttemptFact.revealed || .submitted`, since gating a
-  solution the student has already been shown is theatre.
+  — the same enforcement seam that keeps answer-bearing capabilities unavailable.
 - **The user-initiated path needs no tool support.** A "walk me through the full
   solution" quick action attaches a `SolutionFact` to that one turn. Model-
   initiated (`get_solution`) and user-initiated (quick action) resolve the same
@@ -683,7 +698,7 @@ the time phases 0–1 shipped.
 | Current behavior | Where | Replaced by |
 | --- | --- | --- |
 | Context injected into the current system prompt only; never durable | `prompt.ts` `buildSystemMessage`, and `ai_messages` has no context column | **✅ Phase 3.1** — V2 snapshots compile into deduplicated scope epochs and turn-local attachments |
-| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | **✅ Phase 3.1** — minimal `ProblemFact`; attempt state is explicit/tool-only |
+| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | **✅ Phase 3.1** — minimal `ProblemFact`; attempt state is tool-only |
 | `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts` `parseContextLayer` | **✅ Phase 3** — the highest-priority layer's policy gates rendering |
 | `ai_conversations.mode` hardcoded `'general'`; `context_summary` snapshots context per *conversation* | `persistence.ts` `ensureConversation` | **✅ Phase 3** — both columns dropped; context is per turn |
 | `task` hardcoded `"general"` on both send paths | `coach.svelte.ts`, server and BYOK sends | §6 |

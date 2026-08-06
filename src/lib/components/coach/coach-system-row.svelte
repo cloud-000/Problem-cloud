@@ -63,7 +63,11 @@
 
     let role = $derived(messageId ? "context" : "system");
     let note = $derived(
-        messageId ? "prefixed into this turn on replay" : "messages[0] of the next request",
+        messageId
+            ? inspection?.included === false
+                ? "outside the next request history"
+                : "compiled prefix in the next request"
+            : "messages[0] of the next request",
     );
     // An inlined turn that carried nothing contributes no text to the request at all,
     // so there is no row to render — the absence is the finding, reported as such.
@@ -110,7 +114,9 @@
         <p class="text-xs text-destructive">{failure}</p>
     {:else if empty}
         <p class="font-mono text-[11px] italic text-muted-foreground/70">
-            No facts carried with this turn.
+            {inspection?.included === false
+                ? "This turn is outside the provider history window."
+                : "No context prefix is emitted for this turn."}
         </p>
     {:else if inspection}
         <pre

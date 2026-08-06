@@ -54,7 +54,7 @@
 
    $effect(() => {
       coach.configure(aiCoachEnabled);
-      coach.configureContextResolver(supabase, user?.id);
+      coach.configureContextResolver(supabase);
    });
 
    // Surface notifications as toasts for authenticated users: replay unread ones on

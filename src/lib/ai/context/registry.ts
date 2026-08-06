@@ -10,7 +10,7 @@ export function removeContextLayer(layers: CoachContextLayer[], ownerId: string)
     return layers.filter((layer) => layer.ownerId !== ownerId);
 }
 
-export function orderedContextLayers(layers: CoachContextLayer[]): CoachContextLayer[] {
+function orderedContextLayers(layers: CoachContextLayer[]): CoachContextLayer[] {
     return layers.slice().sort((a, b) => b.priority - a.priority);
 }
 
@@ -30,7 +30,7 @@ export function activeContextDescriptors(
     return descriptors;
 }
 
-export function activeFactRefs(
+function activeFactRefs(
     layers: CoachContextLayer[],
     detachedIds: ReadonlySet<string> = new Set(),
 ): FactRef[] {
@@ -45,7 +45,7 @@ export function activeContextSnapshot(
 }
 
 /** The highest-priority surface owns the enforcement policy for the turn. */
-export function activePolicy(layers: CoachContextLayer[]): Policy {
+function activePolicy(layers: CoachContextLayer[]): Policy {
     return orderedContextLayers(layers)[0]?.policy ?? "assist";
 }
 

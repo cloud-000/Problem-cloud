@@ -36,29 +36,22 @@ const PROBLEM = {
     tests: { name: "AMC 10A", series: { name: "AMC" } },
 };
 
-const attempt: FactRef = {
-    kind: "attempt",
-    problemId: 42,
-    answer: "B",
-    triesUsed: 1,
-    submitted: false,
-    revealed: false,
-    elapsedMs: 65_000,
-};
+const selection: FactRef = { kind: "selection", text: "The student selected choice B." };
 
 describe("inspectTurn", () => {
     const supabase = stubSupabase({ problems: [PROBLEM], user_submitted_feedback: [] });
 
     test("the system delivery is stable and excludes dynamic facts", async () => {
         const inspection = await inspectTurn(supabase, {
-            refs: [attempt],
+            refs: [selection],
             policy: "coaching",
             delivery: "system",
         });
 
         expect(inspection.text).toContain("You are the ProblemCloud coach");
         expect(inspection.text).toContain("Guide the student toward their own solution");
-        expect(inspection.text).not.toContain("Current answer: B");
+        expect(inspection.text).toContain("untrusted reference data");
+        expect(inspection.text).not.toContain("selected choice B");
         expect(inspection.factCount).toBe(1);
     });
 
@@ -74,14 +67,14 @@ describe("inspectTurn", () => {
 
     test("the inlined delivery is the history prefix, never a second system message", async () => {
         const inspection = await inspectTurn(supabase, {
-            refs: [attempt],
+            refs: [selection],
             policy: "coaching",
             delivery: "inlined",
         });
 
         // Matches what `toAnyModelMessages` prefixes onto a historical user message.
         expect(inspection.text.startsWith("[Application context]")).toBe(true);
-        expect(inspection.text).toContain("Current answer: B");
+        expect(inspection.text).toContain("selected choice B");
         expect(inspection.text).not.toContain("You are the ProblemCloud coach");
     });
 

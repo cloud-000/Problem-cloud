@@ -4,8 +4,8 @@ import {
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
-} from "./context-stack";
-import type { CoachContextLayer } from "./types";
+} from "./registry";
+import type { CoachContextLayer } from "../types";
 
 const layer = (ownerId: string, priority: number, descriptorId: string): CoachContextLayer => ({
     ownerId,
@@ -18,7 +18,7 @@ const layer = (ownerId: string, priority: number, descriptorId: string): CoachCo
     quickActions: [{ id: ownerId, label: ownerId, prompt: ownerId }],
 });
 
-describe("Coach context stack", () => {
+describe("Coach context registry", () => {
     test("orders by priority and deduplicates descriptors", () => {
         const layers = [layer("route", 10, "shared"), layer("modal", 30, "shared")];
         expect(activeContextDescriptors(layers).map((item) => item.id)).toEqual(["shared"]);

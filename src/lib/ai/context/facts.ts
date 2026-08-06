@@ -1,48 +1,43 @@
 import type { Policy } from "./policy";
 
-/** Stable, compact references. This is the only context shape persisted with a turn. */
-export type FactRef =
+/** Stable, re-resolvable context shared across adjacent turns. */
+export type ScopeRef =
     | { kind: "problem"; id: number }
     | { kind: "test"; id: number }
-    | { kind: "series"; id: number }
-    | {
-          kind: "attempt";
-          problemId: number;
-          answer: string | null;
-          triesUsed: number;
-          submitted: boolean;
-          revealed: boolean;
-          elapsedMs: number;
-      }
-    | { kind: "user-profile" }
-    | { kind: "selection"; text: string };
+    | { kind: "series"; id: number };
+
+/** Explicit, one-turn context that cannot be re-resolved later. */
+export type AttachmentRef = { kind: "selection"; text: string };
+
+/** The only active context shapes persisted with a turn. */
+export type FactRef = ScopeRef | AttachmentRef;
 
 /**
  * Versioned payload stored in `ai_messages.context_snapshot`.
  *
  * Scope describes the durable environment a run of turns shares. Attachments are
  * intentionally one-turn-only. Keeping them separate lets the request compiler emit a
- * problem once per context epoch without losing explicit selections or attempt details.
+ * problem once per context epoch without losing explicit selections.
  */
 export interface ContextSnapshot {
     version: 2;
     policy: Policy;
-    scope: FactRef[];
-    attachments: FactRef[];
+    scope: ScopeRef[];
+    attachments: AttachmentRef[];
 }
 
 export function contextSnapshot(refs: FactRef[], policy: Policy): ContextSnapshot {
-    const scope: FactRef[] = [];
-    const attachments: FactRef[] = [];
+    const scope: ScopeRef[] = [];
+    const attachments: AttachmentRef[] = [];
     for (const ref of refs) {
-        if (ref.kind === "problem" || ref.kind === "test" || ref.kind === "series") scope.push(ref);
-        else attachments.push(ref);
+        if (ref.kind === "selection") attachments.push(ref);
+        else scope.push(ref);
     }
     return { version: 2, policy, scope, attachments };
 }
 
 export interface FactWarning {
-    code: "missing" | "answer_missing" | "answer_unverified";
+    code: "missing";
     message: string;
 }
 
@@ -69,23 +64,11 @@ export interface SeriesFact {
     warnings: FactWarning[];
 }
 
-export type AttemptFact = Extract<FactRef, { kind: "attempt" }>;
-
-export interface UserProfileFact {
-    kind: "user-profile";
-    rating: number | null;
-    activeSession: string | null;
-    recentTopics: string[];
-    warnings: FactWarning[];
-}
-
 export type ResolvedFact =
     | ProblemFact
     | TestFact
     | SeriesFact
-    | AttemptFact
-    | UserProfileFact
-    | Extract<FactRef, { kind: "selection" }>;
+    | AttachmentRef;
 
 export interface CoachContextDescriptor {
     /** UI identity for attach/detach behavior; never persisted. */

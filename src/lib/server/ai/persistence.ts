@@ -301,12 +301,11 @@ export async function conversationHistory(
 }
 
 export async function resolveTurnContext(
-    userId: string,
     contextSnapshot: ContextSnapshot,
     history: NormalizedAIMessage[],
 ): Promise<{ renderedContext: string; history: NormalizedAIMessage[] }> {
     const client = admin();
-    return compileContextFrames(client, history, contextSnapshot, userId);
+    return compileContextFrames(client, history, contextSnapshot);
 }
 
 /**

@@ -7,7 +7,6 @@ import type {
     AIChatRequestBody,
     AIConnectionCredential,
     AIConversationFlushRequest,
-    AIContextSource,
     AIEphemeralMessage,
     AIMessagePart,
     AIMessageStatus,
@@ -22,11 +21,11 @@ import type {
     ConversationDetailResponse,
     ConversationListResponse,
     ConversationSummary,
-    CoachContextDescriptor,
-    CoachContextLayer,
+    AttachmentRef,
     ContextSnapshot,
     FactRef,
     Policy,
+    ScopeRef,
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIModel,
@@ -115,60 +114,34 @@ export function parseModelReference(value: unknown): AIModelReference {
     return reference as AIModelReference;
 }
 
-export function parseContextDescriptor(value: unknown): CoachContextDescriptor {
-    const input = record(value, "context descriptor");
-    return {
-        id: string(input.id, "context id", 120),
-        label: string(input.label, "context label", 160),
-        ref: parseFactRef(input.ref),
-    };
-}
-
-export function parseFactRef(value: unknown): FactRef {
+function parseFactRef(value: unknown): FactRef {
     const input = record(value, "fact reference");
-    const kind = oneOf(input.kind, "fact kind", [
-        "problem",
-        "test",
-        "series",
-        "attempt",
-        "user-profile",
-        "selection",
-    ] as const);
+    const kind = oneOf(input.kind, "fact kind", ["problem", "test", "series", "selection"] as const);
     if (kind === "problem" || kind === "test" || kind === "series") {
         return { kind, id: rowId(input.id, `${kind} id`) };
     }
-    if (kind === "user-profile") return { kind };
-    if (kind === "selection") return { kind, text: string(input.text, "selection text", 4_000) };
-    const answer = input.answer;
-    if (answer !== null && answer !== undefined && typeof answer !== "string") {
-        throw new AISchemaError("attempt answer must be a string or null");
-    }
-    const triesUsed = number(input.triesUsed, "tries used");
-    const elapsedMs = number(input.elapsedMs, "elapsed milliseconds");
-    if (!Number.isSafeInteger(triesUsed) || triesUsed < 0 || elapsedMs < 0) {
-        throw new AISchemaError("attempt counters must be non-negative");
-    }
-    return {
-        kind,
-        problemId: rowId(input.problemId, "attempt problem id"),
-        answer: typeof answer === "string" ? answer.slice(0, 1_000) : null,
-        triesUsed,
-        submitted: boolean(input.submitted, "attempt submitted"),
-        revealed: boolean(input.revealed, "attempt revealed"),
-        elapsedMs,
-    };
+    return { kind, text: string(input.text, "selection text", 4_000) };
 }
 
 function parsePolicy(value: unknown): Policy {
     return oneOf(value ?? "assist", "context policy", ["coaching", "test-locked", "assist"] as const);
 }
 
-function parseFactList(value: unknown, label: string): FactRef[] {
+function parseSnapshotFactList(value: unknown, label: string): FactRef[] {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) throw new AISchemaError(`${label} must be an array`);
     if (value.length > 12) throw new AISchemaError(`too many ${label} facts`);
-    return value.map(parseFactRef);
+    return value.flatMap((item) => {
+        const input = record(item, "fact reference");
+        // Old snapshots can contain ambient profile or attempt telemetry. They remain
+        // readable, but obsolete facts are discarded rather than rendered or rewritten.
+        if (input.kind === "attempt" || input.kind === "user-profile") return [];
+        return [parseFactRef(input)];
+    });
 }
+
+const isScopeRef = (ref: FactRef): ref is ScopeRef => ref.kind !== "selection";
+const isAttachmentRef = (ref: FactRef): ref is AttachmentRef => ref.kind === "selection";
 
 /** Accepts legacy ref arrays while every newly-written turn uses the V2 envelope. */
 export function parseContextSnapshot(value: unknown, fallbackPolicy: Policy = "assist"): ContextSnapshot {
@@ -176,22 +149,22 @@ export function parseContextSnapshot(value: unknown, fallbackPolicy: Policy = "a
         return { version: 2, policy: fallbackPolicy, scope: [], attachments: [] };
     }
     if (Array.isArray(value)) {
-        const refs = parseFactList(value, "context snapshot");
+        const refs = parseSnapshotFactList(value, "context snapshot");
         return {
             version: 2,
             policy: fallbackPolicy,
-            scope: refs.filter((ref) => ref.kind === "problem" || ref.kind === "test" || ref.kind === "series"),
-            attachments: refs.filter((ref) => ref.kind !== "problem" && ref.kind !== "test" && ref.kind !== "series"),
+            scope: refs.filter(isScopeRef),
+            attachments: refs.filter(isAttachmentRef),
         };
     }
     const input = record(value, "context snapshot");
     if (input.version !== 2) throw new AISchemaError("context snapshot version is invalid");
-    const scope = parseFactList(input.scope, "context scope");
-    const attachments = parseFactList(input.attachments, "context attachments");
-    if (scope.some((ref) => ref.kind !== "problem" && ref.kind !== "test" && ref.kind !== "series")) {
+    const scope = parseSnapshotFactList(input.scope, "context scope");
+    const attachments = parseSnapshotFactList(input.attachments, "context attachments");
+    if (!scope.every(isScopeRef)) {
         throw new AISchemaError("context scope contains a turn-local fact");
     }
-    if (attachments.some((ref) => ref.kind === "problem" || ref.kind === "test" || ref.kind === "series")) {
+    if (!attachments.every(isAttachmentRef)) {
         throw new AISchemaError("context attachments contain a scope fact");
     }
     return {
@@ -199,45 +172,6 @@ export function parseContextSnapshot(value: unknown, fallbackPolicy: Policy = "a
         policy: parsePolicy(input.policy ?? fallbackPolicy),
         scope,
         attachments,
-    };
-}
-
-export function parseContextLayer(value: unknown): CoachContextLayer {
-    const input = record(value, "context layer");
-    const descriptors = Array.isArray(input.descriptors)
-        ? input.descriptors.map(parseContextDescriptor)
-        : (() => {
-              throw new AISchemaError("context descriptors must be an array");
-          })();
-    if (descriptors.length > 12) throw new AISchemaError("too many context descriptors");
-    const quickActions = Array.isArray(input.quickActions)
-        ? input.quickActions.map((item) => {
-              const action = record(item, "quick action");
-              return {
-                  id: string(action.id, "quick action id", 120),
-                  label: string(action.label, "quick action label", 120),
-                  prompt: string(action.prompt, "quick action prompt", 1_000),
-                  icon: optionalString(action.icon, "quick action icon", 60),
-              };
-          })
-        : [];
-    return {
-        ownerId: string(input.ownerId, "owner id", 120),
-        source: oneOf<AIContextSource>(input.source, "context source", [
-            "route",
-            "trainer",
-            "modal",
-            "selection",
-        ]),
-        priority:
-            typeof input.priority === "number" && Number.isFinite(input.priority)
-                ? input.priority
-                : (() => {
-                      throw new AISchemaError("context priority must be a number");
-                  })(),
-        descriptors,
-        quickActions,
-        policy: parsePolicy(input.policy),
     };
 }
 
@@ -383,15 +317,22 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
     const message = string(input.message, "message", 8_000).trim();
     if (!message) throw new AISchemaError("message cannot be blank");
     const ephemeralHistory = parseEphemeralHistory(input.ephemeralHistory);
-    const policy = parsePolicy(input.policy);
-    const snapshot = parseContextSnapshot(input.contextSnapshot, policy);
+    // V2 snapshots own the turn policy. The top-level field is read only as a
+    // compatibility fallback for legacy ref-array or absent snapshots.
+    const legacySnapshot =
+        input.contextSnapshot === undefined ||
+        input.contextSnapshot === null ||
+        Array.isArray(input.contextSnapshot);
+    const snapshot = parseContextSnapshot(
+        input.contextSnapshot,
+        legacySnapshot ? parsePolicy(input.policy) : "assist",
+    );
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
         model: parseModelReference(input.model ?? "auto"),
         message,
-        contextSnapshot: { ...snapshot, policy },
-        policy,
+        contextSnapshot: snapshot,
         task: oneOf<AITaskType>(input.task ?? "general", "task", [
             "general",
             "problem_help",

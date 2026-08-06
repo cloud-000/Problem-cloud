@@ -1,13 +1,10 @@
 import type {
-    AttemptFact,
     FactWarning,
     ProblemFact,
     ResolvedFact,
     SeriesFact,
     TestFact,
-    UserProfileFact,
 } from "./facts";
-import type { Policy } from "./policy";
 
 const MAX_FACTS = 12;
 export const MAX_FACT_CHARS = 4_000;
@@ -112,7 +109,7 @@ function fitLines(lines: string[], maxChars: number): string[] {
         .filter(Boolean);
 }
 
-export function renderProblem(fact: ProblemFact, _policy: Policy): string {
+export function renderProblem(fact: ProblemFact): string {
     const header = "Problem currently in view:";
     const tail = [
         ...(fact.choices ?? []).map(
@@ -135,17 +132,6 @@ export function renderProblem(fact: ProblemFact, _policy: Policy): string {
     return lines.filter(Boolean).join("\n");
 }
 
-function renderAttempt(fact: AttemptFact): string {
-    return [
-        `Attempt on problem ${fact.problemId}`,
-        `Current answer: ${fact.answer ?? "none"}`,
-        `Wrong tries used: ${fact.triesUsed}`,
-        `Submitted: ${fact.submitted ? "yes" : "no"}`,
-        `Answer revealed: ${fact.revealed ? "yes" : "no"}`,
-        `Elapsed: ${Math.max(0, Math.round(fact.elapsedMs / 1000))} seconds`,
-    ].join("\n");
-}
-
 function renderTest(fact: TestFact): string {
     return [`Test: ${fact.name}`, fact.series ? `Series: ${fact.series}` : "", ...warningLines(fact.warnings)]
         .filter(Boolean)
@@ -156,28 +142,17 @@ function renderSeries(fact: SeriesFact): string {
     return [`Series: ${fact.name}`, ...warningLines(fact.warnings)].join("\n");
 }
 
-function renderUserProfile(_fact: UserProfileFact): string {
-    // Legacy snapshots may contain this ref. Progress is intentionally tool-only now.
-    return "";
-}
-
-export function renderFact(fact: ResolvedFact, policy: Policy): string {
+function renderFact(fact: ResolvedFact): string {
     let rendered: string;
     switch (fact.kind) {
         case "problem":
-            rendered = renderProblem(fact, policy);
-            break;
-        case "attempt":
-            rendered = renderAttempt(fact);
+            rendered = renderProblem(fact);
             break;
         case "test":
             rendered = renderTest(fact);
             break;
         case "series":
             rendered = renderSeries(fact);
-            break;
-        case "user-profile":
-            rendered = renderUserProfile(fact);
             break;
         case "selection":
             rendered = `Selected context:\n${truncateContextText(
@@ -190,10 +165,10 @@ export function renderFact(fact: ResolvedFact, policy: Policy): string {
 }
 
 /** One bounded, independently budgetable section per fact. */
-export function renderFactSections(facts: ResolvedFact[], policy: Policy): string[] {
+export function renderFactSections(facts: ResolvedFact[]): string[] {
     return facts
         .slice(0, MAX_FACTS)
-        .map((fact) => renderFact(fact, policy))
+        .map(renderFact)
         .filter(Boolean);
 }
 
@@ -250,6 +225,6 @@ export function fitContextSections(sections: string[], maxChars: number): string
 }
 
 /** Deterministic, centrally budgeted model context. */
-export function renderFacts(facts: ResolvedFact[], policy: Policy): string {
-    return fitContextSections(renderFactSections(facts, policy), MAX_CONTEXT_CHARS);
+export function renderFacts(facts: ResolvedFact[]): string {
+    return fitContextSections(renderFactSections(facts), MAX_CONTEXT_CHARS);
 }

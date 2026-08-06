@@ -13,6 +13,7 @@ import {
     saveAssistantMessage,
     saveUserMessage,
 } from "$lib/server/ai/persistence";
+import { AIContextResolutionError } from "$lib/ai/context/resolve";
 import { providerRegistry } from "$lib/server/ai/providers/registry";
 import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 import { encodeEventStream } from "$lib/server/ai/stream";
@@ -86,7 +87,6 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         }
 
         const resolved = await resolveTurnContext(
-            user.id,
             body.contextSnapshot,
             history,
         );
@@ -96,7 +96,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             model: model.reference,
             task: body.task,
             message: body.message,
-            policy: body.policy,
+            policy: body.contextSnapshot.policy,
             renderedContext: resolved.renderedContext,
             history: resolved.history,
             signal: request.signal,
@@ -157,6 +157,9 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     } catch (error) {
         if (error instanceof AIWorkAnchorConflict) return anchorConflictResponse(error);
         if (error instanceof AIModelRoutingError) return stableError(error.code, error.message, 409);
+        if (error instanceof AIContextResolutionError) {
+            return stableError(error.code, error.message, 503);
+        }
         return stableError("chat_unavailable", "Coach could not start the request", 503);
     }
 };

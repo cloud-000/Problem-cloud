@@ -9,7 +9,6 @@ import {
     parseAIEvent,
     parseBootstrap,
     parseChatRequest,
-    parseContextLayer,
     parseCredentialEnvelope,
     parseConversationDetail,
     parseConversationFlushRequest,
@@ -37,7 +36,6 @@ describe("AI runtime schemas", () => {
                 scope: [],
                 attachments: [],
             },
-            policy: "assist",
             // Recording a turn is the default; only a one-shot opts out (§1).
             persist: true,
         });
@@ -152,20 +150,6 @@ describe("AI runtime schemas", () => {
         ).toThrow(AISchemaError);
     });
 
-    test("validates owner-scoped context layers", () => {
-        const layer = parseContextLayer({
-            ownerId: "route:home",
-            source: "route",
-            priority: 10,
-            policy: "assist",
-            descriptors: [
-                { id: "route:/", label: "Home", ref: { kind: "selection", text: "Home" } },
-            ],
-            quickActions: [],
-        });
-        expect(layer.ownerId).toBe("route:home");
-    });
-
     test("validates per-turn fact snapshots without accepting rendered prose", () => {
         const parsed = parseChatRequest({
             model: "auto",
@@ -185,9 +169,20 @@ describe("AI runtime schemas", () => {
             ],
         });
         expect(parsed.contextSnapshot.scope).toEqual([{ kind: "problem", id: 42 }]);
-        expect(parsed.contextSnapshot.attachments).toHaveLength(1);
+        expect(parsed.contextSnapshot.attachments).toEqual([]);
         expect(parsed.contextSnapshot.policy).toBe("coaching");
-        expect(parsed.policy).toBe("coaching");
+        const authoritative = parseChatRequest({
+            model: "auto",
+            message: "Check this too",
+            policy: "test-locked",
+            contextSnapshot: {
+                version: 2,
+                policy: "coaching",
+                scope: [{ kind: "problem", id: 42 }],
+                attachments: [],
+            },
+        });
+        expect(authoritative.contextSnapshot.policy).toBe("coaching");
         const stripped = parseChatRequest({
                 model: "auto",
                 message: "Nope",

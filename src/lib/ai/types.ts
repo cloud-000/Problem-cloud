@@ -3,7 +3,13 @@ import type { CoachThreadKind } from "./session/tier";
 import type { CoachContextDescriptor, ContextSnapshot, FactRef } from "./context/facts";
 import type { Policy } from "./context/policy";
 
-export type { CoachContextDescriptor, ContextSnapshot, FactRef } from "./context/facts";
+export type {
+    AttachmentRef,
+    CoachContextDescriptor,
+    ContextSnapshot,
+    FactRef,
+    ScopeRef,
+} from "./context/facts";
 export type { Policy } from "./context/policy";
 
 export type AICoachConnectionState =
@@ -283,7 +289,6 @@ export interface AIChatRequestBody {
     model: AIModelReference;
     message: string;
     contextSnapshot: ContextSnapshot;
-    policy: Policy;
     task: AITaskType;
     /**
      * Whether this turn may be written to history at all. Defaults to true; a one-shot

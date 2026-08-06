@@ -23,7 +23,7 @@ import type {
     NormalizedAIRequest,
 } from "../types";
 import { isChatModelId, probeModels, type FetchFunction, type ModelProbeResult } from "./openai-models";
-import { buildSystemMessage } from "../prompt";
+import { applicationContextFrame, buildSystemMessage } from "../prompt";
 import type { AIProviderAdapter } from "./types";
 
 /**
@@ -129,7 +129,7 @@ export function toAnyModelMessages(
             .trim();
         if (!text) continue;
         if (entry.role === "user" && entry.renderedContext) {
-            text = `[Application context]\n${entry.renderedContext}\n\n[Student]\n${text}`;
+            text = `${applicationContextFrame(entry.renderedContext)}\n\n[Student]\n${text}`;
         }
 
         const previous = turns.at(-1);
@@ -138,7 +138,7 @@ export function toAnyModelMessages(
     }
 
     const current = currentContext
-        ? `[Application context]\n${currentContext}\n\n[Student]\n${message}`
+        ? `${applicationContextFrame(currentContext)}\n\n[Student]\n${message}`
         : message;
     const last = turns.at(-1);
     if (last?.role === "user") last.content += `\n\n${current}`;

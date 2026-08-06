@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ProblemFact, ResolvedFact } from "./facts";
-import { renderFacts, renderProblem } from "./render";
+import type { ProblemFact } from "./facts";
+import { renderProblem } from "./render";
 
 const problem: ProblemFact = {
     kind: "problem",
@@ -12,7 +12,7 @@ const problem: ProblemFact = {
 
 describe("typed context rendering", () => {
     test("problem scope contains only the statement and choices", () => {
-        const rendered = renderProblem(problem, "coaching");
+        const rendered = renderProblem(problem);
         expect(rendered).toContain("What is $6\\cdot 7$?");
         expect(rendered).toContain("C. 42");
         expect(rendered).not.toContain("Problem 42");
@@ -27,7 +27,6 @@ describe("typed context rendering", () => {
                     (choice) => `${choice} ${"detail ".repeat(300)}`,
                 ),
             },
-            "coaching",
         );
 
         expect(rendered).toContain("A. Alpha");
@@ -38,37 +37,18 @@ describe("typed context rendering", () => {
         expect(rendered).toContain("[truncated]");
     });
 
-    test("attempt facts preserve ephemeral work that cannot be re-derived", () => {
-        const facts: ResolvedFact[] = [
-            {
-                kind: "attempt",
-                problemId: 42,
-                answer: "B. 41",
-                triesUsed: 1,
-                submitted: false,
-                revealed: false,
-                elapsedMs: 12_400,
-            },
-        ];
-        const rendered = renderFacts(facts, "coaching");
-        expect(rendered).toContain("Current answer: B. 41");
-        expect(rendered).toContain("Wrong tries used: 1");
-        expect(rendered).toContain("Elapsed: 12 seconds");
-    });
-
     test("degraded warnings are made explicit to the model", () => {
         const rendered = renderProblem(
             {
                 ...problem,
                 warnings: [
                     {
-                        code: "answer_unverified",
-                        message: "This problem's answer has been reported as incorrect; treat it as unverified.",
+                        code: "missing",
+                        message: "Some problem context is no longer available.",
                     },
                 ],
             },
-            "coaching",
         );
-        expect(rendered).toContain("reported as incorrect");
+        expect(rendered).toContain("no longer available");
     });
 });

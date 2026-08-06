@@ -3,7 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import type { ContextSnapshot } from "./facts";
 import type { NormalizedAIMessage } from "../types";
-import { compileContextFrames, HISTORY_CONTEXT_MAX_CHARS } from "./resolve";
+import {
+    AIContextResolutionError,
+    compileContextFrames,
+    HISTORY_CONTEXT_MAX_CHARS,
+    resolveFacts,
+} from "./resolve";
 
 function problem(id: number, statement = `Statement ${id}`, choices = [`Choice ${id}`]) {
     return { id, statement, choices };
@@ -71,6 +76,27 @@ function occurrences(values: string[], needle: string): number {
 }
 
 describe("context frame compiler", () => {
+    test("distinguishes a missing row from a resolver failure", async () => {
+        const missing = await resolveFacts(stubSupabase([]), [{ kind: "problem", id: 42 }]);
+        expect(missing[0]?.kind).toBe("problem");
+        expect("warnings" in missing[0] && missing[0].warnings[0]?.code).toBe("missing");
+
+        const failing = {
+            from() {
+                const chain = {
+                    select: () => chain,
+                    eq: () => chain,
+                    maybeSingle: () =>
+                        Promise.resolve({ data: null, error: { message: "database offline" } }),
+                };
+                return chain;
+            },
+        } as unknown as SupabaseClient<Database>;
+        expect(resolveFacts(failing, [{ kind: "problem", id: 42 }])).rejects.toBeInstanceOf(
+            AIContextResolutionError,
+        );
+    });
+
     test("puts the current effective scope beside the current prompt exactly once", async () => {
         const calls: string[] = [];
         const result = await compileContextFrames(
@@ -104,28 +130,15 @@ describe("context frame compiler", () => {
     });
 
     test("keeps historical attachments beside their owning turns", async () => {
-        const withAttempt: ContextSnapshot = {
-            ...snapshot(42),
-            attachments: [
-                {
-                    kind: "attempt",
-                    problemId: 42,
-                    answer: "B",
-                    triesUsed: 1,
-                    submitted: false,
-                    revealed: false,
-                    elapsedMs: 5_000,
-                },
-            ],
-        };
+        const attached = withSelection(42, "The student selected choice B.");
         const result = await compileContextFrames(
             stubSupabase([problem(42)]),
-            [user("plain", snapshot(42)), user("attached", withAttempt)],
+            [user("plain", snapshot(42)), user("attached", attached)],
             snapshot(42),
         );
 
         expect(result.history[0]?.renderedContext).toBeUndefined();
-        expect(result.history[1]?.renderedContext).toContain("Current answer: B");
+        expect(result.history[1]?.renderedContext).toContain("The student selected choice B.");
         expect(result.history[1]?.renderedContext).not.toContain("Statement 42");
         expect(result.renderedContext).toContain("Statement 42");
     });

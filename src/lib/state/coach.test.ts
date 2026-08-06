@@ -951,19 +951,6 @@ describe("coach context inspection", () => {
                 label: "AMC 10A #18",
                 ref: { kind: "problem" as const, id: 42 },
             },
-            {
-                id: "attempt:42",
-                label: "Current attempt",
-                ref: {
-                    kind: "attempt" as const,
-                    problemId: 42,
-                    answer: "B",
-                    triesUsed: 1,
-                    submitted: false,
-                    revealed: false,
-                    elapsedMs: 65_000,
-                },
-            },
         ],
     });
 
@@ -974,17 +961,15 @@ describe("coach context inspection", () => {
     test("messages[0] carries the stable prompt and policy, not dynamic facts", async () => {
         coach.configureContextResolver(
             stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-            undefined,
         );
         const release = coach.registerContext(trainerLayer("coaching"));
 
         const inspection = await coach.inspectSystemMessage();
         expect(inspection?.policy).toBe("coaching");
         expect(inspection?.delivery).toBe("system");
-        expect(inspection?.factCount).toBe(2);
+        expect(inspection?.factCount).toBe(1);
         expect(inspection?.text).toContain("You are the ProblemCloud coach");
         expect(inspection?.text).toContain("Guide the student toward their own solution");
-        expect(inspection?.text).not.toContain("Current answer: B");
         expect(inspection?.text).not.toContain("How many ways?");
         release();
     });
@@ -992,7 +977,6 @@ describe("coach context inspection", () => {
     test("the highest-priority layer's policy redacts messages[0]", async () => {
         coach.configureContextResolver(
             stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-            undefined,
         );
         const release = coach.registerContext(trainerLayer("test-locked"));
 
@@ -1007,7 +991,6 @@ describe("coach context inspection", () => {
     test("a past turn renders from its own snapshot, not the live layer", async () => {
         coach.configureContextResolver(
             stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-            undefined,
         );
         // The live layer is about a different problem than the turn already in the
         // transcript. Rendering that turn from the live layer would make the view agree
@@ -1022,16 +1005,11 @@ describe("coach context inspection", () => {
                 createdAt: "2026-08-05T00:00:00.000Z",
                 contextSnapshot: {
                     version: 2,
-                    policy: "coaching",
+                    policy: "test-locked",
                     scope: [],
                     attachments: [{
-                        kind: "attempt",
-                        problemId: 7,
-                        answer: "E",
-                        triesUsed: 3,
-                        submitted: true,
-                        revealed: true,
-                        elapsedMs: 12_000,
+                        kind: "selection",
+                        text: "The student selected choice E.",
                     }],
                 },
             },
@@ -1040,19 +1018,21 @@ describe("coach context inspection", () => {
         const inspection = await coach.inspectMessageContext("turn-1");
         // Prefixed into its own user message, never re-sent as a second system message.
         expect(inspection?.delivery).toBe("inlined");
+        expect(inspection?.policy).toBe("test-locked");
+        expect(inspection?.included).toBe(true);
         expect(inspection?.text.startsWith("[Application context]")).toBe(true);
-        expect(inspection?.text).toContain("Current answer: E");
+        expect(inspection?.text).toContain("selected choice E");
         expect(inspection?.text).not.toContain("You are the ProblemCloud coach");
         expect(inspection?.text).not.toContain("How many ways?");
         release();
         coach.messages = [];
     });
 
-    test("a turn that carried nothing renders as empty, not as a bare prompt", async () => {
+    test("inspection shows the compiled prefix after scope epoch suppression", async () => {
         coach.configureContextResolver(
             stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-            undefined,
         );
+        const release = coach.registerContext(trainerLayer("coaching"));
         coach.messages = [
             {
                 id: "turn-2",
@@ -1060,12 +1040,20 @@ describe("coach context inspection", () => {
                 parts: [{ type: "text", text: "hello" }],
                 status: "complete",
                 createdAt: "2026-08-05T00:00:00.000Z",
+                contextSnapshot: {
+                    version: 2,
+                    policy: "coaching",
+                    scope: [{ kind: "problem", id: 42 }],
+                    attachments: [],
+                },
             },
         ];
 
         const inspection = await coach.inspectMessageContext("turn-2");
-        expect(inspection?.factCount).toBe(0);
+        expect(inspection?.factCount).toBe(1);
         expect(inspection?.text).toBe("");
+        expect(inspection?.included).toBe(true);
+        release();
         coach.messages = [];
     });
 });

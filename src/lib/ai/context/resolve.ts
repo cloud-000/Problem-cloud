@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
-import type { ContextSnapshot, FactRef, FactWarning, ResolvedFact } from "./facts";
+import type { ContextSnapshot, FactRef, FactWarning, ResolvedFact, ScopeRef } from "./facts";
 import type { NormalizedAIMessage } from "../types";
 import type { Policy } from "./policy";
 import { boundCoachHistory } from "../conversations";
@@ -10,7 +10,6 @@ import {
     MAX_FACT_CHARS,
     minimumContextChars,
     renderFactSections,
-    renderFacts,
 } from "./render";
 
 type Supabase = SupabaseClient<Database>;
@@ -23,21 +22,47 @@ const missing = (what: string): FactWarning => ({
     message: `${what} is no longer available; treat references to it as degraded context.`,
 });
 
-/** Resolves durable refs against live data. Failures degrade into explicit facts. */
+/** A resolver outage is retryable and must never masquerade as a deleted fact. */
+export class AIContextResolutionError extends Error {
+    readonly code = "context_resolution_failed";
+
+    constructor(readonly fact: string) {
+        super(`Coach could not load ${fact} context. Please retry.`);
+        this.name = "AIContextResolutionError";
+    }
+}
+
+async function contextData<T>(
+    fact: string,
+    query: PromiseLike<{ data: T; error: unknown }>,
+): Promise<T> {
+    try {
+        const { data, error } = await query;
+        if (error) throw new AIContextResolutionError(fact);
+        return data;
+    } catch (error) {
+        if (error instanceof AIContextResolutionError) throw error;
+        throw new AIContextResolutionError(fact);
+    }
+}
+
+/** Resolves durable refs; missing rows degrade, while query failures remain retryable. */
 export async function resolveFacts(
     supabase: Supabase,
     refs: FactRef[],
-    _userId?: string,
 ): Promise<ResolvedFact[]> {
     return Promise.all(
         refs.map(async (ref): Promise<ResolvedFact> => {
-            if (ref.kind === "attempt" || ref.kind === "selection") return ref;
+            if (ref.kind === "selection") return ref;
             if (ref.kind === "problem") {
-                const { data } = await supabase
-                    .from("problems")
-                    .select("id, statement, choices")
-                    .eq("id", ref.id)
-                    .maybeSingle();
+                const data = await contextData(
+                    "the problem",
+                    supabase
+                        .from("problems")
+                        .select("id, statement, choices")
+                        .eq("id", ref.id)
+                        .maybeSingle(),
+                );
                 if (!data) {
                     return {
                         kind: "problem",
@@ -61,11 +86,14 @@ export async function resolveFacts(
                 };
             }
             if (ref.kind === "test") {
-                const { data } = await supabase
-                    .from("tests")
-                    .select("id, name, series(name)")
-                    .eq("id", ref.id)
-                    .maybeSingle();
+                const data = await contextData(
+                    "the test",
+                    supabase
+                        .from("tests")
+                        .select("id, name, series(name)")
+                        .eq("id", ref.id)
+                        .maybeSingle(),
+                );
                 const row = data as unknown as
                     | { id: number; name: string; series: { name: string } | null }
                     | null;
@@ -74,45 +102,26 @@ export async function resolveFacts(
                     : { kind: "test", id: ref.id, name: "Unavailable test", series: null, warnings: [missing(`Test ${ref.id}`)] };
             }
             if (ref.kind === "series") {
-                const { data } = await supabase.from("series").select("id, name").eq("id", ref.id).maybeSingle();
+                const data = await contextData(
+                    "the series",
+                    supabase.from("series").select("id, name").eq("id", ref.id).maybeSingle(),
+                );
                 return data
                     ? { kind: "series", id: data.id, name: data.name, warnings: [] }
                     : { kind: "series", id: ref.id, name: "Unavailable series", warnings: [missing(`Series ${ref.id}`)] };
             }
 
-            // Kept only so legacy snapshots remain parseable. User progress is tool-only
-            // and the renderer intentionally emits no profile prose.
-            return {
-                kind: "user-profile",
-                rating: null,
-                activeSession: null,
-                recentTopics: [],
-                warnings: [],
-            };
+            return ref;
         }),
     );
 }
 
-export async function renderSnapshot(
-    supabase: Supabase,
-    refs: FactRef[],
-    policy: Policy,
-    userId?: string,
-): Promise<string> {
-    return renderFacts(await resolveFacts(supabase, refs, userId), policy);
-}
-
-function scopeRefKey(ref: FactRef): string {
-    if (ref.kind === "problem" || ref.kind === "test" || ref.kind === "series") {
-        return `${ref.kind}:${ref.id}`;
-    }
-    // Invalid scope refs are rejected at the wire boundary. Keeping this fallback
-    // deterministic makes direct callers compare malformed snapshots conservatively.
-    return JSON.stringify(ref);
+function scopeRefKey(ref: ScopeRef): string {
+    return `${ref.kind}:${ref.id}`;
 }
 
 /** Scope identity is provenance, never whatever prose the current renderer emits. */
-function scopeKey(refs: FactRef[]): string {
+function scopeKey(refs: ScopeRef[]): string {
     return refs.map(scopeRefKey).sort().join("|");
 }
 
@@ -177,20 +186,17 @@ export async function compileContextFrames(
     supabase: Supabase,
     messages: NormalizedAIMessage[],
     current: ContextSnapshot,
-    userId?: string,
 ): Promise<{ history: NormalizedAIMessage[]; renderedContext: string }> {
     // Both direct BYOK and server-backed callers cross this same bound before any ref is
     // resolved. Applying it here also prevents future callers from paying for context
     // attached only to transcript turns that cannot reach the provider.
     const bounded = boundCoachHistory(messages);
     const renderCache = new Map<string, Promise<string[]>>();
-    const renderRefs = (refs: FactRef[], snapshotPolicy: Policy): Promise<string[]> => {
-        const key = JSON.stringify([snapshotPolicy, refs]);
+    const renderRefs = (refs: FactRef[]): Promise<string[]> => {
+        const key = JSON.stringify(refs);
         let pending = renderCache.get(key);
         if (!pending) {
-            pending = resolveFacts(supabase, refs, userId).then((facts) =>
-                renderFactSections(facts, snapshotPolicy),
-            );
+            pending = resolveFacts(supabase, refs).then(renderFactSections);
             renderCache.set(key, pending);
         }
         return pending;
@@ -202,13 +208,13 @@ export async function compileContextFrames(
         if (!pending) {
             // Baseline scope contains no policy-sensitive answer data. Keying only by
             // refs avoids re-querying the same problem when a test lock changes.
-            pending = renderRefs(snapshot.scope, snapshot.policy);
+            pending = renderRefs(snapshot.scope);
             scopeCache.set(key, pending);
         }
         return pending;
     };
     const renderAttachments = (snapshot: ContextSnapshot) =>
-        renderRefs(snapshot.attachments, snapshot.policy);
+        renderRefs(snapshot.attachments);
 
     const userTurns = bounded.flatMap((message, index) =>
         message.role === "user" && message.contextSnapshot
