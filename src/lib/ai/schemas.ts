@@ -7,7 +7,6 @@ import type {
     AIChatRequestBody,
     AIConnectionCredential,
     AIConversationFlushRequest,
-    AIContextMode,
     AIContextSource,
     AIEphemeralMessage,
     AIMessagePart,
@@ -25,6 +24,8 @@ import type {
     ConversationSummary,
     CoachContextDescriptor,
     CoachContextLayer,
+    FactRef,
+    Policy,
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIModel,
@@ -115,20 +116,57 @@ export function parseModelReference(value: unknown): AIModelReference {
 
 export function parseContextDescriptor(value: unknown): CoachContextDescriptor {
     const input = record(value, "context descriptor");
-    const kind = oneOf(input.kind, "context kind", [
-        "route",
-        "problem",
-        "progress",
-        "session",
-        "selection",
-    ] as const);
     return {
         id: string(input.id, "context id", 120),
-        kind,
-        authoritativeId: optionalString(input.authoritativeId, "authoritative id", 200),
         label: string(input.label, "context label", 160),
-        ephemeralText: optionalString(input.ephemeralText, "ephemeral text", 4_000),
+        ref: parseFactRef(input.ref),
     };
+}
+
+export function parseFactRef(value: unknown): FactRef {
+    const input = record(value, "fact reference");
+    const kind = oneOf(input.kind, "fact kind", [
+        "problem",
+        "test",
+        "series",
+        "attempt",
+        "user-profile",
+        "selection",
+    ] as const);
+    if (kind === "problem" || kind === "test" || kind === "series") {
+        return { kind, id: rowId(input.id, `${kind} id`) };
+    }
+    if (kind === "user-profile") return { kind };
+    if (kind === "selection") return { kind, text: string(input.text, "selection text", 4_000) };
+    const answer = input.answer;
+    if (answer !== null && answer !== undefined && typeof answer !== "string") {
+        throw new AISchemaError("attempt answer must be a string or null");
+    }
+    const triesUsed = number(input.triesUsed, "tries used");
+    const elapsedMs = number(input.elapsedMs, "elapsed milliseconds");
+    if (!Number.isSafeInteger(triesUsed) || triesUsed < 0 || elapsedMs < 0) {
+        throw new AISchemaError("attempt counters must be non-negative");
+    }
+    return {
+        kind,
+        problemId: rowId(input.problemId, "attempt problem id"),
+        answer: typeof answer === "string" ? answer.slice(0, 1_000) : null,
+        triesUsed,
+        submitted: boolean(input.submitted, "attempt submitted"),
+        revealed: boolean(input.revealed, "attempt revealed"),
+        elapsedMs,
+    };
+}
+
+function parseFactSnapshot(value: unknown): FactRef[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new AISchemaError("context snapshot must be an array");
+    if (value.length > 12) throw new AISchemaError("too many context facts");
+    return value.map(parseFactRef);
+}
+
+function parsePolicy(value: unknown): Policy {
+    return oneOf(value ?? "assist", "context policy", ["coaching", "test-locked", "assist"] as const);
 }
 
 export function parseContextLayer(value: unknown): CoachContextLayer {
@@ -166,12 +204,7 @@ export function parseContextLayer(value: unknown): CoachContextLayer {
                   })(),
         descriptors,
         quickActions,
-        mode: oneOf<AIContextMode>(input.mode, "context mode", [
-            "general",
-            "problem-help",
-            "progress",
-            "test-locked",
-        ]),
+        policy: parsePolicy(input.policy),
     };
 }
 
@@ -314,10 +347,6 @@ export function parseCredentialEnvelope(value: unknown): AIConnectionCredential[
 
 export function parseChatRequest(value: unknown): AIChatRequestBody {
     const input = record(value, "chat request");
-    const contexts = Array.isArray(input.contexts)
-        ? input.contexts.map(parseContextDescriptor)
-        : [];
-    if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
     const message = string(input.message, "message", 8_000).trim();
     if (!message) throw new AISchemaError("message cannot be blank");
     const ephemeralHistory = parseEphemeralHistory(input.ephemeralHistory);
@@ -326,7 +355,8 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
         model: parseModelReference(input.model ?? "auto"),
         message,
-        contexts,
+        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
+        policy: parsePolicy(input.policy),
         task: oneOf<AITaskType>(input.task ?? "general", "task", [
             "general",
             "problem_help",
@@ -345,8 +375,6 @@ export const FLUSH_MAX_TOTAL_CHARS = 200_000;
 
 export function parseConversationFlushRequest(value: unknown): AIConversationFlushRequest {
     const input = record(value, "flush request");
-    const contexts = Array.isArray(input.contexts) ? input.contexts.map(parseContextDescriptor) : [];
-    if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
 
     const rawMessages = input.messages === undefined || input.messages === null ? [] : input.messages;
     if (!Array.isArray(rawMessages)) throw new AISchemaError("messages must be an array");
@@ -379,7 +407,6 @@ export function parseConversationFlushRequest(value: unknown): AIConversationFlu
 
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
-        contexts,
         messages,
         thread: parseThreadIdentity(input.thread),
     };
@@ -397,10 +424,6 @@ export function parseUsage(value: unknown): AIUsage {
 
 export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
     const input = record(value, "persist request");
-    const contexts = Array.isArray(input.contexts)
-        ? input.contexts.map(parseContextDescriptor)
-        : [];
-    if (contexts.length > 12) throw new AISchemaError("too many context descriptors");
     const message = string(input.message, "message", 8_000).trim();
     if (!message) throw new AISchemaError("message cannot be blank");
 
@@ -409,7 +432,7 @@ export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
-        contexts,
+        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
         message,
         thread: parseThreadIdentity(input.thread),
         assistant: {
@@ -633,6 +656,7 @@ export function parseNormalizedMessage(value: unknown): NormalizedAIMessage {
         ] as const),
         createdAt: string(input.createdAt, "created at", 80),
         resolvedModel: optionalString(input.resolvedModel, "resolved model", 200),
+        contextSnapshot: parseFactSnapshot(input.contextSnapshot),
     };
 }
 

@@ -330,13 +330,12 @@
         ownerId="progress:breakdown"
         source="route"
         priority={20}
-        mode="progress"
+        policy="assist"
         descriptors={[
             {
                 id: "progress:breakdown",
-                kind: "progress",
                 label: "Progress breakdown",
-                ephemeralText: progressContextText,
+                ref: { kind: "selection", text: progressContextText },
             },
         ]}
         quickActions={progressCoachActions}

@@ -206,27 +206,37 @@ export type SubmissionInput = {
 /**
  * Record one problem interaction. Inserts a single `submissions` row; a DB
  * trigger maintains the `problem_progress` aggregate (counters + SM-2 schedule).
- * Fire-and-forget: failures are logged, not thrown, so the UI is never blocked.
+ * Returns the inserted row id for best-effort reverse links (for example, the Coach
+ * conversation for this sitting). Failures are logged and return null, so the UI is
+ * never blocked.
  */
 export async function recordSubmission(
     supabase: Supabase,
     userId: string,
     input: SubmissionInput,
-): Promise<void> {
-    const { error } = await supabase.from("submissions").insert({
-        user_id: userId,
-        problem_id: input.problemId,
-        selected_choice: input.selectedChoice,
-        answer: input.answer ?? null,
-        is_correct: input.isCorrect,
-        skipped: input.skipped,
-        flagged: input.flagged,
-        elapsed_ms: input.elapsedMs,
-        source: input.source,
-        session_id: input.sessionId,
-        tries_used: input.triesUsed ?? 0,
-    });
-    if (error) console.error("Failed to record submission:", error);
+): Promise<number | null> {
+    const { data, error } = await supabase
+        .from("submissions")
+        .insert({
+            user_id: userId,
+            problem_id: input.problemId,
+            selected_choice: input.selectedChoice,
+            answer: input.answer ?? null,
+            is_correct: input.isCorrect,
+            skipped: input.skipped,
+            flagged: input.flagged,
+            elapsed_ms: input.elapsedMs,
+            source: input.source,
+            session_id: input.sessionId,
+            tries_used: input.triesUsed ?? 0,
+        })
+        .select("id")
+        .single();
+    if (error) {
+        console.error("Failed to record submission:", error);
+        return null;
+    }
+    return data.id;
 }
 
 /**

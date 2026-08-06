@@ -993,19 +993,17 @@
 
    // What the Coach is looking at. Sits above the layout's route layer (10), so
    // its quick actions win and its descriptor leads the context list.
-   // Shared with the library's chip so the number can't drift between them: the label
-   // is the context chip, the stored `context_summary`, AND the line the model reads
-   // in the system prompt (`problems.n` is 0-based, so it renders `n + 1`).
+   // Shared with the library's chip so the number can't drift between them. The label
+   // is UI-only; model context resolves from the typed problem reference below.
    let coachProblemLabel = $derived(problem ? problemLabel(problem) : "");
-   // The statement verbatim, choices included: `formatProblemText` strips the
-   // choice list for display, and the Coach needs to see what the student sees.
-   let coachProblemText = $derived(
-      problem
-         ? [problem.statement ?? "", ...(problem.choices ?? [])]
-              .filter(Boolean)
-              .join("\n")
-              .slice(0, 4_000)
-         : "",
+   let coachAttemptAnswer = $derived(
+      !problem
+         ? null
+         : isProblemMcq
+           ? answerState.selectedChoice == null
+              ? null
+              : `${String.fromCharCode(65 + answerState.selectedChoice)}. ${problem.choices?.[answerState.selectedChoice] ?? ""}`
+           : answerState.answer.trim() || null,
    );
    const coachQuickActions = [
       {
@@ -1369,7 +1367,7 @@
       };
    });
 
-   function refreshPlayerRating(after: Promise<void>, userId: string) {
+   function refreshPlayerRating(after: Promise<unknown>, userId: string) {
       const before = playerRating?.rating ?? null;
       const seq = ++playerRatingSeq;
       after
@@ -1460,6 +1458,7 @@
             // Wrong tries burned before this final outcome (0 = first-try).
             triesUsed: answerState.triesUsed,
          });
+         coach.recordWorkConclusion(recorded, problem.canonical_id ?? problem.id);
          // Graded attempts are rated live; surface the rating movement.
          if (isCorrect !== null) {
             ratingDelta = null;
@@ -1497,7 +1496,7 @@
       ];
 
       if (user) {
-         recordSubmission(supabase, user.id, {
+         const recorded = recordSubmission(supabase, user.id, {
             problemId: problem.id,
             selectedChoice: null,
             isCorrect: null,
@@ -1507,6 +1506,7 @@
             source: currentSource,
             sessionId: currentSessionId,
          });
+         coach.recordWorkConclusion(recorded, problem.canonical_id ?? problem.id);
          if (currentSessionId != null) {
             sessionAttemptCount += 1;
             clearCurrentProblem(); // skipped → now lives in submissions
@@ -1862,14 +1862,25 @@
          ownerId="trainer:problem"
          source="trainer"
          priority={20}
-         mode="problem-help"
+         policy={isTest && !testFinished ? "test-locked" : "coaching"}
          descriptors={[
             {
                id: `problem:${problem.id}`,
-               kind: "problem",
-               authoritativeId: String(problem.id),
                label: coachProblemLabel,
-               ephemeralText: coachProblemText,
+               ref: { kind: "problem", id: problem.canonical_id ?? problem.id },
+            },
+            {
+               id: `attempt:${problem.id}`,
+               label: "Current attempt",
+               ref: {
+                  kind: "attempt",
+                  problemId: problem.canonical_id ?? problem.id,
+                  answer: coachAttemptAnswer,
+                  triesUsed: answerState.triesUsed,
+                  submitted: answerState.submitted,
+                  revealed: answerState.submitted || revealActive,
+                  elapsedMs,
+               },
             },
          ]}
          quickActions={coachQuickActions}

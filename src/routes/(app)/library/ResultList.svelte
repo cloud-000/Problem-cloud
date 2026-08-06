@@ -253,20 +253,12 @@
         ownerId="library:problem"
         source="selection"
         priority={30}
-        mode="problem-help"
+        policy="coaching"
         descriptors={[
             {
                 id: `problem:${askedProblem.id}`,
-                kind: "problem",
-                authoritativeId: String(askedProblem.id),
                 label: problemLabel(askedProblem),
-                ephemeralText: [
-                    askedProblem.statement ?? "",
-                    ...(askedProblem.choices ?? []),
-                ]
-                    .filter(Boolean)
-                    .join("\n")
-                    .slice(0, 4_000),
+                ref: { kind: "problem", id: askedProblem.canonical_id ?? askedProblem.id },
             },
         ]}
         quickActions={coachQuickActions}

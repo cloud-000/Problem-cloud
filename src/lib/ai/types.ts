@@ -1,5 +1,10 @@
 import type { WorkAnchor } from "./session/anchor";
 import type { CoachThreadKind } from "./session/tier";
+import type { CoachContextDescriptor, FactRef } from "./context/facts";
+import type { Policy } from "./context/policy";
+
+export type { CoachContextDescriptor, FactRef } from "./context/facts";
+export type { Policy } from "./context/policy";
 
 export type AICoachConnectionState =
     | "connected"
@@ -13,7 +18,6 @@ export type AIMessageRole = "user" | "assistant" | "system" | "tool";
 export type AIMessageStatus = "streaming" | "complete" | "failed" | "cancelled";
 export type AITaskType = "general" | "problem_help" | "agentic" | "vision";
 export type AIModelReference = "auto" | `${string}:${string}`;
-export type AIContextMode = "general" | "problem-help" | "progress" | "test-locked";
 export type AIContextSource = "route" | "trainer" | "modal" | "selection";
 
 export interface AIProviderCapabilities {
@@ -112,14 +116,10 @@ export interface NormalizedAIMessage {
     status: AIMessageStatus;
     createdAt: string;
     resolvedModel?: string;
-}
-
-export interface CoachContextDescriptor {
-    id: string;
-    kind: "route" | "problem" | "progress" | "session" | "selection";
-    authoritativeId?: string;
-    label: string;
-    ephemeralText?: string;
+    /** Durable refs captured with a user turn; empty on assistant messages. */
+    contextSnapshot?: FactRef[];
+    /** Runtime-only rendering of that snapshot for provider replay. Never stored. */
+    renderedContext?: string;
 }
 
 export interface CoachQuickAction {
@@ -136,7 +136,7 @@ export interface CoachContextLayer {
     priority: number;
     descriptors: CoachContextDescriptor[];
     quickActions: CoachQuickAction[];
-    mode: AIContextMode;
+    policy: Policy;
 }
 
 export type AIToolConsequence = "read" | "navigate" | "write" | "destructive";
@@ -186,7 +186,9 @@ export interface NormalizedAIRequest {
     model: AIModelReference;
     task: AITaskType;
     message: string;
-    contexts: CoachContextDescriptor[];
+    policy: Policy;
+    /** Resolved and policy-filtered context for the new user turn. */
+    renderedContext: string;
     /** Prior turns supplied to the provider, oldest first, excluding the new prompt. */
     history: NormalizedAIMessage[];
     signal?: AbortSignal;
@@ -280,7 +282,8 @@ export interface AIChatRequestBody {
     userMessageId?: string;
     model: AIModelReference;
     message: string;
-    contexts: CoachContextDescriptor[];
+    contextSnapshot: FactRef[];
+    policy: Policy;
     task: AITaskType;
     /**
      * Whether this turn may be written to history at all. Defaults to true; a one-shot
@@ -306,7 +309,6 @@ export interface AIChatRequestBody {
  */
 export interface AIConversationFlushRequest {
     conversationId?: string;
-    contexts: CoachContextDescriptor[];
     messages: NormalizedAIMessage[];
     thread?: AIThreadIdentity;
 }
@@ -315,7 +317,7 @@ export interface AIConversationFlushRequest {
 export interface AIPersistTurnRequest {
     conversationId?: string;
     userMessageId?: string;
-    contexts: CoachContextDescriptor[];
+    contextSnapshot: FactRef[];
     message: string;
     thread?: AIThreadIdentity;
     assistant: {

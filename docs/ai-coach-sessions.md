@@ -1,7 +1,7 @@
 # AI Coach — Sessions, Context & Tools
 
-> **Status: Phases 0–2 shipped (§2, §4, §5 are live); §3 and §6 are the target
-> state, not yet built.** This is the authoritative explainer for how Coach
+> **Status: Phases 0–3 shipped (§1–§5 are live); §6 is the next target and is not
+> yet built.** This is the authoritative explainer for how Coach
 > conversations are anchored, persisted, and fed context. Phases land
 > incrementally (§8, which marks what has shipped); `CLAUDE.md` is updated as each
 > one ships, so until a phase is marked done the code is still the old model
@@ -180,7 +180,7 @@ Three things that are easy to get wrong here:
   The resume flow has to catch it, re-read the anchor row, and attach: the same
   "continue" branch above, reached from a lost race instead of a prompt.
 
-### What phase 3 removes
+### What phase 3 removed
 
 Two `ai_conversations` columns are superseded and must actually be dropped, or
 the app carries two disagreeing records of the same thing:
@@ -197,8 +197,8 @@ alter table public.ai_conversations
   drop column context_summary;
 ```
 
-Both drops are the last step of phase 3, after `context_snapshot` is being
-written — not the first, so a half-deployed phase never has neither.
+Both drops landed as the last step of phase 3, after `context_snapshot` was being
+written — not the first, so a half-deployed phase never had neither.
 
 ### Why messages stay their own table (decided 2026-08-05)
 
@@ -417,9 +417,9 @@ Attempt state does have two homes, both narrower than the anchor:
   lookup *from outside the trainer* ("open the Coach chat from when I got this
   wrong", from the history/review screen):
   `concluded_submission_id bigint references public.submissions(id) on delete set null`.
-  Deferred to phase 3: `recordSubmission` (`src/lib/progress.ts`) returns `void`
-  today and would need `.select("id").single()`. Best-effort like every other
-  write on this path.
+  Shipped in phase 3: `recordSubmission` (`src/lib/progress.ts`) returns the inserted
+  id via `.select("id").single()`, and `coach.recordWorkConclusion` writes the
+  back-pointer best-effort without blocking grading.
 
   Two things phase 3 must settle here, both consequences of §5's 2026-08-06 revision
   (a concluded thread is still offered back, so a thread can now outlive the
@@ -628,10 +628,10 @@ the time phases 0–1 shipped.
 
 | Current behavior | Where | Replaced by |
 | --- | --- | --- |
-| Context injected into the current system prompt only; never durable | `prompt.ts` `buildSystemMessage`, and `ai_messages` has no context column | §3 snapshots |
-| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | §3 `AttemptFact` |
-| `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts` `parseContextLayer` | §3 policy |
-| `ai_conversations.mode` hardcoded `'general'`; `context_summary` snapshots context per *conversation* | `persistence.ts` `ensureConversation` | §2 `kind` + §3 per-turn `context_snapshot`; both columns dropped in phase 3 |
+| Context injected into the current system prompt only; never durable | `prompt.ts` `buildSystemMessage`, and `ai_messages` has no context column | **✅ Phase 3** — typed refs in per-turn snapshots are resolved and rendered on every replay |
+| Trainer sends statement + choices; no answer, no attempt state | `PracticeView.svelte` `coachProblemText` | **✅ Phase 3** — `ProblemFact` + `AttemptFact` |
+| `CoachContextLayer.mode` consumed by nothing | only validated, `schemas.ts` `parseContextLayer` | **✅ Phase 3** — the highest-priority layer's policy gates rendering |
+| `ai_conversations.mode` hardcoded `'general'`; `context_summary` snapshots context per *conversation* | `persistence.ts` `ensureConversation` | **✅ Phase 3** — both columns dropped; context is per turn |
 | `task` hardcoded `"general"` on both send paths | `coach.svelte.ts`, server and BYOK sends | §6 |
 | A reopened thread is relabelled `assist` whatever it was | `coach.svelte.ts` `selectConversation` | **✅ Phase 2** — `kind` comes back with the row, and a work thread re-adopts its anchor |
 | Nothing anchors a thread to a problem; the trainer's Coach is one global thread | `PracticeView.svelte` `setCoachMode` | **✅ Phase 2** — `openWorkThread` anchors the sitting, and returning to it offers "continue or start new chat?" |
@@ -654,7 +654,7 @@ Each phase is independently shippable and leaves the app working.
 | **0** ✅ | Correctness only: capture `{conversationId, generation}` at send start; client-minted conversation + message ids; idempotent saves; persist `defaultModel`; bound the bootstrap transcript (bounding since superseded — Phase 1 removed the bootstrap transcript outright) | no |
 | **1** ✅ | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
 | **2** ✅ | Anchors + lifecycle (§2, §4, §5): the five columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** — `+kind`, `+problem_id`, `+practice_session_id`, `+last_active_at`, `+retired_at`, `+ai_conversations_work_anchor_idx` |
-| **3** | Typed facts, policy, snapshots (§3); the `concluded_submission_id` back-pointer (§4); drop the superseded `mode` / `context_summary` (§2) | **yes** — `+context_snapshot`, `+concluded_submission_id`, `−mode`, `−context_summary` |
+| **3** ✅ | Typed facts, policy, snapshots (§3); the `concluded_submission_id` back-pointer (§4); drop the superseded `mode` / `context_summary` (§2) | **yes** — `+context_snapshot`, `+concluded_submission_id`, `−mode`, `−context_summary` |
 | **4** | Read-only tools (§6); `task` derived rather than constant | no |
 | **5** | Split `CoachStore` into session / transport / recorder / history / presence | no |
 

@@ -60,6 +60,7 @@
 
    $effect(() => {
       coach.configure(aiCoachEnabled);
+      coach.configureContextResolver(supabase, user?.id);
    });
 
    // Surface notifications as toasts for authenticated users: replay unread ones on
@@ -545,12 +546,15 @@
             ownerId={`route:${page.url.pathname}`}
             source="route"
             priority={10}
-            mode="general"
+            policy="assist"
             descriptors={[
                {
                   id: `route:${page.url.pathname}`,
-                  kind: "route",
                   label: routeLabel(page.url.pathname, coachRouteLabels),
+                  ref: {
+                     kind: "selection",
+                     text: `Current app area: ${routeLabel(page.url.pathname, coachRouteLabels)}`,
+                  },
                },
             ]}
             quickActions={[]}

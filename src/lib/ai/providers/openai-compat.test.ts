@@ -17,7 +17,8 @@ const request = (overrides: Partial<NormalizedAIRequest> = {}): NormalizedAIRequ
     model: "openai:gpt-4o",
     task: "general",
     message: "Explain factoring",
-    contexts: [],
+    policy: "assist",
+    renderedContext: "",
     history: [],
     ...overrides,
 });

@@ -16,7 +16,8 @@ const request = (overrides: Partial<NormalizedAIRequest> = {}): NormalizedAIRequ
     model: "mock:coach-standard",
     task: "general",
     message: "Explain factoring",
-    contexts: [],
+    policy: "assist",
+    renderedContext: "",
     history: [],
     ...overrides,
 });

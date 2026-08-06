@@ -59,7 +59,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     assertRateLimit(user.id, "ai.conversations.create", 20);
     if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
 
-    let body: AIConversationFlushRequest = { contexts: [], messages: [] };
+    let body: AIConversationFlushRequest = { messages: [] };
     if (request.headers.get("content-type")?.includes("application/json")) {
         try {
             body = parseConversationFlushRequest(await request.json());
@@ -78,7 +78,6 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         const id = await ensureConversation({
             userId: user.id,
             conversationId: body.conversationId,
-            contexts: body.contexts,
             titleSource: firstPrompt && messageText(firstPrompt),
             thread: body.thread,
         });

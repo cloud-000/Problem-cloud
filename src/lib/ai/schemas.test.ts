@@ -26,12 +26,13 @@ import {
 describe("AI runtime schemas", () => {
     test("accepts a minimal provider-neutral chat request", () => {
         expect(
-            parseChatRequest({ model: "auto", message: "Hello", task: "general", contexts: [] }),
+            parseChatRequest({ model: "auto", message: "Hello", task: "general" }),
         ).toEqual({
             model: "auto",
             message: "Hello",
             task: "general",
-            contexts: [],
+            contextSnapshot: [],
+            policy: "assist",
             // Recording a turn is the default; only a one-shot opts out (§1).
             persist: true,
         });
@@ -151,11 +152,42 @@ describe("AI runtime schemas", () => {
             ownerId: "route:home",
             source: "route",
             priority: 10,
-            mode: "general",
-            descriptors: [{ id: "route:/", kind: "route", label: "Home" }],
+            policy: "assist",
+            descriptors: [
+                { id: "route:/", label: "Home", ref: { kind: "selection", text: "Home" } },
+            ],
             quickActions: [],
         });
         expect(layer.ownerId).toBe("route:home");
+    });
+
+    test("validates per-turn fact snapshots without accepting rendered prose", () => {
+        const parsed = parseChatRequest({
+            model: "auto",
+            message: "Check this",
+            policy: "coaching",
+            contextSnapshot: [
+                { kind: "problem", id: 42 },
+                {
+                    kind: "attempt",
+                    problemId: 42,
+                    answer: "B",
+                    triesUsed: 1,
+                    submitted: false,
+                    revealed: false,
+                    elapsedMs: 5000,
+                },
+            ],
+        });
+        expect(parsed.contextSnapshot).toHaveLength(2);
+        expect(parsed.policy).toBe("coaching");
+        const stripped = parseChatRequest({
+                model: "auto",
+                message: "Nope",
+                contextSnapshot: [{ kind: "problem", id: 42, rendered: "trust me" }],
+            });
+        expect(stripped.contextSnapshot[0]).toEqual({ kind: "problem", id: 42 });
+        expect(parsed.contextSnapshot[0]).toEqual({ kind: "problem", id: 42 });
     });
 
     test("validates normalized stream events", () => {
@@ -271,7 +303,6 @@ describe("ephemeral history validation", () => {
         const body = parseChatRequest({
             model: "auto",
             message: "Continue",
-            contexts: [],
             ephemeralHistory: [turn("user", "Earlier")],
         });
         expect(body.ephemeralHistory).toEqual([{ role: "user", text: "Earlier" }]);
@@ -354,7 +385,6 @@ describe("one-shot flush requests", () => {
     test("accepts a transcript the browser already holds", () => {
         const body = parseConversationFlushRequest({
             conversationId: uuid("0"),
-            contexts: [],
             messages: [flushed(), flushed({ id: uuid("2"), role: "assistant" })],
         });
         expect(body.conversationId).toBe(uuid("0"));
@@ -364,7 +394,6 @@ describe("one-shot flush requests", () => {
     test("an empty body still creates a conversation", () => {
         expect(parseConversationFlushRequest({})).toEqual({
             conversationId: undefined,
-            contexts: [],
             messages: [],
         });
     });

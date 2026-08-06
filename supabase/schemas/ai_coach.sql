@@ -1,4 +1,4 @@
--- AI Coach persistence (phases 1–2). Authenticated clients may read only their own safe
+-- AI Coach persistence (phases 1–3). Authenticated clients may read only their own safe
 -- records; all writes are made by authenticated server endpoints using the
 -- service role so roles, provider metadata, and completion status cannot be spoofed.
 --
@@ -22,9 +22,6 @@ create table public.ai_conversations (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references public.profiles(id) on delete cascade,
   title            text not null default 'New conversation',
-  mode             text not null default 'general'
-                     check (mode in ('general', 'problem_help', 'progress', 'review')),
-  context_summary  jsonb not null default '[]'::jsonb,
   -- Which family this thread belongs to (docs/ai-coach-sessions.md §1). Drives resume
   -- behavior and retention. A one-shot never reaches this table at all.
   kind             text not null default 'assist' check (kind in ('work', 'assist')),
@@ -59,6 +56,10 @@ create table public.ai_conversations (
   -- still listed, still readable, and still browsable; they simply no longer answer the
   -- anchor lookup.
   retired_at       timestamp with time zone,
+  -- Reverse lookup for review/history: the most recent submission that concluded this
+  -- sitting. One anchor can conclude repeatedly, so the app intentionally uses
+  -- last-write-wins. The conversation survives a deleted submission.
+  concluded_submission_id bigint references public.submissions(id) on delete set null,
   archived_at      timestamp with time zone,
   created_at       timestamp with time zone not null default now(),
   updated_at       timestamp with time zone not null default now()
@@ -101,6 +102,9 @@ create table public.ai_messages (
   resolved_model    text,
   status            text not null check (status in ('streaming', 'complete', 'failed', 'cancelled')),
   usage_summary     jsonb,
+  -- Durable typed refs for the facts active on this user turn. Resolved content and
+  -- rendered prompt prose are deliberately never stored; old turns re-resolve live.
+  context_snapshot  jsonb not null default '[]'::jsonb,
   created_at        timestamp with time zone not null default now()
 );
 

@@ -11,8 +11,10 @@ const layer = (ownerId: string, priority: number, descriptorId: string): CoachCo
     ownerId,
     source: priority > 10 ? "modal" : "route",
     priority,
-    mode: "general",
-    descriptors: [{ id: descriptorId, kind: "route", label: descriptorId }],
+    policy: "assist",
+    descriptors: [
+        { id: descriptorId, label: descriptorId, ref: { kind: "selection", text: descriptorId } },
+    ],
     quickActions: [{ id: ownerId, label: ownerId, prompt: ownerId }],
 });
 

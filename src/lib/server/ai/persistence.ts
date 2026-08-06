@@ -6,7 +6,7 @@ import type {
     AIMessageStatus,
     AIThreadIdentity,
     AIUsage,
-    CoachContextDescriptor,
+    FactRef,
     ConversationSummary,
     NormalizedAIMessage,
     WorkThreadSummary,
@@ -15,6 +15,8 @@ import type { WorkAnchor } from "$lib/ai/session/anchor";
 import type { CoachThreadKind } from "$lib/ai/session/tier";
 import type { Database, Json } from "$lib/types/database.types";
 import { messageText, partsText, PREVIEW_MAX_CHARS } from "$lib/ai/conversations";
+import { renderHistorySnapshots, renderSnapshot } from "$lib/ai/context/resolve";
+import type { Policy } from "$lib/ai/context/policy";
 import {
     encodeCursor,
     type ConversationCursor,
@@ -135,9 +137,10 @@ interface MessageRow {
     status: string;
     created_at: string;
     resolved_model: string | null;
+    context_snapshot: Json;
 }
 
-const MESSAGE_COLUMNS = "id, role, content_parts, status, created_at, resolved_model";
+const MESSAGE_COLUMNS = "id, role, content_parts, status, created_at, resolved_model, context_snapshot";
 
 function normalizedMessage(message: MessageRow): NormalizedAIMessage {
     return {
@@ -147,6 +150,9 @@ function normalizedMessage(message: MessageRow): NormalizedAIMessage {
         status: normalizedMessageStatus(message.status),
         createdAt: message.created_at,
         resolvedModel: message.resolved_model ?? undefined,
+        contextSnapshot: Array.isArray(message.context_snapshot)
+            ? (message.context_snapshot as unknown as FactRef[])
+            : [],
     };
 }
 
@@ -297,6 +303,20 @@ export async function conversationHistory(
     return selected.reverse();
 }
 
+export async function resolveTurnContext(
+    userId: string,
+    contextSnapshot: FactRef[],
+    history: NormalizedAIMessage[],
+    policy: Policy,
+): Promise<{ renderedContext: string; history: NormalizedAIMessage[] }> {
+    const client = admin();
+    const [renderedContext, renderedHistory] = await Promise.all([
+        renderSnapshot(client, contextSnapshot, policy, userId),
+        renderHistorySnapshots(client, history, policy, userId),
+    ]);
+    return { renderedContext, history: renderedHistory };
+}
+
 /**
  * Retires a work thread from its anchor (§5), freeing the unique-index slot.
  *
@@ -350,12 +370,11 @@ export async function archiveConversation(userId: string, conversationId: string
 export async function ensureConversation(input: {
     userId: string;
     conversationId?: string;
-    contexts: CoachContextDescriptor[];
     titleSource?: string;
     /** Which family the row is created as (§2). Ignored for a conversation that exists. */
     thread?: AIThreadIdentity;
 }): Promise<string> {
-    const { userId, contexts, thread } = input;
+    const { userId, thread } = input;
     const id = input.conversationId ?? crypto.randomUUID();
     const title = input.titleSource?.trim().slice(0, 80) || "New conversation";
     const anchor = thread?.kind === "work" ? thread.anchor : undefined;
@@ -366,18 +385,9 @@ export async function ensureConversation(input: {
                 id,
                 user_id: userId,
                 title,
-                mode: "general",
                 kind: thread?.kind ?? "assist",
                 problem_id: anchor?.problemId ?? null,
                 practice_session_id: anchor?.practiceSessionId ?? null,
-                context_summary: contexts.map(
-                    ({ id: contextId, kind, authoritativeId, label }) => ({
-                        id: contextId,
-                        kind,
-                        authoritativeId,
-                        label,
-                    }),
-                ),
             },
             { onConflict: "id", ignoreDuplicates: true },
         );
@@ -464,6 +474,7 @@ export async function saveUserMessage(
     conversationId: string,
     message: string,
     id: string = crypto.randomUUID(),
+    contextSnapshot: FactRef[] = [],
 ): Promise<string> {
     const { error } = await admin()
         .from("ai_messages")
@@ -473,6 +484,7 @@ export async function saveUserMessage(
                 conversation_id: conversationId,
                 role: "user",
                 content_parts: [{ type: "text", text: message }],
+                context_snapshot: contextSnapshot as unknown as Json,
                 status: "complete",
             },
             { onConflict: "id", ignoreDuplicates: true },
@@ -507,12 +519,31 @@ export async function saveTranscript(
                 content_parts: message.parts as unknown as Json,
                 status: message.status,
                 resolved_model: message.resolvedModel ?? null,
+                context_snapshot: (message.contextSnapshot ?? []) as unknown as Json,
                 created_at: new Date(message.createdAt).toISOString(),
             })),
             { onConflict: "id", ignoreDuplicates: true },
         );
     if (error) throw error;
     await touchConversation(conversationId);
+}
+
+/** Last-write-wins review back-pointer for a concluded work sitting (§4). */
+export async function concludeConversation(
+    userId: string,
+    conversationId: string,
+    submissionId: number,
+): Promise<void> {
+    const { data, error } = await admin()
+        .from("ai_conversations")
+        .update({ concluded_submission_id: submissionId })
+        .eq("id", conversationId)
+        .eq("user_id", userId)
+        .eq("kind", "work")
+        .select("id")
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AIPersistenceError("conversation_not_found", "Conversation not found");
 }
 
 export async function saveAssistantMessage(input: {

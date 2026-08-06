@@ -121,12 +121,15 @@ export function toAnyModelMessages(
     for (const entry of history) {
         if (entry.role !== "user" && entry.role !== "assistant") continue;
         if (entry.role === "assistant" && entry.status !== "complete") continue;
-        const text = entry.parts
+        let text = entry.parts
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("\n")
             .trim();
         if (!text) continue;
+        if (entry.role === "user" && entry.renderedContext) {
+            text = `[Facts active for this historical turn]\n${entry.renderedContext}\n\n[Student]\n${text}`;
+        }
 
         const previous = turns.at(-1);
         if (previous?.role === entry.role) previous.content += `\n\n${text}`;
@@ -267,7 +270,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
         const messages = toAnyModelMessages(
             request.history,
             request.message,
-            buildSystemMessage(request.contexts),
+            buildSystemMessage(request.renderedContext, request.policy),
         );
 
         const model = registry.languageModel(`${this.id}:${modelId}`);

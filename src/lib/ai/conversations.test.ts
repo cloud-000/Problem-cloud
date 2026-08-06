@@ -163,7 +163,7 @@ describe("flushableTranscript", () => {
         expect(flushed).toHaveLength(FLUSH_MAX_MESSAGES);
         expect(flushed.at(-1)).toEqual(messages.at(-1)!);
         expect(() =>
-            parseConversationFlushRequest({ contexts: [], messages: flushed }),
+            parseConversationFlushRequest({ messages: flushed }),
         ).not.toThrow();
     });
 });

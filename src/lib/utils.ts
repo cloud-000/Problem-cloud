@@ -20,10 +20,9 @@ export function formatElapsed(ms: number): string {
  * How a problem names itself: `2023 AMC 10A #18`, or `Problem #18` untethered.
  *
  * **`problems.n` is 0-based** — problem #1 stores `n = 0` — so the displayed number is
- * always `n + 1`. Shared rather than formatted at each call site because the label is not
- * only decoration: it is the Coach's context chip, the stored `context_summary`, and the
- * line the model reads in the system prompt, so drift here misnames the problem to the
- * model, not just to the reader.
+ * always `n + 1`. Shared rather than formatted at each call site so every visible label,
+ * including the Coach's context chip, names the problem consistently. Model context is
+ * resolved separately from the typed problem reference.
  */
 export function problemLabel(problem: {
     n: number;

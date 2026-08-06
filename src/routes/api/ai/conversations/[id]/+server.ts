@@ -4,6 +4,7 @@ import { aiCoachEnabled } from "$lib/server/ai/config";
 import {
     AIPersistenceError,
     archiveConversation,
+    concludeConversation,
     conversationById,
     preferencesFor,
     retireConversation,
@@ -34,7 +35,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request, url }) =>
     assertRateLimit(user.id, "ai.conversations.archive", 30);
     if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
 
-    let body: { archived?: unknown; retired?: unknown } | null;
+    let body: { archived?: unknown; retired?: unknown; concludedSubmissionId?: unknown } | null;
     try {
         body = await request.json();
     } catch {
@@ -43,15 +44,21 @@ export const PATCH: RequestHandler = async ({ locals, params, request, url }) =>
     // Two different facts, deliberately not one flag (§5): `retired` releases a work
     // thread's anchor slot and leaves it in history, `archived` is the user deleting it.
     const retiring = body?.retired === true;
-    if (!retiring && body?.archived !== true) {
+    const submissionId = body?.concludedSubmissionId;
+    const concluding = Number.isSafeInteger(submissionId) && Number(submissionId) > 0;
+    if (!retiring && body?.archived !== true && !concluding) {
         return stableError(
             "invalid_request",
-            "Only { archived: true } or { retired: true } is supported",
+            "Only archive, retire, or a positive concludedSubmissionId is supported",
             400,
         );
     }
 
     try {
+        if (concluding) {
+            await concludeConversation(user.id, params.id, Number(submissionId));
+            return json({ concludedSubmissionId: submissionId });
+        }
         if (retiring) {
             await retireConversation(user.id, params.id);
             return json({ retired: true });

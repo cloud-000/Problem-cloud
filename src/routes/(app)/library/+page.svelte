@@ -399,13 +399,12 @@
         ownerId="library:results"
         source="route"
         priority={20}
-        mode="general"
+        policy="assist"
         descriptors={[
             {
                 id: "library:results",
-                kind: "route",
                 label: `${store.current.level[0]?.toUpperCase()}${store.current.level.slice(1)} results`,
-                ephemeralText: coachContextText,
+                ref: { kind: "selection", text: coachContextText },
             },
         ]}
         quickActions={coachQuickActions}

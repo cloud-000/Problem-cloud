@@ -59,8 +59,8 @@ function responseFor(request: NormalizedAIRequest, scenario: AIMockScenario): st
         request.history.length > 0
             ? `Picking up from ${request.history.length} earlier ${request.history.length === 1 ? "message" : "messages"}. `
             : "";
-    if (request.contexts.length > 0) {
-        return `${continuity}I can use the attached context “${request.contexts[0].label}”. For this deterministic preview, try separating what is given from what must be shown. A useful identity is $a^2-b^2=(a-b)(a+b)$.`;
+    if (request.renderedContext) {
+        return `${continuity}I can use the attached typed facts. For this deterministic preview, try separating what is given from what must be shown. A useful identity is $a^2-b^2=(a-b)(a+b)$.`;
     }
     return `${continuity}I’m Coach. This deterministic preview is streaming through the same provider-neutral path real models will use. Ask a math or study-planning question to continue.`;
 }

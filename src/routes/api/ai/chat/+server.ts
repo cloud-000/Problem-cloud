@@ -9,6 +9,7 @@ import {
     conversationHistory,
     ensureConversation,
     preferencesFor,
+    resolveTurnContext,
     saveAssistantMessage,
     saveUserMessage,
 } from "$lib/server/ai/persistence";
@@ -66,13 +67,17 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             conversationId = await ensureConversation({
                 userId: user.id,
                 conversationId,
-                contexts: body.contexts,
                 titleSource: body.message,
                 thread: body.thread,
             });
             // Load before saving the new prompt so history holds only prior turns.
             history = await conversationHistory(user.id, conversationId);
-            await saveUserMessage(conversationId, body.message, body.userMessageId);
+            await saveUserMessage(
+                conversationId,
+                body.message,
+                body.userMessageId,
+                body.contextSnapshot,
+            );
         } else {
             conversationId = crypto.randomUUID();
             // Persisted conversations never trust a client transcript; an unrecorded
@@ -80,14 +85,21 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             history = ephemeralMessages(body.ephemeralHistory);
         }
 
+        const resolved = await resolveTurnContext(
+            user.id,
+            body.contextSnapshot,
+            history,
+            body.policy,
+        );
         const providerStream = await provider.stream({
             requestId: crypto.randomUUID(),
             conversationId,
             model: model.reference,
             task: body.task,
             message: body.message,
-            contexts: body.contexts,
-            history,
+            policy: body.policy,
+            renderedContext: resolved.renderedContext,
+            history: resolved.history,
             signal: request.signal,
         });
 

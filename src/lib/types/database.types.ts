@@ -175,12 +175,11 @@ export type Database = {
       ai_conversations: {
         Row: {
           archived_at: string | null
-          context_summary: Json
+          concluded_submission_id: number | null
           created_at: string
           id: string
           kind: string
           last_active_at: string
-          mode: string
           practice_session_id: number | null
           problem_id: number | null
           retired_at: string | null
@@ -190,12 +189,11 @@ export type Database = {
         }
         Insert: {
           archived_at?: string | null
-          context_summary?: Json
+          concluded_submission_id?: number | null
           created_at?: string
           id?: string
           kind?: string
           last_active_at?: string
-          mode?: string
           practice_session_id?: number | null
           problem_id?: number | null
           retired_at?: string | null
@@ -205,12 +203,11 @@ export type Database = {
         }
         Update: {
           archived_at?: string | null
-          context_summary?: Json
+          concluded_submission_id?: number | null
           created_at?: string
           id?: string
           kind?: string
           last_active_at?: string
-          mode?: string
           practice_session_id?: number | null
           problem_id?: number | null
           retired_at?: string | null
@@ -219,6 +216,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_conversations_concluded_submission_id_fkey"
+            columns: ["concluded_submission_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["submission_id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_concluded_submission_id_fkey"
+            columns: ["concluded_submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_conversations_problem_id_fkey"
             columns: ["problem_id"]
@@ -245,6 +256,7 @@ export type Database = {
       ai_messages: {
         Row: {
           content_parts: Json
+          context_snapshot: Json
           conversation_id: string
           created_at: string
           id: string
@@ -256,6 +268,7 @@ export type Database = {
         }
         Insert: {
           content_parts?: Json
+          context_snapshot?: Json
           conversation_id: string
           created_at?: string
           id?: string
@@ -267,6 +280,7 @@ export type Database = {
         }
         Update: {
           content_parts?: Json
+          context_snapshot?: Json
           conversation_id?: string
           created_at?: string
           id?: string

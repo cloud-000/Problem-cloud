@@ -33,10 +33,15 @@ import { resolveModel } from "$lib/ai/router";
 import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/client-registry";
 import {
     activeContextDescriptors,
+    activeFactRefs,
+    activePolicy,
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
-} from "$lib/ai/context-stack";
+} from "$lib/ai/context/registry";
+import { renderHistorySnapshots, renderSnapshot } from "$lib/ai/context/resolve";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "$lib/types/database.types";
 import { aiCredentials } from "./ai-credentials.svelte";
 import { utilityPanel } from "./utility-panel.svelte";
 import { MOCK_PROVIDER_ID } from "$lib/ai/types";
@@ -50,13 +55,14 @@ import type {
     AIModelReference,
     AIThreadIdentity,
     AIUsage,
-    CoachContextDescriptor,
     CoachContextLayer,
     CoachResumeOffer,
     ConversationSummary,
     NormalizedAIEvent,
     NormalizedAIMessage,
     WorkThreadSummary,
+    FactRef,
+    Policy,
 } from "$lib/ai/types";
 
 const CONVERSATION_PAGE_SIZE = 20;
@@ -124,6 +130,8 @@ class CoachStore {
     /** The bootstrap request in flight, so concurrent callers join it instead of racing it. */
     #initializing: Promise<void> | null = null;
     #lastPrompt = "";
+    #contextClient: SupabaseClient<Database> | null = null;
+    #contextUserId: string | undefined;
     /**
      * A promotion that arrived mid-stream. The flush waits for the turn to finish so it
      * writes the whole answer rather than the half of it that had arrived — the in-flight
@@ -140,6 +148,22 @@ class CoachStore {
 
     get activeContexts() {
         return activeContextDescriptors(this.contextLayers, new Set(this.detachedContextIds));
+    }
+
+    get activeContextSnapshot(): FactRef[] {
+        const refs = activeFactRefs(this.contextLayers, new Set(this.detachedContextIds));
+        return this.#contextUserId && !refs.some((ref) => ref.kind === "user-profile")
+            ? [...refs, { kind: "user-profile" }]
+            : refs;
+    }
+
+    get contextPolicy(): Policy {
+        return activePolicy(this.contextLayers);
+    }
+
+    configureContextResolver(client: SupabaseClient<Database>, userId?: string): void {
+        this.#contextClient = client;
+        this.#contextUserId = userId;
     }
 
     get selectedModel(): AIModelReference {
@@ -438,12 +462,15 @@ class CoachStore {
         // Built before the new prompt joins the transcript so it carries prior turns only.
         const ephemeralHistory = this.ephemeralHistory();
         const userMessageId = crypto.randomUUID();
+        const contextSnapshot = this.activeContextSnapshot;
+        const policy = this.contextPolicy;
         this.messages.push({
             id: userMessageId,
             role: "user",
             parts: [{ type: "text", text: message }],
             status: "complete",
             createdAt: new Date().toISOString(),
+            contextSnapshot,
         });
 
         // Everything the turn will need is captured here, before the first await.
@@ -451,7 +478,6 @@ class CoachStore {
         // conversation cleared or switched mid-stream would otherwise receive the turn.
         const generation = this.#generation;
         const conversationId = this.#ensureConversationId();
-        const contexts = this.activeContexts;
         const thread = this.#threadIdentity();
         const controller = new AbortController();
         this.#abortController = controller;
@@ -465,7 +491,8 @@ class CoachStore {
                     message,
                     userMessageId,
                     conversationId,
-                    contexts,
+                    contextSnapshot,
+                    policy,
                     thread,
                     credential,
                     controller,
@@ -477,7 +504,8 @@ class CoachStore {
                     userMessageId,
                     model: this.selectedModel,
                     message,
-                    contexts,
+                    contextSnapshot,
+                    policy,
                     thread,
                     task: "general",
                     // A one-shot streams without leaving a row behind. The server would
@@ -740,6 +768,28 @@ class CoachStore {
     }
 
     /**
+     * Captures the active work conversation before awaiting the submission insert, then
+     * links the completed row back to it. Last write wins for repeated conclusions at
+     * one anchor, and a failed link never affects grading or the visible conversation.
+     */
+    recordWorkConclusion(submission: Promise<number | null>, problemId: number): void {
+        if (this.workAnchor?.problemId !== problemId || !this.conversationId) return;
+        const conversationId = this.conversationId;
+        void submission.then(async (submissionId) => {
+            if (submissionId == null) return;
+            try {
+                await fetch(`/api/ai/conversations/${conversationId}`, {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json", accept: "application/json" },
+                    body: JSON.stringify({ concludedSubmissionId: submissionId }),
+                });
+            } catch {
+                // Reverse lookup is best-effort and must never surface as a failed grade.
+            }
+        });
+    }
+
+    /**
      * Which thread a request is writing into (§2). Captured before a turn's first await,
      * exactly like the conversation id: an anchor re-read afterwards could belong to a
      * problem the student has already moved on to.
@@ -800,7 +850,6 @@ class CoachStore {
                 headers: { "content-type": "application/json", accept: "application/json" },
                 body: JSON.stringify({
                     conversationId: id,
-                    contexts: this.activeContexts,
                     thread,
                     messages,
                 }),
@@ -824,7 +873,8 @@ class CoachStore {
         message: string;
         userMessageId: string;
         conversationId: string | undefined;
-        contexts: CoachContextDescriptor[];
+        contextSnapshot: FactRef[];
+        policy: Policy;
         thread: AIThreadIdentity | undefined;
         credential: AIConnectionCredential;
         controller: AbortController;
@@ -837,7 +887,23 @@ class CoachStore {
 
         // History comes from the transcript already in memory: the server has no copy for
         // BYOK turns, and re-fetching one would reintroduce the round trip we removed.
-        const history = boundCoachHistory(this.messages.slice(0, -1));
+        const rawHistory = boundCoachHistory(this.messages.slice(0, -1));
+        const client = this.#contextClient;
+        if (
+            !client &&
+            (turn.contextSnapshot.length > 0 || rawHistory.some((item) => item.contextSnapshot?.length))
+        ) {
+            throw new Error("Coach context resolver is unavailable");
+        }
+        // The app shell configures the browser resolver before any real send. Keeping
+        // the empty-fact path independent also makes one-shots and isolated store tests
+        // work without inventing a database dependency they do not use.
+        const [history, renderedContext] = client
+            ? await Promise.all([
+                  renderHistorySnapshots(client, rawHistory, turn.policy, this.#contextUserId),
+                  renderSnapshot(client, turn.contextSnapshot, turn.policy, this.#contextUserId),
+              ])
+            : [rawHistory, ""];
 
         const stream = await adapter.stream({
             requestId: crypto.randomUUID(),
@@ -845,7 +911,8 @@ class CoachStore {
             model: model.reference,
             task: "general",
             message,
-            contexts: turn.contexts,
+            policy: turn.policy,
+            renderedContext,
             history,
             signal: controller.signal,
         });
@@ -914,7 +981,7 @@ class CoachStore {
             message: string;
             userMessageId: string;
             conversationId: string | undefined;
-            contexts: CoachContextDescriptor[];
+            contextSnapshot: FactRef[];
             thread: AIThreadIdentity | undefined;
             generation: number;
         },
@@ -941,7 +1008,7 @@ class CoachStore {
                 body: JSON.stringify({
                     conversationId,
                     userMessageId: turn.userMessageId,
-                    contexts: turn.contexts,
+                    contextSnapshot: turn.contextSnapshot,
                     thread: turn.thread,
                     message: turn.message,
                     assistant,

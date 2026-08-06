@@ -43,14 +43,18 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         const conversationId = await ensureConversation({
             userId: user.id,
             conversationId: body.conversationId,
-            contexts: body.contexts,
             titleSource: body.message,
             thread: body.thread,
         });
 
         // Both ids come from the browser's transcript, so a retried save resolves to the
         // same two rows rather than duplicating the turn.
-        await saveUserMessage(conversationId, body.message, body.userMessageId);
+        await saveUserMessage(
+            conversationId,
+            body.message,
+            body.userMessageId,
+            body.contextSnapshot,
+        );
         await saveAssistantMessage({
             id: body.assistant.id ?? crypto.randomUUID(),
             conversationId,
