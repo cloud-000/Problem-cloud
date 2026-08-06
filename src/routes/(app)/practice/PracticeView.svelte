@@ -56,7 +56,7 @@
       updateSessionSettings,
       type PracticeSessionRow,
    } from "$lib/sessions";
-   import { cn, formatProblemText } from "$lib/utils";
+   import { cn, formatProblemText, problemLabel } from "$lib/utils";
    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
@@ -83,6 +83,13 @@
       type PracticeAnswerState,
       type PracticeHistoryEntry,
    } from "./practice-state";
+   import {
+      openTrainerAnchor,
+      releasedTrainerAnchor,
+      trainerAnchorLeft,
+      trainerAnchorWork,
+      type TrainerCoachAnchor,
+   } from "./coach-anchor";
    import {
       createPracticeSettingsForm,
       practiceSettingsFromForm,
@@ -899,12 +906,12 @@
    );
    let coachComposer = $state<HTMLTextAreaElement | null>(null);
 
-   // Whether the work the Coach thread was opened for has concluded (§5). Tracked
-   // separately from `answerState` because it has to outlive the on-screen
-   // problem: both a skip and a departure load the next problem — resetting the
-   // answer state — before the anchor is released, so reading it at release time
-   // would always report an unconcluded sitting.
-   let coachAnchorState = $state({ submitted: false, skipped: false });
+   // Which sitting the Coach thread is anchored to, and whether that work has
+   // concluded (§5). Deliberately separate from `coachModeProblemId`, which is
+   // only whether the Coach is on screen: hiding the Coach does not leave the
+   // anchor, but changing problem does, and one variable doing both jobs meant a
+   // toggled-off Coach never released.
+   let coachAnchor = $state<TrainerCoachAnchor>(releasedTrainerAnchor());
 
    function setCoachMode(enabled: boolean) {
       if (!problem || !coachModeAvailable) return;
@@ -912,13 +919,14 @@
       if (!enabled) return;
       coach.closeQuickAsk(false);
       if (utilityPanel.activeView === "coach") utilityPanel.close(false);
-      coachAnchorState = { submitted: answerState.submitted, skipped: false };
+      coachAnchor = openTrainerAnchor(coachAnchor, problem.id, answerState.submitted);
       // The trainer owns a thread anchored to this sitting, so entering Coach mode
       // promotes whatever the quick-ask was holding in memory (§1) and then asks
       // whether this problem already has a live thread to continue (§2).
-      void coach.openWorkThread(anchorFor(problem, currentSessionId), {
-         ...coachAnchorState,
-      });
+      void coach.openWorkThread(
+         anchorFor(problem, currentSessionId),
+         trainerAnchorWork(coachAnchor),
+      );
       void coach.initialize();
       queueMicrotask(() => coachComposer?.focus());
    }
@@ -931,29 +939,30 @@
    // the problem — where the thread deliberately stays live and writable, since
    // that is the moment they most want to ask "why?".
    $effect(() => {
-      if (coachModeProblemId !== problem?.id || !answerState.submitted) return;
-      coachAnchorState.submitted = true;
+      if (coachAnchor.problemId !== problem?.id || !answerState.submitted) return;
+      coachAnchor.submitted = true;
    });
 
    // Moving off the anchor is what retires a concluded thread (§5); an unconcluded
    // one stays live and is offered back on return. Toggling Coach mode off is
    // deliberately not a release — the student is still on the problem, so
-   // reopening rejoins the same thread.
+   // reopening rejoins the same thread. Keyed on the anchor rather than on the
+   // Coach's visibility, so a Coach hidden before moving on still releases.
    $effect(() => {
       const onScreen = problem?.id;
       untrack(() => {
-         if (coachModeProblemId == null || coachModeProblemId === onScreen) return;
-         const state = { ...coachAnchorState };
+         if (!trainerAnchorLeft(coachAnchor, onScreen)) return;
+         const state = trainerAnchorWork(coachAnchor);
          coachModeProblemId = null;
-         coachAnchorState = { submitted: false, skipped: false };
+         coachAnchor = releasedTrainerAnchor();
          void coach.releaseWorkAnchor(state);
       });
    });
 
    // Leaving the trainer entirely is the same departure as changing problem.
    onDestroy(() => {
-      if (coachModeProblemId == null) return;
-      void coach.releaseWorkAnchor(coachAnchorState);
+      if (coachAnchor.problemId == null) return;
+      void coach.releaseWorkAnchor(trainerAnchorWork(coachAnchor));
    });
 
    // The global chord resolves to the inline composer while this mode is
@@ -984,13 +993,10 @@
 
    // What the Coach is looking at. Sits above the layout's route layer (10), so
    // its quick actions win and its descriptor leads the context list.
-   let coachProblemLabel = $derived(
-      problem
-         ? problem.tests?.name
-            ? `${problem.tests.name} #${problem.n}`
-            : `Problem #${problem.n}`
-         : "",
-   );
+   // Shared with the library's chip so the number can't drift between them: the label
+   // is the context chip, the stored `context_summary`, AND the line the model reads
+   // in the system prompt (`problems.n` is 0-based, so it renders `n + 1`).
+   let coachProblemLabel = $derived(problem ? problemLabel(problem) : "");
    // The statement verbatim, choices included: `formatProblemText` strips the
    // choice list for display, and the Coach needs to see what the student sees.
    let coachProblemText = $derived(
@@ -1241,6 +1247,8 @@
       currentSource = entry.source;
       currentProgress = entry.progress;
       answerState = restorePracticeAnswerState(entry);
+      // Visibility only — the anchor is released by the effect above, which sees
+      // the problem change. Clearing it here instead would strand the thread.
       coachModeProblemId = null;
       masteryTouched = false;
       segmentRevealed = false;
@@ -1472,7 +1480,7 @@
       // An explicit "I'm done with this" concludes the Coach thread for this
       // sitting too (§5). Recorded here rather than read off `answerState`
       // because the next problem loads immediately after.
-      if (coachModeProblemId === problem.id) coachAnchorState.skipped = true;
+      if (coachAnchor.problemId === problem.id) coachAnchor.skipped = true;
 
       const elapsed = liveElapsed();
       answerState.attemptIndex = attempts.length;

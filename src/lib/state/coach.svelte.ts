@@ -23,7 +23,8 @@ import {
 } from "$lib/ai/session/tier";
 import { sameAnchor, type WorkAnchor } from "$lib/ai/session/anchor";
 import {
-    workArchivable,
+    workConcluded,
+    workRetirable,
     workResumable,
     type WorkAnchorState,
 } from "$lib/ai/session/lifecycle";
@@ -51,6 +52,7 @@ import type {
     AIUsage,
     CoachContextDescriptor,
     CoachContextLayer,
+    CoachResumeOffer,
     ConversationSummary,
     NormalizedAIEvent,
     NormalizedAIMessage,
@@ -100,7 +102,7 @@ class CoachStore {
      * everything else about the Coach stays usable while it is up, because the prompt is
      * about which thread to attach to, not a modal over the surface.
      */
-    resumePrompt = $state<WorkThreadSummary | null>(null);
+    resumePrompt = $state<CoachResumeOffer | null>(null);
     draft = $state("");
     #selectedModel = $state<AIModelReference>("auto");
     streaming = $state(false);
@@ -119,6 +121,8 @@ class CoachStore {
     #quickAskInvoker: HTMLElement | null = null;
     #inlineTarget: InlineCoachTarget | null = null;
     #abortController: AbortController | null = null;
+    /** The bootstrap request in flight, so concurrent callers join it instead of racing it. */
+    #initializing: Promise<void> | null = null;
     #lastPrompt = "";
     /**
      * A promotion that arrived mid-stream. The flush waits for the turn to finish so it
@@ -345,8 +349,30 @@ class CoachStore {
         return catalogFor(clientProviderRegistry(credentials));
     }
 
+    /**
+     * Loads the bootstrap once, and lets concurrent callers *await* the one in flight.
+     *
+     * The in-flight guard used to return immediately, which is fine for the fire-and-
+     * forget callers (`void coach.initialize()`) and wrong for anyone who awaits it to
+     * know the bootstrap has landed — `openWorkThread` reads `historyEnabled` off it,
+     * and a null bootstrap reads as "saving is off".
+     */
     async initialize(force = false): Promise<void> {
-        if (!this.enabled || (this.initialized && !force) || this.loading) return;
+        if (!this.enabled) return;
+        if (this.#initializing) {
+            await this.#initializing;
+            if (!force) return;
+        }
+        if (this.initialized && !force) return;
+        this.#initializing = this.#loadBootstrap();
+        try {
+            await this.#initializing;
+        } finally {
+            this.#initializing = null;
+        }
+    }
+
+    async #loadBootstrap(): Promise<void> {
         this.loading = true;
         this.error = null;
         try {
@@ -579,9 +605,10 @@ class CoachStore {
      * The trainer taking over a problem (§2, §4).
      *
      * This is the only entry point that can attach the Coach to a *sitting*, and it does
-     * three things in order that cannot be reordered: adopt the anchor (so a promotion
-     * flushes into the right thread), promote whatever the quick-ask was holding, and
-     * only then ask the server whether that sitting already has a thread.
+     * four things in order that cannot be reordered: adopt the anchor (so a promotion
+     * flushes into the right thread), promote whatever the quick-ask was holding, leave
+     * behind any thread that is not this sitting's, and only then ask the server whether
+     * that sitting already has a thread.
      *
      * `state` is the trainer's view of the work itself — it is what turns a found row
      * into "continue or start new chat?" rather than an unconditional resume.
@@ -598,11 +625,31 @@ class CoachStore {
         this.workAnchor = anchor;
         this.resumePrompt = null;
         // Carries the quick-ask's turns into this sitting's thread, if there were any.
+        // Synchronous, before any await: the tier decides what the next send writes.
         const flushed = this.#promote("work");
-        if (rejoining || flushed || !this.persisted) return;
+        if (rejoining || flushed) return;
+        // Whatever else is on screen belongs to another thread — a panel assist thread,
+        // or the problem the student just left — and it already has its own rows. Left
+        // up, the trainer would show that transcript, file this sitting's turns into it,
+        // and never offer the prompt at all, since the lookup below stands down when the
+        // chat is non-empty. A one-shot is not cleared: it has no rows to go back to.
+        // Nor is a streaming one — clearing aborts the turn, and cutting off an answer
+        // the user is watching to make room for a prompt is the worse trade; the offer
+        // simply lapses, exactly as it does when they out-type the lookup.
+        if (this.conversationId && !this.streaming) this.newConversation();
 
+        // Captured after that clear, which bumps the generation itself.
         const generation = this.#generation;
         try {
+            // The lookup only means anything once the user's saving preference has
+            // arrived. Entering Coach mode is usually the first thing that touches the
+            // store on a freshly loaded trainer, and `historyEnabled` off a null
+            // bootstrap reads as "saving is off" — which silently skipped the lookup on
+            // the first open after every page load, exactly when a thread from the
+            // previous sitting is most likely to be waiting.
+            if (!this.initialized) await this.initialize();
+            if (generation !== this.#generation || !sameAnchor(this.workAnchor, anchor)) return;
+            if (!this.persisted) return;
             const existing = await this.#fetchWorkThread(anchor);
             // The trainer moved on, or another thread was selected, while this was in
             // flight: offering the old anchor's thread now would be an ambush.
@@ -612,21 +659,23 @@ class CoachStore {
             // the fresh thread they started is the one they meant.
             if (this.messages.length > 0 || this.streaming) return;
             if (!existing) return;
-            if (
-                workResumable({
-                    ...state,
-                    leftAnchor: false,
-                    idleMs: idleSince(existing.lastActiveAt),
-                })
-            ) {
-                this.resumePrompt = existing;
+            const lifecycle = {
+                ...state,
+                leftAnchor: false,
+                idleMs: idleSince(existing.lastActiveAt),
+            };
+            if (workResumable(lifecycle)) {
+                // A finished sitting is offered too, and says so: the chat about a problem
+                // the student just got wrong is the one they most want back.
+                this.resumePrompt = { ...existing, concluded: workConcluded(lifecycle) };
                 return;
             }
             // Concluded or gone stale, so it is no longer offerable — and it still holds
             // this anchor's unique-index slot. Retiring it here is what lets the fresh
             // thread be created at all; §5 routes both cases through the same
-            // `archived_at = now()` as an explicit "new chat".
-            await this.#archiveThread(existing.id);
+            // `retired_at = now()` as an explicit "new chat". It stays in history: this
+            // is the thread the student comes back for after getting the problem wrong.
+            await this.#retireThread(existing.id);
         } catch {
             // The lookup is an offer, not a requirement: a failure opens a blank Coach
             // rather than blocking the student out of the Coach entirely.
@@ -654,38 +703,39 @@ class CoachStore {
     }
 
     /**
-     * Decline the offer. The old thread is archived rather than left alone, because it
-     * holds the anchor's index slot — and it stays in history, which is the whole reason
-     * archiving is a soft delete.
+     * Decline the offer. The old thread is retired rather than left alone, because it
+     * holds the anchor's index slot — and retiring is not deleting, so it stays in
+     * history exactly as it was.
      */
     async startNewWorkThread(): Promise<void> {
         const offered = this.resumePrompt;
         this.resumePrompt = null;
         this.newConversation();
-        if (offered) await this.#archiveThread(offered.id);
+        if (offered) await this.#retireThread(offered.id);
     }
 
     /**
      * The student has moved off the anchor (another problem, or out of the trainer).
      *
-     * Concluded ≠ archived (§5): the row is retired only now, once both halves are true,
-     * which is what leaves a submitted thread live and writable for as long as the
-     * student stays on the problem.
+     * Concluded ≠ retired (§5): the row releases its anchor only now, once both halves
+     * are true, which is what leaves a submitted thread live and writable for as long as
+     * the student stays on the problem. Retiring it does not remove it from history —
+     * the chat about a problem they just got wrong is one they may well come back for.
      */
     async releaseWorkAnchor(
         state: Pick<WorkAnchorState, "submitted" | "skipped">,
     ): Promise<void> {
         if (!this.workAnchor) return;
         const conversationId = this.conversationId;
-        const archivable = workArchivable({ ...state, leftAnchor: true, idleMs: 0 });
+        const retirable = workRetirable({ ...state, leftAnchor: true, idleMs: 0 });
         this.workAnchor = null;
         this.resumePrompt = null;
         this.newConversation();
         // The work presentation is over, so the next summons decides the tier again.
         // Leaving it at "work" would make an unanchored quick-ask write a work row.
         this.tier = utilityPanel.activeView === "coach" ? "assist" : "one-shot";
-        if (archivable && conversationId && this.historyEnabled) {
-            await this.#archiveThread(conversationId);
+        if (retirable && conversationId && this.historyEnabled) {
+            await this.#retireThread(conversationId);
         }
     }
 
@@ -716,15 +766,17 @@ class CoachStore {
         return winner;
     }
 
-    /** Archives a thread and drops it from the list, without touching the active chat. */
-    async #archiveThread(conversationId: string): Promise<void> {
+    /** Releases a thread's anchor slot (§5), without touching the active chat. */
+    async #retireThread(conversationId: string): Promise<void> {
         try {
             await fetch(`/api/ai/conversations/${conversationId}`, {
                 method: "PATCH",
                 headers: { "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ archived: true }),
+                body: JSON.stringify({ retired: true }),
             });
-            this.conversations = this.conversations.filter((item) => item.id !== conversationId);
+            // Deliberately not dropped from `conversations`: retiring releases the anchor
+            // slot, it does not delete the thread. The server still lists it, and the
+            // student who submitted and moved on can still open what they were told.
         } catch {
             // Best-effort: a thread that outlives its anchor is offered once more and
             // retired then, which is better than failing the gesture that left it.

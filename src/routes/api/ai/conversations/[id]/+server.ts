@@ -6,6 +6,7 @@ import {
     archiveConversation,
     conversationById,
     preferencesFor,
+    retireConversation,
 } from "$lib/server/ai/persistence";
 import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 
@@ -33,23 +34,38 @@ export const PATCH: RequestHandler = async ({ locals, params, request, url }) =>
     assertRateLimit(user.id, "ai.conversations.archive", 30);
     if (!aiCoachEnabled()) return stableError("feature_disabled", "Coach is not enabled", 404);
 
-    let archived: unknown;
+    let body: { archived?: unknown; retired?: unknown } | null;
     try {
-        archived = (await request.json())?.archived;
+        body = await request.json();
     } catch {
         return stableError("invalid_request", "Invalid JSON request", 400);
     }
-    if (archived !== true) {
-        return stableError("invalid_request", "Only { archived: true } is supported", 400);
+    // Two different facts, deliberately not one flag (§5): `retired` releases a work
+    // thread's anchor slot and leaves it in history, `archived` is the user deleting it.
+    const retiring = body?.retired === true;
+    if (!retiring && body?.archived !== true) {
+        return stableError(
+            "invalid_request",
+            "Only { archived: true } or { retired: true } is supported",
+            400,
+        );
     }
 
     try {
+        if (retiring) {
+            await retireConversation(user.id, params.id);
+            return json({ retired: true });
+        }
         await archiveConversation(user.id, params.id);
         return json({ archived: true });
     } catch (error) {
         if (error instanceof AIPersistenceError && error.code === "conversation_not_found") {
             return stableError(error.code, error.message, 404);
         }
-        return stableError("archive_failed", "The conversation could not be archived", 503);
+        return stableError(
+            retiring ? "retire_failed" : "archive_failed",
+            `The conversation could not be ${retiring ? "retired" : "archived"}`,
+            503,
+        );
     }
 };

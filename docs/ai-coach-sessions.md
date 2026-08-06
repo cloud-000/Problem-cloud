@@ -27,9 +27,9 @@ which is the only thing that promotes a one-shot.
 | Example | Coaching on AMC 10A #18 in the trainer | "what should I review?", "find that cyclic-quadrilateral problem" | Library query bar; a quick-ask that was never escalated |
 | Anchored to | one problem in one practice session | nothing | nothing |
 | Persisted | yes | yes | **never — no DB row exists** |
-| Auto-resumed | **yes, by prompt** (§2 index, §5 rule) | no — new thread each open, history one click away | n/a |
+| Auto-resumed | **yes, by prompt** (§2 index, §5 rule) — including after it concludes | no — new thread each open, history one click away | n/a |
 | Context style | **context-heavy, tool-light** | **context-light, tool-heavy** | tool-only |
-| Retention | archived on conclusion (§5), then browsable | `ai_preferences.retention_days` | n/a |
+| Retention | retired from its anchor on conclusion (§5), still browsable | `ai_preferences.retention_days` | n/a |
 
 ### Why the split exists
 
@@ -99,7 +99,17 @@ alter table public.ai_conversations
 
   -- Retention + staleness, without overloading updated_at. Also drives the
   -- resumability cutoff in §5.
-  add column last_active_at timestamptz not null default now();
+  add column last_active_at timestamptz not null default now(),
+
+  -- When this thread stopped being the LIVE one for its anchor, freeing the
+  -- index slot below. Set when the sitting concluded and the student moved on,
+  -- when the thread went stale, or when they answered "start new chat".
+  --
+  -- Deliberately NOT `archived_at`. Retiring a work thread and deleting a
+  -- conversation are different facts; one column doing both meant every
+  -- concluded thread vanished from the user's history, which this document
+  -- promises twice that it does not.
+  add column retired_at timestamptz;
 
 alter table public.ai_messages
   -- The facts that were live when this turn was sent (§3).
@@ -112,11 +122,11 @@ The one index that implements "you have an existing session — continue or new?
 create unique index ai_conversations_work_anchor_idx
   on public.ai_conversations (user_id, problem_id, practice_session_id)
   nulls not distinct
-  where kind = 'work' and archived_at is null
+  where kind = 'work' and archived_at is null and retired_at is null
     and problem_id is not null;
 ```
 
-Both extra clauses are load-bearing:
+All three extra clauses are load-bearing:
 
 - **`nulls not distinct`** (PG 15+). Postgres treats NULLs as *distinct* in a
   unique index by default, so without it "this problem, no practice session"
@@ -126,16 +136,24 @@ Both extra clauses are load-bearing:
   Threads orphaned by a problem delete fall out of the index (so two different
   deleted problems don't collide on `(user, null, session)`) and never match the
   resume lookup — correct, since there is no longer an anchor to resume onto.
+- **`retired_at is null`** is what "live" means. `archived_at` stays in the
+  predicate because a deleted thread is not live either, but it is no longer what
+  *releases* the slot — that made concluding a sitting delete its conversation as
+  a side effect.
 
 **At most one live work thread per (user, problem, practice session).** The
 resume prompt is a UI consequence of this constraint, not a separate mechanism:
 
-- Trainer loads problem X in session S → look up that row.
-  - Found and resumable (§5) → prompt "continue or start new chat".
-  - Not found → no prompt, blank Coach.
+- Trainer loads problem X in session S → look up the newest thread at that anchor
+  (live or retired).
+  - Found and resumable (§5 — recent enough, finished or not) → prompt "continue
+    or start new chat".
+  - Not found, or stale → no prompt, blank Coach.
 - **Continue** → attach to it.
-- **New chat** → `archived_at = now()` on the old row (releasing the partial
-  index), insert a fresh one. The old thread stays in history.
+- **New chat** → `retired_at = now()` on the old row (releasing the partial
+  index), insert a fresh one. The old thread stays in history — retiring is not
+  deleting, and `PATCH /api/ai/conversations/[id]` takes the two as separate
+  flags (`{retired:true}` vs the user's own `{archived:true}`) for that reason.
 
 Assist threads have null anchors, so the partial index ignores them — a user may
 have any number.
@@ -395,13 +413,26 @@ Attempt state does have two homes, both narrower than the anchor:
 - **Per turn**, as §3's `AttemptFact` — the answer typed but not submitted, tries
   burned, elapsed time. Those exist nowhere else once the trainer's memory is
   gone, and message grain is the right grain for them.
-- **One nullable back-pointer at conclusion**, which is the only thing that buys
-  the reverse lookup ("open the Coach chat from when I got this wrong", from the
-  history/review screen):
+- **One nullable back-pointer at conclusion**, which is what buys the reverse
+  lookup *from outside the trainer* ("open the Coach chat from when I got this
+  wrong", from the history/review screen):
   `concluded_submission_id bigint references public.submissions(id) on delete set null`.
   Deferred to phase 3: `recordSubmission` (`src/lib/progress.ts`) returns `void`
   today and would need `.select("id").single()`. Best-effort like every other
   write on this path.
+
+  Two things phase 3 must settle here, both consequences of §5's 2026-08-06 revision
+  (a concluded thread is still offered back, so a thread can now outlive the
+  submission that concluded it):
+
+  - **Which submission wins.** One anchor can conclude more than once — a problem
+    skipped and later answered in the same session writes two `submissions` rows, and
+    the same thread is offered back across both. A single column must pick: **last
+    write wins** is the better default, since the reverse lookup wants the sitting the
+    student is reviewing now, and the earlier turns are still in the transcript.
+  - **It is no longer the *only* route back.** The trainer now offers a concluded
+    thread at its anchor, so this column serves the review screen specifically. That
+    makes it lower-priority than it reads above, not redundant.
 
 ### No link table (decided 2026-08-05)
 
@@ -436,21 +467,21 @@ export interface WorkAnchorState {
     idleMs: number;   // now - last_active_at
 }
 
-/** How long an unconcluded thread stays offerable. Tuning knob, not a rule. */
+/** How long a thread stays offerable, concluded or not. Tuning knob, not a rule. */
 export const WORK_STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 
-/** Has the work this thread was opened for concluded? Submitting or skipping does it. */
+/** Concluded? Submitting or skipping does it. Decides retirement, and the prompt's wording. */
 export function workConcluded(s: WorkAnchorState): boolean {
     return s.submitted || s.skipped;
 }
 
-/** May the thread be resumed if the user returns to the anchor? Drives the prompt. */
+/** May the thread be offered back if the user returns to the anchor? Drives the prompt. */
 export function workResumable(s: WorkAnchorState): boolean {
-    return !workConcluded(s) && s.idleMs < WORK_STALE_AFTER_MS;
+    return s.idleMs < WORK_STALE_AFTER_MS;
 }
 
-/** When the row is actually archived — freeing the unique index slot. */
-export function workArchivable(s: WorkAnchorState): boolean {
+/** When the row releases its anchor slot. Retired ≠ deleted: it stays in history. */
+export function workRetirable(s: WorkAnchorState): boolean {
     return workConcluded(s) && s.leftAnchor;
 }
 ```
@@ -464,19 +495,35 @@ is a *solution-access* gate (§6's `get_solution`), not the end of a sitting, an
 student who reveals and then asks "why?" is exactly who the thread is for. A spec
 field no function reads is a promise the code isn't keeping.
 
-**Staleness is why `workResumable` is not just `!workConcluded`.** A thread
-abandoned without submitting never concludes, so without a cutoff it stays
-resumable forever — and per §4 the root session would then offer "continue or
-start new?" over a week-old thread the user has entirely forgotten. Staleness
-only suppresses the *prompt*: the row is still live and still in history, and
-taking the fresh thread archives it through the same `archived_at = now()` path
-as an explicit "new chat" (§2), releasing the index slot.
+**Conclusion does not suppress the offer (revised 2026-08-06).** `workResumable`
+originally read `!workConcluded(s) && …`, so returning to a problem you had
+submitted or skipped opened blank. That was backwards: the chat about a problem
+you just got wrong is the one you most want back, and "what was I struggling with
+here?" is the reason the thread was worth keeping at all. A concluded thread is
+offered exactly like an unconcluded one — `workConcluded` now decides only how the
+prompt is *worded* ("you talked this problem through" / "Open that chat" versus
+"Continue"), which is a real caller, not a spec field no function reads.
 
-**Concluded ≠ archived, on purpose.** Submitting a wrong answer is the moment a
+**Staleness is therefore the only rule left in `workResumable`,** and it is the one
+that matters: the root session never ends, so without a cutoff the trainer would
+offer a week-old thread the student has entirely forgotten. Staleness only
+suppresses the *prompt*; the row is still in history, and taking the fresh thread
+retires it through the same `retired_at = now()` path as an explicit "new chat"
+(§2), releasing the index slot.
+
+**The lookup therefore includes retired threads** (`workConversationForAnchor`
+orders by `last_active_at` and takes the newest, filtering only `archived_at`).
+It has to: finishing a sitting is exactly what retires the row, so a lookup
+restricted to live rows could never find the sitting most worth reviewing. Only
+*live* rows are bounded to one per anchor, hence the ordering. Attaching to a
+retired thread is safe — writes go by conversation id, and a retired row is not
+competing for the anchor slot, so nothing can collide.
+
+**Concluded ≠ retired, on purpose.** Submitting a wrong answer is the moment a
 student most wants to ask "why?" — so the thread stays live and writable while
-they remain on the problem, and is archived only when they move on. Returning to
-the problem later therefore starts clean, and the old discussion is still in
-history.
+they remain on the problem, and is retired only when they move on. Returning to
+the problem later is then *offered* that discussion back rather than starting
+clean — retiring released the anchor slot, it did not hide the thread.
 
 ### Where phase 2 lives
 
@@ -487,17 +534,37 @@ plumbing around them.
 | --- | --- |
 | Anchor a sitting, decide the prompt | `coach.openWorkThread(anchor, state)` — promotes, looks up, offers or retires |
 | Answer the prompt | `coach.resumeWorkThread()` / `coach.startNewWorkThread()`; UI in `coach-resume-prompt.svelte` |
-| Leave the anchor | `coach.releaseWorkAnchor(state)` — the only caller of `workArchivable` |
-| Trainer wiring | `PracticeView.svelte` `setCoachMode` + the release `$effect`; `recordSkip` sets `skipped` |
-| The lookup | `GET /api/ai/work-thread` → `workConversationForAnchor` |
+| Leave the anchor | `coach.releaseWorkAnchor(state)` — the only caller of `workRetirable` |
+| Trainer wiring | `PracticeView.svelte` `setCoachMode` + the release `$effect`; `recordSkip` sets `skipped`. The anchor it holds is `coach-anchor.ts` (pure), **not** the Coach's visibility — see below |
+| The lookup | `GET /api/ai/work-thread` → `workConversationForAnchor` — newest thread at the anchor, **retired or not** |
 | Create with a kind/anchor | `ensureConversation({ thread })`, which also raises `AIWorkAnchorConflict` |
 | Bump `last_active_at` | `touchConversation`, and nothing else |
 
-Two things a reader will otherwise look for and not find:
+Four things a reader will otherwise look for and not find:
 
-- **Staleness is decided in the browser, not in the lookup.** `workResumable` also
-  needs attempt state that only the trainer holds, so the endpoint returns the row
-  with `last_active_at` and the one pure rule runs in one place.
+- **The prompt has three ways to be silently suppressed, and all three were bugs.**
+  The lookup needs the bootstrap (the saving preference lives there, and a null one
+  reads as "saving is off", so the first open after a page load never asked); it needs
+  the chat to be empty, so `openWorkThread` leaves behind any thread that is not this
+  sitting's rather than letting a stale transcript stand the lookup down; and it needs
+  the anchor to have been released when the student left the last one. A suppressed
+  prompt is invisible — the trainer just opens blank — so each of these reads as
+  "resume doesn't work sometimes" rather than as a failure.
+
+- **What the trainer holds is an anchor record, not a visibility flag.** Hiding the
+  Coach is not leaving the anchor (the student is still on the problem, so reopening
+  rejoins the thread), but changing problem is. `PracticeView` therefore keeps
+  `coachAnchor` — `{problemId, submitted, skipped}`, the pure `coach-anchor.ts` —
+  separate from `coachModeProblemId`, which only says whether the Coach is on screen.
+  Collapsed into one variable, a Coach toggled off before moving on never released:
+  the row stayed live holding its index slot, no resume prompt was ever offered again
+  (`openWorkThread` sees the stale transcript and stands down), and the next problem's
+  turns were filed into the previous problem's thread.
+- **Staleness is decided in the browser, not in the lookup.** Not because
+  `workResumable` needs trainer state — since 2026-08-06 it reads only `idleMs` — but
+  because the *offer* does: `workConcluded` picks the prompt's wording from attempt
+  state the server never sees, so the endpoint returns the row with `last_active_at`
+  and both pure rules run together in one place.
 - **`nulls not distinct` is hand-written in the migration.** pgdelta does not emit
   it, so a regenerated migration will silently drop it — and the index then stops
   bounding the sessionless case it exists for.
@@ -586,7 +653,7 @@ Each phase is independently shippable and leaves the app working.
 | --- | --- | --- |
 | **0** ✅ | Correctness only: capture `{conversationId, generation}` at send start; client-minted conversation + message ids; idempotent saves; persist `defaultModel`; bound the bootstrap transcript (bounding since superseded — Phase 1 removed the bootstrap transcript outright) | no |
 | **1** ✅ | Tiers (§1): `persist` tier on the session, quick-ask holds in memory, flush-on-escalate, assist threads stop auto-resuming | no |
-| **2** ✅ | Anchors + lifecycle (§2, §4, §5): the four columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** — `+kind`, `+problem_id`, `+practice_session_id`, `+last_active_at`, `+ai_conversations_work_anchor_idx` |
+| **2** ✅ | Anchors + lifecycle (§2, §4, §5): the five columns, the unique index, the staleness cutoff, the "continue or new?" prompt | **yes** — `+kind`, `+problem_id`, `+practice_session_id`, `+last_active_at`, `+retired_at`, `+ai_conversations_work_anchor_idx` |
 | **3** | Typed facts, policy, snapshots (§3); the `concluded_submission_id` back-pointer (§4); drop the superseded `mode` / `context_summary` (§2) | **yes** — `+context_snapshot`, `+concluded_submission_id`, `−mode`, `−context_summary` |
 | **4** | Read-only tools (§6); `task` derived rather than constant | no |
 | **5** | Split `CoachStore` into session / transport / recorder / history / presence | no |

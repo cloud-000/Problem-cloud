@@ -183,6 +183,7 @@ export type Database = {
           mode: string
           practice_session_id: number | null
           problem_id: number | null
+          retired_at: string | null
           title: string
           updated_at: string
           user_id: string
@@ -197,6 +198,7 @@ export type Database = {
           mode?: string
           practice_session_id?: number | null
           problem_id?: number | null
+          retired_at?: string | null
           title?: string
           updated_at?: string
           user_id: string
@@ -211,6 +213,7 @@ export type Database = {
           mode?: string
           practice_session_id?: number | null
           problem_id?: number | null
+          retired_at?: string | null
           title?: string
           updated_at?: string
           user_id?: string

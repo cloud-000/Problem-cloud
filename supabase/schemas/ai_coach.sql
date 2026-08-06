@@ -48,6 +48,17 @@ create table public.ai_conversations (
   -- else touches it: set only at creation it would measure a thread's AGE, and a
   -- thread worked in all afternoon would read as stale.
   last_active_at   timestamp with time zone not null default now(),
+  -- When this thread stopped being the LIVE one for its anchor, freeing the unique
+  -- index slot below (docs/ai-coach-sessions.md §5). Three things set it: the sitting
+  -- concluded and the student moved on, the thread went stale, or the student answered
+  -- "start new chat".
+  --
+  -- Deliberately not `archived_at`. Retiring a work thread and deleting a conversation
+  -- are different facts, and overloading one column made every concluded thread vanish
+  -- from the user's history — which §2/§5 promise it does not. Retired threads are
+  -- still listed, still readable, and still browsable; they simply no longer answer the
+  -- anchor lookup.
+  retired_at       timestamp with time zone,
   archived_at      timestamp with time zone,
   created_at       timestamp with time zone not null default now(),
   updated_at       timestamp with time zone not null default now()
@@ -68,6 +79,9 @@ create index ai_conversations_user_updated_idx
 --     orphaned by a problem delete fall out of the index (so two different deleted
 --     problems don't collide on (user, null, session)) and never match the resume
 --     lookup, which is correct: there is no longer an anchor to resume onto.
+--   * `retired_at is null` — what "live" means. `archived_at` stays in the predicate
+--     because a deleted thread is not live either, but it is no longer what releases
+--     the slot: that would delete the conversation as a side effect of concluding it.
 --
 -- Note there is deliberately no `check (kind <> 'work' or problem_id is not null)`:
 -- it looks like the obvious integrity constraint and would make deleting a problem
@@ -75,7 +89,8 @@ create index ai_conversations_user_updated_idx
 create unique index ai_conversations_work_anchor_idx
   on public.ai_conversations (user_id, problem_id, practice_session_id)
   nulls not distinct
-  where kind = 'work' and archived_at is null and problem_id is not null;
+  where kind = 'work' and archived_at is null and retired_at is null
+    and problem_id is not null;
 
 create table public.ai_messages (
   id                uuid primary key default gen_random_uuid(),

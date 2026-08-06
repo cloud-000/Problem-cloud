@@ -15,6 +15,7 @@
     import type { Engagement, Mastery, PersonalProblemState } from "$lib/progress";
     import type { LibraryStore } from "$lib/state/library.svelte";
     import { practiceLaunchHref } from "$lib/practice-launch";
+    import { problemLabel } from "$lib/utils";
     import { CoachContextRegister } from "$lib/components/coach";
     import { coach } from "$lib/state/coach.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
@@ -258,9 +259,7 @@
                 id: `problem:${askedProblem.id}`,
                 kind: "problem",
                 authoritativeId: String(askedProblem.id),
-                label: askedProblem.tests?.name
-                    ? `${askedProblem.tests.name} #${askedProblem.n + 1}`
-                    : `Problem #${askedProblem.n + 1}`,
+                label: problemLabel(askedProblem),
                 ephemeralText: [
                     askedProblem.statement ?? "",
                     ...(askedProblem.choices ?? []),

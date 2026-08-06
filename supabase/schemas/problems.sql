@@ -61,7 +61,10 @@ create table public.problems (
 
   -- relational link back to the source test
   test_id            bigint references public.tests(id) on delete cascade,
-  n                  integer not null,        -- problem number within the test
+  -- Position within the test, 0-BASED: problem #1 stores n = 0. Every user-facing
+  -- render is `n + 1`; only raw-column displays (the problem-details popover) show it
+  -- as stored.
+  n                  integer not null,
 
   -- Duplicate pointer. When this row is an ALIAS of another problem (the same
   -- real-world problem placed under a different test, e.g. AMC 10A #18 also

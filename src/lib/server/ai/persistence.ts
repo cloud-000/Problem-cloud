@@ -297,6 +297,33 @@ export async function conversationHistory(
     return selected.reverse();
 }
 
+/**
+ * Retires a work thread from its anchor (§5), freeing the unique-index slot.
+ *
+ * Deliberately not `archiveConversation`. Retiring is not deleting: the thread stays in
+ * the user's history, stays readable, and is still offered back on a return visit — it
+ * only stops being the *live* thread for the anchor, so the next sitting can start its
+ * own. Archiving it here — one column doing both jobs — is what made every concluded
+ * sitting's chat disappear from history, which §2 and §5 both promise it does not.
+ */
+export async function retireConversation(userId: string, conversationId: string): Promise<void> {
+    // Idempotent on purpose: a thread resumed after it was retired is retired again when
+    // the student leaves, and re-stamping the timestamp would falsify when it first came
+    // off the anchor. An already-retired row is a no-op success; only an id that is not
+    // the user's own is still an error.
+    const { data, error } = await admin()
+        .from("ai_conversations")
+        .update({ retired_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("user_id", userId)
+        .is("retired_at", null)
+        .select("id")
+        .maybeSingle();
+    if (error) throw error;
+    if (data) return;
+    await ensureOwnedConversation(userId, conversationId);
+}
+
 /** Soft-archives an owned conversation; messages are retained for a future restore. */
 export async function archiveConversation(userId: string, conversationId: string): Promise<void> {
     const { data, error } = await admin()
@@ -369,12 +396,19 @@ export async function ensureConversation(input: {
 }
 
 /**
- * The live work thread for an anchor, if there is one. At most one can exist — that is
- * what `ai_conversations_work_anchor_idx` enforces — so this is a lookup, not a search.
+ * The most recent work thread for an anchor, if the user has one.
  *
- * Staleness is deliberately not applied here: §5's `workResumable` also needs attempt
- * state that only the trainer holds, so the row (with `last_active_at`) is returned and
- * the one pure rule decides in one place, client-side.
+ * **Retired threads are deliberately included (revised 2026-08-06).** Only *live* rows
+ * are bounded to one per anchor, so this orders and takes the newest rather than reading
+ * the single live row — and it has to, because the sitting the student most wants back is
+ * a finished one ("what was I struggling with here?"), and finishing is exactly what
+ * retires the row. Attaching to a retired thread is safe: writes go by conversation id,
+ * and a retired row is not competing for the anchor slot, so nothing can collide.
+ *
+ * Archived threads stay excluded — that is the user's own delete.
+ *
+ * Staleness is deliberately not applied here: §5's `workResumable` runs client-side, so
+ * the row (with `last_active_at`) is returned and the one pure rule decides in one place.
  */
 export async function workConversationForAnchor(
     userId: string,
@@ -386,7 +420,9 @@ export async function workConversationForAnchor(
         .eq("user_id", userId)
         .eq("kind", "work")
         .eq("problem_id", anchor.problemId)
-        .is("archived_at", null);
+        .is("archived_at", null)
+        .order("last_active_at", { ascending: false })
+        .limit(1);
     // Library work has no session. `is` rather than `eq`, because `= null` matches
     // nothing in SQL — the index's `nulls not distinct` makes that slot a real one.
     const { data, error } = await (anchor.practiceSessionId === null

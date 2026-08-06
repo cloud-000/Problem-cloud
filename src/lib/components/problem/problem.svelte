@@ -300,7 +300,10 @@
                     <div class="flex flex-col gap-1.5">
                         {@render detail("id", problem.id)}
                         {@render detail("test id", problem.test_id)}
-                        {@render detail("number", problem.n)}
+                        <!-- Raw column, like `id` and `test id` above it: `problems.n` is
+                             0-based, so problem #1 stores 0. Everywhere the number is
+                             shown as a number it is rendered `n + 1`. -->
+                        {@render detail("n (0-based)", problem.n)}
                         {#if detailsAnswer !== null}
                             <div class="grid grid-cols-[6rem_1fr] gap-2">
                                 <span class="text-muted-foreground"

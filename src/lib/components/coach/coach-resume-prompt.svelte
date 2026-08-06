@@ -58,7 +58,13 @@
             </span>
             <div class="min-w-0 flex-1">
                 <p class="text-xs font-medium text-foreground">
-                    You were talking about this problem {idleLabel(offered.lastActiveAt)}
+                    {#if offered.concluded}
+                        <!-- The sitting is over, so this is a review of what they
+                             struggled with, not work to pick back up. -->
+                        You talked this problem through {idleLabel(offered.lastActiveAt)}
+                    {:else}
+                        You were talking about this problem {idleLabel(offered.lastActiveAt)}
+                    {/if}
                 </p>
                 {#if offered.preview}
                     <p class="mt-0.5 truncate text-xs leading-5 text-muted-foreground">
@@ -69,7 +75,7 @@
         </div>
         <div class="flex items-center gap-2 pl-9.5">
             <Button size="sm" class="text-xs" disabled={busy} onclick={() => choose(true)}>
-                Continue
+                {offered.concluded ? "Open that chat" : "Continue"}
             </Button>
             <Button
                 size="sm"

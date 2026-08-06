@@ -84,6 +84,8 @@ interface RecordedRequest {
 }
 
 let bootstrapCalls = 0;
+/** What `/api/ai/bootstrap` answers with — the saving preference is what varies. */
+let bootstrapPayload: unknown = BOOTSTRAP;
 let recorded: RecordedRequest[] = [];
 let persistStatus = 200;
 /** What the anchor lookup answers with; null is "this sitting has no thread yet". */
@@ -107,7 +109,7 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
     }
     if (url.includes("/api/ai/bootstrap")) {
         bootstrapCalls += 1;
-        return json(BOOTSTRAP);
+        return json(bootstrapPayload);
     }
     if (url.includes("/api/ai/work-thread")) {
         workThreadCalls.push(url);
@@ -386,6 +388,11 @@ const archiveCalls = () =>
     recorded.filter(
         (entry) => entry.url.includes("/api/ai/conversations/") && entry.body.archived === true,
     );
+/** Releasing an anchor slot (§5) — deliberately a different write from deleting. */
+const retireCalls = () =>
+    recorded.filter(
+        (entry) => entry.url.includes("/api/ai/conversations/") && entry.body.retired === true,
+    );
 const chatCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/chat"));
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -606,6 +613,7 @@ describe("coach work threads", () => {
         anchorConflictWinner = null;
         recorded = [];
         streamGate = null;
+        bootstrapPayload = BOOTSTRAP;
     });
 
     test("a sitting with no thread opens blank, with no prompt", async () => {
@@ -625,20 +633,98 @@ describe("coach work threads", () => {
         expect(coach.messages).toHaveLength(0);
     });
 
-    test("§5: a concluded thread is not offered, and releases its anchor slot", async () => {
+    test("the first open after a page load still asks — the bootstrap is awaited", async () => {
         workThread = offeredThread(60_000);
+        // A freshly loaded trainer: entering Coach mode is the first thing that touches
+        // the store, so the saving preference has not arrived. Read off a null bootstrap
+        // it says "saving is off", which used to skip the lookup entirely — no prompt on
+        // the first open, which is exactly when a previous sitting is waiting.
+        coach.initialized = false;
+        coach.bootstrap = null;
+        bootstrapPayload = { ...BOOTSTRAP, historyEnabled: true };
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(workThreadCalls).toHaveLength(1);
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+    });
+
+    test("a thread from another surface is left behind, not carried into the sitting", async () => {
+        // A panel assist thread still on screen when the trainer takes over. It has its
+        // own rows, so it is not this sitting's transcript — and while it stayed up, the
+        // non-empty chat made the lookup stand down and no prompt was ever offered.
+        coach.present("panel");
+        coach.conversationId = "33333333-3333-4333-8333-333333333333";
+        coach.messages = [
+            {
+                id: "m1",
+                role: "user",
+                parts: [{ type: "text", text: "what should I review?" }],
+                status: "complete",
+                createdAt: "2026-08-05T00:00:00.000Z",
+            },
+        ];
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(coach.conversationId).toBeUndefined();
+        expect(coach.messages).toHaveLength(0);
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+        // Left behind, not deleted: it is still in history, and still assist.
+        expect(archiveCalls()).toHaveLength(0);
+    });
+
+    test("§5: returning to a finished problem is offered its chat back", async () => {
+        workThread = offeredThread(60_000);
+        // The whole point of keeping the thread: "what was I struggling with here?".
+        // Conclusion used to suppress this offer, which made a submitted or skipped
+        // problem open blank however recently it was worked.
         await coach.openWorkThread(ANCHOR, { submitted: true, skipped: false });
-        expect(coach.resumePrompt).toBeNull();
-        // It still held the unique-index slot, so the fresh thread could not be
-        // created until it was retired.
-        expect(archiveCalls()).toHaveLength(1);
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+        // The offer says which kind it is, so the prompt can read as a review.
+        expect(coach.resumePrompt?.concluded).toBe(true);
+        // Nothing is retired to make the offer: the thread is the answer, not an
+        // obstacle to a fresh one.
+        expect(retireCalls()).toHaveLength(0);
+        expect(archiveCalls()).toHaveLength(0);
+    });
+
+    test("a skipped problem is offered back the same way", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, { submitted: false, skipped: true });
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+        expect(coach.resumePrompt?.concluded).toBe(true);
+    });
+
+    test("an unconcluded offer is framed as work in progress, not review", async () => {
+        workThread = offeredThread(60_000);
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(coach.resumePrompt?.concluded).toBe(false);
+    });
+
+    test("a retired thread stays in the history list", async () => {
+        workThread = offeredThread(13 * 60 * 60 * 1000);
+        coach.conversations = [
+            {
+                id: workThread.id as string,
+                title: "Earlier chat",
+                preview: "where do I start?",
+                messageCount: 2,
+                createdAt: "2026-08-05T00:00:00.000Z",
+                updatedAt: "2026-08-05T00:00:00.000Z",
+            },
+        ];
+        // Stale, so the anchor slot is released — but the list is what the student opens
+        // to find an old chat. Retiring used to archive, which dropped it here and hid it
+        // server-side too.
+        await coach.openWorkThread(ANCHOR, OPEN);
+        expect(retireCalls()).toHaveLength(1);
+        expect(coach.conversations.map((item) => item.id)).toEqual([workThread.id as string]);
     });
 
     test("§5: a stale thread is retired rather than offered", async () => {
         workThread = offeredThread(13 * 60 * 60 * 1000);
         await coach.openWorkThread(ANCHOR, OPEN);
         expect(coach.resumePrompt).toBeNull();
-        expect(archiveCalls()).toHaveLength(1);
+        expect(retireCalls()).toHaveLength(1);
+        expect(archiveCalls()).toHaveLength(0);
     });
 
     test("re-entering Coach mode on the same sitting rejoins without asking", async () => {
@@ -667,7 +753,8 @@ describe("coach work threads", () => {
         workThread = offeredThread(60_000);
         await coach.openWorkThread(ANCHOR, OPEN);
         await coach.startNewWorkThread();
-        expect(archiveCalls()).toHaveLength(1);
+        expect(retireCalls()).toHaveLength(1);
+        expect(archiveCalls()).toHaveLength(0);
         expect(coach.conversationId).toBeUndefined();
         expect(coach.messages).toHaveLength(0);
         // A new chat started from the trainer is another thread about the same sitting.
@@ -705,7 +792,9 @@ describe("coach work threads", () => {
         recorded = [];
         await coach.releaseWorkAnchor({ submitted: true, skipped: false });
 
-        expect(archiveCalls()).toHaveLength(1);
+        expect(retireCalls()).toHaveLength(1);
+        // The anchor slot is released; the conversation is not deleted.
+        expect(archiveCalls()).toHaveLength(0);
         expect(coach.workAnchor).toBeNull();
         expect(coach.messages).toHaveLength(0);
         // The work presentation is over, so an unanchored quick-ask cannot write a
@@ -718,6 +807,7 @@ describe("coach work threads", () => {
         await coach.send("hint please");
         recorded = [];
         await coach.releaseWorkAnchor({ submitted: false, skipped: false });
+        expect(retireCalls()).toHaveLength(0);
         expect(archiveCalls()).toHaveLength(0);
         expect(coach.workAnchor).toBeNull();
     });
@@ -727,7 +817,8 @@ describe("coach work threads", () => {
         await coach.send("hint please");
         recorded = [];
         await coach.releaseWorkAnchor({ submitted: false, skipped: true });
-        expect(archiveCalls()).toHaveLength(1);
+        expect(retireCalls()).toHaveLength(1);
+        expect(archiveCalls()).toHaveLength(0);
     });
 
     test("out-typing the lookup keeps the question, not the old thread", async () => {

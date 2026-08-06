@@ -264,6 +264,15 @@ export interface WorkThreadResponse {
     conversation: WorkThreadSummary | null;
 }
 
+/**
+ * A found thread being offered back to the student (§5), plus the one thing the server
+ * cannot know: whether the problem it is about has since been finished. That decides the
+ * offer's framing — reviewing a sitting you finished, or picking one back up.
+ */
+export interface CoachResumeOffer extends WorkThreadSummary {
+    concluded: boolean;
+}
+
 export interface AIChatRequestBody {
     /** Minted by the browser before the first token; the server creates the row if absent. */
     conversationId?: string;

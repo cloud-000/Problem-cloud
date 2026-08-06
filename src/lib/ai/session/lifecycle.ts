@@ -24,6 +24,10 @@ export const WORK_STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 /**
  * Has the work this thread was opened for concluded?
  *
+ * Two things read this: when the row releases its anchor slot (`workRetirable`), and how
+ * the resume prompt is worded — returning to a finished sitting is a *review* of what you
+ * struggled with, not a continuation of work in progress.
+ *
  * A skip counts, and not only for symmetry: it writes a real `submissions` row and is
  * an explicit "I'm done with this". Left out, a skipped problem's thread would stay
  * live and hold its unique-index slot until staleness or a return visit cleared it.
@@ -37,24 +41,32 @@ export function workConcluded(state: WorkAnchorState): boolean {
 }
 
 /**
- * May the thread be resumed if the user returns to the anchor? Drives the prompt.
+ * May the thread be offered back if the user returns to the anchor? Drives the prompt.
  *
- * The staleness cutoff is what stops an abandoned thread from being offered forever:
- * a thread that never concludes has nothing else to retire it, and the root practice
- * session never ends, so without it the trainer would ask "continue or start new?"
- * over a week-old conversation the user has entirely forgotten.
+ * **Conclusion deliberately has no say (revised 2026-08-06).** It used to suppress the
+ * offer, on the reasoning that a finished sitting starts clean — but the chat about a
+ * problem you just got wrong is the one you most want back, and "what was I struggling
+ * with here?" is the whole reason the thread was worth keeping. A concluded thread is
+ * offered exactly like an unconcluded one; only the prompt's wording differs, which is
+ * what `workConcluded` now decides.
+ *
+ * Staleness is therefore the only rule left, and it is the one that matters: the root
+ * practice session never ends, so without a cutoff the trainer would ask "continue or
+ * start new?" over a week-old conversation the student has entirely forgotten.
  */
 export function workResumable(state: WorkAnchorState): boolean {
-    return !workConcluded(state) && state.idleMs < WORK_STALE_AFTER_MS;
+    return state.idleMs < WORK_STALE_AFTER_MS;
 }
 
 /**
- * When the row is actually archived, freeing the unique-index slot.
+ * When the row releases its anchor slot. Retired ≠ deleted: it stays in history, and it
+ * is still offered back on a return visit — retiring only means it is no longer the
+ * *live* thread for this anchor, so the next sitting is free to start its own.
  *
- * Concluded ≠ archived, on purpose: submitting a wrong answer is the moment a student
+ * Concluded ≠ retired, on purpose: submitting a wrong answer is the moment a student
  * most wants to ask "why?", so the thread stays live and writable while they remain on
  * the problem, and is retired only once they move on.
  */
-export function workArchivable(state: WorkAnchorState): boolean {
+export function workRetirable(state: WorkAnchorState): boolean {
     return workConcluded(state) && state.leftAnchor;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-    workArchivable,
+    workRetirable,
     workConcluded,
     workResumable,
     WORK_STALE_AFTER_MS,
@@ -44,23 +44,28 @@ describe("resumability", () => {
         expect(workResumable(anchorState({ idleMs: WORK_STALE_AFTER_MS + 1 }))).toBe(false);
     });
 
-    test("a concluded thread is never offered, however recent", () => {
-        expect(workResumable(anchorState({ submitted: true, idleMs: 0 }))).toBe(false);
-        expect(workResumable(anchorState({ skipped: true, idleMs: 0 }))).toBe(false);
+    test("a concluded thread is still offered — that is the one worth reviewing", () => {
+        // The chat about a problem you just got wrong is the chat you most want back.
+        expect(workResumable(anchorState({ submitted: true, idleMs: 0 }))).toBe(true);
+        expect(workResumable(anchorState({ skipped: true, idleMs: 0 }))).toBe(true);
+        // Staleness still applies to it, exactly as to an unconcluded one.
+        expect(
+            workResumable(anchorState({ submitted: true, idleMs: WORK_STALE_AFTER_MS + 1 })),
+        ).toBe(false);
     });
 });
 
-describe("archival", () => {
-    test("concluded is not archived while the student is still on the problem", () => {
+describe("retirement", () => {
+    test("concluded is not retired while the student is still on the problem", () => {
         // Submitting a wrong answer is the moment they most want to ask "why?".
-        expect(workArchivable(anchorState({ submitted: true }))).toBe(false);
+        expect(workRetirable(anchorState({ submitted: true }))).toBe(false);
     });
 
     test("leaving an unconcluded anchor keeps the thread live", () => {
-        expect(workArchivable(anchorState({ leftAnchor: true }))).toBe(false);
+        expect(workRetirable(anchorState({ leftAnchor: true }))).toBe(false);
     });
 
     test("both halves together retire the row", () => {
-        expect(workArchivable(anchorState({ submitted: true, leftAnchor: true }))).toBe(true);
+        expect(workRetirable(anchorState({ submitted: true, leftAnchor: true }))).toBe(true);
     });
 });
