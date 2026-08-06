@@ -82,6 +82,12 @@ interface InlineCoachTarget {
     isActive: () => boolean;
     open: () => void;
     focusComposer: () => void;
+    /**
+     * The tier this target's surface owns. Defaults to the trainer's `inline`; the
+     * `/coach` route registers itself as `page` so continuing a quick-ask there
+     * promotes to an assist thread rather than an anchorless work one.
+     */
+    presentation?: CoachPresentation;
 }
 
 class CoachStore {
@@ -350,7 +356,7 @@ class CoachStore {
         this.closeQuickAsk(false);
         if (utilityPanel.activeView === "coach") utilityPanel.close(false);
         target.open();
-        this.present("inline");
+        this.present(target.presentation ?? "inline");
         queueMicrotask(() => target.focusComposer());
         return true;
     }
@@ -1114,13 +1120,21 @@ class CoachStore {
         this.#pendingFlush = false;
     }
 
+    /**
+     * Loads the first page of history without opening the history *view* — for a
+     * surface that shows the list permanently beside the transcript (the `/coach`
+     * page's rail) rather than in place of it. Idempotent, like the open below.
+     */
+    async ensureConversations(): Promise<void> {
+        if (!this.historyEnabled) return;
+        // Only the first caller pays for a fetch; bootstrap stays as small as it was.
+        if (this.conversationsLoaded || this.conversationListLoading) return;
+        await this.fetchConversations();
+    }
+
     async openConversationList(): Promise<void> {
         this.historyViewOpen = true;
-        if (!this.historyEnabled) return;
-        // Only the first open pays for a fetch; bootstrap stays as small as it was.
-        if (!this.conversationsLoaded && !this.conversationListLoading) {
-            await this.fetchConversations();
-        }
+        await this.ensureConversations();
     }
 
     closeConversationList(): void {

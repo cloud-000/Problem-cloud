@@ -19,12 +19,19 @@ Every Coach conversation is one of three tiers. The tier is decided by *where th
 Coach was summoned and whether it was escalated*, never by a user-facing toggle.
 
 The tier itself lives in `$lib/ai/session/tier.ts` (pure) and on `coach.tier`; a
-surface that owns a thread declares itself with `coach.present("panel" | "inline")`,
-which is the only thing that promotes a one-shot.
+surface that owns a thread declares itself with
+`coach.present("panel" | "inline" | "page")`, which is the only thing that promotes a
+one-shot.
+
+Presentations outnumber tiers, and that is the point: `page` is the full-screen
+`/coach` route and resolves to **assist**, exactly like the panel. Full-screen or
+docked, it is a thread anchored to nothing — a surface with no problem in front of it
+must never resolve to `work`, which would file an unanchored thread into the
+sessionless slot of the anchor index (§2).
 
 | | **Work** | **Assist** | **One-shot** |
 | --- | --- | --- | --- |
-| Example | Coaching on AMC 10A #18 in the trainer | "what should I review?", "find that cyclic-quadrilateral problem" | Library query bar; a quick-ask that was never escalated |
+| Example | Coaching on AMC 10A #18 in the trainer | "what should I review?", "find that cyclic-quadrilateral problem" — the panel and the `/coach` page | Library query bar; a quick-ask that was never escalated |
 | Anchored to | one problem in one practice session | nothing | nothing |
 | Persisted | yes | yes | **never — no DB row exists** |
 | Auto-resumed | **yes, by prompt** (§2 index, §5 rule) — including after it concludes | no — new thread each open, history one click away | n/a |

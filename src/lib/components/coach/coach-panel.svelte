@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import type { NormalizedAIMessage } from "$lib/ai/types";
     import { AIChat } from "$lib/components/ai-chat";
+    import { COACH_FALLBACK_QUICK_ACTIONS } from "$lib/ai/quick-actions";
     import { coach } from "$lib/state/coach.svelte";
     import { settings } from "$lib/state/settings.svelte";
     import CoachHeader from "./coach-header.svelte";
@@ -11,25 +12,8 @@
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachConversationList from "./coach-conversation-list.svelte";
 
-    const fallbackActions = [
-        {
-            id: "find",
-            label: "Find problems for me",
-            prompt: "Help me find problems to practice.",
-        },
-        {
-            id: "progress",
-            label: "Summarize my progress",
-            prompt: "Help me think about my recent progress.",
-        },
-        {
-            id: "plan",
-            label: "Plan a study session",
-            prompt: "Help me plan a focused study session.",
-        },
-    ];
     let actions = $derived(
-        coach.quickActions.length > 0 ? coach.quickActions : fallbackActions,
+        coach.quickActions.length > 0 ? coach.quickActions : COACH_FALLBACK_QUICK_ACTIONS,
     );
     let showSystem = $derived(settings.debugMode && settings.showSystemPrompts);
 

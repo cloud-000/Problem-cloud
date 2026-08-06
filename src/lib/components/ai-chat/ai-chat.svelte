@@ -18,7 +18,19 @@
         transcriptLeading?: Snippet;
         /** Rendered above every turn; see `AIChatMessageListProps.messageBefore`. */
         messageBefore?: Snippet<[NormalizedAIMessage]>;
+        /** The composer's textarea, for surfaces that focus it (the Coach chord). */
+        composerRef?: HTMLTextAreaElement | null;
         class?: string;
+        /** Class for the transcript's scroll container (e.g. `scrollbar-gutter`). */
+        transcriptClass?: string;
+        /**
+         * Class for the measured rail *inside* the scroll container. A wide surface
+         * constrains message width here rather than on the root, so the scrollbar
+         * stays on the chat's outer edge instead of floating mid-page.
+         */
+        contentClass?: string;
+        /** Class for the floating composer's wrapper, so it can share that rail. */
+        composerClass?: string;
     }
 </script>
 
@@ -41,7 +53,11 @@
         leading,
         transcriptLeading,
         messageBefore,
+        composerRef = $bindable(null),
         class: className,
+        transcriptClass,
+        contentClass,
+        composerClass,
     }: AIChatProps = $props();
 
     // Published to descendants as --ai-chat-composer-h so the transcript can
@@ -71,13 +87,15 @@
             {conversationLabel}
             leading={transcriptLeading}
             {messageBefore}
+            class={transcriptClass}
+            {contentClass}
         />
     {/if}
     <div
         bind:clientHeight={composerHeight}
-        class="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+        class={cn("pointer-events-none absolute inset-x-0 bottom-0 z-10", composerClass)}
     >
-        <AIChatComposer {controller} {placeholder} {assistantLabel} />
+        <AIChatComposer {controller} {placeholder} {assistantLabel} bind:textareaRef={composerRef} />
     </div>
     <div class="sr-only" aria-live="polite">
         {controller.liveAnnouncement}

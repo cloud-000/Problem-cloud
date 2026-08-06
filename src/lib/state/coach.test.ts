@@ -91,6 +91,8 @@ let persistStatus = 200;
 /** What the anchor lookup answers with; null is "this sitting has no thread yet". */
 let workThread: Record<string, unknown> | null = null;
 let workThreadCalls: string[] = [];
+/** How many times the history list has been paged in. */
+let conversationListCalls = 0;
 /**
  * Arms one work-anchor 409 (§2): the next write that could create a row is told another
  * surface already owns this sitting, and which conversation won.
@@ -110,6 +112,10 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
     if (url.includes("/api/ai/bootstrap")) {
         bootstrapCalls += 1;
         return json(bootstrapPayload);
+    }
+    if (url.includes("/api/ai/conversations?")) {
+        conversationListCalls += 1;
+        return json({ conversations: [] });
     }
     if (url.includes("/api/ai/work-thread")) {
         workThreadCalls.push(url);
@@ -328,6 +334,50 @@ describe("trainer inline escalation", () => {
         expect(utilityPanel.activeView).toBe(null);
         unregister();
         expect(coach.inlineTargetAvailable).toBe(false);
+    });
+});
+
+describe("coach page presentation", () => {
+    beforeEach(async () => {
+        await coach.initialize();
+        coach.bootstrap = { ...structuredClone(CONNECTED_BYOK), historyEnabled: true } as never;
+        coach.newConversation();
+        coach.conversations = [];
+        coach.conversationsLoaded = false;
+        conversationListCalls = 0;
+    });
+
+    test("a quick-ask continued on /coach becomes an assist thread, never work", () => {
+        // The page is anchored to nothing. Resolving to `work` here would file an
+        // unanchored thread into the sessionless anchor slot.
+        const unregister = coach.registerInlineTarget({
+            isActive: () => true,
+            open: () => {},
+            focusComposer: () => {},
+            presentation: "page",
+        });
+        coach.openQuickAsk(null);
+
+        expect(coach.continueInInline()).toBe(true);
+        expect(coach.tier).toBe("assist");
+        expect(coach.workAnchor).toBe(null);
+        expect(utilityPanel.activeView).toBe(null);
+        unregister();
+    });
+
+    test("the docked history rail loads the list without replacing the transcript", async () => {
+        await coach.ensureConversations();
+        expect(conversationListCalls).toBe(1);
+        // The panel's history *view* is what stands in for the transcript; a rail
+        // beside it must not turn that on.
+        expect(coach.historyViewOpen).toBe(false);
+        expect(coach.conversationsLoaded).toBe(true);
+
+        // Opening the view afterwards is free — the page already paid for the fetch.
+        await coach.openConversationList();
+        expect(conversationListCalls).toBe(1);
+        expect(coach.historyViewOpen).toBe(true);
+        coach.closeConversationList();
     });
 });
 

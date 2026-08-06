@@ -1,9 +1,24 @@
+<script lang="ts" module>
+    export interface CoachConversationListProps {
+        /**
+         * The "back to conversation" control. Present when the list *replaces* the
+         * transcript (the panel, and the `/coach` page below its rail breakpoint);
+         * absent when it is docked beside a transcript that never went away.
+         */
+        showBack?: boolean;
+        class?: string;
+    }
+</script>
+
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { groupConversations } from "$lib/ai/conversations";
     import { coach } from "$lib/state/coach.svelte";
+    import { cn } from "$lib/utils";
     import CoachConversationRow from "./coach-conversation-row.svelte";
+
+    let { showBack = true, class: className }: CoachConversationListProps = $props();
 
     const STREAMING_HINT = "Stop the response before switching conversations.";
 
@@ -18,12 +33,14 @@
     const showInitialLoading = $derived(coach.conversationListLoading && !coach.conversationsLoaded);
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col">
+<div class={cn("flex min-h-0 flex-1 flex-col", className)}>
     <div class="flex items-center gap-1 border-b border-border/40 px-3 py-2">
-        <Button variant="ghost" size="icon-sm" onclick={() => coach.closeConversationList()} aria-label="Back to conversation">
-            <Icon name="arrow_back" fontsize={16} />
-        </Button>
-        <h3 class="mr-auto text-sm font-semibold tracking-tight text-foreground">History</h3>
+        {#if showBack}
+            <Button variant="ghost" size="icon-sm" onclick={() => coach.closeConversationList()} aria-label="Back to conversation">
+                <Icon name="arrow_back" fontsize={16} />
+            </Button>
+        {/if}
+        <h3 class={cn("mr-auto text-sm font-semibold tracking-tight text-foreground", !showBack && "px-1.5")}>History</h3>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">

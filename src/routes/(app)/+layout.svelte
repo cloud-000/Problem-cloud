@@ -90,12 +90,21 @@
          markRead(supabase, user.id, toast.notificationId);
    }
 
-   const primaryTabs = [
+   const basePrimaryTabs = [
       { href: "/", icon: "home", label: "Home" },
       { href: "/practice", icon: "sprint", label: "Practice" },
       { href: "/library", icon: "book_5", label: "Library" },
       { href: "/progress", icon: "insights", label: "Progress" },
    ] as const;
+
+   // The Coach's full-screen surface. Deliberately the *only* way in: nothing
+   // inside the app escalates into the route, so if the account has no Coach the
+   // tab is absent rather than landing on an explanation.
+   const coachTab = { href: "/coach", icon: "auto_awesome", label: "Coach" } as const;
+
+   let primaryTabs = $derived(
+      aiCoachEnabled ? [...basePrimaryTabs, coachTab] : [...basePrimaryTabs],
+   );
 
    const secondaryTabs = [
       { href: "/whiteboard", icon: "draw", label: "Whiteboard" },
@@ -106,14 +115,14 @@
    // Routes the Coach's context layer can name. Without this its chips read
    // "/library"; the sections outside the nav tabs are listed alongside them so
    // no authenticated route the Coach can see is left as a raw pathname.
-   const coachRouteLabels = [
+   let coachRouteLabels = $derived([
       ...primaryTabs,
       ...secondaryTabs,
       { href: "/find", label: "Find problems" },
       { href: "/history", label: "History" },
       { href: "/settings", label: "Settings" },
       { href: "/admin", label: "Admin tools" },
-   ] as const;
+   ]);
 
    function routeMatches(pathname: string, href: string) {
       return href === "/"

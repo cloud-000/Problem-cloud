@@ -17,13 +17,22 @@
  */
 export type CoachTier = "one-shot" | "assist" | "work";
 
-/** Where the Coach is currently being shown. Presentation decides tier, not the user. */
-export type CoachPresentation = "quick-ask" | "panel" | "inline";
+/**
+ * Where the Coach is currently being shown. Presentation decides tier, not the user.
+ *
+ * `page` is the `/coach` route — the panel's full-screen twin. It is a *presentation*
+ * and not a fourth tier: it owns a thread the same way the panel does, is anchored to
+ * nothing, and so joins the same `assist` family. A route that shows the Coach without
+ * a problem in front of it must never resolve to `work`, which would file it into the
+ * sessionless anchor slot.
+ */
+export type CoachPresentation = "quick-ask" | "panel" | "inline" | "page";
 
 const PRESENTATION_TIER: Record<CoachPresentation, CoachTier> = {
     "quick-ask": "one-shot",
     panel: "assist",
     inline: "work",
+    page: "assist",
 };
 
 export function tierForPresentation(presentation: CoachPresentation): CoachTier {

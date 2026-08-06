@@ -8,6 +8,12 @@ describe("coach tiers", () => {
         expect(tierForPresentation("inline")).toBe("work");
     });
 
+    test("the /coach page is the panel's full-screen twin, not a fourth tier", () => {
+        // Anchored to nothing, so it must never resolve to `work` — that would file an
+        // unanchored thread into the sessionless anchor slot.
+        expect(tierForPresentation("page")).toBe("assist");
+    });
+
     test("only a one-shot is absent from the database", () => {
         expect(tierPersists("one-shot")).toBe(false);
         expect(tierPersists("assist")).toBe(true);

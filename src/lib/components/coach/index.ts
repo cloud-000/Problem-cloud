@@ -10,8 +10,14 @@ import ConversationList from "./coach-conversation-list.svelte";
 import ConversationRow from "./coach-conversation-row.svelte";
 import Inline from "./coach-inline.svelte";
 import ResumePrompt from "./coach-resume-prompt.svelte";
+import ContextTray from "./coach-context-tray.svelte";
+import ConnectionGate from "./coach-connection-gate.svelte";
 
 export {
+    ContextTray,
+    ConnectionGate,
+    ContextTray as CoachContextTray,
+    ConnectionGate as CoachConnectionGate,
     Launcher,
     Panel,
     QuickAsk,
@@ -43,3 +49,4 @@ export type { CoachContextRegisterProps } from "./coach-context-register.svelte"
 export type { CoachSystemRowProps } from "./coach-system-row.svelte";
 export type { CoachDebugToggleProps } from "./coach-debug-toggle.svelte";
 export type { CoachInlineProps } from "./coach-inline.svelte";
+export type { CoachConversationListProps } from "./coach-conversation-list.svelte";
