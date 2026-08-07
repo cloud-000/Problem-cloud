@@ -6,7 +6,7 @@
         aopsCommunityUrl,
         type ProblemReviewEntry,
     } from "$lib/library";
-    import { cn, formatElapsed } from "$lib/utils";
+    import { cn, formatElapsed, isMultipleChoice } from "$lib/utils";
     import Problem from "./problem.svelte";
     import ProblemSolution from "./problem-solution.svelte";
 
@@ -32,7 +32,7 @@
         class?: string;
     } = $props();
 
-    let mcq = $derived((entry.problem.choices?.length ?? 0) > 1);
+    let mcq = $derived(isMultipleChoice(entry.problem.choices));
     let testHref = $derived(
         aopsCommunityUrl(entry.problem.tests?.aops_category_id),
     );

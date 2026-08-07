@@ -117,7 +117,7 @@ describe("any-model history mapping", () => {
             [historyMessage("user", "Earlier question")],
             "Current question",
             "SYSTEM",
-            "Problem the student is working on:\nStatement 42",
+            "[Problem]\nStatement 42",
         );
         const payload = messages.map((message) => String(message.content)).join("\n");
 
@@ -167,7 +167,7 @@ describe("any-model provider adapter", () => {
             await adapter.stream(
                 request({
                     debug: true,
-                    renderedContext: "Problem the student is working on:\nStatement 42",
+                    renderedContext: "[Problem]\nStatement 42",
                 }),
             ),
         );
@@ -184,7 +184,7 @@ describe("any-model provider adapter", () => {
         expect(snapshot.messages[1]).toEqual({
             role: "user",
             content:
-                "[Application context]\nProblem the student is working on:\nStatement 42\n[End application context]\n\n[Student]\nExplain factoring",
+                "[Application context]\n[Problem]\nStatement 42\n[End application context]\n\n[Student]\nExplain factoring",
         });
         expect(events[1]?.type).toBe("message.start");
     });

@@ -5,7 +5,7 @@
     import { Input } from "$lib/components/input";
     import { StatusTag } from "$lib/components/status-tag";
     import { toasts } from "$lib/state/toast.svelte";
-    import { cn } from "$lib/utils";
+    import { cn, isMultipleChoice } from "$lib/utils";
     import { answersMatch } from "$lib/utils/answer-matcher";
 
     type Props = {
@@ -38,7 +38,7 @@
     const FEEDBACK_DURATION = 900;
 
     let normalizedChoices = $derived(choices ?? []);
-    let isMcq = $derived(normalizedChoices.length > 1);
+    let isMcq = $derived(isMultipleChoice(normalizedChoices));
     let canShowAnswerState = $derived(
         showAnswerState && answerIndex != null && answerIndex >= 0,
     );

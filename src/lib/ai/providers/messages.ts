@@ -1,5 +1,5 @@
 import type { AIProviderMessage, NormalizedAIMessage, NormalizedAIRequest } from "../types";
-import { applicationContextFrame, buildSystemMessage } from "../prompt";
+import { BLOCK_SEPARATOR, buildSystemMessage, userTurn } from "../prompt";
 
 /**
  * Flattens normalized history into the application-level messages handed to a model.
@@ -25,20 +25,16 @@ export function toProviderMessages(
             .join("\n")
             .trim();
         if (!text) continue;
-        if (entry.role === "user" && entry.renderedContext) {
-            text = `${applicationContextFrame(entry.renderedContext)}\n\n[Student]\n${text}`;
-        }
+        if (entry.role === "user") text = userTurn(entry.renderedContext ?? "", text);
 
         const previous = turns.at(-1);
-        if (previous?.role === entry.role) previous.content += `\n\n${text}`;
+        if (previous?.role === entry.role) previous.content += `${BLOCK_SEPARATOR}${text}`;
         else turns.push({ role: entry.role, content: text });
     }
 
-    const current = currentContext
-        ? `${applicationContextFrame(currentContext)}\n\n[Student]\n${message}`
-        : message;
+    const current = userTurn(currentContext, message);
     const last = turns.at(-1);
-    if (last?.role === "user") last.content += `\n\n${current}`;
+    if (last?.role === "user") last.content += `${BLOCK_SEPARATOR}${current}`;
     else turns.push({ role: "user", content: current });
 
     return [{ role: "system", content: system }, ...turns];

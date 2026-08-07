@@ -4,6 +4,7 @@ import type { Database } from "$lib/types/database.types";
 import type { ContextSnapshot } from "./facts";
 import type { NormalizedAIMessage } from "../types";
 import { toProviderMessages } from "../providers/messages";
+import { ELISION, TAG } from "../prompt";
 import {
     AIContextResolutionError,
     compileContextFrames,
@@ -194,10 +195,10 @@ describe("context frame compiler", () => {
 
         // The scope is pinned back at the turn that opened it; only the explicit
         // selection belongs to the current turn, and it is never budgeted away.
-        expect(result.history[0]?.renderedContext).toContain("Problem the student is working on:");
+        expect(result.history[0]?.renderedContext).toContain(`[${TAG.problem}]`);
         expect(result.renderedContext).toContain("CURRENT-SELECTION");
-        expect(result.renderedContext).toContain("Selected context:");
-        expect(result.renderedContext).toContain("[truncated]");
+        expect(result.renderedContext).toContain(`[${TAG.selection}]`);
+        expect(result.renderedContext).toContain(ELISION.text);
     });
 
     test("three 3,990-character attachments cannot displace the active problem", async () => {
@@ -219,7 +220,7 @@ describe("context frame compiler", () => {
         expect(result.history[2]?.renderedContext).toContain("SECOND");
         expect(occurrences(contexts, "Statement 42")).toBe(1);
         expect(occurrences(contexts, "Statement 7")).toBe(0);
-        expect(contexts.some((context) => context.includes("[truncated]"))).toBe(true);
+        expect(contexts.some((context) => context.includes(ELISION.text))).toBe(true);
         expect(contexts.reduce((total, context) => total + context.length, 0)).toBeLessThanOrEqual(
             HISTORY_CONTEXT_MAX_CHARS,
         );
@@ -233,7 +234,7 @@ describe("context frame compiler", () => {
             snapshot(42),
         );
 
-        expect(result.renderedContext).toContain("[statement truncated]");
+        expect(result.renderedContext).toContain(ELISION.statement);
         expect(result.renderedContext).toContain("A. Alpha");
         expect(result.renderedContext).toContain("B. Beta");
         expect(result.renderedContext).toContain("C. Gamma");

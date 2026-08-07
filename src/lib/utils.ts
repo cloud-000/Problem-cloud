@@ -32,6 +32,21 @@ export function problemLabel(problem: {
     return problem.tests?.name ? `${problem.tests.name} #${number}` : `Problem #${number}`;
 }
 
+/**
+ * Whether a problem's `choices` are options to pick from.
+ *
+ * `problems.choices` is overloaded and the distinction is load-bearing: more than one
+ * entry is a multiple-choice list, but a **single** entry is a computational
+ * free-response problem whose lone element *is the answer* (`choices[answer_index]`,
+ * and `answer_index` can only be `0` there). An empty or null array is an answerless
+ * stub. So `choices` is safe to show only when this returns true — anywhere else it
+ * discloses the answer key, which is why this predicate is shared rather than
+ * re-derived. The trainer hides the list for free-response for the same reason.
+ */
+export function isMultipleChoice(choices?: string[] | null): boolean {
+    return (choices?.length ?? 0) > 1;
+}
+
 export function formatProblemText(
     statement: string,
     isChoices: boolean = true,

@@ -21,7 +21,7 @@
         type PersonalProblemState,
     } from "$lib/progress";
     import { ProblemOrganization } from "$lib/components/problem-organization";
-    import { cn } from "$lib/utils";
+    import { cn, isMultipleChoice } from "$lib/utils";
     import ProblemAnswer from "./problem-answer.svelte";
 
     type ProblemMode = "preview" | "practice" | "review";
@@ -89,11 +89,11 @@
     let officialSolutionCount = $derived(
         problem.official_solutions?.length ?? 0,
     );
-    let isMultipleChoice = $derived((problem.choices?.length ?? 0) > 1);
+    let mcq = $derived(isMultipleChoice(problem.choices));
     let detailsAnswer = $derived.by<string | number | null>(() => {
         const answerIndex = problem.answer_index;
         if (answerIndex == null || answerIndex < 0) return null;
-        if (isMultipleChoice) return answerIndex;
+        if (mcq) return answerIndex;
         return problem.choices?.[answerIndex] ?? null;
     });
     let problemAnswer = $state<ProblemAnswer | null>(null);
@@ -307,7 +307,7 @@
                         {#if detailsAnswer !== null}
                             <div class="grid grid-cols-[6rem_1fr] gap-2">
                                 <span class="text-muted-foreground"
-                                    >{isMultipleChoice
+                                    >{mcq
                                         ? "answer index"
                                         : "answer"}</span
                                 >
@@ -376,7 +376,7 @@
                 class="flex flex-col gap-2.5 border-t border-border/60 pt-4"
                 aria-label="Your response"
             >
-                {#if isMultipleChoice && !disabled}
+                {#if mcq && !disabled}
                     <span class="hidden items-center justify-end gap-1 type-caption text-muted-foreground sm:inline-flex">
                         <Icon name="ink_eraser" fontsize="0.9rem" />
                         Right-click or use × to eliminate

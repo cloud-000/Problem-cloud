@@ -1,5 +1,6 @@
 import type { PracticeHistoryEntry, PracticeAnswerState } from "./practice-state";
 import { answersMatch } from "$lib/utils/answer-matcher";
+import { isMultipleChoice } from "$lib/utils";
 
 export type TestDraftAnswer = {
     problemId: number;
@@ -152,7 +153,7 @@ export function restoreTestDraft(
 export function testOutcome(entry: PracticeHistoryEntry): TestOutcome {
     const choices = entry.problem.choices ?? [];
     const answerIndex = entry.problem.answer_index ?? -1;
-    const isMcq = choices.length > 1;
+    const isMcq = isMultipleChoice(choices);
     const skipped = isMcq
         ? entry.selectedChoice == null
         : !entry.answer.trim();

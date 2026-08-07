@@ -6,7 +6,7 @@
     import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
     import { SegmentBar } from "$lib/components/segment-bar";
     import { Graph } from "$lib/components/graph";
-    import { formatElapsed } from "$lib/utils";
+    import { formatElapsed, isMultipleChoice } from "$lib/utils";
     import type { PracticeHistoryEntry } from "./practice-state";
     import type { TestResultSummary } from "./test-state";
 
@@ -22,7 +22,7 @@
 
     let cells = $derived<ProblemGridCell[]>(
         history.map((entry) => {
-            const mcq = (entry.problem.choices?.length ?? 0) > 1;
+            const mcq = isMultipleChoice(entry.problem.choices);
             const skipped =
                 entry.skipped ??
                 (mcq ? entry.selectedChoice == null : !entry.answer.trim());
@@ -44,7 +44,7 @@
 
     let processedHistory = $derived(
         history.map((entry) => {
-            const mcq = (entry.problem.choices?.length ?? 0) > 1;
+            const mcq = isMultipleChoice(entry.problem.choices);
             const skipped =
                 entry.skipped ??
                 (mcq ? entry.selectedChoice == null : !entry.answer.trim());

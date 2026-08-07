@@ -5,21 +5,22 @@ import type { NormalizedAIMessage } from "../types";
 import type { Policy } from "./policy";
 import { boundCoachHistory } from "../conversations";
 import {
-    CONTEXT_SECTION_SEPARATOR,
     fitContextSections,
     MAX_FACT_CHARS,
     minimumContextChars,
     renderFactSections,
+    joinContextSections,
+    NO_ACTIVE_SCOPE_SECTION,
 } from "./render";
+import { NOTICE, SECTION_JOIN_CHARS } from "../prompt";
 
 type Supabase = SupabaseClient<Database>;
 export const HISTORY_CONTEXT_MAX_CHARS = 12_000;
 const REQUIRED_GROUP_MIN_CHARS = 96;
-const NO_ACTIVE_SCOPE = "The previously attached problem context is no longer active.";
 
 const missing = (what: string): FactWarning => ({
     code: "missing",
-    message: `${what} is no longer available; treat references to it as degraded context.`,
+    message: NOTICE.unavailable(what),
 });
 
 /** A resolver outage is retryable and must never masquerade as a deleted fact. */
@@ -67,7 +68,7 @@ export async function resolveFacts(
                     return {
                         kind: "problem",
                         id: ref.id,
-                        statement: "Problem content unavailable.",
+                        statement: NOTICE.problemUnavailable,
                         choices: null,
                         warnings: [missing(`Problem ${ref.id}`)],
                     };
@@ -80,7 +81,7 @@ export async function resolveFacts(
                 return {
                     kind: "problem",
                     id: row.id,
-                    statement: row.statement ?? "Problem statement unavailable.",
+                    statement: row.statement ?? NOTICE.statementUnavailable,
                     choices: row.choices,
                     warnings: [],
                 };
@@ -99,7 +100,7 @@ export async function resolveFacts(
                     | null;
                 return row
                     ? { kind: "test", id: row.id, name: row.name, series: row.series?.name ?? null, warnings: [] }
-                    : { kind: "test", id: ref.id, name: "Unavailable test", series: null, warnings: [missing(`Test ${ref.id}`)] };
+                    : { kind: "test", id: ref.id, name: NOTICE.unavailableTest, series: null, warnings: [missing(`Test ${ref.id}`)] };
             }
             if (ref.kind === "series") {
                 const data = await contextData(
@@ -108,7 +109,7 @@ export async function resolveFacts(
                 );
                 return data
                     ? { kind: "series", id: data.id, name: data.name, warnings: [] }
-                    : { kind: "series", id: ref.id, name: "Unavailable series", warnings: [missing(`Series ${ref.id}`)] };
+                    : { kind: "series", id: ref.id, name: NOTICE.unavailableSeries, warnings: [missing(`Series ${ref.id}`)] };
             }
 
             return ref;
@@ -129,7 +130,7 @@ function joinedLength(sections: string[]): number {
     if (sections.length === 0) return 0;
     return (
         sections.reduce((total, section) => total + section.length, 0) +
-        CONTEXT_SECTION_SEPARATOR.length * (sections.length - 1)
+        SECTION_JOIN_CHARS * (sections.length - 1)
     );
 }
 
@@ -282,7 +283,7 @@ export async function compileContextFrames(
         await Promise.all([
             // Resolved from `current` rather than the epoch's own snapshot: the two carry
             // the same refs (that is what shares the key), and this is the live scope.
-            active ? (currentKey ? renderScope(current) : Promise.resolve([NO_ACTIVE_SCOPE])) : Promise.resolve([]),
+            active ? (currentKey ? renderScope(current) : Promise.resolve([NO_ACTIVE_SCOPE_SECTION])) : Promise.resolve([]),
             renderAttachments(current),
             Promise.all(
                 userTurns.map(async (turn) => ({
@@ -316,7 +317,7 @@ export async function compileContextFrames(
           ? resolvedCurrentAttachments
           : (historicalAttachments.find((entry) => entry.index === active.index)?.sections ?? []);
     const scopeJoinOverhead =
-        activeScopeText && scopeTurnAttachments.length > 0 ? CONTEXT_SECTION_SEPARATOR.length : 0;
+        activeScopeText && scopeTurnAttachments.length > 0 ? SECTION_JOIN_CHARS : 0;
     const attachmentBudget = Math.max(
         0,
         HISTORY_CONTEXT_MAX_CHARS - activeScopeText.length - scopeJoinOverhead,
@@ -345,7 +346,7 @@ export async function compileContextFrames(
     }
 
     const currentSections = [currentScopeText, currentAttachmentText].filter(Boolean);
-    let renderedContext = currentSections.join(CONTEXT_SECTION_SEPARATOR);
+    let renderedContext = joinContextSections(currentSections);
     let remaining = Math.max(
         0,
         HISTORY_CONTEXT_MAX_CHARS -
@@ -361,9 +362,9 @@ export async function compileContextFrames(
     for (let index = superseded.length - 1; index >= 0; index -= 1) {
         const candidate = superseded[index];
         const existing = historySections.get(candidate.index) ?? [];
-        const overhead = existing.length > 0 ? CONTEXT_SECTION_SEPARATOR.length : 0;
+        const overhead = existing.length > 0 ? SECTION_JOIN_CHARS : 0;
         if (remaining <= overhead) continue;
-        const sections = candidate.key ? await renderScope(candidate.snapshot) : [NO_ACTIVE_SCOPE];
+        const sections = candidate.key ? await renderScope(candidate.snapshot) : [NO_ACTIVE_SCOPE_SECTION];
         const text = fitContextSections(sections, remaining - overhead);
         if (!text) continue;
         historySections.set(candidate.index, [text, ...existing]);
@@ -375,7 +376,7 @@ export async function compileContextFrames(
         return {
             ...message,
             renderedContext: sections.length
-                ? sections.join(CONTEXT_SECTION_SEPARATOR)
+                ? joinContextSections(sections)
                 : undefined,
         };
     });
