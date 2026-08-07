@@ -1,4 +1,5 @@
 import type { ProblemFact, ResolvedFact } from "./facts";
+import type { Policy } from "./policy";
 import { factDoc, fittedDoc, noActiveScopeDoc, sectionsDoc } from "../prompt";
 import { fit, minChars } from "./fit";
 
@@ -18,11 +19,18 @@ const MAX_CONTEXT_CHARS = 12_000;
 /** Stands in for the scope section once a thread has left the problem it was attached to. */
 export const NO_ACTIVE_SCOPE_SECTION = fit(noActiveScopeDoc(), MAX_FACT_CHARS);
 
-/** One bounded, independently budgetable section per fact. */
-export function renderFactSections(facts: ResolvedFact[]): string[] {
+/**
+ * One bounded, independently budgetable section per fact.
+ *
+ * The policy is the request's *live* one, applied uniformly to every frame rather than
+ * replaying whatever was in force when each turn happened. Entering a test must strip
+ * the answer key from the whole transcript, not just from the newest frame — a coaching
+ * turn from before the lock would otherwise carry it straight into a locked request.
+ */
+export function renderFactSections(facts: ResolvedFact[], policy: Policy): string[] {
     return facts
         .slice(0, MAX_FACTS)
-        .map((fact) => fit(factDoc(fact), MAX_FACT_CHARS))
+        .map((fact) => fit(factDoc(fact, policy), MAX_FACT_CHARS))
         .filter(Boolean);
 }
 
@@ -42,11 +50,11 @@ export function joinContextSections(sections: string[]): string {
 }
 
 /** Deterministic, centrally budgeted model context. */
-export function renderFacts(facts: ResolvedFact[]): string {
-    return fitContextSections(renderFactSections(facts), MAX_CONTEXT_CHARS);
+export function renderFacts(facts: ResolvedFact[], policy: Policy): string {
+    return fitContextSections(renderFactSections(facts, policy), MAX_CONTEXT_CHARS);
 }
 
 /** Exposed for tests: one problem section at its full section budget. */
-export function renderProblem(fact: ProblemFact): string {
-    return fit(factDoc(fact), MAX_FACT_CHARS);
+export function renderProblem(fact: ProblemFact, policy: Policy = "coaching"): string {
+    return fit(factDoc(fact, policy), MAX_FACT_CHARS);
 }

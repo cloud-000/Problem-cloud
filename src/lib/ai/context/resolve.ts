@@ -60,7 +60,7 @@ export async function resolveFacts(
                     "the problem",
                     supabase
                         .from("problems")
-                        .select("id, statement, choices")
+                        .select("id, statement, choices, answer_index")
                         .eq("id", ref.id)
                         .maybeSingle(),
                 );
@@ -70,6 +70,7 @@ export async function resolveFacts(
                         id: ref.id,
                         statement: NOTICE.problemUnavailable,
                         choices: null,
+                        answerIndex: null,
                         warnings: [missing(`Problem ${ref.id}`)],
                     };
                 }
@@ -77,12 +78,14 @@ export async function resolveFacts(
                     id: number;
                     statement: string | null;
                     choices: string[] | null;
+                    answer_index: number | null;
                 };
                 return {
                     kind: "problem",
                     id: row.id,
                     statement: row.statement ?? NOTICE.statementUnavailable,
                     choices: row.choices,
+                    answerIndex: row.answer_index,
                     warnings: [],
                 };
             }
@@ -216,12 +219,18 @@ export async function compileContextFrames(
     // resolved. Applying it here also prevents future callers from paying for context
     // attached only to transcript turns that cannot reach the provider.
     const bounded = boundCoachHistory(messages);
+    // One policy governs the whole request — the live one — so a frame's rendering is
+    // still identified by its refs alone, and a test lock strips the answer key from
+    // every frame at once rather than only the newest.
+    const policy = current.policy;
     const renderCache = new Map<string, Promise<string[]>>();
     const renderRefs = (refs: FactRef[]): Promise<string[]> => {
         const key = JSON.stringify(refs);
         let pending = renderCache.get(key);
         if (!pending) {
-            pending = resolveFacts(supabase, refs).then(renderFactSections);
+            pending = resolveFacts(supabase, refs).then((facts) =>
+                renderFactSections(facts, policy),
+            );
             renderCache.set(key, pending);
         }
         return pending;
@@ -231,8 +240,6 @@ export async function compileContextFrames(
         const key = scopeKey(snapshot.scope);
         let pending = scopeCache.get(key);
         if (!pending) {
-            // Baseline scope contains no policy-sensitive answer data. Keying only by
-            // refs avoids re-querying the same problem when a test lock changes.
             pending = renderRefs(snapshot.scope);
             scopeCache.set(key, pending);
         }

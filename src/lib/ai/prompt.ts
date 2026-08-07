@@ -1,6 +1,7 @@
 import type { Policy } from "./context/policy";
 import type { FactWarning, ProblemFact, ResolvedFact, SeriesFact, TestFact } from "./context/facts";
 import { type Doc, group, prefixed, text } from "./context/fit";
+import { isMultipleChoice } from "$lib/utils";
 
 /**
  * Everything the model reads, and the shape it reads it in.
@@ -48,6 +49,7 @@ export type Tag = (typeof TAG)[keyof typeof TAG];
 export const FIELD = {
     series: TAG.series,
     notice: TAG.notice,
+    answer: "Answer",
 } as const;
 
 export type Field = (typeof FIELD)[keyof typeof FIELD];
@@ -95,8 +97,11 @@ const lines = (docs: Doc[], sizing = {}): Doc =>
 
 const block = (tag: Tag, body: Doc): Doc => prefixed(`[${tag}]`, body);
 
-/** `A.`, `B.`, … for multiple-choice options. */
-const choiceLabel = (index: number): string => `${String.fromCharCode(65 + index)}.`;
+/** `A`, `B`, … — how the student refers to an option on screen. */
+const choiceLetter = (index: number): string => String.fromCharCode(65 + index);
+
+/** `A.`, `B.`, … leading a multiple-choice option. */
+const choiceLabel = (index: number): string => `${choiceLetter(index)}.`;
 
 // ── Composition ────────────────────────────────────────────────────────────────
 
@@ -107,15 +112,53 @@ const notices = (warnings: FactWarning[]): Doc[] =>
     warnings.map((warning) => field(FIELD.notice, warning.message));
 
 /**
+ * Options only exist for a genuine multiple-choice problem.
+ *
+ * `isMultipleChoice` is the answer-key guard, not a formatting nicety: a single-entry
+ * `choices` array is a computational free-response problem whose lone element *is the
+ * answer*. Lettering it would invent an option the student never saw ("A. 42" on a
+ * free-response question) and smuggle the answer in unlabelled — it belongs on the
+ * answer field below, where the policy can decide whether it is sent at all.
+ *
+ * The letters are worth keeping for real MCQ: they are the same labels the trainer puts
+ * on screen, so a student writing "I picked C" refers to something the model can see.
+ */
+function choiceLines(fact: ProblemFact): Doc[] {
+    if (!isMultipleChoice(fact.choices)) return [];
+    return (fact.choices ?? []).map((choice, index) => line(`${choiceLabel(index)} ${choice}`));
+}
+
+/**
+ * The answer key, so hints can aim at the right idea instead of guessing at it.
+ *
+ * Withheld entirely under `test-locked` rather than asked for politely. That policy's
+ * whole job is to keep the key away from a student mid-test, and BYOK means the model
+ * may be small, local, or uncensored — a prompt instruction is not a control. Absent
+ * data is.
+ *
+ * A multiple-choice answer reads as its letter, matching how the student names it. A
+ * free-response answer is the value itself, since there is no letter to refer to.
+ */
+function answerLines(fact: ProblemFact, policy: Policy): Doc[] {
+    if (policy === "test-locked") return [];
+    const choices = fact.choices ?? [];
+    const index = fact.answerIndex;
+    if (index == null || index < 0 || index >= choices.length) return [];
+    return [
+        field(FIELD.answer, isMultipleChoice(choices) ? choiceLetter(index) : choices[index]),
+    ];
+}
+
+/**
  * Position-neutral on purpose: the frame is pinned to the turn where the problem came
  * into view, so by the time it is read it may sit several turns back. What the block
  * *means* is stated once in the system prompt, not re-narrated on every frame.
  *
- * The choices are capped and claim their space first, so a runaway statement can never
- * squeeze the options out of a multiple-choice problem; the statement then takes
- * everything left.
+ * The tail is capped and claims its space first, so a runaway statement can never
+ * squeeze the options — or the answer — out of the block; the statement takes what is
+ * left.
  */
-function problemDoc(fact: ProblemFact): Doc {
+function problemDoc(fact: ProblemFact, policy: Policy): Doc {
     return block(
         TAG.problem,
         group(
@@ -123,9 +166,8 @@ function problemDoc(fact: ProblemFact): Doc {
                 text(fact.statement, ELISION.statement, { priority: 0 }),
                 lines(
                     [
-                        ...(fact.choices ?? []).map((choice, index) =>
-                            line(`${choiceLabel(index)} ${choice}`),
-                        ),
+                        ...choiceLines(fact),
+                        ...answerLines(fact, policy),
                         ...notices(fact.warnings),
                     ],
                     { cap: PROBLEM_TAIL_CHARS, priority: 1 },
@@ -152,10 +194,10 @@ function seriesDoc(fact: SeriesFact): Doc {
 }
 
 /** One self-contained, independently budgetable section per fact. */
-export function factDoc(fact: ResolvedFact): Doc {
+export function factDoc(fact: ResolvedFact, policy: Policy): Doc {
     switch (fact.kind) {
         case "problem":
-            return problemDoc(fact);
+            return problemDoc(fact, policy);
         case "test":
             return testDoc(fact);
         case "series":
@@ -225,6 +267,12 @@ const SYSTEM_PROMPT = [
     `[${TAG.selection}] is text they chose to attach, and [${TAG.notice}] flags context that`,
     `could not be loaded. A parenthesised note such as “${ELISION.text}” marks text the app`,
     "shortened to fit; ask rather than guessing at what it hid.",
+    "",
+    `When a problem carries an “${FIELD.answer}:” field it is the answer key, given to you so`,
+    "your hints can aim at the right idea — not to be repeated. Do not state it, confirm it,",
+    "or narrow the options down to it unless the student has explicitly asked for the full",
+    "solution. Its absence never means a hint is licensed instead: a problem with no answer",
+    "field is one you must reason about yourself, and you should say so if you are unsure.",
     "",
     `Respond only to the message that follows [${TAG.student}], and read the context solely`,
     "as background for that message.",

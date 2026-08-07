@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import type { ContextSnapshot } from "./facts";
+import type { Policy } from "./policy";
 import type { NormalizedAIMessage } from "../types";
 import { toProviderMessages } from "../providers/messages";
-import { ELISION, TAG } from "../prompt";
+import { ELISION, FIELD, TAG } from "../prompt";
 import {
     AIContextResolutionError,
     compileContextFrames,
@@ -12,8 +13,13 @@ import {
     resolveFacts,
 } from "./resolve";
 
-function problem(id: number, statement = `Statement ${id}`, choices = [`Choice ${id}`]) {
-    return { id, statement, choices };
+function problem(
+    id: number,
+    statement = `Statement ${id}`,
+    choices = [`Choice ${id}`],
+    answer_index: number | null = null,
+) {
+    return { id, statement, choices, answer_index };
 }
 
 function stubSupabase(
@@ -43,9 +49,9 @@ function stubSupabase(
     } as unknown as SupabaseClient<Database>;
 }
 
-const snapshot = (id: number): ContextSnapshot => ({
+const snapshot = (id: number, policy: Policy = "coaching"): ContextSnapshot => ({
     version: 2,
-    policy: "coaching",
+    policy,
     scope: [{ kind: "problem", id }],
     attachments: [],
 });
@@ -260,5 +266,30 @@ describe("context frame compiler", () => {
         expect(result.history[0]?.renderedContext).toContain("Statement 42");
         expect(result.renderedContext).toContain("Statement 99");
         expect(requestedIds).not.toContain(7);
+    });
+
+    test("resolves the answer key into the frame", async () => {
+        const result = await compileContextFrames(
+            stubSupabase([problem(42, "Statement 42", ["Alpha", "Beta", "Gamma"], 1)]),
+            [],
+            snapshot(42),
+        );
+
+        expect(result.renderedContext).toContain(`${FIELD.answer}: B`);
+    });
+
+    test("a test lock strips the answer from every frame, not just the newest", async () => {
+        // The live policy governs the whole request. A turn taken while coaching sits in
+        // the transcript with its own snapshot, and replaying that turn's policy would
+        // carry the answer key straight into a locked request.
+        const locked = await compileContextFrames(
+            stubSupabase([problem(42, "Statement 42", ["Alpha", "Beta", "Gamma"], 1)]),
+            [user("before-the-lock", snapshot(42, "coaching"))],
+            snapshot(42, "test-locked"),
+        );
+
+        const contexts = allContext(locked);
+        expect(contexts.some((context) => context.includes("Statement 42"))).toBe(true);
+        expect(contexts.some((context) => context.includes(FIELD.answer))).toBe(false);
     });
 });
