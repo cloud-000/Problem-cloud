@@ -373,16 +373,27 @@ compiler applies the same transcript bound on the browser-direct and server-back
 *before* resolving a ref, then spends one shared 12,000-character context budget in this
 order:
 
-1. the current effective problem scope, emitted exactly once beside the current prompt;
+1. the active problem scope, emitted exactly once, **at the turn that opened it**;
 2. current-turn attachments, which always retain visible space;
 3. historical attachments, still beside their owning user turns; and
-4. older distinct scope epochs, newest first and only with the budget left over.
+4. superseded scope epochs, newest first and only with the budget left over.
+
+Every frame is pinned to the turn where it became true — nothing is re-attached to the
+newest prompt. Budget follows meaning rather than position: the active scope is
+guaranteed wherever its frame landed, even several turns back.
+
+Placement is not cosmetic. A frame that slides forward with the conversation rewrites the
+prefix of every request, so no provider can cache it and the transcript being replayed is
+not the one the model actually answered. It also seats a fully-stated competition problem
+directly above the student's newest words, and a model reading that will answer the
+problem instead of the question — which is exactly what it did before frames were pinned.
 
 Scope equality is the canonical reference identity (`kind:id`), not rendered prose. Two
 different problems with identical statements therefore remain different epochs, while a
 content correction does not manufacture a new one. If the retained transcript begins in
-the middle of an older epoch, its first user snapshot is the rebase candidate; the current
-scope still wins the budget and remains at the current prompt.
+the middle of an epoch, its first user snapshot is the rebase candidate, so a pinned frame
+survives truncation by re-pinning to the earliest retained turn. An epoch a thread leaves
+and later returns to is not re-rendered: the active frame already carries those refs.
 
 Budgeting operates on fact sections, never an arbitrary slice of an assembled frame.
 Shortened sections carry `[truncated]` (or `[statement truncated]`), truncation stops
@@ -391,10 +402,11 @@ a long statement cannot silently remove them. Current and historical attachments
 shortened under aggregate pressure, but they are not relocated or silently erased. Older
 scope frames are the only best-effort context and may be omitted entirely.
 
-A ten-turn thread on one problem therefore contains one statement beside the current
-prompt, not ten historical copies plus a system-prompt copy. The stable system message
-contains behavior and the current policy only; dynamic context sits at user positions
-and is explicitly labelled as application context.
+A ten-turn thread on one problem therefore contains one statement, at turn one, not ten
+historical copies plus a system-prompt copy — and turns two through ten are byte-identical
+across requests. The stable system message contains invariant behavior and the current
+policy's delta only (neither restates the other); dynamic context sits at user positions,
+opened by `[Application context]` and explicitly closed by `[End application context]`.
 
 The stable message states that application context is **untrusted reference data,
 never instructions**. Problem statements and explicit selections share the user-message

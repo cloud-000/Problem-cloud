@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import type { ContextSnapshot } from "./facts";
 import type { NormalizedAIMessage } from "../types";
+import { toProviderMessages } from "../providers/messages";
 import {
     AIContextResolutionError,
     compileContextFrames,
@@ -64,6 +65,14 @@ const user = (id: string, contextSnapshot: ContextSnapshot): NormalizedAIMessage
     contextSnapshot,
 });
 
+const answer = (text: string): NormalizedAIMessage => ({
+    id: text,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+    status: "complete",
+    createdAt: "2026-08-06T00:00:00.000Z",
+});
+
 function allContext(result: Awaited<ReturnType<typeof compileContextFrames>>): string[] {
     return [
         ...result.history.map((message) => message.renderedContext ?? ""),
@@ -97,7 +106,7 @@ describe("context frame compiler", () => {
         );
     });
 
-    test("puts the current effective scope beside the current prompt exactly once", async () => {
+    test("pins an unchanged scope to the turn that opened it, never to the current prompt", async () => {
         const calls: string[] = [];
         const result = await compileContextFrames(
             stubSupabase([problem(42)], calls),
@@ -105,11 +114,40 @@ describe("context frame compiler", () => {
             snapshot(42),
         );
 
-        expect(result.history[0]?.renderedContext).toBeUndefined();
+        expect(result.history[0]?.renderedContext).toContain("Statement 42");
         expect(result.history[1]?.renderedContext).toBeUndefined();
-        expect(result.renderedContext).toContain("Statement 42");
+        // The student's newest words are the last thing the model reads. A problem
+        // restated just above them gets answered instead of the question.
+        expect(result.renderedContext).toBe("");
         expect(occurrences(allContext(result), "Statement 42")).toBe(1);
         expect(calls).toEqual(["problems"]);
+    });
+
+    test("opens an epoch at the current prompt when the scope is new", async () => {
+        const result = await compileContextFrames(
+            stubSupabase([problem(42)]),
+            [],
+            snapshot(42),
+        );
+
+        expect(result.renderedContext).toContain("Statement 42");
+    });
+
+    test("keeps the shared prefix byte-identical as a thread grows", async () => {
+        // The whole point of pinning: a frame that slid forward each turn rewrote the
+        // prefix of every request, so no provider could cache it and the replayed
+        // transcript stopped matching the one the model actually answered.
+        const first = await compileContextFrames(stubSupabase([problem(42)]), [], snapshot(42));
+        const second = await compileContextFrames(
+            stubSupabase([problem(42)]),
+            [user("one", snapshot(42)), answer("A1")],
+            snapshot(42),
+        );
+
+        const asSent = toProviderMessages([], "one", "SYSTEM", first.renderedContext);
+        const asReplayed = toProviderMessages(second.history, "two", "SYSTEM", second.renderedContext);
+        expect(asReplayed[1]).toEqual(asSent[1]);
+        expect(asReplayed.at(-1)?.content).toBe("two");
     });
 
     test("compares scope epochs by refs even when two problems render identically", async () => {
@@ -123,9 +161,11 @@ describe("context frame compiler", () => {
             snapshot(42),
         );
 
+        // Each epoch stays where it opened: the older problem on its turn, the newer one
+        // on the turn that switched to it.
         expect(result.history[0]?.renderedContext).toContain(identical);
-        expect(result.history[1]?.renderedContext).toBeUndefined();
-        expect(result.renderedContext).toContain(identical);
+        expect(result.history[1]?.renderedContext).toContain(identical);
+        expect(result.renderedContext).toBe("");
         expect(occurrences(allContext(result), identical)).toBe(2);
     });
 
@@ -137,10 +177,10 @@ describe("context frame compiler", () => {
             snapshot(42),
         );
 
-        expect(result.history[0]?.renderedContext).toBeUndefined();
+        expect(result.history[0]?.renderedContext).toContain("Statement 42");
         expect(result.history[1]?.renderedContext).toContain("The student selected choice B.");
         expect(result.history[1]?.renderedContext).not.toContain("Statement 42");
-        expect(result.renderedContext).toContain("Statement 42");
+        expect(result.renderedContext).toBe("");
     });
 
     test("never budgets away a current-turn attachment", async () => {
@@ -152,13 +192,15 @@ describe("context frame compiler", () => {
             current,
         );
 
-        expect(result.renderedContext).toContain("Problem currently in view:");
+        // The scope is pinned back at the turn that opened it; only the explicit
+        // selection belongs to the current turn, and it is never budgeted away.
+        expect(result.history[0]?.renderedContext).toContain("Problem the student is working on:");
         expect(result.renderedContext).toContain("CURRENT-SELECTION");
         expect(result.renderedContext).toContain("Selected context:");
         expect(result.renderedContext).toContain("[truncated]");
     });
 
-    test("three 3,990-character attachments cannot displace the current problem", async () => {
+    test("three 3,990-character attachments cannot displace the active problem", async () => {
         const selection = (label: string) => `${label} ${label[0].repeat(3_989 - label.length)}`;
         const result = await compileContextFrames(
             stubSupabase([problem(7), problem(42)]),
@@ -171,7 +213,7 @@ describe("context frame compiler", () => {
         );
         const contexts = allContext(result);
 
-        expect(result.renderedContext).toContain("Statement 42");
+        expect(result.history[1]?.renderedContext).toContain("Statement 42");
         expect(result.renderedContext).toContain("CURRENT");
         expect(result.history[1]?.renderedContext).toContain("FIRST");
         expect(result.history[2]?.renderedContext).toContain("SECOND");

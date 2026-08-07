@@ -110,7 +110,9 @@ function fitLines(lines: string[], maxChars: number): string[] {
 }
 
 export function renderProblem(fact: ProblemFact): string {
-    const header = "Problem currently in view:";
+    // Position-neutral on purpose: the frame is pinned to the turn where the problem
+    // came into view, so by the time it is read it may sit several turns back.
+    const header = "Problem the student is working on:";
     const tail = [
         ...(fact.choices ?? []).map(
             (choice, index) => `${String.fromCharCode(65 + index)}. ${choice}`,

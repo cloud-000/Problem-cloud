@@ -140,6 +140,18 @@ interface RequiredGroup {
 }
 
 /**
+ * A run of adjacent turns sharing one scope, identified by the turn where it began.
+ *
+ * `index` is a position in the bounded history, or `null` for an epoch that begins at
+ * the current prompt. Only the newest epoch can ever sit at `null`.
+ */
+interface ScopeEpoch {
+    index: number | null;
+    key: string;
+    snapshot: ContextSnapshot;
+}
+
+/**
  * Gives every required attachment group visible space, then spends the remainder in
  * priority order. `fitContextSections` makes every shortened group explicit.
  */
@@ -178,9 +190,21 @@ function allocateRequiredGroups(groups: RequiredGroup[], budget: number): string
 }
 
 /**
- * Compiles a bounded transcript into semantic context frames. The current scope is
- * always emitted once beside the current prompt; attachments stay on their owning turn;
- * older scope epochs receive only the budget left after those invariants are satisfied.
+ * Compiles a bounded transcript into semantic context frames.
+ *
+ * Every frame is *pinned to the turn where it became true*: a scope epoch is emitted at
+ * the turn that first carried it, and attachments stay on their owning turn. Nothing is
+ * re-attached to "now".
+ *
+ * That placement is load-bearing twice over. A frame that slides forward each turn
+ * rewrites the prefix of every request, so no provider can cache it and the transcript
+ * stops matching the one the model actually answered. Worse, it drops a fully-stated
+ * problem immediately above the student's newest words, and a model reading that
+ * frequently answers the problem instead of the question. Pinned, the freshest thing in
+ * the request is what the student just said.
+ *
+ * Budget follows meaning, not position: the *active* scope is guaranteed wherever its
+ * frame landed, attachments come next, and superseded epochs share whatever is left.
  */
 export async function compileContextFrames(
     supabase: Supabase,
@@ -223,24 +247,42 @@ export async function compileContextFrames(
     );
     const currentKey = scopeKey(current.scope);
 
-    // Establish scope epochs entirely from refs. Identical rendered statements can still
-    // be different problems, and a content correction must not manufacture a new epoch.
-    const olderScopeCandidates: { index: number; snapshot: ContextSnapshot; key: string }[] = [];
+    // Establish scope epochs entirely from refs, across history *and* the current turn.
+    // Identical rendered statements can still be different problems, and a content
+    // correction must not manufacture a new epoch. The walk order is what pins each
+    // frame: an epoch belongs to the turn that opened it, and the current prompt opens
+    // one only when its scope is genuinely new — a first turn, a switch to another
+    // problem, or leaving the last one behind.
+    const epochs: ScopeEpoch[] = [];
     let previousKey: string | null = null;
+    const opensEpoch = (key: string) => (previousKey === null ? key.length > 0 : key !== previousKey);
     for (const turn of userTurns) {
         const key = scopeKey(turn.snapshot.scope);
-        const changed = previousKey === null ? key.length > 0 : key !== previousKey;
-        if (changed && key !== currentKey) {
-            olderScopeCandidates.push({ ...turn, key });
-        }
+        if (opensEpoch(key)) epochs.push({ index: turn.index, key, snapshot: turn.snapshot });
         previousKey = key;
     }
+    if (opensEpoch(currentKey)) epochs.push({ index: null, key: currentKey, snapshot: current });
+
+    // The newest epoch is the active scope by construction: every turn after it shares
+    // its key. Everything before it has been superseded and is best-effort below —
+    // except an earlier epoch the thread later returned to, whose refs are the same refs
+    // the active frame already renders.
+    const active = epochs.at(-1);
+    const superseded = epochs
+        .slice(0, -1)
+        .flatMap((epoch) =>
+            epoch.index === null || epoch.key === currentKey
+                ? []
+                : [{ ...epoch, index: epoch.index }],
+        );
 
     // Only the already-bounded turns are resolved. Attachments are mandatory context,
-    // whereas the older scope candidates below are deliberately resolved lazily.
-    const [resolvedCurrentScope, resolvedCurrentAttachments, historicalAttachments] =
+    // whereas the superseded epochs below are deliberately resolved lazily.
+    const [activeScopeSections, resolvedCurrentAttachments, historicalAttachments] =
         await Promise.all([
-            currentKey ? renderScope(current) : Promise.resolve([]),
+            // Resolved from `current` rather than the epoch's own snapshot: the two carry
+            // the same refs (that is what shares the key), and this is the live scope.
+            active ? (currentKey ? renderScope(current) : Promise.resolve([NO_ACTIVE_SCOPE])) : Promise.resolve([]),
             renderAttachments(current),
             Promise.all(
                 userTurns.map(async (turn) => ({
@@ -250,16 +292,8 @@ export async function compileContextFrames(
             ),
         ]);
 
-    const currentScopeSections = currentKey
-        ? resolvedCurrentScope
-        : previousKey
-          ? [NO_ACTIVE_SCOPE]
-          : [];
-    const currentScopeBudget = Math.min(
-        MAX_FACT_CHARS,
-        joinedLength(currentScopeSections),
-    );
-    const currentScopeText = fitContextSections(currentScopeSections, currentScopeBudget);
+    const activeScopeBudget = Math.min(MAX_FACT_CHARS, joinedLength(activeScopeSections));
+    const activeScopeText = fitContextSections(activeScopeSections, activeScopeBudget);
 
     const attachmentGroups: RequiredGroup[] = [];
     const attachmentTargets: ({ type: "current" } | { type: "history"; index: number })[] = [];
@@ -274,13 +308,18 @@ export async function compileContextFrames(
         attachmentTargets.push({ type: "history", index: attachment.index });
     }
 
-    const currentJoinOverhead =
-        currentScopeText && resolvedCurrentAttachments.length > 0
-            ? CONTEXT_SECTION_SEPARATOR.length
-            : 0;
+    // The scope frame shares a turn with whatever attachments that same turn owns, so
+    // the separator is charged wherever the frame landed.
+    const scopeTurnAttachments = !active
+        ? []
+        : active.index === null
+          ? resolvedCurrentAttachments
+          : (historicalAttachments.find((entry) => entry.index === active.index)?.sections ?? []);
+    const scopeJoinOverhead =
+        activeScopeText && scopeTurnAttachments.length > 0 ? CONTEXT_SECTION_SEPARATOR.length : 0;
     const attachmentBudget = Math.max(
         0,
-        HISTORY_CONTEXT_MAX_CHARS - currentScopeText.length - currentJoinOverhead,
+        HISTORY_CONTEXT_MAX_CHARS - activeScopeText.length - scopeJoinOverhead,
     );
     const attachmentTexts = allocateRequiredGroups(attachmentGroups, attachmentBudget);
     const historySections = new Map<number, string[]>();
@@ -291,6 +330,19 @@ export async function compileContextFrames(
         if (target.type === "current") currentAttachmentText = text;
         else historySections.set(target.index, [text]);
     });
+
+    // Pin the active scope to the turn that opened it — the current prompt only when
+    // that is genuinely where it began.
+    let currentScopeText = "";
+    if (active && activeScopeText) {
+        if (active.index === null) currentScopeText = activeScopeText;
+        else {
+            historySections.set(active.index, [
+                activeScopeText,
+                ...(historySections.get(active.index) ?? []),
+            ]);
+        }
+    }
 
     const currentSections = [currentScopeText, currentAttachmentText].filter(Boolean);
     let renderedContext = currentSections.join(CONTEXT_SECTION_SEPARATOR);
@@ -304,10 +356,10 @@ export async function compileContextFrames(
             ),
     );
 
-    // Scope epochs are the only best-effort context. Newest epochs get the remaining
-    // budget first, but each stays at the historical turn where it became active.
-    for (let index = olderScopeCandidates.length - 1; index >= 0; index -= 1) {
-        const candidate = olderScopeCandidates[index];
+    // Superseded epochs are the only best-effort context. Newest gets the remaining
+    // budget first, and each stays at the historical turn where it became active.
+    for (let index = superseded.length - 1; index >= 0; index -= 1) {
+        const candidate = superseded[index];
         const existing = historySections.get(candidate.index) ?? [];
         const overhead = existing.length > 0 ? CONTEXT_SECTION_SEPARATOR.length : 0;
         if (remaining <= overhead) continue;

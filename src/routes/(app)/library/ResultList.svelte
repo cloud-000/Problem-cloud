@@ -15,7 +15,7 @@
     import type { Engagement, Mastery, PersonalProblemState } from "$lib/progress";
     import type { LibraryStore } from "$lib/state/library.svelte";
     import { practiceLaunchHref } from "$lib/practice-launch";
-    import { problemLabel } from "$lib/utils";
+    import { problemContextLayer } from "$lib/ai/context/surfaces";
     import { CoachContextRegister } from "$lib/components/coach";
     import { coach } from "$lib/state/coach.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
@@ -63,26 +63,6 @@
     // during template evaluation triggers `state_unsafe_mutation`.
     const problemDrafts = new Map<number, ProblemDraft>();
     let askedProblem = $state<ProblemRow | null>(null);
-    const coachQuickActions = [
-        {
-            id: "hint",
-            label: "Give me a hint",
-            prompt: "Give me the smallest hint that gets me unstuck on this problem.",
-            icon: "lightbulb",
-        },
-        {
-            id: "approach",
-            label: "Check my approach",
-            prompt: "Here is my approach so far — tell me whether it can work, without solving it for me.",
-            icon: "checklist",
-        },
-        {
-            id: "explain",
-            label: "Explain this",
-            prompt: "Explain what this problem is asking and which ideas may be relevant, without giving away the solution.",
-            icon: "help",
-        },
-    ];
 
     function askAboutProblem(problem: ProblemRow, invoker: HTMLElement) {
         askedProblem = problem;
@@ -250,18 +230,12 @@
 
 {#if askedProblem}
     <CoachContextRegister
-        ownerId="library:problem"
-        source="selection"
-        priority={30}
-        policy="coaching"
-        descriptors={[
-            {
-                id: `problem:${askedProblem.id}`,
-                label: problemLabel(askedProblem),
-                ref: { kind: "problem", id: askedProblem.canonical_id ?? askedProblem.id },
-            },
-        ]}
-        quickActions={coachQuickActions}
+        {...problemContextLayer({
+            ownerId: "library:problem",
+            source: "selection",
+            problem: askedProblem,
+            policy: "coaching",
+        })}
     />
 {/if}
 

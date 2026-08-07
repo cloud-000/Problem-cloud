@@ -56,7 +56,7 @@
       updateSessionSettings,
       type PracticeSessionRow,
    } from "$lib/sessions";
-   import { cn, formatProblemText, problemLabel } from "$lib/utils";
+   import { cn, formatProblemText } from "$lib/utils";
    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
@@ -64,6 +64,8 @@
    import { settings } from "$lib/state/settings.svelte";
    import { coach } from "$lib/state/coach.svelte";
    import { anchorFor } from "$lib/ai/session/anchor";
+   import { problemContextLayer } from "$lib/ai/context/surfaces";
+   import { PROBLEM_QUICK_ACTIONS } from "$lib/ai/quick-actions";
    import { shell } from "$lib/state/shell.svelte";
    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
    import ProblemReportModal from "./ProblemReportModal.svelte";
@@ -1002,32 +1004,6 @@
       return shell.suppressCoach();
    });
 
-   // What the Coach is looking at. Sits above the layout's route layer (10), so
-   // its quick actions win and its descriptor leads the context list.
-   // Shared with the library's chip so the number can't drift between them. The label
-   // is UI-only; model context resolves from the typed problem reference below.
-   let coachProblemLabel = $derived(problem ? problemLabel(problem) : "");
-   const coachQuickActions = [
-      {
-         id: "hint",
-         label: "Give me a hint",
-         prompt: "Give me the smallest hint that gets me unstuck on this problem.",
-         icon: "lightbulb",
-      },
-      {
-         id: "approach",
-         label: "Check my approach",
-         prompt: "Here is my approach so far — tell me whether it can work, without solving it for me.",
-         icon: "checklist",
-      },
-      {
-         id: "explain",
-         label: "Explain this",
-         prompt: "Explain what this problem is asking and which ideas are in play.",
-         icon: "help",
-      },
-   ];
-
    // Elapsed time for the on-screen problem at a given clock reading: the live
    // count for the latest unanswered one, otherwise its frozen value. `elapsedMs`
    // passes the reactive (throttled) `timerNow` to drive the ticking display;
@@ -1861,18 +1837,12 @@
         problem needs a new instance to replace the layer. -->
    {#key problem.id}
       <CoachContextRegister
-         ownerId="trainer:problem"
-         source="trainer"
-         priority={20}
-         policy={isTest && !testFinished ? "test-locked" : "coaching"}
-         descriptors={[
-            {
-               id: `problem:${problem.id}`,
-               label: coachProblemLabel,
-               ref: { kind: "problem", id: problem.canonical_id ?? problem.id },
-            },
-         ]}
-         quickActions={coachQuickActions}
+         {...problemContextLayer({
+            ownerId: "trainer:problem",
+            source: "trainer",
+            problem,
+            policy: isTest && !testFinished ? "test-locked" : "coaching",
+         })}
       />
    {/key}
 {/if}
@@ -2165,7 +2135,7 @@
                           same outer edge as the statement shelf above. -->
                      <div class="flex min-h-0 w-full flex-1 flex-col">
                         <CoachInline
-                           quickActions={coachQuickActions}
+                           quickActions={PROBLEM_QUICK_ACTIONS}
                            bind:composerRef={coachComposer}
                         />
                      </div>
