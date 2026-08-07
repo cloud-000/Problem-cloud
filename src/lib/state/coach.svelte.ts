@@ -1370,9 +1370,22 @@ class CoachStore {
         const messageId = "messageId" in event ? event.messageId : undefined;
         const message = messageId ? this.messages.find((item) => item.id === messageId) : undefined;
         if (event.type === "message.delta" && message) {
+            // The answer starting is what ends a trace: models emit reasoning first,
+            // and a trace left open would sit "thinking" under a finished answer.
+            if (message.reasoning && !message.reasoning.endedAt) {
+                message.reasoning.endedAt = new Date().toISOString();
+            }
             const last = message.parts.at(-1);
             if (last?.type === "text") last.text += event.delta;
             else message.parts.push({ type: "text", text: event.delta });
+        } else if (event.type === "reasoning.delta" && message) {
+            if (message.reasoning) {
+                message.reasoning.text += event.delta;
+            } else {
+                message.reasoning = { text: event.delta, startedAt: new Date().toISOString() };
+                // Announced once, when the trace opens — not per delta.
+                this.liveAnnouncement = "Coach is thinking";
+            }
         } else if (event.type === "status" && message) {
             this.liveAnnouncement = event.label;
         } else if (event.type === "tool.proposed" && message) {
@@ -1403,6 +1416,11 @@ class CoachStore {
             if (message) message.parts.push(this.error);
         } else if (event.type === "message.done" && message) {
             message.status = event.status;
+            // A turn that reasoned and then failed (or was cancelled) never reaches
+            // the answer, so this is the only place its trace can be closed.
+            if (message.reasoning && !message.reasoning.endedAt) {
+                message.reasoning.endedAt = new Date().toISOString();
+            }
             this.liveAnnouncement =
                 event.status === "complete" ? "Coach response complete" : "Coach response ended";
         }

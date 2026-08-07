@@ -696,6 +696,7 @@ export function parseAIEvent(value: unknown): NormalizedAIEvent {
                 model: string(input.model, "model", 200),
             };
         case "message.delta":
+        case "reasoning.delta":
             return {
                 type,
                 messageId: string(input.messageId, "message id", 80),

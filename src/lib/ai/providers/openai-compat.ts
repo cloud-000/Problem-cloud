@@ -22,6 +22,7 @@ import type {
 } from "../types";
 import { isChatModelId, probeModels, type FetchFunction, type ModelProbeResult } from "./openai-models";
 import { buildProviderMessages } from "./messages";
+import { createReasoningDemux, reasoningFromRawChunk, type LaneChunk } from "./reasoning";
 import type { AIProviderAdapter } from "./types";
 
 /**
@@ -234,12 +235,32 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
             start: async (controller) => {
                 const send = (event: NormalizedAIEvent) => controller.enqueue(event);
                 let finished = false;
-                let announcedReasoning = false;
+
+                // The one place reasoning and answer are told apart. Everything
+                // downstream — the transcript, the persisted turn, the replayed
+                // history — reads the answer lane, so a trace can only reach them
+                // by escaping this.
+                const demux = createReasoningDemux();
+                const emit = (chunks: LaneChunk[]) => {
+                    for (const chunk of chunks) {
+                        // Empty deltas are stream-fatal downstream (`parseAIEvent`),
+                        // and the demux can legitimately produce one.
+                        if (!chunk.text) continue;
+                        send({
+                            type: chunk.lane === "reasoning" ? "reasoning.delta" : "message.delta",
+                            messageId,
+                            delta: chunk.text,
+                        });
+                    }
+                };
 
                 const finish = (
                     usage: { inputTokens: number; outputTokens: number; cachedTokens?: number },
                     status: "complete" | "failed",
                 ) => {
+                    // Anything the demux is still holding for tag matching belongs
+                    // to the turn; release it before the terminal events.
+                    emit(demux.end());
                     send({ type: "usage", messageId, usage });
                     send({ type: "message.done", messageId, status });
                     controller.close();
@@ -264,16 +285,14 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                         if (finished) break;
                         switch (part.type) {
                             case "text-delta":
-                                // Every event is schema-validated downstream and a blank
-                                // delta is rejected, which would kill the stream.
-                                if (part.text) send({ type: "message.delta", messageId, delta: part.text });
+                                // Not sent straight through: R1-family weights served by
+                                // a plain OpenAI-compatible endpoint put their trace in
+                                // `<think>…</think>` at the head of ordinary content.
+                                emit(demux.answer(part.text));
                                 break;
                             case "reasoning-delta":
-                                // Reasoning must never reach the persisted answer text.
-                                if (!announcedReasoning) {
-                                    announcedReasoning = true;
-                                    send({ type: "status", messageId, label: "Thinking" });
-                                }
+                                // `delta.reasoning_content` (DeepSeek), already separated.
+                                emit(demux.reasoning(part.text));
                                 break;
                             case "finish": {
                                 finished = true;
@@ -317,11 +336,16 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                                 finish({ inputTokens: 0, outputTokens: 0 }, "failed");
                                 return;
                             }
-                            // Phase 1 sends no tools, and raw payloads carry no normalized meaning.
+                            case "raw":
+                                // OpenRouter puts reasoning in `delta.reasoning`, which
+                                // any-model does not map; the raw chunk is the only way
+                                // to reach it. Any other shape reads as no reasoning.
+                                emit(demux.reasoning(reasoningFromRawChunk(part.value)));
+                                break;
+                            // Phase 1 sends no tools.
                             case "tool-call-start":
                             case "tool-call-delta":
                             case "tool-call-end":
-                            case "raw":
                                 break;
                         }
                     }

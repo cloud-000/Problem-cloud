@@ -50,7 +50,32 @@ async function delay(ms: number, signal?: AbortSignal): Promise<void> {
     });
 }
 
+/**
+ * The trace the `reasoning` scenario streams. Deterministic, and deliberately
+ * written the way a reasoning model writes — first person, unpolished — so the
+ * disclosure is exercised with something that would be wrong to show as an answer.
+ */
+const REASONING_TRACE = [
+    "The student hasn't shown work yet, so a full solution would skip past what ",
+    "they need. Let me find the smallest useful next step.\n\n",
+    "The identity $a^2 - b^2 = (a-b)(a+b)$ is the lever here, but naming it outright ",
+    "gives away the shape of the answer. Better to ask what they notice about the ",
+    "two squares first.",
+].join("");
+
+/** Markdown-shaped, so block rendering is visible in the deterministic preview. */
+const REASONING_ANSWER = [
+    "Good place to start. Two things worth separating:\n\n",
+    "1. What you are **given** — the two squared terms.\n",
+    "2. What you must **show** — that their difference factors.\n\n",
+    "Look at $a^2 - b^2$ on its own for a moment. Do you notice anything about the ",
+    "way two squares relate?\n\n",
+    "- If yes, write down what you see and we'll build on it.\n",
+    "- If not, try small numbers: $5^2 - 3^2$.\n",
+].join("");
+
 function responseFor(request: NormalizedAIRequest, scenario: AIMockScenario): string {
+    if (scenario === "reasoning") return REASONING_ANSWER;
     if (scenario === "refusal") {
         return "I can’t help with that request, but I can help with a safe learning question instead.";
     }
@@ -204,6 +229,13 @@ export class MockProviderAdapter implements AIProviderAdapter {
                                 runId,
                                 summary: "Preview result available",
                             });
+                        }
+                    }
+
+                    if (scenario === "reasoning") {
+                        for (const chunk of chunks(REASONING_TRACE)) {
+                            await delay(chunkDelay, request.signal);
+                            send({ type: "reasoning.delta", messageId, delta: chunk });
                         }
                     }
 

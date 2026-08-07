@@ -11,8 +11,13 @@
     import { Icon } from "$lib/components/icon";
     import { MathStatement } from "$lib/components/math-statement";
     import { cn } from "$lib/utils";
+    import AIChatReasoning from "./ai-chat-reasoning.svelte";
 
     let { message, assistantLabel = "Coach" }: AIChatMessageProps = $props();
+
+    let answered = $derived(
+        message.parts.some((part) => part.type === "text" && part.text.trim().length > 0),
+    );
 </script>
 
 <article
@@ -31,11 +36,15 @@
             <span>{assistantLabel}</span>
         </div>
     {/if}
+    {#if message.reasoning}
+        <AIChatReasoning trace={message.reasoning} {answered} />
+    {/if}
     {#each message.parts as part, index (`${part.type}-${index}`)}
         {#if part.type === "text" && part.text.trim().length > 0}
             {#if message.role === "assistant"}
                 <MathStatement
                     text={part.text}
+                    format="markdown"
                     class="leading-6 text-foreground"
                 />
             {:else}

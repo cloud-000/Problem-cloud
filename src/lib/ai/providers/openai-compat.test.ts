@@ -208,7 +208,7 @@ describe("any-model provider adapter", () => {
         expect(deltas.every((event) => event.delta.length > 0)).toBe(true);
     });
 
-    test("reports reasoning as status rather than answer text", async () => {
+    test("routes reasoning_content to the reasoning lane, never the answer", async () => {
         const adapter = new OpenAICompatAdapter({
             credential,
             fetchImpl: fakeFetch({
@@ -227,7 +227,71 @@ describe("any-model provider adapter", () => {
         expect(events.filter((e) => e.type === "message.delta").map((e) => e.delta).join("")).toBe(
             "Answer",
         );
-        expect(events.filter((event) => event.type === "status")).toHaveLength(1);
+        expect(
+            events
+                .filter((event) => event.type === "reasoning.delta")
+                .map((event) => event.delta)
+                .join(""),
+        ).toBe("hmmmore");
+    });
+
+    test("splits an inline <think> block out of ordinary content", async () => {
+        // R1-family weights on a plain OpenAI-compatible endpoint put the trace in
+        // the content stream. Before the demux, all of this was the saved answer.
+        const adapter = new OpenAICompatAdapter({
+            credential,
+            fetchImpl: fakeFetch({
+                completion: () =>
+                    sse(
+                        delta("<think>work"),
+                        delta("ing</thi"),
+                        delta("nk>Answer"),
+                        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+                    ),
+            }),
+        });
+
+        const events = await collect(await adapter.stream(request()));
+        expect(
+            events
+                .filter((event) => event.type === "message.delta")
+                .map((event) => event.delta)
+                .join(""),
+        ).toBe("Answer");
+        expect(
+            events
+                .filter((event) => event.type === "reasoning.delta")
+                .map((event) => event.delta)
+                .join(""),
+        ).toBe("working");
+    });
+
+    test("reads OpenRouter's delta.reasoning off the raw chunk", async () => {
+        const adapter = new OpenAICompatAdapter({
+            credential,
+            fetchImpl: fakeFetch({
+                completion: () =>
+                    sse(
+                        { choices: [{ index: 0, delta: { reasoning: "hmm" }, finish_reason: null }] },
+                        delta("Answer"),
+                        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+                    ),
+            }),
+        });
+
+        const events = await collect(await adapter.stream(request()));
+        expect(
+            events
+                .filter((event) => event.type === "reasoning.delta")
+                .map((event) => event.delta)
+                .join(""),
+        ).toBe("hmm");
+        expect(
+            events
+                .filter((event) => event.type === "message.delta")
+                .map((event) => event.delta)
+                .join(""),
+        ).toBe("Answer");
     });
 
     test("completes when the endpoint omits a stop reason", async () => {

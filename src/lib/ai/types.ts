@@ -115,6 +115,26 @@ export interface AIToolPart {
 
 export type AIMessagePart = AITextPart | AIStatusPart | AIErrorPart | AIToolPart;
 
+/**
+ * A turn's reasoning trace, kept in its own lane rather than as an `AIMessagePart`.
+ *
+ * As a part it would break the answer's contiguity: the store only appends a delta
+ * to `parts.at(-1)` when that part is text, so a model that interleaves reasoning
+ * would split one answer into two text parts — two `MathStatement`s, two KaTeX
+ * boxes, one reply. A lane also makes "reasoning never reaches the persisted
+ * answer" structural: `toProviderMessages` and the persisted transcript are both
+ * built from text parts, which this is not.
+ *
+ * Runtime-only. Nothing writes it to `ai_messages`, so reopening a stored thread
+ * shows the answer alone.
+ */
+export interface AIReasoningTrace {
+    text: string;
+    startedAt: string;
+    /** Set when the trace ends — the answer starting, or the turn finishing. */
+    endedAt?: string;
+}
+
 export interface NormalizedAIMessage {
     id: string;
     role: AIMessageRole;
@@ -126,6 +146,8 @@ export interface NormalizedAIMessage {
     contextSnapshot?: ContextSnapshot;
     /** Runtime-only context frame compiled for this position. Never stored. */
     renderedContext?: string;
+    /** Runtime-only reasoning trace for this turn. Never stored, never replayed. */
+    reasoning?: AIReasoningTrace;
 }
 
 export interface CoachQuickAction {
@@ -184,7 +206,9 @@ export type AIMockScenario =
     | "auth_error"
     | "rate_limit"
     | "tool_proposal"
-    | "tool_result";
+    | "tool_result"
+    /** Streams a reasoning trace and a markdown-shaped answer. */
+    | "reasoning";
 
 export interface NormalizedAIRequest {
     requestId: string;
@@ -224,6 +248,8 @@ export type NormalizedAIEvent =
           model: string;
       }
     | { type: "message.delta"; messageId: string; delta: string }
+    /** A chunk of the model's reasoning. Separated at the provider boundary. */
+    | { type: "reasoning.delta"; messageId: string; delta: string }
     | { type: "status"; messageId: string; label: string }
     | {
           type: "tool.proposed";

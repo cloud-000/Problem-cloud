@@ -8,7 +8,17 @@ export type ASTNode =
     | { type: "code"; content: string }
     | { type: "asy"; imageSrc: string; code: string }
     | { type: "img"; src: string; label: string }
-    | { type: "table"; head: TableRow[]; body: TableRow[] };
+    | { type: "table"; head: TableRow[]; body: TableRow[] }
+    // Block nodes. Only the markdown dialect (`$lib/utils/markdown.ts`) produces
+    // these — BBCode statements are a single implicit paragraph, and adding block
+    // structure to that path would change how every problem in the app renders.
+    | { type: "paragraph"; children: ASTNode[] }
+    | { type: "heading"; level: number; children: ASTNode[] }
+    | { type: "list"; ordered: boolean; items: ASTNode[][] }
+    | { type: "blockquote"; children: ASTNode[] }
+    | { type: "codeblock"; content: string }
+    | { type: "linebreak" }
+    | { type: "rule" };
 
 // A single cell of an allowlisted HTML table. `header` distinguishes <th> from
 // <td>. `children` is the cell's inner content re-parsed through the inline
@@ -59,7 +69,7 @@ const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\(\s*([^\s)]+)\s*\)/g;
 // Resolve a markdown image target to a real URL. An already-absolute reference
 // (has a scheme, or protocol-relative `//host`) is left untouched; anything
 // else is treated as a repo-relative path into Math-Images.
-function resolveImageSrc(target: string): string {
+export function resolveImageSrc(target: string): string {
     const trimmed = target.trim();
     if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) {
         return trimmed;
@@ -362,7 +372,7 @@ function parseWithTables(text: string): ASTNode[] {
 // same column spec (`l c r`, `|`, `\hline`), so we can render `tabular` by
 // swapping the environment name. We only touch text *inside* math delimiters so
 // a literal `\begin{tabular}` appearing as prose is left untouched.
-const MATH_REGION_REGEX =
+export const MATH_REGION_REGEX =
     /\$\$[\s\S]*?\$\$|\$[\s\S]*?\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g;
 
 export function preprocessTabular(text: string): string {
@@ -394,11 +404,15 @@ const CODE_CLASS =
     "katex-ignore px-1.5 py-0.5 rounded bg-surface-container-low text-foreground font-mono text-xs border border-border";
 const IMG_CLASS =
     "katex-ignore block max-w-full max-h-[300px] object-contain mx-auto my-3 rounded-lg";
+// Fenced code from the markdown dialect. `katex-ignore` for the same reason
+// `[code]` carries it: a `$` inside code is not math.
+const CODE_BLOCK_CLASS =
+    "katex-ignore block font-mono text-xs leading-relaxed p-3 rounded-lg bg-surface-container-low/50 border border-border/60 overflow-x-auto text-foreground";
 const ASY_IMG_CLASS = IMG_CLASS;
 const ASY_PRE_CLASS =
     "katex-ignore block font-mono text-sm leading-relaxed p-4 my-3 rounded-lg bg-surface-container-low/50 border border-border/60 overflow-x-auto text-foreground max-h-[250px]";
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
     return value
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -408,7 +422,7 @@ function escapeHtml(value: string): string {
 }
 
 // Reject URLs with a scheme outside the allowlist (blocks javascript:, etc.).
-function sanitizeUrl(url: string, allowed: string[], fallback: string): string {
+export function sanitizeUrl(url: string, allowed: string[], fallback: string): string {
     const trimmed = url.trim();
     const scheme = trimmed.match(/^([a-z][a-z0-9+.-]*):/i);
     if (scheme && !allowed.includes(scheme[1].toLowerCase())) {
@@ -421,15 +435,28 @@ function sanitizeUrl(url: string, allowed: string[], fallback: string): string {
 function astText(nodes: ASTNode[]): string {
     let text = "";
     for (const node of nodes) {
-        if (node.type === "text" || node.type === "code") {
-            text += node.content;
-        } else if (node.type === "table") {
-            for (const row of [...node.head, ...node.body]) {
-                for (const cell of row.cells) text += astText(cell.children);
-            }
-        } else if (node.type !== "asy" && node.type !== "img") {
-            // Remaining childless nodes (asy, img) carry no inline text.
-            text += astText(node.children);
+        switch (node.type) {
+            case "text":
+            case "code":
+            case "codeblock":
+                text += node.content;
+                break;
+            case "table":
+                for (const row of [...node.head, ...node.body]) {
+                    for (const cell of row.cells) text += astText(cell.children);
+                }
+                break;
+            case "list":
+                for (const item of node.items) text += astText(item);
+                break;
+            // Childless nodes carry no inline text.
+            case "asy":
+            case "img":
+            case "linebreak":
+            case "rule":
+                break;
+            default:
+                text += astText(node.children);
         }
     }
     return text;
@@ -496,6 +523,35 @@ export function astToHtml(nodes: ASTNode[]): string {
             }
             case "table":
                 html += tableToHtml(node);
+                break;
+            case "paragraph":
+                html += `<p>${astToHtml(node.children)}</p>`;
+                break;
+            case "heading": {
+                // Clamped rather than trusted: the level reaches a tag name.
+                const level = Math.min(6, Math.max(1, Math.round(node.level)));
+                html += `<h${level}>${astToHtml(node.children)}</h${level}>`;
+                break;
+            }
+            case "list": {
+                const tag = node.ordered ? "ol" : "ul";
+                const items = node.items
+                    .map((item) => `<li>${astToHtml(item)}</li>`)
+                    .join("");
+                html += `<${tag}>${items}</${tag}>`;
+                break;
+            }
+            case "blockquote":
+                html += `<blockquote>${astToHtml(node.children)}</blockquote>`;
+                break;
+            case "codeblock":
+                html += `<pre class="${CODE_BLOCK_CLASS}"><code>${escapeHtml(node.content)}</code></pre>`;
+                break;
+            case "linebreak":
+                html += "<br />";
+                break;
+            case "rule":
+                html += "<hr />";
                 break;
         }
     }

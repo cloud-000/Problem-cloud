@@ -45,6 +45,8 @@ mock.module("./ai-credentials.svelte", () => ({
 
 /** Emits `message.start`, waits on the gate, then closes — so a test can interleave. */
 let streamGate: PromiseWithResolvers<void> | null = null;
+/** Reasoning chunks the mock stream emits before its answer delta. */
+let streamReasoning: string[] = [];
 mock.module("$lib/ai/providers/client-registry", () => ({
     clientProviderRegistry: () => [],
     clientProviderById: () => ({
@@ -71,6 +73,9 @@ mock.module("$lib/ai/providers/client-registry", () => ({
                         conversationId: "provider-invented-id",
                         model: "byok:model-a",
                     });
+                    for (const delta of streamReasoning) {
+                        controller.enqueue({ type: "reasoning.delta", messageId: "assistant-1", delta });
+                    }
                     controller.enqueue({ type: "message.delta", messageId: "assistant-1", delta: "hi" });
                     if (streamGate) await streamGate.promise;
                     // Mirrors OpenAICompatAdapter: a cancel surfaces as a stream error,
@@ -205,6 +210,7 @@ beforeEach(() => {
     coach.tier = "one-shot";
     settings.debugMode = false;
     settings.showModelRequest = false;
+    streamReasoning = [];
 });
 
 describe("coach quick-ask presentation", () => {
@@ -980,5 +986,54 @@ describe("coach model preference", () => {
         recorded = [];
         coach.selectedModel = "byok:model-a";
         expect(recorded).toHaveLength(0);
+    });
+});
+
+describe("coach reasoning traces", () => {
+    beforeEach(() => {
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+        coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
+        coach.newConversation();
+        coach.present("panel");
+        recorded = [];
+        streamGate = null;
+    });
+
+    test("reasoning lands in its own lane, never in the answer", async () => {
+        streamReasoning = ["let me ", "check"];
+        await coach.send("why?");
+
+        const assistant = coach.messages.find((message) => message.role === "assistant");
+        expect(assistant?.reasoning?.text).toBe("let me check");
+        // The answer's parts are what the transcript renders and what gets replayed.
+        expect(assistant?.parts).toEqual([{ type: "text", text: "hi" }]);
+    });
+
+    test("the answer starting closes the trace", async () => {
+        streamReasoning = ["thinking"];
+        await coach.send("why?");
+
+        const assistant = coach.messages.find((message) => message.role === "assistant");
+        expect(assistant?.reasoning?.endedAt).toBeString();
+    });
+
+    test("a turn with no reasoning has no lane at all", async () => {
+        await coach.send("why?");
+
+        const assistant = coach.messages.find((message) => message.role === "assistant");
+        expect(assistant?.reasoning).toBeUndefined();
+    });
+
+    test("reasoning is never sent to the server to be saved", async () => {
+        // The lane is runtime-only: a save that carried it would put a trace in
+        // history that no read path expects and no schema has a column for.
+        streamReasoning = ["private working"];
+        await coach.send("why?");
+
+        const saved = recorded.filter((request) => request.url.includes("/api/ai/messages"));
+        expect(saved.length).toBeGreaterThan(0);
+        expect(JSON.stringify(saved)).not.toContain("private working");
     });
 });

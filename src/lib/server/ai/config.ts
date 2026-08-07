@@ -18,6 +18,7 @@ const scenarios: AIMockScenario[] = [
     "rate_limit",
     "tool_proposal",
     "tool_result",
+    "reasoning",
 ];
 
 export function aiCoachEnabled(): boolean {

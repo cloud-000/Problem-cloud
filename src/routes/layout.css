@@ -654,6 +654,64 @@
     font-weight: 600;
 }
 
+/* Model-authored prose (see utils/markdown.ts). Global for the same reason as
+   `.pc-table`: the markup is injected via {@html} into LaTeX's render clone, so
+   component-scoped rules never reach it. Spacing is set with margins between
+   siblings rather than on every block, so a reply never opens or closes with a
+   stray gap inside its bubble. */
+.pc-md > * + * {
+    margin-top: 0.65em;
+}
+
+.pc-md ul,
+.pc-md ol {
+    padding-left: 1.35em;
+}
+
+.pc-md ul {
+    list-style: disc;
+}
+
+.pc-md ol {
+    list-style: decimal;
+}
+
+.pc-md li + li {
+    margin-top: 0.3em;
+}
+
+.pc-md li::marker {
+    color: var(--color-muted-foreground);
+}
+
+/* Headings in a chat reply are a light emphasis cue, not page furniture: a model
+   reaching for `#` must not produce display type inside a bubble. */
+.pc-md h1,
+.pc-md h2,
+.pc-md h3,
+.pc-md h4,
+.pc-md h5,
+.pc-md h6 {
+    font-size: 1em;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.pc-md blockquote {
+    border-left: 2px solid var(--color-border);
+    padding-left: 0.75em;
+    color: var(--color-muted-foreground);
+}
+
+.pc-md hr {
+    border: 0;
+    border-top: 1px solid var(--color-border);
+}
+
+.pc-md strong {
+    font-weight: 600;
+}
+
 /* ==========================================================================
    5. KINDLE / E-INK MODE OVERRIDES
    ========================================================================== */
