@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, untrack } from "svelte";
     import { MediaQuery } from "svelte/reactivity";
     import { replaceState } from "$app/navigation";
+    import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import type { NormalizedAIMessage } from "$lib/ai/types";
     import { COACH_FALLBACK_QUICK_ACTIONS } from "$lib/ai/quick-actions";
     import { AIChat } from "$lib/components/ai-chat";
     import { Button } from "$lib/components/button";
@@ -13,10 +13,9 @@
         CoachContextTray,
         CoachConversationList,
         CoachDebugToggle,
-        CoachSystemRow,
+        CoachRequestInspector,
     } from "$lib/components/coach";
     import { coach } from "$lib/state/coach.svelte";
-    import { settings } from "$lib/state/settings.svelte";
     import { shell } from "$lib/state/shell.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
 
@@ -53,8 +52,6 @@
     let actions = $derived(
         coach.quickActions.length > 0 ? coach.quickActions : COACH_FALLBACK_QUICK_ACTIONS,
     );
-    let showSystem = $derived(settings.debugMode && settings.showSystemPrompts);
-
     onMount(() => {
         // §6.4 — one transcript on screen. This page *is* the Coach, so the panel and
         // the quick-ask stand down: the FAB has nothing to add, and the global chord
@@ -107,7 +104,12 @@
         const url = new URL(page.url);
         if (id) url.searchParams.set(CHAT_PARAM, id);
         else url.searchParams.delete(CHAT_PARAM);
-        replaceState(url, page.state);
+        const route = url.search
+            ? (`/coach${url.search}${url.hash}` as `/coach?${string}`)
+            : url.hash
+              ? (`/coach${url.hash}` as `/coach#${string}`)
+              : "/coach";
+        untrack(() => replaceState(resolve(route), page.state));
     });
 </script>
 
@@ -202,6 +204,7 @@
         {:else}
             <CoachContextTray />
             <CoachDebugToggle />
+            <CoachRequestInspector class={rail} />
             <!-- Full-bleed, with the readable column as a rail *inside* the scroll
                  container: capping the chat itself would park its scrollbar in the
                  middle of the page instead of on the edge beside the history rail. -->
@@ -217,8 +220,6 @@
                 transcriptClass="[scrollbar-gutter:stable_both-edges]"
                 contentClass={rail}
                 composerClass={rail}
-                transcriptLeading={showSystem ? systemMessage : undefined}
-                messageBefore={showSystem ? turnContext : undefined}
                 bind:composerRef
             />
         {/if}
@@ -234,16 +235,3 @@
         </aside>
     {/if}
 </div>
-
-<!-- Interleaved at the positions they occupy in the request: the system message is
-     always messages[0], and a past turn's facts are prefixed into that turn's own user
-     message rather than sent as a second system message. -->
-{#snippet systemMessage()}
-    <CoachSystemRow />
-{/snippet}
-
-{#snippet turnContext(message: NormalizedAIMessage)}
-    {#if message.role === "user"}
-        <CoachSystemRow messageId={message.id} />
-    {/if}
-{/snippet}

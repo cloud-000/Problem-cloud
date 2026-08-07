@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // presentation rules under test are plain getters and methods.
 const state = Object.assign(<T>(value: T): T => value, {
     snapshot: <T>(value: T): T => structuredClone(value),
+    raw: <T>(value: T): T => value,
 });
 Object.assign(globalThis, { $state: state });
 
@@ -50,9 +51,20 @@ mock.module("$lib/ai/providers/client-registry", () => ({
         id: "byok",
         label: "BYOK",
         authMethods: ["api_key"],
-        stream: async (request: { signal?: AbortSignal }) =>
+        stream: async (request: { requestId: string; message: string; debug?: boolean; signal?: AbortSignal }) =>
             new ReadableStream({
                 async start(controller) {
+                    if (request.debug) {
+                        controller.enqueue({
+                            type: "request.snapshot",
+                            requestId: request.requestId,
+                            model: "byok:model-a",
+                            messages: [
+                                { role: "system", content: "SYSTEM" },
+                                { role: "user", content: request.message },
+                            ],
+                        });
+                    }
                     controller.enqueue({
                         type: "message.start",
                         messageId: "assistant-1",
@@ -170,6 +182,7 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
 }) as unknown as typeof fetch;
 
 const { coach } = await import("./coach.svelte");
+const { settings } = await import("./settings.svelte");
 const { utilityPanel } = await import("./utility-panel.svelte");
 
 // The layout registers the real one; the store only cares that a "coach" view exists.
@@ -186,8 +199,12 @@ beforeEach(() => {
     utilityPanel.close(false);
     coach.draft = "";
     coach.messages = [];
+    coach.lastRequestSnapshot = null;
+    coach.lastRequestSnapshotSource = null;
     coach.conversationId = undefined;
     coach.tier = "one-shot";
+    settings.debugMode = false;
+    settings.showModelRequest = false;
 });
 
 describe("coach quick-ask presentation", () => {
@@ -493,6 +510,45 @@ describe("coach conversation identity", () => {
         expect((save.body.assistant as Record<string, unknown>).id).toBe("assistant-1");
     });
 
+    test("debug mode captures the finalized provider request and clears it with the chat", async () => {
+        settings.debugMode = true;
+        settings.showModelRequest = true;
+
+        await coach.send("show me the request");
+
+        expect(coach.lastRequestSnapshot?.requestId).toMatch(/^[0-9a-f-]{36}$/i);
+        expect(coach.lastRequestSnapshot).toEqual({
+            requestId: coach.lastRequestSnapshot?.requestId,
+            model: "byok:model-a",
+            messages: [
+                { role: "system", content: "SYSTEM" },
+                { role: "user", content: "show me the request" },
+            ],
+        });
+        expect(coach.lastRequestSnapshotSource).toBe("captured");
+        coach.newConversation();
+        expect(coach.lastRequestSnapshot).toBeNull();
+        expect(coach.lastRequestSnapshotSource).toBeNull();
+    });
+
+    test("reload reconstructs the latest provider request from the saved transcript", async () => {
+        coach.conversationId = undefined;
+
+        await coach.selectConversation("22222222-2222-4222-8222-222222222222");
+
+        expect(coach.lastRequestSnapshotSource).toBe("reconstructed");
+        expect(coach.lastRequestSnapshot?.requestId).toBe(
+            "reconstructed:11111111-1111-4111-8111-111111111111",
+        );
+        expect(coach.lastRequestSnapshot?.model).toBe("auto");
+        expect(coach.lastRequestSnapshot?.messages).toHaveLength(2);
+        expect(coach.lastRequestSnapshot?.messages[0].role).toBe("system");
+        expect(coach.lastRequestSnapshot?.messages[1]).toEqual({
+            role: "user",
+            content: "where do I start?",
+        });
+    });
+
     test("a turn abandoned mid-stream is not written to the cleared thread", async () => {
         streamGate = Promise.withResolvers<void>();
         const sending = coach.send("hello");
@@ -548,6 +604,23 @@ describe("coach tiers", () => {
         wireConnections = [];
         await coach.send("just a quick one");
         expect(chatCalls()[0]?.body.persist).toBe(false);
+        wireConnections = [
+            { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
+        ];
+    });
+
+    test("the proxied path requests a runtime snapshot only while its debug view is on", async () => {
+        wireConnections = [];
+        settings.debugMode = true;
+        settings.showModelRequest = true;
+        await coach.send("inspect this");
+        expect(chatCalls()[0]?.body.debug).toBe(true);
+
+        recorded = [];
+        settings.showModelRequest = false;
+        coach.newConversation();
+        await coach.send("do not inspect this");
+        expect(chatCalls()[0]?.body.debug).toBeUndefined();
         wireConnections = [
             { id: "byok", preset: "openai", label: "BYOK", baseURL: "https://x", apiKey: "k" },
         ];
@@ -907,153 +980,5 @@ describe("coach model preference", () => {
         recorded = [];
         coach.selectedModel = "byok:model-a";
         expect(recorded).toHaveLength(0);
-    });
-});
-
-describe("coach context inspection", () => {
-    /** Chainable and awaitable, so both `.maybeSingle()` and `await …limit(n)` resolve. */
-    const stubSupabase = (tables: Record<string, unknown[]>) => {
-        const from = (table: string) => {
-            const rows = tables[table] ?? [];
-            const chain: Record<string, unknown> = {
-                select: () => chain,
-                eq: () => chain,
-                order: () => chain,
-                limit: () => chain,
-                maybeSingle: () => Promise.resolve({ data: rows[0] ?? null }),
-                then: (resolve: (value: { data: unknown[] }) => unknown) => resolve({ data: rows }),
-            };
-            return chain;
-        };
-        return { from } as never;
-    };
-
-    const problemRow = {
-        id: 42,
-        statement: "How many ways?",
-        choices: ["10", "20", "30", "40", "50"],
-        answer_index: 2,
-        answer_status: "verified",
-        topic: "combinatorics",
-        problem_ratings: [{ scope: "overall", rating: 1500 }],
-        tests: { name: "AMC 10A", series: { name: "AMC" } },
-    };
-
-    const trainerLayer = (policy: "coaching" | "test-locked") => ({
-        ownerId: "trainer:problem",
-        source: "trainer" as const,
-        priority: 20,
-        policy,
-        quickActions: [],
-        descriptors: [
-            {
-                id: "problem:42",
-                label: "AMC 10A #18",
-                ref: { kind: "problem" as const, id: 42 },
-            },
-        ],
-    });
-
-    test("reports no inspection until the app shell wires a resolver", async () => {
-        expect(await coach.inspectSystemMessage()).toBeNull();
-    });
-
-    test("messages[0] carries the stable prompt and policy, not dynamic facts", async () => {
-        coach.configureContextResolver(
-            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-        );
-        const release = coach.registerContext(trainerLayer("coaching"));
-
-        const inspection = await coach.inspectSystemMessage();
-        expect(inspection?.policy).toBe("coaching");
-        expect(inspection?.delivery).toBe("system");
-        expect(inspection?.factCount).toBe(1);
-        expect(inspection?.text).toContain("You are the ProblemCloud coach");
-        expect(inspection?.text).toContain("Guide the student toward their own solution");
-        expect(inspection?.text).not.toContain("How many ways?");
-        release();
-    });
-
-    test("the highest-priority layer's policy redacts messages[0]", async () => {
-        coach.configureContextResolver(
-            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-        );
-        const release = coach.registerContext(trainerLayer("test-locked"));
-
-        const inspection = await coach.inspectSystemMessage();
-        expect(inspection?.policy).toBe("test-locked");
-        expect(inspection?.text).not.toContain("Answer key");
-        // The prompt is never the thing that gets redacted — only the facts are.
-        expect(inspection?.text).toContain("You are the ProblemCloud coach");
-        release();
-    });
-
-    test("a past turn renders from its own snapshot, not the live layer", async () => {
-        coach.configureContextResolver(
-            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-        );
-        // The live layer is about a different problem than the turn already in the
-        // transcript. Rendering that turn from the live layer would make the view agree
-        // with itself and lie about what was sent.
-        const release = coach.registerContext(trainerLayer("coaching"));
-        coach.messages = [
-            {
-                id: "turn-1",
-                role: "user",
-                parts: [{ type: "text", text: "why is my answer wrong?" }],
-                status: "complete",
-                createdAt: "2026-08-05T00:00:00.000Z",
-                contextSnapshot: {
-                    version: 2,
-                    policy: "test-locked",
-                    scope: [],
-                    attachments: [{
-                        kind: "selection",
-                        text: "The student selected choice E.",
-                    }],
-                },
-            },
-        ];
-
-        const inspection = await coach.inspectMessageContext("turn-1");
-        // Prefixed into its own user message, never re-sent as a second system message.
-        expect(inspection?.delivery).toBe("inlined");
-        expect(inspection?.policy).toBe("test-locked");
-        expect(inspection?.included).toBe(true);
-        expect(inspection?.text.startsWith("[Application context]")).toBe(true);
-        expect(inspection?.text).toContain("selected choice E");
-        expect(inspection?.text).not.toContain("You are the ProblemCloud coach");
-        expect(inspection?.text).not.toContain("How many ways?");
-        release();
-        coach.messages = [];
-    });
-
-    test("inspection shows the compiled prefix after scope epoch suppression", async () => {
-        coach.configureContextResolver(
-            stubSupabase({ problems: [problemRow], user_submitted_feedback: [] }),
-        );
-        const release = coach.registerContext(trainerLayer("coaching"));
-        coach.messages = [
-            {
-                id: "turn-2",
-                role: "user",
-                parts: [{ type: "text", text: "hello" }],
-                status: "complete",
-                createdAt: "2026-08-05T00:00:00.000Z",
-                contextSnapshot: {
-                    version: 2,
-                    policy: "coaching",
-                    scope: [{ kind: "problem", id: 42 }],
-                    attachments: [],
-                },
-            },
-        ];
-
-        const inspection = await coach.inspectMessageContext("turn-2");
-        expect(inspection?.factCount).toBe(1);
-        expect(inspection?.text).toBe("");
-        expect(inspection?.included).toBe(true);
-        release();
-        coach.messages = [];
     });
 });

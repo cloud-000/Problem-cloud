@@ -6,7 +6,6 @@ import {
     createRegistry,
     RateLimitError,
     UnsupportedFeatureError,
-    type Message,
 } from "@any-model/core";
 import { openAICompatible } from "@any-model/openai-compat";
 import { humanizeModelId, presetFor } from "../presets";
@@ -18,12 +17,11 @@ import type {
     AIProviderCapabilities,
     AIProviderSummary,
     NormalizedAIEvent,
-    NormalizedAIMessage,
     NormalizedAIModel,
     NormalizedAIRequest,
 } from "../types";
 import { isChatModelId, probeModels, type FetchFunction, type ModelProbeResult } from "./openai-models";
-import { applicationContextFrame, buildSystemMessage } from "../prompt";
+import { buildProviderMessages } from "./messages";
 import type { AIProviderAdapter } from "./types";
 
 /**
@@ -102,49 +100,6 @@ function mapError(error: unknown): ErrorMapping {
 
 function isAbort(error: unknown): boolean {
     return error instanceof DOMException && error.name === "AbortError";
-}
-
-/**
- * Flattens normalized history into any-model messages.
- *
- * Failed and cancelled assistant turns are dropped so a broken turn is never replayed
- * as context — which can leave two user turns adjacent. Most chat templates (DeepSeek,
- * vLLM) reject that with a 400, so same-role runs are merged afterwards.
- */
-export function toAnyModelMessages(
-    history: NormalizedAIMessage[],
-    message: string,
-    system: string,
-    currentContext = "",
-): Message[] {
-    const turns: { role: "user" | "assistant"; content: string }[] = [];
-
-    for (const entry of history) {
-        if (entry.role !== "user" && entry.role !== "assistant") continue;
-        if (entry.role === "assistant" && entry.status !== "complete") continue;
-        let text = entry.parts
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join("\n")
-            .trim();
-        if (!text) continue;
-        if (entry.role === "user" && entry.renderedContext) {
-            text = `${applicationContextFrame(entry.renderedContext)}\n\n[Student]\n${text}`;
-        }
-
-        const previous = turns.at(-1);
-        if (previous?.role === entry.role) previous.content += `\n\n${text}`;
-        else turns.push({ role: entry.role, content: text });
-    }
-
-    const current = currentContext
-        ? `${applicationContextFrame(currentContext)}\n\n[Student]\n${message}`
-        : message;
-    const last = turns.at(-1);
-    if (last?.role === "user") last.content += `\n\n${current}`;
-    else turns.push({ role: "user", content: current });
-
-    return [{ role: "system", content: system }, ...turns];
 }
 
 export class OpenAICompatAdapter implements AIProviderAdapter {
@@ -271,18 +226,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
             }),
         );
 
-        const messages = toAnyModelMessages(
-            request.history,
-            request.message,
-            buildSystemMessage(request.policy),
-            request.renderedContext,
-        );
-        if (import.meta.env.DEV) {
-            // The exact provider payload, after context-epoch compilation and role
-            // normalization. Deliberately development-only: messages contain the
-            // student's transcript and must not become production telemetry.
-            console.debug("[AI Coach] messages sent to provider", messages);
-        }
+        const messages = buildProviderMessages(request);
 
         const model = registry.languageModel(`${this.id}:${modelId}`);
 
@@ -302,12 +246,21 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                 };
 
                 try {
-                    send({ type: "message.start", messageId, conversationId, model: reference });
-
-                    for await (const part of model.stream({
+                    const providerStream = model.stream({
                         messages,
                         abortSignal: request.signal,
-                    })) {
+                    });
+                    if (request.debug) {
+                        send({
+                            type: "request.snapshot",
+                            requestId: request.requestId,
+                            model: reference,
+                            messages,
+                        });
+                    }
+                    send({ type: "message.start", messageId, conversationId, model: reference });
+
+                    for await (const part of providerStream) {
                         if (finished) break;
                         switch (part.type) {
                             case "text-delta":

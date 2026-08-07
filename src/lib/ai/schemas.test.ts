@@ -50,6 +50,15 @@ describe("AI runtime schemas", () => {
         ).toThrow(AISchemaError);
     });
 
+    test("debug request capture is explicit and boolean", () => {
+        expect(parseChatRequest({ model: "auto", message: "Hello", debug: true }).debug).toBe(
+            true,
+        );
+        expect(() => parseChatRequest({ model: "auto", message: "Hello", debug: "yes" })).toThrow(
+            AISchemaError,
+        );
+    });
+
     test("rejects provider-shaped and oversized request data", () => {
         expect(() => parseChatRequest({ model: "not a ref", message: "Hello" })).toThrow(
             AISchemaError,
@@ -195,6 +204,25 @@ describe("AI runtime schemas", () => {
         expect(
             parseAIEvent({ type: "message.delta", messageId: "message-1", delta: "Hi" }),
         ).toEqual({ type: "message.delta", messageId: "message-1", delta: "Hi" });
+        expect(
+            parseAIEvent({
+                type: "request.snapshot",
+                requestId: "request-1",
+                model: "openai:gpt-4o",
+                messages: [
+                    { role: "system", content: "System" },
+                    { role: "user", content: "Question" },
+                ],
+            }),
+        ).toEqual({
+            type: "request.snapshot",
+            requestId: "request-1",
+            model: "openai:gpt-4o",
+            messages: [
+                { role: "system", content: "System" },
+                { role: "user", content: "Question" },
+            ],
+        });
         expect(() => parseAIEvent({ type: "provider.raw", payload: {} })).toThrow(AISchemaError);
     });
 

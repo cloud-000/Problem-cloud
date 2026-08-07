@@ -99,6 +99,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             policy: body.contextSnapshot.policy,
             renderedContext: resolved.renderedContext,
             history: resolved.history,
+            debug: body.debug,
             signal: request.signal,
         });
 

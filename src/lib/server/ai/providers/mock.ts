@@ -8,6 +8,7 @@ import type {
 } from "$lib/ai/types";
 import { MOCK_PROVIDER_ID } from "$lib/ai/types";
 import type { AIProviderAdapter } from "$lib/ai/providers/types";
+import { buildProviderMessages } from "$lib/ai/providers/messages";
 
 const MOCK_PROVIDER_CAPABILITIES: AIProviderCapabilities = {
     chat: true,
@@ -159,6 +160,14 @@ export class MockProviderAdapter implements AIProviderAdapter {
             start: async (controller) => {
                 const send = (event: NormalizedAIEvent) => controller.enqueue(event);
                 try {
+                    if (request.debug) {
+                        send({
+                            type: "request.snapshot",
+                            requestId: request.requestId,
+                            model: resolvedModel,
+                            messages: buildProviderMessages(request),
+                        });
+                    }
                     send({ type: "message.start", messageId, conversationId, model: resolvedModel });
                     send({ type: "status", messageId, label: "Preparing a response" });
 

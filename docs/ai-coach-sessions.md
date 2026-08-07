@@ -420,22 +420,30 @@ This is what keeps context correctable at runtime:
   retryable `context_resolution_failed` error. They are never rewritten as “this fact no
   longer exists,” so the Coach cannot silently answer without context during an outage.
 
-The transcript's context inspector runs the same history bound, scope-epoch compiler,
-and aggregate context budget as the send path. Historical rows use their stored snapshot
-policy and show the context prefix they contribute to the **next** provider request;
-rows outside the provider history window and suppressed duplicate scope frames are
-identified rather than reconstructed from their raw refs.
+Debug mode can capture the finalized application-level message list at the provider
+boundary. The adapter emits a runtime-only `request.snapshot` immediately before model
+streaming, after the same history bound, scope-epoch compiler, aggregate context budget,
+failed-turn removal, trimming, and same-role merging as the real request. The inspector
+therefore shows application context inside its actual `user` message rather than
+inventing additional system rows. Before a send, it still shows the complete system
+message for the next request immediately; after a send, that preview is replaced by the
+captured list. Captures are never persisted or logged and disappear when the active
+conversation changes or the page reloads. When a saved conversation is loaded, the
+browser instead recompiles its latest request from the persisted transcript and typed
+turn snapshots. The inspector labels this view as reconstructed because referenced live
+facts may have changed since the original send; only an in-session provider-boundary
+capture is labeled exact.
 
 **Provider boundary:** OpenAI-compatible chat-completions APIs are stateless, so the
 compiled request still travels on every model call. Eliminating retransmission across
 calls would require provider-specific continuation ids and is not the provider-neutral
 baseline. The stable prefix remains friendly to provider prompt caching.
 
-**Trade-off:** live re-rendering gives up exact reproducibility — you cannot
-later prove what the model saw before a correction landed. That is accepted, not
-mitigated: no renderer version is stamped on the snapshot. Healing old threads is
-worth more than being able to audit them, and a version integer only tells you
-*which* renderer ran, never what it produced.
+**Trade-off:** durable history still gives up exact reproducibility — after the runtime
+capture disappears, the reconstructed view cannot prove what the model saw before a
+correction landed. That is accepted: no renderer version or rendered prompt prose is stored. Healing old
+threads is worth more than a permanent prompt audit log, and a version integer only
+tells you *which* renderer ran, never what it produced.
 
 Without snapshots at all, reloading a thread hands the model a transcript about
 a problem it can no longer see, and a thread spanning several problems shows

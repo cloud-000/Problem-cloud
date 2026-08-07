@@ -1,22 +1,18 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import type { NormalizedAIMessage } from "$lib/ai/types";
     import { AIChat } from "$lib/components/ai-chat";
     import { COACH_FALLBACK_QUICK_ACTIONS } from "$lib/ai/quick-actions";
     import { coach } from "$lib/state/coach.svelte";
-    import { settings } from "$lib/state/settings.svelte";
     import CoachHeader from "./coach-header.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
     import CoachDebugToggle from "./coach-debug-toggle.svelte";
-    import CoachSystemRow from "./coach-system-row.svelte";
+    import CoachRequestInspector from "./coach-request-inspector.svelte";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachConversationList from "./coach-conversation-list.svelte";
 
     let actions = $derived(
         coach.quickActions.length > 0 ? coach.quickActions : COACH_FALLBACK_QUICK_ACTIONS,
     );
-    let showSystem = $derived(settings.debugMode && settings.showSystemPrompts);
-
     onMount(() => {
         void coach.initialize();
     });
@@ -40,6 +36,7 @@
     {:else}
         <CoachContextTray />
         <CoachDebugToggle />
+        <CoachRequestInspector />
         <AIChat
             controller={coach}
             assistantLabel="Coach"
@@ -49,21 +46,6 @@
             emptyDescription="Ask a math question, explore a study idea, or use one of these starting points."
             quickActions={actions}
             class="h-auto min-h-0 flex-1"
-            transcriptLeading={showSystem ? systemMessage : undefined}
-            messageBefore={showSystem ? turnContext : undefined}
         />
     {/if}
 </div>
-
-<!-- Interleaved at the positions they occupy in the request: the system message is
-     always messages[0], and a past turn's facts are prefixed into that turn's own user
-     message rather than sent as a second system message. -->
-{#snippet systemMessage()}
-    <CoachSystemRow />
-{/snippet}
-
-{#snippet turnContext(message: NormalizedAIMessage)}
-    {#if message.role === "user"}
-        <CoachSystemRow messageId={message.id} />
-    {/if}
-{/snippet}

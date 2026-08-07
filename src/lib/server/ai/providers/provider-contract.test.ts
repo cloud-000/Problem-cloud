@@ -62,6 +62,18 @@ function providerContract(name: string, factories: ContractFactories) {
             expect(events.at(-1)).toMatchObject({ type: "message.done", status: "complete" });
         });
 
+        test("emits a finalized request snapshot only when requested", async () => {
+            const events = await collect(
+                await create().stream(request({ model: modelReference, debug: true })),
+            );
+            expect(events[0]).toMatchObject({
+                type: "request.snapshot",
+                requestId: "request-1",
+                model: modelReference,
+            });
+            expect(events[1]?.type).toBe("message.start");
+        });
+
         test("normalizes mid-stream failures", async () => {
             const provider = createMidStreamError();
             const events = await collect(await provider.stream(request({ model: modelReference })));

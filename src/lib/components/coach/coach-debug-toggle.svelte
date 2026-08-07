@@ -7,10 +7,15 @@
 <script lang="ts">
     import { Icon } from "$lib/components/icon";
     import { Switch } from "$lib/components/toggle";
+    import { coach } from "$lib/state/coach.svelte";
     import { settings } from "$lib/state/settings.svelte";
     import { cn } from "$lib/utils";
 
     let { class: className }: CoachDebugToggleProps = $props();
+
+    function handleToggle() {
+        if (settings.showModelRequest) void coach.reconstructLatestRequest();
+    }
 </script>
 
 <!-- The Coach's half of Settings → Developer → Debug mode. It renders nothing at all
@@ -25,17 +30,18 @@
     >
         <Icon name="terminal" fontsize={13} class="shrink-0 text-muted-foreground" />
         <label
-            for="coach-system-prompts-switch"
+            for="coach-model-request-switch"
             class="min-w-0 cursor-pointer font-mono text-[11px] text-muted-foreground"
         >
-            Show system prompts
+            Show model messages
         </label>
         <Switch
-            bind:checked={settings.showSystemPrompts}
-            id="coach-system-prompts-switch"
+            bind:checked={settings.showModelRequest}
+            id="coach-model-request-switch"
             size="sm"
             class="ml-auto shrink-0"
-            aria-label="Show system prompts in the transcript"
+            aria-label="Show model messages"
+            onclick={handleToggle}
         />
     </div>
 {/if}

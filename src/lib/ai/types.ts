@@ -197,11 +197,26 @@ export interface NormalizedAIRequest {
     renderedContext: string;
     /** Prior turns supplied to the provider, oldest first, excluding the new prompt. */
     history: NormalizedAIMessage[];
+    /** Emit the finalized application-level message list for the local debug inspector. */
+    debug?: boolean;
     signal?: AbortSignal;
     scenario?: AIMockScenario;
 }
 
+export interface AIProviderMessage {
+    role: "system" | "user" | "assistant";
+    content: string;
+}
+
+/** Runtime-only capture taken at the last application-controlled provider boundary. */
+export interface AIRequestSnapshot {
+    requestId: string;
+    model: string;
+    messages: AIProviderMessage[];
+}
+
 export type NormalizedAIEvent =
+    | ({ type: "request.snapshot" } & AIRequestSnapshot)
     | {
           type: "message.start";
           messageId: string;
@@ -290,6 +305,8 @@ export interface AIChatRequestBody {
     message: string;
     contextSnapshot: ContextSnapshot;
     task: AITaskType;
+    /** Ask the provider adapter to echo its finalized message list; never persisted. */
+    debug?: boolean;
     /**
      * Whether this turn may be written to history at all. Defaults to true; a one-shot
      * (§1) sends false so the server streams without ever creating a conversation row.

@@ -30,11 +30,13 @@ class SettingsStore {
     #debugMode = $state(persisted("settings:debugMode", false));
     /**
      * The Coach's debug affordance: render the system and per-turn context rows in the
-     * transcript at their true positions in the request. Only reachable while
+     * finalized model request captured at the provider boundary. Only reachable while
      * `debugMode` is on, and off by default so turning debug mode on for one screen
      * does not fill every conversation with prompt text.
      */
-    #showSystemPrompts = $state(persisted("settings:showSystemPrompts", false));
+    #showModelRequest = $state(
+        persisted("settings:showModelRequest", persisted("settings:showSystemPrompts", false)),
+    );
 
     get showBetaFeatures() {
         return this.#showBetaFeatures;
@@ -54,13 +56,13 @@ class SettingsStore {
         persist("settings:debugMode", value);
     }
 
-    get showSystemPrompts() {
-        return this.#showSystemPrompts;
+    get showModelRequest() {
+        return this.#showModelRequest;
     }
 
-    set showSystemPrompts(value: boolean) {
-        this.#showSystemPrompts = value;
-        persist("settings:showSystemPrompts", value);
+    set showModelRequest(value: boolean) {
+        this.#showModelRequest = value;
+        persist("settings:showModelRequest", value);
     }
 }
 

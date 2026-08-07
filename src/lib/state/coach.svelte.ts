@@ -11,6 +11,7 @@ import {
     dedupeById,
     flushableTranscript,
     latestPreview,
+    messageText,
     PREVIEW_MAX_CHARS,
 } from "$lib/ai/conversations";
 import {
@@ -39,14 +40,11 @@ import {
     upsertContextLayer,
 } from "$lib/ai/context/registry";
 import { compileContextFrames } from "$lib/ai/context/resolve";
-import {
-    inspectCompiledMessageContext,
-    inspectTurn,
-    type TurnInspection,
-} from "$lib/ai/context/inspect";
+import { buildProviderMessages } from "$lib/ai/providers/messages";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import { aiCredentials } from "./ai-credentials.svelte";
+import { settings } from "./settings.svelte";
 import { utilityPanel } from "./utility-panel.svelte";
 import { MOCK_PROVIDER_ID } from "$lib/ai/types";
 import type {
@@ -59,6 +57,7 @@ import type {
     AIModelReference,
     AIThreadIdentity,
     AIUsage,
+    AIRequestSnapshot,
     CoachContextLayer,
     CoachResumeOffer,
     ConversationSummary,
@@ -125,6 +124,10 @@ class CoachStore {
     contextLayers = $state<CoachContextLayer[]>([]);
     detachedContextIds = $state<string[]>([]);
     liveAnnouncement = $state("");
+    /** Finalized model input for the most recent debug-enabled send; never persisted. */
+    lastRequestSnapshot = $state.raw<AIRequestSnapshot | null>(null);
+    /** Whether the inspector is showing an exact runtime capture or a reload reconstruction. */
+    lastRequestSnapshotSource = $state<"captured" | "reconstructed" | null>(null);
     conversations = $state<ConversationSummary[]>([]);
     conversationsLoaded = $state(false);
     conversationsCursor = $state<string | undefined>(undefined);
@@ -140,6 +143,7 @@ class CoachStore {
     #initializing: Promise<void> | null = null;
     #lastPrompt = "";
     #contextClient: SupabaseClient<Database> | null = null;
+    #reconstructingRequest: { generation: number; promise: Promise<void> } | null = null;
     /**
      * A promotion that arrived mid-stream. The flush waits for the turn to finish so it
      * writes the whole answer rather than the half of it that had arrived — the in-flight
@@ -164,34 +168,6 @@ class CoachStore {
 
     configureContextResolver(client: SupabaseClient<Database>): void {
         this.#contextClient = client;
-    }
-
-    /**
-     * Debug-only: `messages[0]` — the stable system message the next send leads with.
-     *
-     * Deliberately fed from the same two values `send()` captures before its first await
-     * Dynamic facts are deliberately absent; they are compiled into user-positioned
-     * context frames by `compileContextFrames`.
-     */
-    async inspectSystemMessage(): Promise<TurnInspection | null> {
-        if (!this.#contextClient) return null;
-        const snapshot = this.activeContextSnapshot;
-        return inspectTurn(this.#contextClient, {
-            refs: [...snapshot.scope, ...snapshot.attachments],
-            policy: snapshot.policy,
-            delivery: "system",
-        });
-    }
-
-    /** Debug-only: the compiled frame this historical turn contributes on the next send. */
-    async inspectMessageContext(messageId: string): Promise<TurnInspection | null> {
-        const message = this.messages.find((item) => item.id === messageId);
-        if (!this.#contextClient || !message) return null;
-        return inspectCompiledMessageContext(this.#contextClient, {
-            messages: this.messages,
-            current: this.activeContextSnapshot,
-            messageId,
-        });
     }
 
     get selectedModel(): AIModelReference {
@@ -533,6 +509,7 @@ class CoachStore {
                     contextSnapshot,
                     thread,
                     task: "general",
+                    ...(settings.debugMode && settings.showModelRequest ? { debug: true } : {}),
                     // A one-shot streams without leaving a row behind. The server would
                     // otherwise mint a conversation of its own for an unidentified turn.
                     persist: conversationId !== undefined,
@@ -942,6 +919,7 @@ class CoachStore {
             policy: turn.contextSnapshot.policy,
             renderedContext: compiled.renderedContext,
             history: compiled.history,
+            debug: settings.debugMode && settings.showModelRequest,
             signal: controller.signal,
         });
 
@@ -1098,6 +1076,8 @@ class CoachStore {
         this.#invalidateActiveRequest();
         this.conversationId = undefined;
         this.messages = [];
+        this.lastRequestSnapshot = null;
+        this.lastRequestSnapshotSource = null;
         this.error = null;
         this.detachedContextIds = [];
         this.historyViewOpen = false;
@@ -1181,6 +1161,8 @@ class CoachStore {
             if (generation !== this.#generation) return;
             this.conversationId = conversation.id;
             this.messages = conversation.messages;
+            this.lastRequestSnapshot = null;
+            this.lastRequestSnapshotSource = null;
             this.error = null;
             this.detachedContextIds = [];
             this.historyViewOpen = false;
@@ -1192,11 +1174,101 @@ class CoachStore {
             this.workAnchor = conversation.anchor ?? null;
             this.resumePrompt = null;
             this.#pendingFlush = false;
+            await this.reconstructLatestRequest();
         } catch (error) {
             if (generation !== this.#generation) return;
             this.conversationListError = this.normalizeError(error, "conversation_not_found");
         } finally {
             if (this.loadingConversationId === id) this.loadingConversationId = undefined;
+        }
+    }
+
+    /**
+     * Rebuilds the latest provider request after a persisted conversation is loaded.
+     *
+     * Rendered prompt prose is intentionally never stored. The durable transcript and
+     * each user turn's typed context snapshot are enough to run the same context and
+     * provider-message compilers again. Because referenced facts may have changed since
+     * the original send, the inspector labels this result as reconstructed rather than
+     * presenting it as a byte-exact capture.
+     */
+    async reconstructLatestRequest(): Promise<void> {
+        if (this.lastRequestSnapshot || this.messages.length === 0) return;
+        const generation = this.#generation;
+        if (this.#reconstructingRequest?.generation === generation) {
+            return this.#reconstructingRequest.promise;
+        }
+
+        const reconstruct = async () => {
+            const transcript = [...this.messages];
+            let userIndex = -1;
+            for (let index = transcript.length - 1; index >= 0; index -= 1) {
+                if (transcript[index].role === "user" && messageText(transcript[index])) {
+                    userIndex = index;
+                    break;
+                }
+            }
+            if (userIndex < 0) return;
+
+            const user = transcript[userIndex];
+            const prompt = messageText(user);
+            const snapshot = user.contextSnapshot ?? {
+                version: 2 as const,
+                policy: "assist" as const,
+                scope: [],
+                attachments: [],
+            };
+            const rawHistory = boundCoachHistory(transcript.slice(0, userIndex));
+            const needsResolver =
+                snapshot.scope.length > 0 ||
+                snapshot.attachments.length > 0 ||
+                rawHistory.some(
+                    (item) =>
+                        item.contextSnapshot &&
+                        (item.contextSnapshot.scope.length > 0 ||
+                            item.contextSnapshot.attachments.length > 0),
+                );
+            const client = this.#contextClient;
+            if (!client && needsResolver) return;
+
+            try {
+                const compiled = client
+                    ? await compileContextFrames(client, rawHistory, snapshot)
+                    : { history: rawHistory, renderedContext: "" };
+                if (generation !== this.#generation || this.lastRequestSnapshot) return;
+
+                const assistant = transcript
+                    .slice(userIndex + 1)
+                    .find((message) => message.role === "assistant");
+                const requestId = `reconstructed:${user.id}`;
+                this.lastRequestSnapshot = {
+                    requestId,
+                    model: assistant?.resolvedModel ?? this.selectedModel,
+                    messages: buildProviderMessages({
+                        requestId,
+                        conversationId: this.conversationId,
+                        model: this.selectedModel,
+                        task: "general",
+                        message: prompt,
+                        policy: snapshot.policy,
+                        renderedContext: compiled.renderedContext,
+                        history: compiled.history,
+                    }),
+                };
+                this.lastRequestSnapshotSource = "reconstructed";
+            } catch {
+                // Debug reconstruction is best-effort and must not make history unreadable.
+            }
+        };
+
+        const pending = reconstruct();
+        this.#reconstructingRequest = { generation, promise: pending };
+        try {
+            await pending;
+        } finally {
+            if (this.#reconstructingRequest?.promise === pending) {
+                this.#reconstructingRequest = null;
+            }
         }
     }
 
@@ -1270,6 +1342,15 @@ class CoachStore {
 
     private applyEvent(event: NormalizedAIEvent, generation: number): void {
         if (generation !== this.#generation) return;
+        if (event.type === "request.snapshot") {
+            this.lastRequestSnapshot = {
+                requestId: event.requestId,
+                model: event.model,
+                messages: event.messages,
+            };
+            this.lastRequestSnapshotSource = "captured";
+            return;
+        }
         if (event.type === "message.start") {
             // `event.conversationId` is deliberately ignored: identity is minted by
             // `#ensureConversationId()` before the request, so a value echoed back by a

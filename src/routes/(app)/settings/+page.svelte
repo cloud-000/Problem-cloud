@@ -97,8 +97,8 @@
                     </label>
                     <p class="mt-0.5 type-secondary text-muted-foreground">
                         Offer debug controls where they exist — the trainer's problem and rating
-                        panel, and a switch in the Coach that reveals the system prompt and the
-                        context sent with each message. Each one still has its own toggle.
+                        panel, and a switch in the Coach that reveals its system message immediately
+                        and the finalized message list after each send. Each one still has its own toggle.
                     </p>
                 </div>
                 <Switch

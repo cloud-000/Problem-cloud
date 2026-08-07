@@ -29,6 +29,7 @@ import type {
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIModel,
+    AIProviderMessage,
     WorkThreadResponse,
 } from "./types";
 
@@ -36,6 +37,8 @@ import type {
 export const EPHEMERAL_HISTORY_MAX_MESSAGES = 20;
 export const EPHEMERAL_HISTORY_MAX_MESSAGE_CHARS = 8_000;
 export const EPHEMERAL_HISTORY_MAX_TOTAL_CHARS = 24_000;
+const REQUEST_SNAPSHOT_MAX_MESSAGES = EPHEMERAL_HISTORY_MAX_MESSAGES + 2;
+const REQUEST_SNAPSHOT_MAX_CHARS = 100_000;
 
 export class AISchemaError extends Error {
     constructor(message: string) {
@@ -327,6 +330,7 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
         input.contextSnapshot,
         legacySnapshot ? parsePolicy(input.policy) : "assist",
     );
+    const debug = input.debug === undefined ? undefined : boolean(input.debug, "debug");
     return {
         conversationId: optionalUuid(input.conversationId, "conversation id"),
         userMessageId: optionalUuid(input.userMessageId, "user message id"),
@@ -340,9 +344,30 @@ export function parseChatRequest(value: unknown): AIChatRequestBody {
             "vision",
         ]),
         persist: input.persist === undefined ? true : boolean(input.persist, "persist"),
+        ...(debug === undefined ? {} : { debug }),
         ephemeralHistory: ephemeralHistory.length > 0 ? ephemeralHistory : undefined,
         thread: parseThreadIdentity(input.thread),
     };
+}
+
+function parseProviderMessages(value: unknown): AIProviderMessage[] {
+    if (!Array.isArray(value)) throw new AISchemaError("request snapshot messages must be an array");
+    if (value.length === 0 || value.length > REQUEST_SNAPSHOT_MAX_MESSAGES) {
+        throw new AISchemaError("request snapshot has an invalid message count");
+    }
+    let total = 0;
+    return value.map((message) => {
+        const input = record(message, "request snapshot message");
+        const content = string(input.content, "request snapshot content", REQUEST_SNAPSHOT_MAX_CHARS);
+        total += content.length;
+        if (total > REQUEST_SNAPSHOT_MAX_CHARS) {
+            throw new AISchemaError("request snapshot is too large");
+        }
+        return {
+            role: oneOf(input.role, "request snapshot role", ["system", "user", "assistant"] as const),
+            content,
+        };
+    });
 }
 
 /** A flush carries a whole transcript, so it is bounded more tightly than a turn. */
@@ -656,6 +681,13 @@ export function parseAIEvent(value: unknown): NormalizedAIEvent {
     const input = record(value, "stream event");
     const type = string(input.type, "stream event type", 60);
     switch (type) {
+        case "request.snapshot":
+            return {
+                type,
+                requestId: string(input.requestId, "request id", 80),
+                model: string(input.model, "model", 200),
+                messages: parseProviderMessages(input.messages),
+            };
         case "message.start":
             return {
                 type,

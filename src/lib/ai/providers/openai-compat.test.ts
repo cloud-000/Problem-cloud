@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AIConnectionCredential, NormalizedAIEvent, NormalizedAIMessage, NormalizedAIRequest } from "../types";
-import { OpenAICompatAdapter, toAnyModelMessages } from "./openai-compat";
+import { OpenAICompatAdapter } from "./openai-compat";
+import { toProviderMessages } from "./messages";
 import type { FetchFunction } from "./openai-models";
 
 const credential: AIConnectionCredential = {
@@ -67,7 +68,7 @@ function historyMessage(
 
 describe("any-model history mapping", () => {
     test("prepends a system message and appends the new prompt", () => {
-        const messages = toAnyModelMessages([], "What now?", "SYSTEM");
+        const messages = toProviderMessages([], "What now?", "SYSTEM");
         expect(messages).toEqual([
             { role: "system", content: "SYSTEM" },
             { role: "user", content: "What now?" },
@@ -77,7 +78,7 @@ describe("any-model history mapping", () => {
     test("drops failed assistant turns and merges the adjacent user turns", () => {
         // Dropping a failed turn leaves two user turns adjacent, which most chat
         // templates reject outright — they must be merged rather than passed through.
-        const messages = toAnyModelMessages(
+        const messages = toProviderMessages(
             [
                 historyMessage("user", "First"),
                 historyMessage("assistant", "Broken", "failed"),
@@ -94,7 +95,7 @@ describe("any-model history mapping", () => {
     });
 
     test("keeps alternating turns intact and skips empty ones", () => {
-        const messages = toAnyModelMessages(
+        const messages = toProviderMessages(
             [
                 historyMessage("user", "Q1"),
                 historyMessage("assistant", "A1"),
@@ -112,7 +113,7 @@ describe("any-model history mapping", () => {
     });
 
     test("places the compiled current scope in the provider payload once", () => {
-        const messages = toAnyModelMessages(
+        const messages = toProviderMessages(
             [historyMessage("user", "Earlier question")],
             "Current question",
             "SYSTEM",
@@ -154,6 +155,38 @@ describe("any-model provider adapter", () => {
             usage: { inputTokens: 12, outputTokens: 3 },
         });
         expect(events.at(-1)).toMatchObject({ type: "message.done", status: "complete" });
+    });
+
+    test("captures the exact finalized message list when debugging is requested", async () => {
+        const adapter = new OpenAICompatAdapter({
+            credential,
+            fetchImpl: fakeFetch({ completion: () => sse(delta("Done", "stop")) }),
+        });
+
+        const events = await collect(
+            await adapter.stream(
+                request({
+                    debug: true,
+                    renderedContext: "Problem currently in view:\nStatement 42",
+                }),
+            ),
+        );
+        expect(events[0]).toMatchObject({
+            type: "request.snapshot",
+            requestId: "request-1",
+            model: "openai:gpt-4o",
+        });
+        const snapshot = events[0];
+        expect(snapshot.type).toBe("request.snapshot");
+        if (snapshot.type !== "request.snapshot") throw new Error("missing request snapshot");
+        expect(snapshot.messages[0]?.role).toBe("system");
+        expect(snapshot.messages[0]?.content).toContain("You are the ProblemCloud coach");
+        expect(snapshot.messages[1]).toEqual({
+            role: "user",
+            content:
+                "[Application context]\nProblem currently in view:\nStatement 42\n\n[Student]\nExplain factoring",
+        });
+        expect(events[1]?.type).toBe("message.start");
     });
 
     test("suppresses empty text deltas", async () => {
