@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { AIConnectionCredential, NormalizedAIEvent, NormalizedAIMessage, NormalizedAIRequest } from "../types";
 import { OpenAICompatAdapter } from "./openai-compat";
 import { toProviderMessages } from "./messages";
+import { CONTEXT_ACK } from "../prompt";
 import type { FetchFunction } from "./openai-models";
 
 const credential: AIConnectionCredential = {
@@ -181,11 +182,11 @@ describe("any-model provider adapter", () => {
         if (snapshot.type !== "request.snapshot") throw new Error("missing request snapshot");
         expect(snapshot.messages[0]?.role).toBe("system");
         expect(snapshot.messages[0]?.content).toContain("You are the ProblemCloud coach");
-        expect(snapshot.messages[1]).toEqual({
-            role: "user",
-            content:
-                "[Application context]\n[Problem]\nStatement 42\n[End application context]\n\n[Student]\nExplain factoring",
-        });
+        expect(snapshot.messages.slice(1)).toEqual([
+            { role: "user", content: "[Application context]\n[Problem]\nStatement 42" },
+            { role: "assistant", content: CONTEXT_ACK },
+            { role: "user", content: "Explain factoring" },
+        ]);
         expect(events[1]?.type).toBe("message.start");
     });
 

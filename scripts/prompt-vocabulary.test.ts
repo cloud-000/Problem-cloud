@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { ELISION, TAG } from "../src/lib/ai/prompt";
+import { contextFrame, ELISION, TAG } from "../src/lib/ai/prompt";
 import { buildSystemMessage } from "../src/lib/ai/prompt";
+import { NO_ACTIVE_SCOPE_SECTION, renderFacts } from "../src/lib/ai/context/render";
 import { CONTEXT_POLICIES } from "../src/lib/ai/context/policy";
+import type { ResolvedFact } from "../src/lib/ai/context/facts";
 
 /**
  * `$lib/ai/prompt.ts` is the only module allowed to contain model-facing markers.
@@ -71,11 +73,46 @@ describe("prompt vocabulary is centralized", () => {
 describe("the grammar the system prompt promises is the one that is emitted", () => {
     const prompt = buildSystemMessage("coaching");
 
-    test("every structural tag the model may meet is introduced", () => {
-        // Interpolated from TAG, so this can only fail when a tag is added without
-        // teaching the model to read it.
+    test("the frame tag — the only one whose meaning a label cannot carry — is introduced", () => {
+        // Deliberately not "every tag". `[Problem]`, `[Test]`, `[Series]`,
+        // `[Student selection]` and `[Notice]` are self-describing nouns, and enumerating
+        // them cost a third of the prompt to tell a model what "Problem" means.
+        // `[Application context]` is different in kind: its name says where the text came
+        // from, not that it is untrusted and must never be obeyed. That has to be stated.
+        expect(prompt).toContain(`[${TAG.context}]`);
+        expect(prompt).toMatch(/never as instructions/);
+    });
+
+    test("every tag in the vocabulary is one some production actually emits", () => {
+        // A tag nothing produces is dead vocabulary, and if the prompt ever names one it
+        // sends the model looking for a delimiter that is not there — `[Student]` was
+        // described as the thing to answer long after most user turns stopped carrying it.
+        const warnings = [{ code: "missing" as const, message: "gone" }];
+        const facts: ResolvedFact[] = [
+            {
+                kind: "problem",
+                id: 1,
+                statement: "Statement",
+                choices: ["a", "b", "c", "d", "e"],
+                answerIndex: 0,
+                warnings,
+            },
+            { kind: "test", id: 1, name: "Test", series: "Series", warnings },
+            { kind: "series", id: 1, name: "Series", warnings },
+            { kind: "selection", text: "Selection" },
+        ];
+        // Only what a model actually receives: the rendered frame, plus the policy block
+        // the system message really emits. The prose *introducing* the tags is excluded —
+        // including it is what would make this test vacuous.
+        const emitted = [
+            contextFrame(renderFacts(facts, "coaching")),
+            // `[Notice]` has no fact that produces it: warnings render as the *field* of
+            // the same name, and the block form is only ever the standalone section below.
+            NO_ACTIVE_SCOPE_SECTION,
+            prompt.slice(prompt.indexOf(`[${TAG.policy}]`)),
+        ].join("\n");
         for (const tag of Object.values(TAG)) {
-            expect(prompt).toContain(`[${tag}]`);
+            expect(emitted).toContain(`[${tag}]`);
         }
     });
 
