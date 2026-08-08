@@ -1,6 +1,10 @@
 import type { PracticeHistoryEntry, PracticeAnswerState } from "./practice-state";
 import { answersMatch } from "$lib/utils/answer-matcher";
-import { isMultipleChoice } from "$lib/utils";
+import {
+    hasComparableAnswer,
+    inputModeFor,
+    resolveResponseKind,
+} from "$lib/problem-response";
 
 export type TestDraftAnswer = {
     problemId: number;
@@ -30,6 +34,7 @@ export type TestOutcome = {
 export type TestResultSummary = {
     correct: number;
     incorrect: number;
+    ungraded: number;
     skipped: number;
 };
 
@@ -153,12 +158,19 @@ export function restoreTestDraft(
 export function testOutcome(entry: PracticeHistoryEntry): TestOutcome {
     const choices = entry.problem.choices ?? [];
     const answerIndex = entry.problem.answer_index ?? -1;
-    const isMcq = isMultipleChoice(choices);
-    const skipped = isMcq
+    const kind = resolveResponseKind(entry.problem);
+    const inputMode = inputModeFor(kind);
+    const isChoice = inputMode === "choice";
+    const skipped = isChoice
         ? entry.selectedChoice == null
         : !entry.answer.trim();
     if (skipped) return { skipped: true, correct: null };
-    if (answerIndex < 0 || answerIndex >= choices.length) {
+    // Proof and estimation capture are deliberately ungraded in Phase 3.
+    // Unknown legacy rows may still use a valid comparable key; unsupported
+    // kinds have no capture and therefore reach the skipped branch above.
+    const gradeableKind =
+        kind === "mcq" || kind === "short_answer" || kind === "unknown";
+    if (!gradeableKind || !hasComparableAnswer(entry.problem)) {
         return { skipped: false, correct: null };
     }
     return {
@@ -167,7 +179,7 @@ export function testOutcome(entry: PracticeHistoryEntry): TestOutcome {
         // practice (`answersMatch`), NOT raw string equality: stored answers often
         // carry unit labels ("8 pies", "19 cm") or LaTeX/formatting the solver
         // won't retype, so `===` marked genuinely-correct answers wrong.
-        correct: isMcq
+        correct: isChoice
             ? entry.selectedChoice === answerIndex
             : answersMatch(entry.answer, choices[answerIndex]),
     };
@@ -198,6 +210,9 @@ export function summarizeTestResults(
         correct: history.filter((entry) => entry.correct === true).length,
         incorrect: history.filter(
             (entry) => entry.submitted && entry.correct === false,
+        ).length,
+        ungraded: history.filter(
+            (entry) => entry.submitted && entry.correct === null,
         ).length,
         skipped: history.filter((entry) => !entry.submitted).length,
     };

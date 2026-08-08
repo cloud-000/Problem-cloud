@@ -10,15 +10,16 @@ this document synchronized with changes to `supabase/schemas/problems.sql`,
 
 ## 1. Status
 
-**Current phase:** Phase 2 complete; Phase 3 has not started.
+**Current phase:** Phase 3 complete.
 
 The response domain narrows the database strings and owns legacy response-kind,
 input-mode, comparable-answer, missing-reference-answer, and submission-outcome
 logic. The content sync resolves declarations and unambiguous source structure into
 per-problem metadata, and `user_problem_index` projects both fields. Live and replayed
-progress now treat a non-skipped null outcome as seen but ungraded; session aggregates
-and progress analytics use the same distinction, and ratings remain unchanged. Trainer
-and UI consumption remains intentionally deferred to Phase 3.
+progress treats a non-skipped null outcome as seen but ungraded; session aggregates
+and progress analytics use the same distinction, and ratings remain unchanged. The
+trainer, response controls, fixed tests, reference-answer affordances, results, and
+history now consume the response domain end to end.
 
 Pre-Phase-1 local database snapshot on 2026-08-07:
 
@@ -334,16 +335,16 @@ edit it by hand.
 
 ### Phase 3 — trainer, UI, and results
 
-- [ ] Replace answer-index-based availability filtering with `answer_status`.
-- [ ] Exclude `not_applicable` from answer-contribution flows.
-- [ ] Retain proofs and unsupported kinds in fixed Test loading.
-- [ ] Route `ProblemAnswer` through the response helpers.
-- [ ] Add the proof multiline editor.
-- [ ] Define explicit initial handling for estimation, construction, interactive,
+- [x] Replace answer-index-based availability filtering with `answer_status`.
+- [x] Exclude `not_applicable` from answer-contribution flows.
+- [x] Retain proofs and unsupported kinds in fixed Test loading.
+- [x] Route `ProblemAnswer` through the response helpers.
+- [x] Add the proof multiline editor.
+- [x] Define explicit initial handling for estimation, construction, interactive,
       and unknown.
-- [ ] Persist proof text as an ungraded response.
-- [ ] Add neutral ungraded states to results, history, and summaries.
-- [ ] Add trainer-level mixed-response tests.
+- [x] Persist proof text as an ungraded response.
+- [x] Add neutral ungraded states to results, history, and summaries.
+- [x] Add trainer-level mixed-response tests.
 
 ### Deferred — AI/manual evaluation
 
@@ -385,21 +386,23 @@ The implementation uses these defaults unless product direction changes:
 
 ## 14. Current checkpoint
 
-Phase 2 is complete. `handle_new_submission` and `recompute_problem_progress` now use
-the same skipped / ungraded / graded branch: all submissions count as seen, skips only
-increment the skipped counter, and only a non-null correctness outcome increments
-reviewed/correct counters or advances SM-2. Practice-session counters match the live
-problem fold. `submission_facts` and `progress_breakdown` exclude ungraded non-skips
-from graded sequences, counts, and graded-time denominators.
+Phase 3 is complete. Trainer reference-answer filters now use `answer_status`; the
+missing-answer pool and suggestion UI include only `source_missing` and `needs_review`,
+so `not_applicable` no longer appears as missing. Fixed Test loading drops only blank
+statements and therefore retains proof, construction, and interactive problems.
 
-Migration `20260808022033_response_grading_phase2.sql` is applied locally without a
-database reset, database types are regenerated, and the declarative schema has no
-drift. The transactional `ungraded_progress.test.sql` regression proves that an
-ungraded non-skip creates no rating/current-state/history row and that replay exactly
-matches live progress state across mixed graded and ungraded submissions. The full
-database test suite passes 37 assertions. `bun run check` reports no diagnostics, and
-all 827 Bun tests pass.
+`ProblemAnswer` resolves the problem-level response kind through the shared helpers.
+MCQ and short-answer retain their existing controls, proof uses a multiline editor,
+estimation and unknown use short text, and construction/interactive show an explicit
+unsupported surface. Proof and estimation submissions persist their text with null
+correctness; unknown legacy responses grade only when a comparable key exists.
 
-Phase 3 is untouched. The next session should begin with **Phase 3 only**: trainer,
-input, reference-answer affordances, fixed-test retention, and neutral ungraded result
-surfaces.
+Test results, the problem grid, session review, history filters/cards, home activity,
+and summary counts now distinguish neutral Ungraded from Incorrect. Historical review
+passes the stored `submissions.answer` back into the disabled response control, so
+proof text survives reload. Mixed-response coverage verifies MCQ, short-answer, proof,
+and unsupported behavior, and fixed-test coverage verifies that only blank statements
+are omitted. `bun run check` reports no diagnostics, and all 829 Bun tests pass.
+
+Phases 1–3 are complete. AI/manual evaluation remains deferred and must be designed as
+a separate feature rather than extending this initial response-capture rollout.

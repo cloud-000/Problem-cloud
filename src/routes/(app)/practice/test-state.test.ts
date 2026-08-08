@@ -14,7 +14,16 @@ import {
 } from "./test-state";
 
 function problem(id: number, choices: string[], answerIndex: number): ProblemRow {
-    return { id, choices, answer_index: answerIndex } as ProblemRow;
+    return {
+        id,
+        choices,
+        answer_index: answerIndex,
+        response_kind: choices.length > 1 ? "mcq" : "short_answer",
+        answer_status:
+            answerIndex >= 0 && answerIndex < choices.length
+                ? "known"
+                : "source_missing",
+    } as ProblemRow;
 }
 
 function entry(id: number, choices: string[], answerIndex: number) {
@@ -151,6 +160,7 @@ describe("test grading", () => {
         expect(summarizeTestResults([correct, incorrect, skippedMcq, skippedFree])).toEqual({
             correct: 1,
             incorrect: 1,
+            ungraded: 0,
             skipped: 2,
         });
     });
@@ -167,7 +177,40 @@ describe("test grading", () => {
         expect(summarizeTestResults([restored])).toEqual({
             correct: 1,
             incorrect: 0,
+            ungraded: 0,
             skipped: 0,
+        });
+    });
+
+    test("handles a mixed MCQ, short-answer, proof, and unsupported test", () => {
+        const mcq = entry(1, ["A", "B"], 1);
+        mcq.selectedChoice = 1;
+
+        const short = entry(2, ["42"], 0);
+        short.answer = "42";
+
+        const proof = entry(3, [], -1);
+        proof.problem.response_kind = "proof";
+        proof.problem.answer_status = "not_applicable";
+        proof.answer = "Assume the contrary and derive a contradiction.";
+
+        const construction = entry(4, [], -1);
+        construction.problem.response_kind = "construction";
+        construction.problem.answer_status = "not_applicable";
+
+        for (const item of [mcq, short, proof, construction]) {
+            const outcome = testOutcome(item);
+            item.submitted = !outcome.skipped;
+            item.correct = outcome.correct;
+        }
+
+        expect(testOutcome(proof)).toEqual({ skipped: false, correct: null });
+        expect(testOutcome(construction)).toEqual({ skipped: true, correct: null });
+        expect(summarizeTestResults([mcq, short, proof, construction])).toEqual({
+            correct: 2,
+            incorrect: 0,
+            ungraded: 1,
+            skipped: 1,
         });
     });
 });

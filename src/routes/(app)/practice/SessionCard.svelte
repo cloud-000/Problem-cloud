@@ -278,7 +278,7 @@
                                 entry={{
                                     problem: sub.problems,
                                     selectedChoice: sub.selected_choice,
-                                    answer: "",
+                                    answer: sub.answer ?? "",
                                     correct: sub.is_correct,
                                     flagged: sub.flagged,
                                     skipped: sub.skipped,
@@ -296,9 +296,11 @@
                                         size="sm"
                                         status={sub.skipped
                                             ? "skipped"
-                                            : sub.is_correct
-                                              ? "correct"
-                                              : "incorrect"}
+                                            : sub.is_correct === null
+                                              ? "ungraded"
+                                              : sub.is_correct
+                                                ? "correct"
+                                                : "incorrect"}
                                     />
                                     {#if sub.flagged}
                                         <Icon

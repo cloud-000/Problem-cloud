@@ -22,6 +22,11 @@
     } from "$lib/progress";
     import { ProblemOrganization } from "$lib/components/problem-organization";
     import { cn, isMultipleChoice } from "$lib/utils";
+    import {
+        inputModeFor,
+        isReferenceAnswerMissing,
+        resolveResponseKind,
+    } from "$lib/problem-response";
     import ProblemAnswer from "./problem-answer.svelte";
 
     type ProblemMode = "preview" | "practice" | "review";
@@ -90,6 +95,8 @@
         problem.official_solutions?.length ?? 0,
     );
     let mcq = $derived(isMultipleChoice(problem.choices));
+    let responseKind = $derived(resolveResponseKind(problem));
+    let responseMode = $derived(inputModeFor(responseKind));
     let detailsAnswer = $derived.by<string | number | null>(() => {
         const answerIndex = problem.answer_index;
         if (answerIndex == null || answerIndex < 0) return null;
@@ -219,9 +226,14 @@
                     {#if reviewScheduleFor(problem.progress) === "due"}
                         <StatusTag status="review" label="Review due" size="sm" />
                     {/if}
-                    {#if problem.answer_index === null || problem.answer_index < 0}
+                    {#if responseKind === "proof"}
+                        {@render badge("Proof")}
+                    {:else if responseMode === "unsupported"}
+                        {@render badge(responseKind === "construction" ? "Construction" : "Interactive")}
+                    {/if}
+                    {#if isReferenceAnswerMissing(problem)}
                         <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 type-caption text-unsure">
-                            <Icon name="warning" fontsize="0.85rem" /> Answer unavailable
+                            <Icon name="warning" fontsize="0.85rem" /> Reference answer missing
                         </span>
                     {/if}
                 </div>
@@ -388,6 +400,8 @@
                         bind:this={problemAnswer}
                         choices={problem.choices}
                         answerIndex={problem.answer_index}
+                        responseKind={problem.response_kind}
+                        answerStatus={problem.answer_status}
                         bind:answer
                         bind:selectedChoice
                         bind:eliminated

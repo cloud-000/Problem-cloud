@@ -33,6 +33,7 @@
     export type StatusKind =
         | "correct"
         | "incorrect"
+        | "ungraded"
         | "skipped"
         | "solved"
         | "attempted"
@@ -69,6 +70,12 @@
             fill: true,
             label: "Incorrect",
             tone: "destructive",
+        },
+        ungraded: {
+            icon: "pending",
+            fill: false,
+            label: "Ungraded",
+            tone: "neutral",
         },
         skipped: {
             icon: "skip_next",

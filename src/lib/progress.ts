@@ -64,7 +64,11 @@ export type ProblemProgress = Omit<ProblemProgressRow, "mastery" | "engagement">
 export function statusFor(progress?: ProblemProgress | null): ActivityStatus {
     if (!progress || progress.times_seen === 0) return "unseen";
     if (progress.solved) return "solved";
-    if (progress.times_reviewed === 0) return "skipped_only";
+    if (
+        progress.times_reviewed === 0 &&
+        progress.times_skipped === progress.times_seen
+    )
+        return "skipped_only";
     return "attempted";
 }
 

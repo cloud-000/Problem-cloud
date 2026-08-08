@@ -7,6 +7,7 @@ import {
 } from "$lib/library";
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
 import type { Pacing } from "$lib/test-timing";
+import { hasComparableAnswer } from "$lib/problem-response";
 export type { ProblemProgress } from "$lib/progress";
 
 type Supabase = SupabaseClient<Database>;
@@ -91,10 +92,9 @@ export type PracticeSettings = {
     difficulty: Range;
     verifiedOnly: boolean;
     computational: boolean | null;
-    // Answer availability. "with" = only problems with a recorded answer (the
-    // historical default); "without" = only answerless problems (answer_index -1
-    // or null) for users helping fill in answers; "any" = both. Optional so older
-    // session snapshots without it are tolerated (treated as "with").
+    // Reference-answer coverage. "with" = a known, comparable reference answer;
+    // "without" = source-missing or needs-review problems where users can help;
+    // "any" = no coverage restriction. Optional so older snapshots are tolerated.
     answerAvailability?: "with" | "without" | "any";
     // Solution availability. "with" = only problems with at least one official
     // solution; "without" = only those with none; "any" = both. Optional so older
@@ -370,31 +370,20 @@ function applyAttributeFilters(
         .not(`${prefix}statement`, "is", null)
         .neq(`${prefix}statement`, "");
 
-    // Answer availability. "no answer" is `answer_index = -1` (the column default)
-    // or null; "with" requires a real index (>= 0); "any" drops the constraint.
+    // Reference-answer coverage comes from answer_status. A known answer still
+    // needs a usable key; the post-query eligibility check enforces its range.
     const answerAvailability = settings.answerAvailability ?? "with";
     if (answerAvailability === "with") {
-        // Graded draws also need comparable choices. A graded problem's correct
-        // answer is `choices[answer_index]` — MCQ (>1 choice) or computational
-        // free-response (a single choice holding the answer) — so an `answer_index
-        // >= 0` row must carry a non-empty `choices` array. Excluding the empty
-        // array (`{}`) here keeps the SQL pool aligned with `isEligibleProblem`
-        // so the count/candidate/fallback draws don't overcount and whiff.
         next = next
+            .eq(`${prefix}answer_status`, "known")
             .gte(`${prefix}answer_index`, 0)
             .not(`${prefix}choices`, "is", null)
             .neq(`${prefix}choices`, "{}");
     } else if (answerAvailability === "without") {
-        // Answerless problems (incl. computational free-response stubs with an
-        // empty `choices` array) run ungraded — the "help contribute answers"
-        // pool — so choices are intentionally *not* required here.
-        // `.or()` against an embedded resource needs the referenced table named.
-        next =
-            prefix === "problems."
-                ? next.or("answer_index.is.null,answer_index.lt.0", {
-                      referencedTable: "problems",
-                  })
-                : next.or("answer_index.is.null,answer_index.lt.0");
+        next = next.in(`${prefix}answer_status`, [
+            "source_missing",
+            "needs_review",
+        ]);
     }
 
     // Solution availability. Solutions live in `official_solutions` (text[]):
@@ -480,26 +469,18 @@ function reviewSelect(settings: ResolvedSettings): string {
     return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_reviewed_at, last_correct, solved, mastery, engagement, problems!inner(*, ${tests}${rating})`;
 }
 
-/** Whether the settings permit answerless problems (any availability but "with"). */
-function allowsAnswerless(settings: PracticeSettings): boolean {
+/** Whether settings permit problems without a comparable reference answer. */
+function allowsWithoutComparableAnswer(settings: PracticeSettings): boolean {
     return (settings.answerAvailability ?? "with") !== "with";
 }
 
 function isEligibleProblem(
     problem: ProblemRow | null,
-    allowAnswerless = false,
+    allowWithoutComparableAnswer = false,
 ): problem is ProblemRow {
     if (!problem?.statement?.trim()) return false;
-    // When answerless problems are permitted, the recorded answer AND choices are
-    // both optional: answerless computational free-response stubs carry an empty
-    // `choices` array and run ungraded (the "help contribute answers" pool). The
-    // draw query has already narrowed to the requested availability.
-    if (allowAnswerless) return true;
-    // Graded problems need comparable choices — MCQ options, or a single choice
-    // holding a computational answer — with `answer_index` pointing into them.
-    if (!problem.choices?.length) return false;
-    if (problem.answer_index == null) return false;
-    return problem.answer_index >= 0 && problem.answer_index < problem.choices.length;
+    if (allowWithoutComparableAnswer) return true;
+    return hasComparableAnswer(problem);
 }
 
 async function fetchRandomCandidate(
@@ -570,7 +551,7 @@ async function fetchNewProblem(
             excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
                 .eq("times_seen", 0)
                 .order("problem_id"),
-            allowsAnswerless(settings),
+            allowsWithoutComparableAnswer(settings),
         );
         return draw.problem;
     }
@@ -591,7 +572,7 @@ async function fetchNewProblem(
     if (error) throw error;
     if (!count) return null;
 
-    const allowAnswerless = allowsAnswerless(settings);
+    const allowAnswerless = allowsWithoutComparableAnswer(settings);
     for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
         const candidate = await fetchRandomCandidate(supabase, settings, exclude, count);
         if (isEligibleProblem(candidate, allowAnswerless)) return candidate;
@@ -630,7 +611,7 @@ async function fetchNearestNewProblem(
     center: number,
 ): Promise<ProblemRow | null> {
     const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
-    const allowAnswerless = allowsAnswerless(settings);
+    const allowAnswerless = allowsWithoutComparableAnswer(settings);
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const select = `problem_id, rating, problems!inner(*, ${tests})`;
 
@@ -830,7 +811,7 @@ async function fetchDueReviewProblem(
     session: PracticeSession,
 ): Promise<Draw> {
     const now = new Date().toISOString();
-    const allowAnswerless = allowsAnswerless(settings);
+    const allowAnswerless = allowsWithoutComparableAnswer(settings);
 
     return runReviewDraw(
         excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
@@ -846,7 +827,7 @@ async function fetchListProblem(
     settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<Draw> {
-    const allowAnswerless = allowsAnswerless(settings);
+    const allowAnswerless = allowsWithoutComparableAnswer(settings);
     return runReviewDraw(
         buildReviewBaseQuery(supabase, settings, session)
             .eq("engagement", settings.listEngagement ?? "working")
@@ -861,7 +842,7 @@ async function fetchSkippedProblem(
     settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<Draw> {
-    const allowAnswerless = allowsAnswerless(settings);
+    const allowAnswerless = allowsWithoutComparableAnswer(settings);
     const countQuery = buildSkippedBaseQuery(supabase, settings, session, {
         count: "exact",
         head: true,
@@ -1016,11 +997,11 @@ export async function nextPracticeProblem(
 }
 
 /**
- * Every eligible problem belonging to a test, in problem-number order. Unlike
+ * Every usable problem belonging to a test, in problem-number order. Unlike
  * the random/review draws, Test format works through a fixed, fully-known set, so
  * this is fetched once (unpaginated) and the whole sequence becomes the session's
- * navigable history. Ineligible problems (missing statement/choices/answer) are
- * dropped so a test can't strand the user on an unanswerable item.
+ * navigable history. Only blank statements are dropped: unsupported capture and
+ * ungraded response kinds stay visible instead of silently shortening the test.
  */
 export async function fetchTestProblems(
     supabase: Supabase,
@@ -1034,6 +1015,6 @@ export async function fetchTestProblems(
         .order("id");
     if (error) throw error;
     return ((data ?? []) as unknown as ProblemRow[]).filter((p) =>
-        isEligibleProblem(p),
+        Boolean(p.statement?.trim()),
     );
 }

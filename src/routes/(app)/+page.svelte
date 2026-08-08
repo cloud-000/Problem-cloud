@@ -87,11 +87,13 @@
 
     function outcomeIcon(submission: RecentSubmissionRow) {
         if (submission.skipped) return "arrow_forward";
+        if (submission.is_correct === null) return "pending";
         return submission.is_correct ? "check_circle" : "cancel";
     }
 
     function outcomeClass(submission: RecentSubmissionRow) {
         if (submission.skipped) return "text-muted-foreground";
+        if (submission.is_correct === null) return "text-muted-foreground";
         return submission.is_correct ? "text-correct" : "text-destructive";
     }
 

@@ -58,6 +58,12 @@
    } from "$lib/sessions";
    import { cn, formatProblemText } from "$lib/utils";
    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
+   import {
+      hasComparableAnswer,
+      inputModeFor,
+      isReferenceAnswerMissing,
+      resolveResponseKind,
+   } from "$lib/problem-response";
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
@@ -474,7 +480,7 @@
             // user never rated (skips carry no knowledge signal, so they're left
             // alone). Mirrors the trainer's leave-behavior; fire-and-forget.
             for (const e of history) {
-               if (e.skipped || e.progress?.mastery) continue;
+               if (e.skipped || e.correct === null || e.progress?.mastery) continue;
                const m: Mastery = e.correct ? "confident" : "needs_work";
                setProblemMastery(supabase, e.problem.id, m).catch((err) =>
                   console.error("Failed to auto-assign mastery:", err),
@@ -716,10 +722,13 @@
          ? historyIndex > segBounds[0]
          : historyIndex > 0 || olderPrefetch != null,
    );
-   let isProblemMcq = $derived(!!problem && (problem.choices?.length ?? 0) > 1);
+   let responseKind = $derived(problem ? resolveResponseKind(problem) : "unknown");
+   let responseMode = $derived(inputModeFor(responseKind));
+   let isProblemMcq = $derived(responseMode === "choice");
    let cannotSubmit = $derived(
       !problem ||
          paused ||
+         responseMode === "unsupported" ||
          (isProblemMcq
             ? answerState.selectedChoice == null
             : !answerState.answer.trim()),
@@ -739,8 +748,11 @@
       }
       const entry = history[index];
       if (!entry) return false;
-      const isMcq = (entry.problem.choices?.length ?? 0) > 1;
-      return isMcq ? entry.selectedChoice != null : !!entry.answer.trim();
+      const mode = inputModeFor(resolveResponseKind(entry.problem));
+      if (mode === "unsupported") return false;
+      return mode === "choice"
+         ? entry.selectedChoice != null
+         : !!entry.answer.trim();
    }
 
    let answeredCount = $derived(
@@ -759,6 +771,8 @@
          // paints its recorded outcome; anything ungraded is just answered or not.
          if (entry.submitted && entry.correct !== null) {
             state = entry.correct ? "correct" : "incorrect";
+         } else if (entry.submitted) {
+            state = "ungraded";
          } else if (entry.skipped) {
             state = "skipped";
          } else {
@@ -1204,10 +1218,13 @@
       priorSkipped + attempts.filter((attempt) => attempt.skipped).length,
    );
 
-   // A problem with no recorded answer (answer_index -1 or null) — runs in
-   // ungraded mode and surfaces the "No answer" submission chip.
+   // Comparable reference answers are narrower than merely having an index:
+   // metadata must say known and the overloaded key must be usable.
    let hasAnswer = $derived(
-      !!problem && problem.answer_index != null && problem.answer_index >= 0,
+      !!problem && hasComparableAnswer(problem),
+   );
+   let answerContributionAvailable = $derived(
+      !!problem && isReferenceAnswerMissing(problem),
    );
 
    function openProblemReport(emphasizeAnswer = false) {
@@ -1223,6 +1240,7 @@
             user,
             problemId: problem.id,
             choices: problem.choices ?? [],
+            allowAnswerSuggestion: answerContributionAvailable,
             emphasizeAnswer,
          },
          { title: emphasizeAnswer ? "Report or suggest an answer" : "Report problem", size: "md" },
@@ -1452,7 +1470,11 @@
       const elapsed = Math.max(0, Date.now() - startedAt);
       // Answerless problems run ungraded: there's nothing to compare against,
       // so record the attempt as seen-but-not-graded (isCorrect = null).
-      const isCorrect = hasAnswer
+      const gradeableKind =
+         responseKind === "mcq" ||
+         responseKind === "short_answer" ||
+         responseKind === "unknown";
+      const isCorrect = hasAnswer && gradeableKind
          ? isProblemMcq
             ? answerState.selectedChoice === problem.answer_index
             : answersMatch(
@@ -2177,6 +2199,8 @@
                                  bind:this={answerFeedback}
                                  choices={problem.choices}
                                  answerIndex={problem.answer_index}
+                                 responseKind={problem.response_kind}
+                                 answerStatus={problem.answer_status}
                                  bind:answer={answerState.answer}
                                  bind:selectedChoice={answerState.selectedChoice}
                                  bind:eliminated={answerState.eliminatedChoices}
@@ -2336,6 +2360,7 @@
                   {submittingTest}
                   {cannotSubmit}
                   {hasAnswer}
+                  {answerContributionAvailable}
                   onReport={() => openProblemReport(true)}
                   triesUsed={answerState.triesUsed}
                   triesPerProblem={settingsForm.triesPerProblem}

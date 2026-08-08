@@ -7,10 +7,19 @@
     import { toasts } from "$lib/state/toast.svelte";
     import { cn, isMultipleChoice } from "$lib/utils";
     import { answersMatch } from "$lib/utils/answer-matcher";
+    import {
+        hasComparableAnswer,
+        inputModeFor,
+        resolveResponseKind,
+        type AnswerStatus,
+        type ResponseKind,
+    } from "$lib/problem-response";
 
     type Props = {
         choices?: string[] | null;
         answerIndex?: number | null;
+        responseKind?: ResponseKind | string | null;
+        answerStatus?: AnswerStatus | string | null;
         answer?: string;
         selectedChoice?: number | null;
         /** Indices of MCQ choices the user has crossed out (elimination aid). */
@@ -25,6 +34,8 @@
     let {
         choices = null,
         answerIndex = null,
+        responseKind = null,
+        answerStatus = null,
         answer = $bindable(""),
         selectedChoice = $bindable<number | null>(null),
         eliminated = $bindable<number[]>([]),
@@ -38,9 +49,24 @@
     const FEEDBACK_DURATION = 900;
 
     let normalizedChoices = $derived(choices ?? []);
-    let isMcq = $derived(isMultipleChoice(normalizedChoices));
+    let responseMode = $derived(
+        inputModeFor(
+            resolveResponseKind({
+                response_kind: responseKind,
+                choices: normalizedChoices,
+            }),
+        ),
+    );
+    let isMcq = $derived(
+        responseMode === "choice" && isMultipleChoice(normalizedChoices),
+    );
     let canShowAnswerState = $derived(
-        showAnswerState && answerIndex != null && answerIndex >= 0,
+        showAnswerState &&
+            hasComparableAnswer({
+                answer_status: answerStatus,
+                choices: normalizedChoices,
+                answer_index: answerIndex,
+            }),
     );
     let answerResult = $derived(
         canShowAnswerState ? checkAnswer() : null,
@@ -199,7 +225,17 @@
     }
 </script>
 
-{#if isMcq}
+{#if responseMode === "unsupported"}
+    <div
+        class="flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-surface-container-low p-4 text-center"
+        role="status"
+    >
+        <span class="text-sm font-medium text-foreground">Response not supported yet</span>
+        <span class="max-w-md text-xs text-muted-foreground">
+            This problem remains part of the test, but this response type cannot be captured here yet.
+        </span>
+    </div>
+{:else if responseMode === "choice"}
     <div
         class={cn(
             "grid gap-2 rounded-md",
@@ -307,6 +343,18 @@
             {/if}
         </div>
     {/if}
+{:else if responseMode === "long-text"}
+    <textarea
+        bind:value={answer}
+        {disabled}
+        rows={8}
+        placeholder="Write your proof…"
+        aria-label="Proof response"
+        class="min-h-44 w-full resize-y rounded-lg border border-input bg-transparent p-3 font-mono text-sm leading-6 text-foreground shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-input/30"
+    ></textarea>
+    <p class="text-xs text-muted-foreground">
+        Proofs are saved as submitted work and are not graded yet.
+    </p>
 {:else}
     <div
         class={cn(

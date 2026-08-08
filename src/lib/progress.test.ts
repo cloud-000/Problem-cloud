@@ -30,6 +30,7 @@ describe("problem state dimensions", () => {
         expect(statusFor(progress({ times_seen: 1, times_reviewed: 1 }))).toBe(
             "attempted",
         );
+        expect(statusFor(progress({ times_seen: 1 }))).toBe("attempted");
         expect(
             statusFor(
                 progress({ times_seen: 2, times_reviewed: 2, times_correct: 1, solved: true }),

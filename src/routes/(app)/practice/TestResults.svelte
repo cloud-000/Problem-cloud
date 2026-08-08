@@ -9,6 +9,7 @@
     import { formatElapsed, isMultipleChoice } from "$lib/utils";
     import type { PracticeHistoryEntry } from "./practice-state";
     import type { TestResultSummary } from "./test-state";
+    import { submissionOutcome } from "$lib/problem-response";
 
     let {
         history,
@@ -26,11 +27,10 @@
             const skipped =
                 entry.skipped ??
                 (mcq ? entry.selectedChoice == null : !entry.answer.trim());
-            const state: ProblemGridCell["state"] = skipped
-                ? "skipped"
-                : entry.correct
-                  ? "correct"
-                  : "incorrect";
+            const state: ProblemGridCell["state"] = submissionOutcome({
+                skipped,
+                is_correct: entry.correct,
+            });
             return { label: entry.problem.n + 1, state, flagged: entry.flagged };
         }),
     );
@@ -48,7 +48,10 @@
             const skipped =
                 entry.skipped ??
                 (mcq ? entry.selectedChoice == null : !entry.answer.trim());
-            const state = skipped ? "skipped" : entry.correct ? "correct" : "incorrect";
+            const state = submissionOutcome({
+                skipped,
+                is_correct: entry.correct,
+            });
             const seconds = entry.elapsedMs / 1000;
             return {
                 entry,
@@ -124,9 +127,10 @@
             <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground">
                 {@render statChip(summary.correct, "var(--color-correct)")}
                 {@render statChip(summary.incorrect, "var(--color-destructive)")}
+                {@render statChip(summary.ungraded, "var(--color-muted-foreground)")}
                 {@render statChip(summary.skipped, "var(--color-unsure)")}
                 <span class="ml-1">
-                    {summary.correct}/{history.length} correct · {formatElapsed(elapsedMs)}
+                    {summary.correct} correct · {summary.incorrect} incorrect · {summary.ungraded} submitted, ungraded · {summary.skipped} skipped · {formatElapsed(elapsedMs)}
                 </span>
             </div>
             <SegmentBar
@@ -134,6 +138,7 @@
                 segments={[
                     { value: summary.correct, color: "var(--color-correct)", label: "Correct" },
                     { value: summary.incorrect, color: "var(--color-destructive)", label: "Incorrect" },
+                    { value: summary.ungraded, color: "var(--color-muted-foreground)", label: "Ungraded" },
                     { value: summary.skipped, color: "var(--color-unsure)", label: "Skipped" },
                 ]}
             />
@@ -157,7 +162,9 @@
                                   class:bg-error-container={activeEntry.state === 'incorrect'}
                                   class:text-on-error-container={activeEntry.state === 'incorrect'}
                                   class:bg-unsure-container={activeEntry.state === 'skipped'}
-                                  class:text-on-unsure-container={activeEntry.state === 'skipped'}>
+                                  class:text-on-unsure-container={activeEntry.state === 'skipped'}
+                                  class:bg-surface-container={activeEntry.state === 'ungraded'}
+                                  class:text-muted-foreground={activeEntry.state === 'ungraded'}>
                                 {activeEntry.state}
                             </span>
                             <span class="font-semibold text-foreground flex items-center gap-0.5">
@@ -199,7 +206,9 @@
                                     ? "var(--color-correct)"
                                     : item.state === "incorrect"
                                       ? "var(--color-destructive)"
-                                      : "var(--color-unsure)"}
+                                      : item.state === "ungraded"
+                                        ? "var(--color-muted-foreground)"
+                                        : "var(--color-unsure)"}
                                 
                                 <!-- Highlight column background on hover -->
                                 {#if graphHoverIndex === i}

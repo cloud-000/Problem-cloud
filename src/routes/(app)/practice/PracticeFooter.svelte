@@ -26,6 +26,7 @@
         submittingTest,
         cannotSubmit,
         hasAnswer,
+        answerContributionAvailable,
         triesUsed,
         triesPerProblem,
         triesRemaining,
@@ -64,6 +65,7 @@
         submittingTest: boolean;
         cannotSubmit: boolean;
         hasAnswer: boolean;
+        answerContributionAvailable: boolean;
         triesUsed: number;
         triesPerProblem: number;
         triesRemaining: number;
@@ -122,7 +124,7 @@
                 <Icon name="arrow_back" />
             </Button>
         {/if}
-        {#if !hasAnswer}
+        {#if answerContributionAvailable}
             <Button
                 variant="ghost"
                 disabled={paused}

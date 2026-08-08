@@ -15,6 +15,7 @@
         user: User;
         problemId: number;
         choices: string[];
+        allowAnswerSuggestion?: boolean;
         emphasizeAnswer?: boolean;
     }
 
@@ -23,6 +24,7 @@
         user,
         problemId,
         choices,
+        allowAnswerSuggestion = false,
         emphasizeAnswer = false,
     }: Props = $props();
 
@@ -38,7 +40,9 @@
         answerSelection === "custom" ? answerText.trim() : "",
     );
     let canSubmit = $derived(
-        selectedIndex != null || customAnswer.length > 0 || message.trim().length > 0,
+        (allowAnswerSuggestion &&
+            (selectedIndex != null || customAnswer.length > 0)) ||
+            message.trim().length > 0,
     );
 
     async function handleSubmit(e: SubmitEvent) {
@@ -69,11 +73,13 @@
 
 <form onsubmit={handleSubmit} class="space-y-4">
     <p class="text-xs text-muted-foreground">
-        Report anything wrong with this problem. If its answer is missing or
-        incorrect, you can also suggest the correct answer.
+        Report anything wrong with this problem.{allowAnswerSuggestion
+            ? " You can also suggest the missing reference answer."
+            : ""}
     </p>
 
-    <fieldset class="space-y-1.5">
+    {#if allowAnswerSuggestion}
+      <fieldset class="space-y-1.5">
         <legend class="mb-1.5 text-xs font-medium text-muted-foreground">
             Suggested answer (optional)
         </legend>
@@ -168,7 +174,8 @@
                 This problem currently has no recorded answer.
             </p>
         {/if}
-    </fieldset>
+      </fieldset>
+    {/if}
 
     <div class="space-y-1">
         <label for={`${uid}-message`} class="text-xs font-medium text-muted-foreground">

@@ -7,6 +7,7 @@
         type ProblemReviewEntry,
     } from "$lib/library";
     import { cn, formatElapsed, isMultipleChoice } from "$lib/utils";
+    import { submissionOutcome } from "$lib/problem-response";
     import Problem from "./problem.svelte";
     import ProblemSolution from "./problem-solution.svelte";
 
@@ -46,7 +47,7 @@
                 : !entry.answer || !entry.answer.trim()),
     );
     let status = $derived<StatusKind>(
-        skipped ? "skipped" : entry.correct ? "correct" : "incorrect",
+        submissionOutcome({ skipped, is_correct: entry.correct }),
     );
 </script>
 

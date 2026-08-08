@@ -139,8 +139,8 @@
     }
 
     function answerAvailabilityLabel(value: TriState) {
-        if (value === "on") return "Without answer (help answer it)";
-        if (value === "off") return "With answer";
+        if (value === "on") return "Missing (help add it)";
+        if (value === "off") return "Known";
         return "Any";
     }
 
@@ -572,7 +572,7 @@
             <div class="flex items-center justify-between gap-3">
                 <div class="flex flex-col gap-0.5">
                     <span class="text-xs font-medium text-muted-foreground">
-                        Answer availability
+                        Reference answer
                     </span>
                     <span class="text-xxs text-muted-foreground">
                         {answerAvailabilityLabel(form.answerAvailability)}

@@ -15,6 +15,7 @@
         type RecentSubmissionRow,
     } from "$lib/progress";
     import ProgressNav from "../progress/ProgressNav.svelte";
+    import { submissionOutcome } from "$lib/problem-response";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -75,10 +76,7 @@
         return submissions.filter((sub) => {
             // 1. Filter by outcome
             if (selectedOutcomes.length > 0) {
-                let outcome = "skipped";
-                if (!sub.skipped) {
-                    outcome = sub.is_correct ? "correct" : "incorrect";
-                }
+                const outcome = submissionOutcome(sub);
                 if (!selectedOutcomes.includes(outcome)) {
                     return false;
                 }
@@ -141,9 +139,10 @@
     let stats = $derived.by(() => {
         const total = filteredSubmissions.length;
 
-        // Graded attempts (not skipped)
-        const graded = filteredSubmissions.filter((s) => !s.skipped);
-        const correct = graded.filter((s) => s.is_correct).length;
+        const graded = filteredSubmissions.filter(
+            (s) => !s.skipped && s.is_correct !== null,
+        );
+        const correct = graded.filter((s) => s.is_correct === true).length;
 
         const accuracy =
             graded.length === 0
@@ -267,6 +266,7 @@
     const outcomeOptions = [
         { value: "correct", label: "Correct" },
         { value: "incorrect", label: "Incorrect" },
+        { value: "ungraded", label: "Ungraded" },
         { value: "skipped", label: "Skipped" },
     ];
 </script>
@@ -424,11 +424,7 @@
                                     >
                                         <StatusTag
                                             class="w-fit"
-                                            status={sub.skipped
-                                                ? "skipped"
-                                                : sub.is_correct
-                                                  ? "correct"
-                                                  : "incorrect"}
+                                            status={submissionOutcome(sub)}
                                         />
                                         <div class="min-w-0">
                                             <span class="type-body text-foreground">
@@ -458,7 +454,7 @@
                                                     entry={{
                                                         problem: sub.problems,
                                                         selectedChoice: sub.selected_choice,
-                                                        answer: "",
+                                                        answer: sub.answer ?? "",
                                                         correct: sub.is_correct,
                                                         flagged: sub.flagged,
                                                         skipped: sub.skipped,

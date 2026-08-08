@@ -7,6 +7,7 @@
         | "unanswered"
         | "correct"
         | "incorrect"
+        | "ungraded"
         | "skipped";
 
     export type ProblemGridCell = {
@@ -45,6 +46,8 @@
                 return "border-destructive/30 bg-destructive/15 text-destructive";
             case "skipped":
                 return "border-unsure/30 bg-unsure/15 text-unsure";
+            case "ungraded":
+                return "border-border bg-surface-container-high text-muted-foreground";
             case "answered":
                 return "border-primary-foreground bg-primary-foreground text-surface-container-lowest shadow-xs";
             default:
