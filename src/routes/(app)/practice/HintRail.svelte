@@ -61,7 +61,12 @@
 </script>
 
 <!-- Pointer events rather than mouse events: they carry `pointerType`, so a tap does
-     not also register as a hover that never ends on touch devices. -->
+     not also register as a hover that never ends on touch devices.
+
+     The lightbulb is last in the row and the row is end-aligned, so the bulb's own
+     position is fixed: opening the rail grows the chips *leftward*, away from it. The
+     other order (bulb first) makes the trigger slide out from under the pointer the
+     instant it is hovered, which is the jump this layout exists to avoid. -->
 <div
     role="group"
     aria-label="Hints"
@@ -75,25 +80,6 @@
     onfocusin={() => (focused = true)}
     onfocusout={() => (focused = false)}
 >
-    <button
-        type="button"
-        aria-expanded={open}
-        aria-label={spent
-            ? "Hints, all used"
-            : `Hints, ${level} of ${HINT_LADDER_LENGTH} used`}
-        class={cn(
-            "flex h-7 shrink-0 items-center gap-1 rounded-full border border-border/50 px-2 text-xs text-muted-foreground transition-colors motion-reduce:transition-none",
-            "hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-            open && "border-border text-foreground",
-        )}
-        onclick={() => (pinned = !pinned)}
-    >
-        <Icon name="lightbulb" fontsize={15} fill={level > 0} />
-        {#if level > 0}
-            <span class="tabular-nums">{level}/{HINT_LADDER_LENGTH}</span>
-        {/if}
-    </button>
-
     <!-- `grid-template-columns` interpolates where `width: auto` does not, so the
          chips can measure themselves and still animate open. -->
     <div
@@ -118,12 +104,20 @@
                         ? `Take the ${rungs[state.index - 1]?.rung.label.toLowerCase()} hint first`
                         : state.rung.description}
                     class={cn(
-                        "flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs transition-colors motion-reduce:transition-none",
+                        "flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 text-xs transition-colors disabled:cursor-default motion-reduce:transition-none",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                        // The one takeable rung is the only filled chip in the row, and
+                        // it is filled the way every other primary control in the app is
+                        // (`bg-primary text-primary-foreground`) — the old `text-primary`
+                        // on a 10% wash of the *same* light blue was two near-identical
+                        // values stacked, so the actionable chip read fainter than the
+                        // spent ones beside it.
                         state.next &&
-                            "bg-primary/10 font-medium text-primary hover:bg-primary/15 disabled:opacity-50",
-                        state.used && "text-muted-foreground/70",
-                        state.locked && "text-muted-foreground/40",
+                            "border-transparent bg-primary font-medium text-primary-foreground shadow-sm hover:bg-primary-foreground hover:text-secondary-foreground hover:shadow-md disabled:opacity-60 disabled:shadow-none",
+                        // Spent and locked rungs stay chips rather than bare words, so
+                        // the ladder reads as one row with one live step in it.
+                        state.used && "border-border/60 text-muted-foreground",
+                        state.locked && "border-border/40 text-muted-foreground/50",
                     )}
                     onclick={() => take(state.rung, state.index)}
                 >
@@ -137,4 +131,23 @@
             {/each}
         </div>
     </div>
+
+    <button
+        type="button"
+        aria-expanded={open}
+        aria-label={spent
+            ? "Hints, all used"
+            : `Hints, ${level} of ${HINT_LADDER_LENGTH} used`}
+        class={cn(
+            "flex h-7 shrink-0 items-center gap-1 rounded-full border border-border/50 px-2 text-xs text-muted-foreground transition-colors motion-reduce:transition-none",
+            "hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+            open && "border-border text-foreground",
+        )}
+        onclick={() => (pinned = !pinned)}
+    >
+        <Icon name="lightbulb" fontsize={15} fill={level > 0} />
+        {#if level > 0}
+            <span class="tabular-nums">{level}/{HINT_LADDER_LENGTH}</span>
+        {/if}
+    </button>
 </div>
