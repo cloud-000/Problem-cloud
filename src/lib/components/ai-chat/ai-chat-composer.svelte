@@ -5,6 +5,15 @@
         controller: AIChatController;
         placeholder?: string;
         assistantLabel?: string;
+        /**
+         * Collapse the card to a single row — textarea, model picker, and send
+         * on one line — instead of a textarea above its own toolbar. For a
+         * composer standing in for a control the size of a text input, where the
+         * full card is four times the height of what it replaced and the
+         * difference lands as a layout jump. It still grows with the draft; only
+         * the resting height changes.
+         */
+        compact?: boolean;
         textareaRef?: HTMLTextAreaElement | null;
         class?: string;
     }
@@ -23,6 +32,7 @@
         controller,
         placeholder = "Ask anything…",
         assistantLabel = "Assistant",
+        compact = false,
         textareaRef = $bindable(null),
         class: className,
     }: AIChatComposerProps = $props();
@@ -77,7 +87,8 @@
      error banner opt back in. -->
 <div
     class={cn(
-        "pointer-events-none shrink-0 bg-transparent px-3 pb-3 pt-2",
+        "pointer-events-none shrink-0 bg-transparent px-3",
+        compact ? "pb-2 pt-1" : "pb-3 pt-2",
         className,
     )}
 >
@@ -97,39 +108,57 @@
             {/if}
         </div>
     {/if}
+    <!-- Compact keeps every control, on one line instead of two: the picker and
+         send move up beside the textarea rather than onto a toolbar of their own.
+         `items-end` so they stay pinned to the last line as the draft grows. -->
     <div
-        class="pointer-events-auto overflow-visible rounded-2xl border border-border/50 bg-surface-container-lowest shadow-xs transition-colors focus-within:border-border/80 focus-within:shadow-md"
+        class={cn(
+            "pointer-events-auto overflow-visible border border-border/50 bg-surface-container-lowest shadow-xs transition-colors focus-within:border-border/80 focus-within:shadow-md",
+            compact ? "flex items-end gap-1 rounded-xl p-1" : "rounded-2xl",
+        )}
     >
         <textarea
             bind:this={textareaRef}
             bind:value={controller.draft}
             rows="1"
-            class="block max-h-40 min-h-12 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0"
+            class={cn(
+                "block max-h-40 resize-none border-0 bg-transparent text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0",
+                compact
+                    ? "min-h-8 w-full min-w-0 flex-1 px-2 py-1.5"
+                    : "min-h-12 w-full px-3.5 pb-1 pt-3",
+            )}
             {placeholder}
             aria-label={`Message ${assistantLabel}`}
             onkeydown={keydown}
             {@attach trackWidth}
             {@attach trackDraft}
         ></textarea>
-        <div class="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1">
-            <AIChatModelPicker {controller} />
-            <Button
-                variant="primary"
-                size="icon-sm"
-                class="rounded-full shadow-none transition-transform enabled:hover:scale-105"
-                onclick={() =>
-                    controller.streaming ? controller.stop() : controller.send()}
-                disabled={!controller.streaming && !controller.draft.trim()}
-                aria-label={controller.streaming
-                    ? "Stop response"
-                    : "Send message"}
-            >
-                <Icon
-                    name={controller.streaming ? "stop" : "arrow_upward"}
-                    fontsize={16}
-                    fill
-                />
-            </Button>
-        </div>
+        {#if compact}
+            <AIChatModelPicker {controller} compact />
+            {@render sendButton()}
+        {:else}
+            <div class="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1">
+                <AIChatModelPicker {controller} />
+                {@render sendButton()}
+            </div>
+        {/if}
     </div>
 </div>
+
+{#snippet sendButton()}
+    <Button
+        variant="primary"
+        size="icon-sm"
+        class="shrink-0 rounded-full shadow-none transition-transform enabled:hover:scale-105"
+        onclick={() =>
+            controller.streaming ? controller.stop() : controller.send()}
+        disabled={!controller.streaming && !controller.draft.trim()}
+        aria-label={controller.streaming ? "Stop response" : "Send message"}
+    >
+        <Icon
+            name={controller.streaming ? "stop" : "arrow_upward"}
+            fontsize={16}
+            fill
+        />
+    </Button>
+{/snippet}

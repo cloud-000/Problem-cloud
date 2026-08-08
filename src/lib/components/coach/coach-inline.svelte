@@ -134,6 +134,7 @@
                 controller={coach}
                 assistantLabel="Coach"
                 placeholder="Ask Coach about this problem…"
+                {compact}
                 bind:textareaRef={composerRef}
             />
         </div>

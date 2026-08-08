@@ -3,6 +3,12 @@
 
     export interface AIChatModelPickerProps {
         controller: AIChatController;
+        /**
+         * Icon-only trigger, for a composer that is one row tall and has no
+         * toolbar to put a labelled control in. The model is still selectable and
+         * the label returns with the full-size composer.
+         */
+        compact?: boolean;
     }
 </script>
 
@@ -10,7 +16,7 @@
     import { Select } from "$lib/components/select";
     import { Icon } from "$lib/components/icon";
 
-    let { controller }: AIChatModelPickerProps = $props();
+    let { controller, compact = false }: AIChatModelPickerProps = $props();
     let options = $derived([
         { value: "auto", label: "Auto · Recommended" },
         ...controller.models.map((model) => ({
@@ -29,6 +35,7 @@
     searchPlaceholder="Search models..."
     aria-label="Conversation model"
     data-slot="ai-chat-model-picker"
+    data-compact={compact ? "" : undefined}
     class="w-auto max-w-40"
 >
     {#snippet triggerContent(option)}
@@ -38,9 +45,11 @@
                 fontsize={14}
                 class="shrink-0 text-muted-foreground"
             />
-            <span class="truncate text-xs font-medium">
-                {option.value === "auto" ? "Auto" : option.label}
-            </span>
+            {#if !compact}
+                <span class="truncate text-xs font-medium">
+                    {option.value === "auto" ? "Auto" : option.label}
+                </span>
+            {/if}
         </span>
     {/snippet}
 </Select>
@@ -81,5 +90,19 @@
         width: min(17rem, calc(100vw - 3rem));
         margin-top: 0;
         margin-bottom: 0.375rem;
+    }
+
+    /* Compact sits at the *right* end of a single-row composer, next to Send, so
+       a left-anchored 17rem popover would open off the edge of the viewport. */
+    :global(
+        [data-slot="ai-chat-model-picker"][data-compact]
+            + [data-slot="select-popover"]
+    ) {
+        right: 0;
+        left: auto;
+    }
+
+    :global([data-slot="ai-chat-model-picker"][data-compact]) {
+        padding: 0 0.25rem !important;
     }
 </style>

@@ -2118,15 +2118,27 @@
                         />
                      {/if}
 
-                     <!-- Top-aligned in every mode. The statement used to be
-                          vertically centred while answering and top-aligned in
-                          Coach mode, so the text under the student's eyes jumped
-                          by half the slack at the exact moment everything else
-                          moved. The slack now sits *between* the statement and
-                          the answer box (see the `mt-auto` below), so the
-                          statement holds its position and nothing travels
-                          across it. -->
-                     <div class="flex min-h-fit w-full flex-none items-start justify-center">
+                     <!-- Centred by auto margins rather than by `justify-center`
+                          on the shelf, which are the same thing until the
+                          content overflows: auto margins resolve to zero when
+                          free space goes negative, so a long statement simply
+                          top-aligns and scrolls, where a centred flex container
+                          would put its first line above the scroll origin and
+                          make it unreachable.
+
+                          The margins also do the answer box's positioning: they
+                          absorb *all* the free space, so everything below the
+                          statement is pushed to the bottom of the region, which
+                          is where the answer box has always sat.
+
+                          This is centred in every mode, and it is the *mode*
+                          that used to make it jump — the statement was centred
+                          while answering and hard-switched to top-aligned in
+                          Coach mode. Now the geometry only ever changes by
+                          changing the shelf's height, which is animated, so
+                          centred content glides with it instead of teleporting.
+                          Do not reintroduce an alignment swap here. -->
+                     <div class="my-auto flex min-h-fit w-full flex-none items-start justify-center">
                         {#if debugMode && showRawLatex && !focusModeActive}
                            <pre
                               class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-[48rem] py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
@@ -2143,16 +2155,10 @@
                         {/if}
                      </div>
                      {#if !coachMode}
-                        <!-- `mt-auto` keeps the answer box where it has always
-                             sat — near the bottom of the region — while the
-                             statement stays anchored at the top. The free space
-                             goes between them rather than under them, so neither
-                             end has to move when the other changes. It collapses
-                             to nothing once the content fills the region, which
-                             is when a long statement needs every pixel anyway. -->
-                        <div
-                           class="mt-auto flex w-full max-w-[48rem] flex-col gap-1.5"
-                        >
+                        <!-- No `mt-auto` here: the statement's own auto margins
+                             have already taken every pixel of free space, so
+                             this sits at the bottom of the region on its own. -->
+                        <div class="flex w-full max-w-[48rem] flex-col gap-1.5">
                            <!-- The ladder sits over the answer box, collapsed to a
                                 single lightbulb until it is hovered, focused, or
                                 offered after a wrong try. Help is one gesture away
