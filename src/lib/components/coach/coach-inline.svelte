@@ -3,6 +3,14 @@
 
     export interface CoachInlineProps {
         quickActions?: readonly AIChatQuickAction[];
+        /**
+         * Render as a composer box roughly the size of the answer box it replaced,
+         * with no transcript. This is what the trainer shows before the thread has
+         * anything in it: entering Coach mode then costs a box-for-box swap instead
+         * of collapsing the statement into a shelf to make room for an empty
+         * transcript. The surface expands when the conversation earns the space.
+         */
+        compact?: boolean;
         composerRef?: HTMLTextAreaElement | null;
         class?: string;
     }
@@ -26,12 +34,15 @@
 
     let {
         quickActions = [],
+        compact = false,
         composerRef = $bindable(null),
         class: className,
     }: CoachInlineProps = $props();
 
     // Mirrors AIChat: the composer floats over the transcript, and its measured
-    // height becomes the transcript's bottom clearance.
+    // height becomes the transcript's bottom clearance. In compact mode nothing
+    // floats — the composer is the last row of an auto-height box — so the
+    // measurement is simply unused.
     let composerHeight = $state(0);
 
     // The section runs full-bleed so the transcript's scrollbar sits on the
@@ -46,16 +57,21 @@
 
 <section
     data-slot="coach-inline"
+    data-compact={compact ? "" : undefined}
     class={cn(
-        "relative flex h-full min-h-0 flex-col bg-transparent",
+        "relative flex min-h-0 flex-col bg-transparent",
+        compact ? "h-auto" : "h-full",
         className,
     )}
-    style="--ai-chat-composer-h: {composerHeight}px;"
+    style="--ai-chat-composer-h: {compact ? 0 : composerHeight}px;"
     aria-label="Coach mode"
 >
     {#if coach.loading && !coach.initialized}
         <div
-            class="flex flex-1 items-center justify-center text-xs text-muted-foreground"
+            class={cn(
+                "flex items-center justify-center text-xs text-muted-foreground",
+                compact ? "min-h-24" : "flex-1",
+            )}
             aria-live="polite"
         >
             Loading Coach…
@@ -76,14 +92,17 @@
                 <CoachResumePrompt />
             </div>
         {/if}
-        {#if coach.messages.length === 0}
+        <!-- Compact mode renders neither transcript nor empty state: the composer
+             and its hint chips already say what this box is for, and a full-height
+             welcome panel is exactly the relayout compact mode exists to avoid. -->
+        {#if !compact && coach.messages.length === 0}
             <AIChatEmptyState
                 controller={coach}
                 title="Work through this problem"
                 description="Ask for a small hint, check an approach, or talk through the ideas without leaving the problem."
                 quickActions={[]}
             />
-        {:else}
+        {:else if !compact}
             <AIChatMessageList
                 controller={coach}
                 assistantLabel="Coach"
@@ -92,9 +111,17 @@
                 contentClass={rail}
             />
         {/if}
+        <!-- Floating over the transcript when there is one; the box's own last row
+             when there is not. `absolute` would collapse the compact section to
+             nothing, since an out-of-flow child contributes no height. -->
         <div
             bind:clientHeight={composerHeight}
-            class="pointer-events-none absolute inset-x-0 bottom-0 z-10 mx-auto max-w-[52rem]"
+            class={cn(
+                "z-10 mx-auto w-full max-w-[52rem]",
+                compact
+                    ? "shrink-0"
+                    : "pointer-events-none absolute inset-x-0 bottom-0",
+            )}
         >
             <AIChatQuickActions
                 actions={quickActions}

@@ -65,9 +65,15 @@
    import { coach } from "$lib/state/coach.svelte";
    import { anchorFor } from "$lib/ai/session/anchor";
    import { problemContextLayer } from "$lib/ai/context/surfaces";
-   import { PROBLEM_QUICK_ACTIONS } from "$lib/ai/quick-actions";
+   import { PROBLEM_SUPPORT_ACTIONS } from "$lib/ai/quick-actions";
+   import {
+      HINT_LADDER_LENGTH,
+      hintQuickAction,
+      type HintRung,
+   } from "$lib/ai/hints";
    import { shell } from "$lib/state/shell.svelte";
    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
+   import HintRail from "./HintRail.svelte";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onDestroy, onMount, untrack } from "svelte";
    import { fade } from "svelte/transition";
@@ -948,6 +954,72 @@
       setCoachMode(!coachMode);
    }
 
+   // Coach mode has two geometries, and the conversation decides which. With an
+   // empty thread the Coach is just a composer box roughly where the answer box
+   // was, so entering the mode costs a swap rather than collapsing the statement
+   // to make room for a transcript that has nothing in it. The statement gives up
+   // its height at the moment the transcript earns it — which is the student's own
+   // send, so the movement reads as consequence rather than as a jolt.
+   let coachExpanded = $derived(coachMode && coach.messages.length > 0);
+
+   // The problem region's full height, so the statement shelf can be given an
+   // explicit px height in *both* states. Interpolating `flex-1` against a
+   // `max-height` is not a thing CSS can do; interpolating px against
+   // `min(42dvh,22rem)` (which resolves to px) is.
+   let problemRegionHeight = $state(0);
+   let coachBoxHeight = $state(0);
+   let statementShelfHeight = $derived(
+      coachExpanded
+         ? "min(42dvh, 22rem)"
+         : problemRegionHeight > 0
+           ? `${Math.max(0, problemRegionHeight - (coachMode ? coachBoxHeight : 0))}px`
+           : "100%",
+   );
+
+   // ── Hints ───────────────────────────────────────────────────────────────────
+   // Rungs taken on the problem on screen. Deliberately *not* part of
+   // `PracticeAnswerState`: nothing is written to `submissions` yet, so it does
+   // not belong in the shape that gets snapshotted into history and rebuilt from
+   // stored rows. When hint use becomes a recorded signal, this is the value that
+   // rides along with the submission.
+   let hintLevel = $state(0);
+   // Bumped to make the rail reveal itself; see HintRail's `flashToken`.
+   let hintFlashToken = $state(0);
+
+   // The ladder is per problem, so every route onto a different problem resets it —
+   // a fresh draw, a history restore, a segment advance. Keyed on the problem on
+   // screen rather than reset at each of those call sites, which is how one of them
+   // ends up forgotten and a student arrives at problem two with "3/4" already used.
+   $effect(() => {
+      void problem?.id;
+      hintLevel = 0;
+      hintFlashToken = 0;
+   });
+   // Bootstrap is lazy, so "no connection" is unknown until the Coach has been
+   // summoned once. Hiding the rail on an unknown answer would hide it from every
+   // student who has not opened Coach mode yet — which is all of them, the first
+   // time. Offer it until we actually know better; taking a hint with no key
+   // configured lands on the connection gate, which is the honest outcome.
+   let hintsAvailable = $derived(
+      coachModeAvailable && !(coach.initialized && coach.connectionBlocked),
+   );
+
+   // The Coach's own chip row presents the same ladder as a single escalating
+   // action — four chips beside a live transcript would be a menu, and the rail
+   // has already shown the student that hints escalate.
+   let nextHintAction = $derived(hintQuickAction(hintLevel));
+   let coachQuickActions = $derived([
+      ...(nextHintAction ? [nextHintAction] : []),
+      ...PROBLEM_SUPPORT_ACTIONS,
+   ]);
+
+   function takeHint(rung: HintRung) {
+      if (!problem || !hintsAvailable) return;
+      hintLevel += 1;
+      if (!coachMode) setCoachMode(true);
+      void coach.send(rung.prompt);
+   }
+
    // Submitting concludes the sitting, and does so while the student is still on
    // the problem — where the thread deliberately stays live and writable, since
    // that is the moment they most want to ask "why?".
@@ -1403,6 +1475,11 @@
          }
          answerState.triesUsed += 1;
          answerFeedback?.trigger(true);
+         // A wrong answer with tries still left is when a hint is worth the most and
+         // when the student is least likely to go looking for one. The rail shows
+         // itself, then folds back on its own — an offer, not a new permanent
+         // fixture over the answer box.
+         if (hintsAvailable && hintLevel < HINT_LADDER_LENGTH) hintFlashToken += 1;
          return;
       }
 
@@ -1995,16 +2072,24 @@
             </div>
          {:else}
             <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
-               <div class="relative flex-1 flex flex-col min-h-0 w-full">
-                  <!-- In Coach mode this becomes a capped, independently
-                       scrollable statement shelf. The transcript below owns
-                       the remaining height, including on mobile portrait. -->
+               <div
+                  bind:clientHeight={problemRegionHeight}
+                  class="relative flex-1 flex flex-col min-h-0 w-full"
+               >
+                  <!-- One animatable height in every state, rather than a
+                       `flex-1`/`max-height` swap that CSS cannot interpolate:
+                       full height while answering (and while the Coach is still
+                       just a composer box), then down to the capped, independently
+                       scrollable shelf once there is a transcript to make room
+                       for. The Coach below owns whatever is left, including on
+                       mobile portrait. -->
                   <div
+                     style="height: {statementShelfHeight};"
                      class={cn(
-                        "flex w-full flex-col items-center gap-5 overflow-y-auto px-4 sm:px-6",
-                        coachMode
-                           ? "max-h-[min(42dvh,22rem)] shrink-0 overscroll-contain border-b border-border/60 pb-4"
-                           : "min-h-0 flex-1 pb-6",
+                        "flex w-full shrink-0 flex-col items-center gap-5 overflow-y-auto px-4 transition-[height] duration-300 ease-out motion-reduce:transition-none sm:px-6",
+                        coachExpanded
+                           ? "overscroll-contain border-b border-border/60 pb-4"
+                           : "pb-6",
                      )}
                   >
                      <!-- Metadata row: source/series/topic on the left, review status on the right -->
@@ -2033,14 +2118,15 @@
                         />
                      {/if}
 
-                     <div
-                        class={cn(
-                           "flex min-h-fit w-full",
-                           coachMode || solutionShown
-                              ? "flex-none items-start justify-center"
-                              : "flex-1 items-center justify-center",
-                        )}
-                     >
+                     <!-- Top-aligned in every mode. The statement used to be
+                          vertically centred while answering and top-aligned in
+                          Coach mode, so the text under the student's eyes jumped
+                          by half the slack at the exact moment everything else
+                          moved. The slack now sits *between* the statement and
+                          the answer box (see the `mt-auto` below), so the
+                          statement holds its position and nothing travels
+                          across it. -->
+                     <div class="flex min-h-fit w-full flex-none items-start justify-center">
                         {#if debugMode && showRawLatex && !focusModeActive}
                            <pre
                               class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-[48rem] py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
@@ -2057,7 +2143,29 @@
                         {/if}
                      </div>
                      {#if !coachMode}
-                        <div class="w-full max-w-[48rem]">
+                        <!-- `mt-auto` keeps the answer box where it has always
+                             sat — near the bottom of the region — while the
+                             statement stays anchored at the top. The free space
+                             goes between them rather than under them, so neither
+                             end has to move when the other changes. It collapses
+                             to nothing once the content fills the region, which
+                             is when a long statement needs every pixel anyway. -->
+                        <div
+                           class="mt-auto flex w-full max-w-[48rem] flex-col gap-1.5"
+                        >
+                           <!-- The ladder sits over the answer box, collapsed to a
+                                single lightbulb until it is hovered, focused, or
+                                offered after a wrong try. Help is one gesture away
+                                without ever being the loudest thing next to the
+                                answer the student is trying to produce. -->
+                           {#if hintsAvailable && !answerState.submitted}
+                              <HintRail
+                                 level={hintLevel}
+                                 disabled={paused}
+                                 flashToken={hintFlashToken}
+                                 onselect={(rung) => takeHint(rung)}
+                              />
+                           {/if}
                            {#key problem.id}
                               <ProblemAnswer
                                  bind:this={answerFeedback}
@@ -2132,10 +2240,21 @@
                   {#if coachMode}
                      <!-- Full-bleed on purpose: the Coach owns its own centered
                           rail internally so its transcript scrollbar rides the
-                          same outer edge as the statement shelf above. -->
-                     <div class="flex min-h-0 w-full flex-1 flex-col">
+                          same outer edge as the statement shelf above.
+                          Compact until the thread has something in it, so this
+                          row is a composer box the size of the answer box it
+                          replaced; measured either way, because the shelf above
+                          sizes itself against whatever this takes. -->
+                     <div
+                        bind:clientHeight={coachBoxHeight}
+                        class={cn(
+                           "flex w-full flex-col",
+                           coachExpanded ? "min-h-0 flex-1" : "shrink-0",
+                        )}
+                     >
                         <CoachInline
-                           quickActions={PROBLEM_QUICK_ACTIONS}
+                           compact={!coachExpanded}
+                           quickActions={coachQuickActions}
                            bind:composerRef={coachComposer}
                         />
                      </div>

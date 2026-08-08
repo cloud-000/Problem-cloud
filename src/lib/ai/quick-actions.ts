@@ -1,21 +1,14 @@
 import type { AIChatQuickAction } from "$lib/components/ai-chat";
+import { HINT_LADDER } from "./hints";
 import type { CoachQuickAction } from "./types";
 
 /**
- * What a surface with a problem in front of it offers — the trainer and the library's
- * ask-about-this action.
- *
- * Shared for the same reason as the fallback set below: these lived inline in both
- * surfaces and had already drifted apart in the wording of "Explain this", which is the
- * kind of difference nobody notices until the two are read side by side.
+ * The problem-surface actions that are *not* hints, kept separate because the trainer
+ * composes them with a ladder rung of its own (`hintQuickAction`) rather than with the
+ * flat hint below. Splitting them is what stops the trainer from growing a second
+ * hand-written copy of "Check my approach".
  */
-export const PROBLEM_QUICK_ACTIONS: readonly CoachQuickAction[] = [
-    {
-        id: "hint",
-        label: "Give me a hint",
-        prompt: "Give me the smallest hint that gets me unstuck on this problem.",
-        icon: "lightbulb",
-    },
+export const PROBLEM_SUPPORT_ACTIONS: readonly CoachQuickAction[] = [
     {
         id: "approach",
         label: "Check my approach",
@@ -29,6 +22,28 @@ export const PROBLEM_QUICK_ACTIONS: readonly CoachQuickAction[] = [
             "Explain what this problem is asking and which ideas may be relevant, without giving away the solution.",
         icon: "help",
     },
+];
+
+/**
+ * What a surface with a problem in front of it offers — the library's ask-about-this
+ * action, and any Coach presentation that is looking at a problem without tracking a
+ * hint level of its own.
+ *
+ * Shared for the same reason as the fallback set below: these lived inline in both
+ * surfaces and had already drifted apart in the wording of "Explain this", which is the
+ * kind of difference nobody notices until the two are read side by side.
+ */
+export const PROBLEM_QUICK_ACTIONS: readonly CoachQuickAction[] = [
+    // The ladder's shallowest rung, so a surface that offers one flat hint asks for
+    // exactly what the trainer's first press asks for. Only the trainer tracks a
+    // level, so everywhere else this is where the ladder both starts and ends.
+    {
+        id: "hint",
+        label: HINT_LADDER[0].escalatingLabel,
+        prompt: HINT_LADDER[0].prompt,
+        icon: "lightbulb",
+    },
+    ...PROBLEM_SUPPORT_ACTIONS,
 ];
 
 /**
