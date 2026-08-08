@@ -35,8 +35,14 @@
     let visible = $derived(coach.quickAskVisible);
     let booting = $derived(coach.loading && !coach.initialized);
 
+    // A one-shot bound to a scope the student has left is not this summons's
+    // conversation — the next send discards it. Showing it in the meantime is what made
+    // the quick-ask reopen on a new problem still displaying the old problem's answer,
+    // and it puts the quick actions for the *current* problem behind a stale reply.
     let latestAnswer = $derived(
-        coach.messages.findLast((message) => message.role === "assistant"),
+        coach.oneShotStale
+            ? undefined
+            : coach.messages.findLast((message) => message.role === "assistant"),
     );
     let proposals = $derived(
         (latestAnswer?.parts ?? []).filter(

@@ -124,8 +124,15 @@ function scopeRefKey(ref: ScopeRef): string {
     return `${ref.kind}:${ref.id}`;
 }
 
-/** Scope identity is provenance, never whatever prose the current renderer emits. */
-function scopeKey(refs: ScopeRef[]): string {
+/**
+ * Scope identity is provenance, never whatever prose the current renderer emits.
+ *
+ * Exported because the epoch walk below is not the only thing that has to answer "is
+ * this the same context?": `coach.send()` uses it to decide whether an in-memory
+ * one-shot is still about what the student is now asking about. Both must agree, or the
+ * store would keep a transcript the compiler then splits across two problems.
+ */
+export function scopeKey(refs: ScopeRef[]): string {
     return refs.map(scopeRefKey).sort().join("|");
 }
 

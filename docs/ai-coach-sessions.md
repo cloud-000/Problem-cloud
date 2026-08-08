@@ -36,7 +36,7 @@ sessionless slot of the anchor index (§2).
 | Persisted | yes | yes | **never — no DB row exists** |
 | Auto-resumed | **yes, by prompt** (§2 index, §5 rule) — including after it concludes | no — new thread each open, history one click away | n/a |
 | Context style | **minimal problem scope, tools on demand** | **tool-driven** | tool-only |
-| Retention | retired from its anchor on conclusion (§5), still browsable | `ai_preferences.retention_days` | n/a |
+| Retention | retired from its anchor on conclusion (§5), still browsable | `ai_preferences.retention_days` | n/a — ends when the scope it was asked under changes |
 
 ### Why the split exists
 
@@ -59,6 +59,65 @@ are fetched by tools only when the conversation calls for them.
 Library/progress quick actions that depended on ambient page dumps stay absent until
 those tools ship; presenting an action the model cannot currently fulfill is worse than
 temporarily presenting the ordinary composer.
+
+### What ends a one-shot (decided 2026-08-08)
+
+A one-shot has no row and no surface that owns it, so there is nothing about it to
+close — which meant, until this rule, that **nothing ever ended it**. The quick-ask
+transcript lived for as long as the page did, and a second question about a different
+problem simply appended to the first.
+
+That is not merely a stale answer on screen. Context frames are pinned to the turn
+that opened their epoch (§3), so the request carried *both* problems in full with the
+earlier Q&A between them — and escalating flushed that whole run into one saved
+conversation.
+
+So a one-shot is **bound to the scope it was asked under**: a turn whose scope differs
+from the transcript's starts a fresh one instead of appending. Sameness is the
+compiler's own `scopeKey`, so "a different context" means here exactly what it means
+where the epochs are cut. The rule lives in `coach.send()` — every surface goes through
+it, and it is the first point at which the turn's active scope is settled, which a
+check at summon time is not (a surface sets its selection and opens the Coach in one
+gesture; the layer registers on the effect *after* both).
+
+**The discard is at send; the *presentation* has to keep up with it.** Send is the only
+moment a turn's scope is finally settled — a surface sets its selection and summons the
+Coach in one gesture, and its context layer registers on the effect after both, so a
+check at summon time reads the scope the student is leaving. But clearing only on send
+is invisible: the quick-ask reopens on a new problem still displaying the previous
+problem's answer, and the fix reads as no fix at all. So `coach.oneShotStale` answers
+"is this transcript still about what is on screen?" during render, and a surface showing
+an ephemeral thread must not present one that is stale. Escalation checks it too —
+otherwise a one-shot the student walked away from is flushed into the new thread as if
+it belonged to it.
+
+**Scope comparison cannot carry a persisted thread, and must not try.** A one-shot is
+disposable, so its scope changing is enough to end it. An assist thread is not: the
+active scope changes every time the student navigates, and resetting on that would make
+a conversation evaporate on the walk from the library to progress. So a persisted thread
+ignores drift entirely and waits for **`coach.startSubject(ref)`** — a deliberate gesture
+that *names* what it is about (the library's Ask button). If the open thread is not
+already about that subject, a new chat starts. Until this existed, the panel wrote every
+problem the student pressed Ask on into one saved conversation, and the history list
+showed them a single chat spanning four unrelated problems — the symptom that made the
+scope rule alone look like no fix at all. Starting a new chat is not a deletion: the
+previous thread keeps its rows and stays in history under its own subject.
+
+Two consequences worth naming:
+
+- **The trainer's carry-over is conditional.** `openWorkThread` promotes an in-memory
+  quick-ask into the sitting only when it was asked about *this* problem — the
+  "Continue in Coach mode" seam, where the question being escalated is the one on
+  screen. Anything else is discarded first. Promoting it filed those turns into a new
+  thread for a problem they were not about **and**, because a flush reports "handled",
+  skipped the §5 resume lookup entirely — which is how the trainer silently stopped
+  offering back the thread the student had just been in.
+- **A layer raised by a gesture must be put down.** The trainer's context layer follows
+  what is on screen, so it expires by itself. The library's does not: it names the
+  problem whose Ask button was pressed, and left registered it went on scoping every
+  later summons — including an unrelated `Ctrl+J` — to a problem the student had
+  finished with, under `coaching` rather than `assist`. It is now derived from whether
+  the Coach it was summoned for is still showing.
 
 ### Promotion
 
@@ -619,6 +678,18 @@ restricted to live rows could never find the sitting most worth reviewing. Only
 *live* rows are bounded to one per anchor, hence the ordering. Attaching to a
 retired thread is safe — writes go by conversation id, and a retired row is not
 competing for the anchor slot, so nothing can collide.
+
+**An offer that lapses still has to release the slot.** The lookup is asynchronous, so
+the student can start talking before it answers — by typing, or by taking a hint. The
+offer is then dropped rather than sprung on them, since accepting it would discard the
+question they just asked. But dropping it is not enough on its own: left live, the old
+row keeps the anchor's unique-index slot, so the turns they just sent lose the race and
+are filed into it by §2's 409 adoption, under a transcript showing none of them. A
+lapsed offer therefore retires the thread it was going to make — the fresh thread they
+started is the one they meant, and retiring keeps the old one in history. The hint rail
+sidesteps the race entirely by awaiting the lookup (`takeHint`) and continuing the
+offered thread: a hint says which problem it is about, so the only question the prompt
+asks answers itself.
 
 **Concluded ≠ retired, on purpose.** Submitting a wrong answer is the moment a
 student most wants to ask "why?" — so the thread stays live and writable while

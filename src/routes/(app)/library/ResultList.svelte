@@ -66,6 +66,12 @@
 
     function askAboutProblem(problem: ProblemRow, invoker: HTMLElement) {
         askedProblem = problem;
+        // Naming the subject, not just the context: pressing Ask on a problem the open
+        // thread is not already about starts a new chat. Without it, an escalated thread
+        // (the panel) kept writing every problem the student asked about into one saved
+        // conversation — which is what the history list then showed them. Ambient scope
+        // never does this; only the gesture does.
+        coach.startSubject({ kind: "problem", id: problem.canonical_id ?? problem.id });
         if (utilityPanel.activeView === "coach") {
             void coach.initialize();
             return;
@@ -73,6 +79,16 @@
         if (utilityPanel.activeView) utilityPanel.close(false);
         coach.openQuickAsk(invoker);
     }
+
+    // Unlike the trainer's layer, this one is raised by a gesture rather than by what is
+    // on screen: the library has no "current problem", only the one whose Ask button was
+    // pressed. So the registration lasts exactly as long as the Coach that was summoned
+    // for it. Left standing, the layer went on naming a problem the student asked about
+    // long ago, and an unrelated Ctrl+J still arrived scoped to it — under `coaching`
+    // rather than `assist`, with that problem's statement in the request.
+    let scopedProblem = $derived(
+        coach.quickAskVisible || utilityPanel.activeView === "coach" ? askedProblem : null,
+    );
 
     function problemDraft(problem: ProblemRow): ProblemDraft {
         const existing = problemDrafts.get(problem.id);
@@ -228,12 +244,12 @@
     {/if}
 {/snippet}
 
-{#if askedProblem}
+{#if scopedProblem}
     <CoachContextRegister
         {...problemContextLayer({
             ownerId: "library:problem",
             source: "selection",
-            problem: askedProblem,
+            problem: scopedProblem,
             policy: "coaching",
         })}
     />

@@ -39,7 +39,7 @@ import {
     removeContextLayer,
     upsertContextLayer,
 } from "$lib/ai/context/registry";
-import { compileContextFrames } from "$lib/ai/context/resolve";
+import { compileContextFrames, scopeKey } from "$lib/ai/context/resolve";
 import { buildProviderMessages } from "$lib/ai/providers/messages";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
@@ -63,6 +63,7 @@ import type {
     ConversationSummary,
     NormalizedAIEvent,
     NormalizedAIMessage,
+    ScopeRef,
     WorkThreadSummary,
     ContextSnapshot,
 } from "$lib/ai/types";
@@ -150,6 +151,14 @@ class CoachStore {
      * turn captured no conversation id, so this flush is the only thing that will save it.
      */
     #pendingFlush = false;
+    /**
+     * The scope the active thread's most recent turn was sent under — what the thread is
+     * currently *about*. Empty for a thread with no turns. Recorded for every tier, but
+     * read for two different purposes: a one-shot ends when it changes (§1), while a
+     * persisted thread only reacts to `startSubject`. Reactive because `oneShotStale` is
+     * read during render.
+     */
+    #threadScope = $state.raw<ScopeRef[]>([]);
     /**
      * Bumped whenever the active conversation changes identity. Every in-flight
      * request captures the value at start and drops its results if it no longer
@@ -457,6 +466,12 @@ class CoachStore {
             return;
         }
 
+        // Decided before any of the turn's own state is set, because discarding a
+        // one-shot also invalidates the request in flight — and `streaming` is about to
+        // be true, which is precisely what that discard would clear back to false.
+        const contextSnapshot = this.activeContextSnapshot;
+        this.#bindTurnScope(contextSnapshot);
+
         this.#lastPrompt = message;
         this.draft = "";
         this.error = null;
@@ -466,7 +481,6 @@ class CoachStore {
         // Built before the new prompt joins the transcript so it carries prior turns only.
         const ephemeralHistory = this.ephemeralHistory();
         const userMessageId = crypto.randomUUID();
-        const contextSnapshot = this.activeContextSnapshot;
         this.messages.push({
             id: userMessageId,
             role: "user",
@@ -567,6 +581,82 @@ class CoachStore {
         }
     }
 
+    /**
+     * Binds an in-memory one-shot to the scope it was asked under, and starts a fresh one
+     * when the student asks about something else (§1).
+     *
+     * A one-shot has no row and no surface that owns it, so nothing else ends it: the
+     * quick-ask transcript used to outlive the question entirely, for the life of the
+     * page. Asking about a second problem then appended to the first, and that is not
+     * merely a stale answer on screen — `compileContextFrames` pins each scope epoch to
+     * the turn that opened it, so the request carried *both* problems in full with the
+     * earlier Q&A between them, and escalating flushed the whole lot into one saved
+     * conversation.
+     *
+     * Sameness is the compiler's own `scopeKey`, so "a different context" means here
+     * exactly what it means where the epochs are cut. Persisted tiers are left alone:
+     * they have rows, a surface, and a "New chat" button.
+     */
+    #bindTurnScope(snapshot: ContextSnapshot): void {
+        const changed = scopeKey(snapshot.scope) !== scopeKey(this.#threadScope);
+        // Only a one-shot ends by itself. A persisted thread must survive ambient drift —
+        // walking from the library to progress mid-conversation changes the active scope
+        // and is emphatically not a new subject — so it waits for `startSubject`.
+        if (!tierPersists(this.tier) && changed && this.messages.length > 0) {
+            this.newConversation();
+        }
+        this.#threadScope = snapshot.scope;
+    }
+
+    /**
+     * A deliberate "ask about this" gesture, naming the subject it is about.
+     *
+     * This is the half of the problem that scope comparison cannot see. A one-shot can be
+     * ended by its scope changing, because it is disposable; an assist thread cannot, or
+     * it would evaporate every time the student navigated. But pressing **Ask** on a
+     * different problem is not drift — it is starting a different subject, and until this
+     * existed the library quietly wrote every problem the student asked about into one
+     * saved conversation, which is what the history list then showed them.
+     *
+     * Starting a new chat here is not a deletion: the previous thread keeps every row it
+     * wrote and stays in history under its own subject, which is the point.
+     */
+    startSubject(subject: ScopeRef): void {
+        // Mid-answer, the thread on screen is still the one being answered.
+        if (this.streaming || this.messages.length === 0) return;
+        const alreadyAbout = this.#threadScope.some(
+            (ref) => ref.kind === subject.kind && ref.id === subject.id,
+        );
+        if (alreadyAbout) return;
+        this.newConversation();
+    }
+
+    /**
+     * Whether the in-memory one-shot is about something the student has since left.
+     *
+     * The discard itself happens at the next send, which is the only moment the turn's
+     * scope is finally settled — but a stale transcript must not be *shown* in the
+     * meantime, because that is the whole bug as the student experiences it: the
+     * quick-ask reopening on a different problem while still displaying the previous
+     * problem's answer. Clearing only on send fixed what the model read and changed
+     * nothing about what the student saw.
+     *
+     * A getter rather than a `$derived` so the surfaces that read it stay reactive
+     * without the store owning an effect; it is read during render, by which time every
+     * surface's context layer has registered — which is exactly what a check at summon
+     * time cannot rely on (a surface sets its selection and opens the Coach in one
+     * gesture, and the layer registers on the effect after both).
+     */
+    get oneShotStale(): boolean {
+        if (tierPersists(this.tier) || this.messages.length === 0) return false;
+        return scopeKey(this.activeContextSnapshot.scope) !== scopeKey(this.#threadScope);
+    }
+
+    /** Whether the in-memory one-shot is about this problem, and so belongs to its sitting. */
+    #threadCovers(problemId: number): boolean {
+        return this.#threadScope.some((ref) => ref.kind === "problem" && ref.id === problemId);
+    }
+
     /** The user's connection backing the selected model, or undefined if the server owns it. */
     #credentialForSelection(): AIConnectionCredential | undefined {
         const credentials = aiCredentials.wireConnections;
@@ -617,6 +707,12 @@ class CoachStore {
      */
     #promote(target: CoachTier): boolean {
         const wasEphemeral = !tierPersists(this.tier);
+        // Escalating what is in front of the student must not also escalate a one-shot
+        // they have already walked away from: it would be flushed into the new thread as
+        // if it belonged to it. Checked before the tier is assigned, since promoting is
+        // itself what makes `oneShotStale` stop answering. A streaming one-shot is left
+        // alone, as everywhere else — its answer is on screen and still arriving.
+        if (wasEphemeral && !this.streaming && this.oneShotStale) this.newConversation();
         this.tier = promoteTier(this.tier, target);
         if (!wasEphemeral || !this.persisted) return false;
         // An empty thread has nothing to flush; its first send creates the row.
@@ -654,6 +750,23 @@ class CoachStore {
         const rejoining = sameAnchor(this.workAnchor, anchor);
         this.workAnchor = anchor;
         this.resumePrompt = null;
+        // A quick-ask is carried into this sitting only when it was asked *about* this
+        // problem — the "Continue in Coach mode" seam, where the student is escalating
+        // the very question they are looking at. A one-shot about anything else (another
+        // problem, or no problem at all) is not this sitting's work, and promoting it did
+        // two wrong things at once: it filed those turns into a brand-new thread for this
+        // problem, and — because a flush reports "handled" — skipped the resume lookup
+        // below entirely, which is why the trainer stopped offering back the thread the
+        // student had just been in. A streaming one-shot is left alone: cutting off an
+        // answer they are watching is the worse trade, exactly as it is below.
+        if (
+            !tierPersists(this.tier) &&
+            this.messages.length > 0 &&
+            !this.streaming &&
+            !this.#threadCovers(anchor.problemId)
+        ) {
+            this.newConversation();
+        }
         // Carries the quick-ask's turns into this sitting's thread, if there were any.
         // Synchronous, before any await: the tier decides what the next send writes.
         const flushed = this.#promote("work");
@@ -686,8 +799,15 @@ class CoachStore {
             if (generation !== this.#generation || !sameAnchor(this.workAnchor, anchor)) return;
             // The student out-typed the lookup. Offering to swap in an older thread now
             // would mean discarding the question they just asked, so the offer lapses —
-            // the fresh thread they started is the one they meant.
-            if (this.messages.length > 0 || this.streaming) return;
+            // the fresh thread they started is the one they meant. It only *is* a fresh
+            // thread if the old one lets go of the anchor first: left live, it keeps the
+            // unique-index slot, so the turns they just typed lose the race and are
+            // silently filed into it by §2's 409 adoption, under a transcript that shows
+            // none of them.
+            if (this.messages.length > 0 || this.streaming) {
+                if (existing) await this.#retireThread(existing.id);
+                return;
+            }
             if (!existing) return;
             const lifecycle = {
                 ...state,
@@ -1083,6 +1203,7 @@ class CoachStore {
         this.historyViewOpen = false;
         this.resumePrompt = null;
         this.#pendingFlush = false;
+        this.#threadScope = [];
     }
 
     /**

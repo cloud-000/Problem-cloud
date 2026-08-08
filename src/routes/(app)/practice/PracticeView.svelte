@@ -948,26 +948,33 @@
    // toggled-off Coach never released.
    let coachAnchor = $state<TrainerCoachAnchor>(releasedTrainerAnchor());
 
-   function setCoachMode(enabled: boolean) {
-      if (!problem || !coachModeAvailable) return;
+   /**
+    * Returns once this sitting's thread has been settled — resumed, offered, or found
+    * absent. Every caller that only shows the Coach can ignore it; anything that sends a
+    * turn straight after must await it, or its turn lands in a second thread for the
+    * same anchor (see `takeHint`).
+    */
+   function setCoachMode(enabled: boolean): Promise<void> {
+      if (!problem || !coachModeAvailable) return Promise.resolve();
       coachModeProblemId = enabled ? problem.id : null;
-      if (!enabled) return;
+      if (!enabled) return Promise.resolve();
       coach.closeQuickAsk(false);
       if (utilityPanel.activeView === "coach") utilityPanel.close(false);
       coachAnchor = openTrainerAnchor(coachAnchor, problem.id, answerState.submitted);
       // The trainer owns a thread anchored to this sitting, so entering Coach mode
-      // promotes whatever the quick-ask was holding in memory (§1) and then asks
-      // whether this problem already has a live thread to continue (§2).
-      void coach.openWorkThread(
+      // promotes whatever the quick-ask was holding about *this problem* (§1) and then
+      // asks whether this problem already has a live thread to continue (§2).
+      const opening = coach.openWorkThread(
          anchorFor(problem, currentSessionId),
          trainerAnchorWork(coachAnchor),
       );
       void coach.initialize();
       queueMicrotask(() => coachComposer?.focus());
+      return opening;
    }
 
    function toggleCoachMode() {
-      setCoachMode(!coachMode);
+      void setCoachMode(!coachMode);
    }
 
    // Coach mode has two geometries, and the conversation decides which. With an
@@ -1047,11 +1054,21 @@
    // blocked send, so the level would have been the only thing that moved.
    async function takeHint(rung: HintRung) {
       if (!problem || !hintsAvailable) return;
-      if (!coachMode) setCoachMode(true);
+      // Awaited, not fired off: entering Coach mode also asks whether this sitting
+      // already has a live thread, and sending first makes that lookup stand down as
+      // "the student out-typed it". The rung would then open a *second* thread for one
+      // anchor, lose the unique-index race to the row still holding it, and be filed
+      // into a conversation the transcript on screen is not showing.
+      if (!coachMode) await setCoachMode(true);
       // No-ops once initialized, and awaits the bootstrap `setCoachMode` just
       // started, so this is the first point where "blocked" is actually known.
       await coach.initialize();
       if (coach.connectionBlocked) return;
+      // Taking a hint says which problem this is about, so the only question the offer
+      // asks — continue this chat, or start a new one — answers itself: the student is
+      // asking for help on the problem they were already talking through. Leaving the
+      // card up would swallow the click instead.
+      if (coach.resumePrompt) await coach.resumeWorkThread();
       hintLevel += 1;
       void coach.send(rung.prompt);
    }
@@ -1095,7 +1112,7 @@
       return coach.registerInlineTarget({
          isActive: () => coachModeProblemId === targetProblemId,
          open: () => {
-            if (problem?.id === targetProblemId) setCoachMode(true);
+            if (problem?.id === targetProblemId) void setCoachMode(true);
          },
          focusComposer: () => coachComposer?.focus(),
       });

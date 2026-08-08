@@ -186,6 +186,7 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
     return new Response("{}", { headers: { "content-type": "application/json" } });
 }) as unknown as typeof fetch;
 
+const { problemContextLayer } = await import("$lib/ai/context/surfaces");
 const { coach } = await import("./coach.svelte");
 const { settings } = await import("./settings.svelte");
 const { utilityPanel } = await import("./utility-panel.svelte");
@@ -208,6 +209,7 @@ beforeEach(() => {
     coach.lastRequestSnapshotSource = null;
     coach.conversationId = undefined;
     coach.tier = "one-shot";
+    coach.contextLayers = [];
     settings.debugMode = false;
     settings.showModelRequest = false;
     streamReasoning = [];
@@ -467,6 +469,14 @@ const retireCalls = () =>
         (entry) => entry.url.includes("/api/ai/conversations/") && entry.body.retired === true,
     );
 const chatCalls = () => recorded.filter((entry) => entry.url.includes("/api/ai/chat"));
+/** The library's "Ask about this problem" layer, which is what scopes a quick-ask. */
+const askedProblemLayer = (id: number) =>
+    problemContextLayer({
+        ownerId: "test:selection",
+        source: "selection",
+        problem: { id, n: 0, tests: { name: "AMC 10A" } },
+        policy: "coaching",
+    });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("coach conversation identity", () => {
@@ -716,6 +726,151 @@ describe("coach tiers", () => {
     });
 });
 
+/**
+ * §1 — a one-shot has no row and no surface that owns it, so the scope it was asked
+ * under is the only thing that can end it. Everything here goes through the proxied
+ * path, where the transcript the store hands forward is visible in the request body.
+ */
+describe("one-shot scope", () => {
+    beforeEach(async () => {
+        await coach.initialize();
+        wireConnections = [];
+        coach.bootstrap = structuredClone(CONNECTED_BYOK) as never;
+        coach.newConversation();
+        coach.tier = "one-shot";
+        coach.contextLayers = [];
+        recorded = [];
+    });
+
+    test("asking about a different problem starts a fresh one-shot", async () => {
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+
+        coach.registerContext(askedProblemLayer(12));
+        await coach.send("and this one?");
+
+        // The earlier problem's turn used to ride along, which put both statements and
+        // the old answer in one request — and, on escalation, in one saved conversation.
+        expect(chatCalls()[1].body.ephemeralHistory).toBeUndefined();
+        expect(coach.messages).toHaveLength(1);
+    });
+
+    test("asking again about the same problem continues the one-shot", async () => {
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        await coach.send("why that step?");
+
+        expect(chatCalls()[1].body.ephemeralHistory).toHaveLength(1);
+        expect(coach.messages).toHaveLength(2);
+    });
+
+    test("leaving a problem behind ends the one-shot too", async () => {
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+
+        // An unscoped summons — the chord from a page with nothing selected — is a
+        // different context, not a continuation of the problem chat.
+        coach.contextLayers = [];
+        await coach.send("what should I review?");
+
+        expect(chatCalls()[1].body.ephemeralHistory).toBeUndefined();
+    });
+
+    test("a one-shot the student has left reads as stale before it is discarded", async () => {
+        // The discard waits for the next send, so between summons the transcript is
+        // still in memory — but it is no longer this summons's conversation, and the
+        // quick-ask must not go on presenting it. Clearing only on send is invisible.
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        expect(coach.oneShotStale).toBe(false);
+
+        coach.registerContext(askedProblemLayer(12));
+        expect(coach.oneShotStale).toBe(true);
+
+        // An unscoped summons has left it behind just as surely as another problem has.
+        coach.contextLayers = [];
+        expect(coach.oneShotStale).toBe(true);
+
+        coach.registerContext(askedProblemLayer(18));
+        expect(coach.oneShotStale).toBe(false);
+    });
+
+    test("escalating does not carry a one-shot the student already left", async () => {
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        recorded = [];
+
+        coach.registerContext(askedProblemLayer(12));
+        expect(coach.escalateToPanel()).toBe(true);
+        await tick();
+
+        // Escalating used to flush whatever was in memory, so a thread about the problem
+        // they walked away from became the first turns of the assist thread.
+        expect(flushCalls()).toHaveLength(0);
+        expect(coach.messages).toHaveLength(0);
+        expect(coach.tier).toBe("assist");
+    });
+
+    test("asking about another problem starts a new saved chat, even in the panel", async () => {
+        // The reported bug: saved history merged every problem the student pressed Ask
+        // on into one conversation, because an assist thread is persisted and so was
+        // exempt from the scope rule.
+        coach.present("panel");
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        const first = coach.conversationId;
+        expect(first).toMatch(/^[0-9a-f-]{36}$/i);
+
+        coach.startSubject({ kind: "problem", id: 12 });
+        coach.registerContext(askedProblemLayer(12));
+        await coach.send("and this one?");
+
+        expect(coach.messages).toHaveLength(1);
+        expect(coach.conversationId).not.toBe(first);
+        // Still the panel's thread — a new subject is a new chat, not a demotion.
+        expect(coach.tier).toBe("assist");
+    });
+
+    test("asking again about the problem the thread is already on continues it", async () => {
+        coach.present("panel");
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        const first = coach.conversationId;
+
+        coach.startSubject({ kind: "problem", id: 18 });
+
+        expect(coach.conversationId).toBe(first);
+        expect(coach.messages).toHaveLength(1);
+    });
+
+    test("navigating does not end a persisted thread", async () => {
+        // Ambient drift is not a subject change: an assist conversation has to survive
+        // the student walking from the library to progress in the middle of it.
+        coach.present("panel");
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        const first = coach.conversationId;
+
+        coach.contextLayers = [];
+        await coach.send("what should I review next?");
+
+        expect(coach.conversationId).toBe(first);
+        expect(coach.messages).toHaveLength(2);
+    });
+
+    test("a persisted thread keeps its transcript when the context changes", async () => {
+        // Scope binding is a one-shot's affair: an assist thread has a row, a surface,
+        // and a "New chat" button, so changing what is on screen must not clear it.
+        coach.present("panel");
+        coach.registerContext(askedProblemLayer(18));
+        await coach.send("how do I start?");
+        coach.registerContext(askedProblemLayer(12));
+        await coach.send("and this one?");
+
+        expect(coach.messages).toHaveLength(2);
+    });
+});
+
 describe("coach work threads", () => {
     const ANCHOR = { problemId: 42, practiceSessionId: 7 };
     const OPEN = { submitted: false, skipped: false };
@@ -958,6 +1113,43 @@ describe("coach work threads", () => {
         await opening;
         expect(coach.resumePrompt).toBeNull();
         expect(coach.messages).toHaveLength(2);
+        // And the thread they started is genuinely theirs: the old row lets go of the
+        // anchor instead of winning the unique index and swallowing the turn (§2).
+        expect(retireCalls()).toHaveLength(1);
+    });
+
+    test("§1: a quick-ask about another problem is not dragged into this sitting", async () => {
+        workThread = offeredThread(60_000);
+        wireConnections = [];
+        coach.registerContext(askedProblemLayer(7));
+        await coach.send("about something else entirely");
+        recorded = [];
+
+        await coach.openWorkThread(ANCHOR, OPEN);
+
+        // Promoting it used to file those turns into a new thread for *this* problem and,
+        // by reporting a flush, skip the lookup — so the trainer silently stopped
+        // offering back the thread the student had just been in.
+        expect(flushCalls()).toHaveLength(0);
+        expect(coach.messages).toHaveLength(0);
+        expect(workThreadCalls).toHaveLength(1);
+        expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+    });
+
+    test("a quick-ask about this problem still escalates into the sitting", async () => {
+        // The "Continue in Coach mode" seam: the question being escalated is the one
+        // about the problem on screen, so it belongs to this thread.
+        workThread = offeredThread(60_000);
+        wireConnections = [];
+        coach.registerContext(askedProblemLayer(ANCHOR.problemId));
+        await coach.send("what is this asking?");
+        recorded = [];
+
+        await coach.openWorkThread(ANCHOR, OPEN);
+
+        expect(flushCalls()).toHaveLength(1);
+        expect(workThreadCalls).toHaveLength(0);
+        expect(coach.tier).toBe("work");
     });
 
     test("an offer for an anchor the student already left is not sprung on them", async () => {
