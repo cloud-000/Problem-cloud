@@ -121,6 +121,16 @@ export function hintLadderState(level: number): readonly HintRungState[] {
 }
 
 /**
+ * Marks a quick action as a rung of this ladder rather than a canned prompt.
+ *
+ * A quick action is inert data — pressing one means "send this prompt" at every render
+ * site — so a surface that tracks a level has to recognize its own action coming back
+ * and route it into the ladder instead. The prefix is the recognition, and it lives
+ * here with the id that carries it so the two cannot be written against each other.
+ */
+const HINT_ACTION_PREFIX = "hint:";
+
+/**
  * The ladder rendered as a single quick-action chip for a live transcript — the next
  * rung under its escalating label. Returns nothing once the ladder is spent, rather
  * than a dead chip.
@@ -129,9 +139,28 @@ export function hintQuickAction(level: number): AIChatQuickAction | null {
     const rung = nextHintRung(level);
     if (!rung) return null;
     return {
-        id: `hint:${rung.id}`,
+        id: `${HINT_ACTION_PREFIX}${rung.id}`,
         label: rung.escalatingLabel,
         prompt: rung.prompt,
         icon: "lightbulb",
     };
+}
+
+/**
+ * The rung a quick action came from, or `null` if it is not a ladder chip.
+ *
+ * The inverse of `hintQuickAction`, so a surface tracking a level can spend a rung on
+ * the press rather than merely re-sending its prompt — which is what the trainer's chip
+ * row did, leaving a chip that promised to escalate and returned the same nudge forever.
+ * Matching the id here rather than at the call site keeps the id's shape a private
+ * detail of this module, which is the only reason it can be one string.
+ *
+ * Returns the rung itself and not a `HintRungState`: an id says which rung was pressed
+ * and nothing about where the student stands, and `used`/`next`/`locked` invented here
+ * would be three fields that only look like they were computed against a level.
+ */
+export function hintRungFromActionId(id: string): HintRung | null {
+    if (!id.startsWith(HINT_ACTION_PREFIX)) return null;
+    const rungId = id.slice(HINT_ACTION_PREFIX.length);
+    return HINT_LADDER.find((rung) => rung.id === rungId) ?? null;
 }

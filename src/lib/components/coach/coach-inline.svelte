@@ -11,6 +11,14 @@
          * transcript. The surface expands when the conversation earns the space.
          */
         compact?: boolean;
+        /**
+         * What a quick-action press *means*, for a surface whose actions carry state.
+         * Defaults to sending the action's prompt, which is what a press means
+         * everywhere else. The trainer overrides it because its hint chip is a rung of
+         * a ladder it tracks: sending the prompt alone left the level untouched, so the
+         * chip re-offered the same rung under a label promising the next one.
+         */
+        onQuickAction?: (action: AIChatQuickAction) => void;
         composerRef?: HTMLTextAreaElement | null;
         class?: string;
     }
@@ -35,6 +43,7 @@
     let {
         quickActions = [],
         compact = false,
+        onQuickAction = (action) => void coach.send(action.prompt),
         composerRef = $bindable(null),
         class: className,
     }: CoachInlineProps = $props();
@@ -128,7 +137,7 @@
                 layout="row"
                 disabled={coach.streaming}
                 class="pointer-events-auto px-3 pb-1 pt-2 sm:px-4"
-                onselect={(action) => coach.send(action.prompt)}
+                onselect={(action) => onQuickAction(action)}
             />
             <AIChatComposer
                 controller={coach}

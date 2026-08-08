@@ -5,6 +5,7 @@ import {
     clampHintLevel,
     hintLadderState,
     hintQuickAction,
+    hintRungFromActionId,
     nextHintRung,
 } from "./hints";
 import { PROBLEM_QUICK_ACTIONS, PROBLEM_SUPPORT_ACTIONS } from "./quick-actions";
@@ -87,6 +88,27 @@ describe("hintQuickAction", () => {
 
     test("returns nothing rather than a dead chip once the ladder is spent", () => {
         expect(hintQuickAction(HINT_LADDER_LENGTH)).toBeNull();
+    });
+});
+
+describe("hintRungFromActionId", () => {
+    // The chip has to be recognizable coming back, or the surface that tracks the
+    // level cannot spend a rung on the press — which is how the trainer's chip ended
+    // up re-sending the nudge under a label promising the next rung.
+    test("round-trips every rung the chip can offer", () => {
+        for (let level = 0; level < HINT_LADDER_LENGTH; level++) {
+            const action = hintQuickAction(level);
+            expect(hintRungFromActionId(action!.id)).toBe(HINT_LADDER[level]);
+        }
+    });
+
+    test("ignores actions that are not ladder rungs", () => {
+        // Notably the flat hint, which is a rung's *prompt* but carries no level.
+        for (const action of PROBLEM_QUICK_ACTIONS) {
+            expect(hintRungFromActionId(action.id)).toBeNull();
+        }
+        expect(hintRungFromActionId("hint:nonexistent")).toBeNull();
+        expect(hintRungFromActionId("")).toBeNull();
     });
 });
 

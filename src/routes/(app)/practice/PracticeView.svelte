@@ -75,8 +75,10 @@
    import {
       HINT_LADDER_LENGTH,
       hintQuickAction,
+      hintRungFromActionId,
       type HintRung,
    } from "$lib/ai/hints";
+   import type { AIChatQuickAction } from "$lib/components/ai-chat";
    import { shell } from "$lib/state/shell.svelte";
    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
    import HintRail from "./HintRail.svelte";
@@ -1028,6 +1030,16 @@
       ...(nextHintAction ? [nextHintAction] : []),
       ...PROBLEM_SUPPORT_ACTIONS,
    ]);
+
+   // Both presentations of the ladder land here, so a rung costs the same whether
+   // it was taken from the rail or from the chip beside the transcript. The chip
+   // used to send its prompt directly, which left `hintLevel` — and therefore the
+   // chip's own escalating label — where it was, so it re-offered the nudge forever.
+   function selectCoachQuickAction(action: AIChatQuickAction) {
+      const rung = hintRungFromActionId(action.id);
+      if (rung) void takeHint(rung);
+      else void coach.send(action.prompt);
+   }
 
    // A rung is spent only once there is something that can answer it. Counting
    // first meant a student with no connection climbed the ladder against the
@@ -2295,6 +2307,7 @@
                         <CoachInline
                            compact={!coachExpanded}
                            quickActions={coachQuickActions}
+                           onQuickAction={selectCoachQuickAction}
                            bind:composerRef={coachComposer}
                         />
                      </div>
