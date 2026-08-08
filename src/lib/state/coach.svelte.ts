@@ -609,29 +609,6 @@ class CoachStore {
     }
 
     /**
-     * A deliberate "ask about this" gesture, naming the subject it is about.
-     *
-     * This is the half of the problem that scope comparison cannot see. A one-shot can be
-     * ended by its scope changing, because it is disposable; an assist thread cannot, or
-     * it would evaporate every time the student navigated. But pressing **Ask** on a
-     * different problem is not drift — it is starting a different subject, and until this
-     * existed the library quietly wrote every problem the student asked about into one
-     * saved conversation, which is what the history list then showed them.
-     *
-     * Starting a new chat here is not a deletion: the previous thread keeps every row it
-     * wrote and stays in history under its own subject, which is the point.
-     */
-    startSubject(subject: ScopeRef): void {
-        // Mid-answer, the thread on screen is still the one being answered.
-        if (this.streaming || this.messages.length === 0) return;
-        const alreadyAbout = this.#threadScope.some(
-            (ref) => ref.kind === subject.kind && ref.id === subject.id,
-        );
-        if (alreadyAbout) return;
-        this.newConversation();
-    }
-
-    /**
      * Whether the in-memory one-shot is about something the student has since left.
      *
      * The discard itself happens at the next send, which is the only moment the turn's
@@ -780,6 +757,15 @@ class CoachStore {
         // the user is watching to make room for a prompt is the worse trade; the offer
         // simply lapses, exactly as it does when they out-type the lookup.
         if (this.conversationId && !this.streaming) this.newConversation();
+        // The thread on screen is now this sitting's, and it is empty: adopting `work`
+        // is a choice about what the *next* send writes, not a promotion of anything
+        // already written — which is all the assist→work rule protects. §1 prescribes
+        // exactly this ("starting work from an assist thread opens a *new* work thread
+        // and leaves the assist thread alone"), but nothing performed the second half:
+        // the new thread was still written `kind: "assist"` with no anchor, so the row
+        // could never be found by the anchor it claimed to have, and a return visit had
+        // nothing to offer back.
+        if (this.messages.length === 0 && !this.conversationId) this.tier = "work";
 
         // Captured after that clear, which bumps the generation itself.
         const generation = this.#generation;

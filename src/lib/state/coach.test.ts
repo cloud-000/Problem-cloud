@@ -811,38 +811,6 @@ describe("one-shot scope", () => {
         expect(coach.tier).toBe("assist");
     });
 
-    test("asking about another problem starts a new saved chat, even in the panel", async () => {
-        // The reported bug: saved history merged every problem the student pressed Ask
-        // on into one conversation, because an assist thread is persisted and so was
-        // exempt from the scope rule.
-        coach.present("panel");
-        coach.registerContext(askedProblemLayer(18));
-        await coach.send("how do I start?");
-        const first = coach.conversationId;
-        expect(first).toMatch(/^[0-9a-f-]{36}$/i);
-
-        coach.startSubject({ kind: "problem", id: 12 });
-        coach.registerContext(askedProblemLayer(12));
-        await coach.send("and this one?");
-
-        expect(coach.messages).toHaveLength(1);
-        expect(coach.conversationId).not.toBe(first);
-        // Still the panel's thread — a new subject is a new chat, not a demotion.
-        expect(coach.tier).toBe("assist");
-    });
-
-    test("asking again about the problem the thread is already on continues it", async () => {
-        coach.present("panel");
-        coach.registerContext(askedProblemLayer(18));
-        await coach.send("how do I start?");
-        const first = coach.conversationId;
-
-        coach.startSubject({ kind: "problem", id: 18 });
-
-        expect(coach.conversationId).toBe(first);
-        expect(coach.messages).toHaveLength(1);
-    });
-
     test("navigating does not end a persisted thread", async () => {
         // Ambient drift is not a subject change: an assist conversation has to survive
         // the student walking from the library to progress in the middle of it.
@@ -1150,6 +1118,78 @@ describe("coach work threads", () => {
         expect(flushCalls()).toHaveLength(1);
         expect(workThreadCalls).toHaveLength(0);
         expect(coach.tier).toBe("work");
+    });
+
+    /**
+     * §4's session-less slot — the library, where there is no practice session. The
+     * index reserves it with `nulls not distinct`, so it is one slot per problem rather
+     * than unlimited ones.
+     */
+    describe("library anchor", () => {
+        const LIBRARY = { problemId: 18, practiceSessionId: null };
+
+        test("a library chat is anchored to its problem with no session", async () => {
+            await coach.openWorkThread(LIBRARY, OPEN);
+            await coach.send("what is this asking?");
+
+            expect(workThreadCalls[0]).not.toContain("practiceSessionId");
+            expect(persistCalls()[0].body.thread).toEqual({ kind: "work", anchor: LIBRARY });
+        });
+
+        test("asking about a different problem leaves this chat for its own", async () => {
+            await coach.openWorkThread(LIBRARY, OPEN);
+            await coach.send("what is this asking?");
+            const first = coach.conversationId;
+
+            await coach.openWorkThread({ problemId: 12, practiceSessionId: null }, OPEN);
+
+            // The reported bug: both problems used to accumulate in one saved chat.
+            expect(coach.messages).toHaveLength(0);
+            expect(coach.conversationId).toBeUndefined();
+            await coach.send("and this one?");
+            expect(coach.conversationId).not.toBe(first);
+        });
+
+        test("returning to a problem is offered the chat back", async () => {
+            // The point of anchoring it: a second visit finds the first one.
+            workThread = offeredThread(60_000);
+            await coach.openWorkThread(LIBRARY, OPEN);
+            expect(coach.resumePrompt?.id).toBe(workThread.id as string);
+
+            await coach.resumeWorkThread();
+            expect(coach.conversationId).toBe(workThread.id as string);
+        });
+
+        test("anchoring with the panel open still writes a work row", async () => {
+            // An empty assist thread has nothing to preserve, so the assist→work rule
+            // has nothing to protect — and leaving the tier at assist wrote a row with
+            // no anchor, which the next visit's lookup could never find.
+            coach.present("panel");
+            expect(coach.tier).toBe("assist");
+
+            await coach.openWorkThread(LIBRARY, OPEN);
+            await coach.send("what is this asking?");
+
+            expect(coach.tier).toBe("work");
+            expect(persistCalls()[0].body.thread).toEqual({ kind: "work", anchor: LIBRARY });
+        });
+
+        test("anchoring from an assist thread opens a new one and leaves it alone", async () => {
+            // §1's rule, both halves. The assist thread keeps its rows and its id; the
+            // anchored thread that replaces it on screen is a *new* work thread, not
+            // that conversation relabelled.
+            coach.present("panel");
+            await coach.send("what should I review?");
+            const assist = coach.conversationId;
+            recorded = [];
+
+            await coach.openWorkThread(LIBRARY, OPEN);
+            await coach.send("what is this asking?");
+
+            expect(coach.tier).toBe("work");
+            expect(coach.conversationId).not.toBe(assist);
+            expect(persistCalls()[0].body.thread).toEqual({ kind: "work", anchor: LIBRARY });
+        });
     });
 
     test("an offer for an anchor the student already left is not sprung on them", async () => {

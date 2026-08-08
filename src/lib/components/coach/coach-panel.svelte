@@ -9,6 +9,7 @@
     import CoachRequestInspector from "./coach-request-inspector.svelte";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachConversationList from "./coach-conversation-list.svelte";
+    import CoachResumePrompt from "./coach-resume-prompt.svelte";
 
     let actions = $derived(
         coach.quickActions.length > 0 ? coach.quickActions : COACH_FALLBACK_QUICK_ACTIONS,
@@ -37,6 +38,13 @@
         <CoachContextTray />
         <CoachDebugToggle />
         <CoachRequestInspector />
+        {#if coach.resumePrompt}
+            <!-- Above the transcript, not over it: the blank Coach behind the offer is
+                 already usable, and out-typing it simply lets the offer lapse. -->
+            <div class="shrink-0 px-3 pb-1">
+                <CoachResumePrompt />
+            </div>
+        {/if}
         <AIChat
             controller={coach}
             assistantLabel="Coach"

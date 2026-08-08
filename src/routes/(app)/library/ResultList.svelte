@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import { Icon } from "$lib/components/icon";
     import { Button } from "$lib/components/button";
     import { resolve } from "$app/paths";
@@ -16,6 +17,7 @@
     import type { LibraryStore } from "$lib/state/library.svelte";
     import { practiceLaunchHref } from "$lib/practice-launch";
     import { problemContextLayer } from "$lib/ai/context/surfaces";
+    import { anchorFor } from "$lib/ai/session/anchor";
     import { CoachContextRegister } from "$lib/components/coach";
     import { coach } from "$lib/state/coach.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
@@ -64,14 +66,21 @@
     const problemDrafts = new Map<number, ProblemDraft>();
     let askedProblem = $state<ProblemRow | null>(null);
 
+    /**
+     * The library's sitting has no practice session (`docs/ai-coach-sessions.md` §4) —
+     * the null slot the anchor index reserves for exactly this. Nothing here ever
+     * concludes: a library chat is not an attempt, so it stays live and offerable until
+     * it goes stale, which is what lets a return visit be offered it back.
+     */
+    const LIBRARY_WORK = { submitted: false, skipped: false } as const;
+
     function askAboutProblem(problem: ProblemRow, invoker: HTMLElement) {
         askedProblem = problem;
-        // Naming the subject, not just the context: pressing Ask on a problem the open
-        // thread is not already about starts a new chat. Without it, an escalated thread
-        // (the panel) kept writing every problem the student asked about into one saved
-        // conversation — which is what the history list then showed them. Ambient scope
-        // never does this; only the gesture does.
-        coach.startSubject({ kind: "problem", id: problem.canonical_id ?? problem.id });
+        // Anchored, not merely scoped. This is what makes the chat about a problem
+        // findable again: pressing Ask on a problem you have discussed before offers
+        // that thread back, and pressing it on a different one leaves this thread for
+        // its own and starts that problem's. Both fall out of the anchor switch.
+        void coach.openWorkThread(anchorFor(problem, null), LIBRARY_WORK);
         if (utilityPanel.activeView === "coach") {
             void coach.initialize();
             return;
@@ -80,14 +89,48 @@
         coach.openQuickAsk(invoker);
     }
 
-    // Unlike the trainer's layer, this one is raised by a gesture rather than by what is
-    // on screen: the library has no "current problem", only the one whose Ask button was
-    // pressed. So the registration lasts exactly as long as the Coach that was summoned
-    // for it. Left standing, the layer went on naming a problem the student asked about
-    // long ago, and an unrelated Ctrl+J still arrived scoped to it — under `coaching`
-    // rather than `assist`, with that problem's statement in the request.
+    let coachShowing = $derived(
+        coach.quickAskVisible || utilityPanel.activeView === "coach",
+    );
+
+    /**
+     * Closing the Coach ends the library's sitting.
+     *
+     * Unlike the trainer's, this anchor is raised by a *gesture* rather than by what is
+     * on screen: the library has no "current problem", only the one whose Ask button was
+     * pressed, so "still on it" can only mean "the Coach summoned for it is still up".
+     * Releasing is a real side effect on a one-way transition, which is what an effect is
+     * for — but nothing local is cleared here, because the store's own anchor is what
+     * says which problem this page is talking about.
+     */
+    $effect(() => {
+        if (coachShowing) return;
+        void coach.releaseWorkAnchor(LIBRARY_WORK);
+    });
+
+    // Leaving the library is the same departure as closing the Coach. Guarded on the
+    // session-less anchor because that slot is this page's alone — the trainer's anchors
+    // always carry a session, and releasing one of those from here would retire it.
+    onDestroy(() => {
+        if (coach.workAnchor?.practiceSessionId === null) {
+            void coach.releaseWorkAnchor(LIBRARY_WORK);
+        }
+    });
+
+    /**
+     * The row whose chat is open, read back through the anchor the store actually holds
+     * rather than through the click that set it. `askedProblem` only carries the row so
+     * its label can be rendered; the anchor decides whether it counts. That is what makes
+     * a stale selection impossible to resurrect — releasing on close drops the anchor, so
+     * reopening the Coach by any other route (the chord) finds nothing scoped, where a
+     * remembered click would have handed the old problem straight back.
+     */
     let scopedProblem = $derived(
-        coach.quickAskVisible || utilityPanel.activeView === "coach" ? askedProblem : null,
+        askedProblem &&
+            coach.workAnchor?.practiceSessionId === null &&
+            coach.workAnchor.problemId === (askedProblem.canonical_id ?? askedProblem.id)
+            ? askedProblem
+            : null,
     );
 
     function problemDraft(problem: ProblemRow): ProblemDraft {

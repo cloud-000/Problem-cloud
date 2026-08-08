@@ -19,6 +19,7 @@
     import { coach } from "$lib/state/coach.svelte";
     import { cn } from "$lib/utils";
     import CoachContextChips from "./coach-context-chips.svelte";
+    import CoachResumePrompt from "./coach-resume-prompt.svelte";
 
     let { placement = "center", anchor = null }: CoachQuickAskProps = $props();
 
@@ -125,6 +126,14 @@
                         Retry
                     </button>
                 {/if}
+            </div>
+        {/if}
+
+        <!-- The offer sits above the answer slot, not over it: the choice is which
+             thread to attach to, and the blank Coach behind it is already usable. -->
+        {#if coach.resumePrompt}
+            <div class="px-3.5 py-2">
+                <CoachResumePrompt />
             </div>
         {/if}
 

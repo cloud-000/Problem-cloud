@@ -31,8 +31,8 @@ sessionless slot of the anchor index (§2).
 
 | | **Work** | **Assist** | **One-shot** |
 | --- | --- | --- | --- |
-| Example | Coaching on AMC 10A #18 in the trainer | "what should I review?", "find that cyclic-quadrilateral problem" — the panel and the `/coach` page | Library query bar; a quick-ask that was never escalated |
-| Anchored to | one problem in one practice session | nothing | nothing |
+| Example | Coaching on AMC 10A #18 in the trainer, **or the library's Ask on a problem** | "what should I review?", "find that cyclic-quadrilateral problem" — the panel and the `/coach` page | The chord with nothing selected; a quick-ask that was never escalated |
+| Anchored to | one problem in one sitting — a practice session, or **null for the library** | nothing | nothing |
 | Persisted | yes | yes | **never — no DB row exists** |
 | Auto-resumed | **yes, by prompt** (§2 index, §5 rule) — including after it concludes | no — new thread each open, history one click away | n/a |
 | Context style | **minimal problem scope, tools on demand** | **tool-driven** | tool-only |
@@ -94,14 +94,26 @@ it belonged to it.
 **Scope comparison cannot carry a persisted thread, and must not try.** A one-shot is
 disposable, so its scope changing is enough to end it. An assist thread is not: the
 active scope changes every time the student navigates, and resetting on that would make
-a conversation evaporate on the walk from the library to progress. So a persisted thread
-ignores drift entirely and waits for **`coach.startSubject(ref)`** — a deliberate gesture
-that *names* what it is about (the library's Ask button). If the open thread is not
-already about that subject, a new chat starts. Until this existed, the panel wrote every
-problem the student pressed Ask on into one saved conversation, and the history list
-showed them a single chat spanning four unrelated problems — the symptom that made the
-scope rule alone look like no fix at all. Starting a new chat is not a deletion: the
-previous thread keeps its rows and stays in history under its own subject.
+a conversation evaporate on the walk from the library to progress. A persisted thread
+therefore ignores drift entirely — which left the library writing every problem the
+student pressed Ask on into one saved conversation, so the history list showed a single
+chat spanning four unrelated problems.
+
+The answer is not a second comparison rule but an **anchor**: the library's Ask opens a
+*work* thread anchored to `(problem, null)` — §4's session-less slot, which the unique
+index has reserved with `nulls not distinct` all along and which `anchor.ts` already
+called "library work". Everything then falls out of §2 and §5 rather than being invented
+here: pressing Ask on a different problem switches anchors, which leaves the first chat
+for its own and starts that problem's; pressing Ask on a problem you have discussed
+before finds its thread and offers it back with the same card the trainer uses. A
+library chat never concludes — it is not an attempt — so it stays live and offerable
+until the 12-hour staleness cutoff retires it.
+
+That makes the Ask button the library's `setCoachMode`, and it needs the same two
+lifecycle halves. `openWorkThread` on the gesture; `releaseWorkAnchor` when the Coach
+summoned for it closes or the page is left, because with no "current problem" of its own
+the library has nothing else that could mean "still on it". Left held, the anchor would
+take an unrelated chord question into that problem's thread.
 
 Two consequences worth naming:
 
@@ -708,6 +720,8 @@ plumbing around them.
 | Answer the prompt | `coach.resumeWorkThread()` / `coach.startNewWorkThread()`; UI in `coach-resume-prompt.svelte` |
 | Leave the anchor | `coach.releaseWorkAnchor(state)` — the only caller of `workRetirable` |
 | Trainer wiring | `PracticeView.svelte` `setCoachMode` + the release `$effect`; `recordSkip` sets `skipped`. The anchor it holds is `coach-anchor.ts` (pure), **not** the Coach's visibility — see below |
+| Library wiring | `ResultList.svelte` `askAboutProblem` (open, session-less anchor) + the release `$effect`/`onDestroy`. Here the Coach's visibility *is* the sitting — the page has no current problem of its own |
+| The offer's surfaces | `coach-inline.svelte` (trainer), `coach-quick-ask.svelte` and `coach-panel.svelte` (library) — anywhere a work thread can be opened has to be able to show the card |
 | The lookup | `GET /api/ai/work-thread` → `workConversationForAnchor` — newest thread at the anchor, **retired or not** |
 | Create with a kind/anchor | `ensureConversation({ thread })`, which also raises `AIWorkAnchorConflict` |
 | Bump `last_active_at` | `touchConversation`, and nothing else |
