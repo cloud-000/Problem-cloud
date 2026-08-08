@@ -29,6 +29,8 @@ select
   p.quality,
   p.verified,
   p.is_computational,
+  p.response_kind,
+  p.answer_status,
   p.answer_index,
   (p.statement is not null) as has_statement,
   (p.choices is not null) as has_choices,

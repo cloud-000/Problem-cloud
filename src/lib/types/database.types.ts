@@ -1363,6 +1363,7 @@ export type Database = {
       user_problem_index: {
         Row: {
           answer_index: number | null
+          answer_status: string | null
           canonical_id: number | null
           difficulty: number | null
           division: string | null
@@ -1382,6 +1383,7 @@ export type Database = {
           problem_id: number | null
           quality: number | null
           rating: number | null
+          response_kind: string | null
           series_id: number | null
           solved: boolean | null
           tags: string[] | null
@@ -1572,6 +1574,20 @@ export type Database = {
         Returns: undefined
       }
       recompute_ratings: { Args: never; Returns: Json }
+      resolve_content_answer_status: {
+        Args: {
+          answer_index: number
+          choices: string[]
+          problem_status: string
+          response_kind: string
+          test_status: string
+        }
+        Returns: string
+      }
+      resolve_content_response_kind: {
+        Args: { choices: string[]; problem_kind: string; test_kind: string }
+        Returns: string
+      }
       review_problem_report: {
         Args: {
           p_answer_index?: number

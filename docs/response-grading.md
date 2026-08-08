@@ -10,14 +10,15 @@ this document synchronized with changes to `supabase/schemas/problems.sql`,
 
 ## 1. Status
 
-**Current phase:** design complete; implementation has not started.
+**Current phase:** Phase 1 complete; Phase 2 has not started.
 
-The content layer already carries `response_kind` and `answer_status`, including
-proof declarations from the scraper. The application layer does not consume either
-field: it still derives input and grading behavior from `choices` and
-`answer_index`.
+The response domain now narrows the database strings and owns legacy response-kind,
+input-mode, comparable-answer, missing-reference-answer, and submission-outcome
+logic. The content sync resolves declarations and unambiguous source structure into
+per-problem metadata, and `user_problem_index` projects both fields. Trainer and UI
+consumption remains intentionally deferred to Phase 3.
 
-Local database snapshot on 2026-08-07:
+Pre-Phase-1 local database snapshot on 2026-08-07:
 
 | Data | Count | Notes |
 | --- | ---: | --- |
@@ -30,6 +31,21 @@ The test-level missing-answer cache is the one existing consumer of the new
 semantics: `recalculate_test_answers` correctly excludes
 `answer_status = 'not_applicable'`. All 55 explicitly declared proof tests therefore
 have `missing_answers_count = 0`.
+
+Phase 1 local backfill result on 2026-08-07:
+
+| Response kind | Answer status | Count |
+| --- | --- | ---: |
+| `mcq` | `known` | 4,315 |
+| `mcq` | `source_missing` | 1,027 |
+| `short_answer` | `known` | 22,798 |
+| `proof` | `not_applicable` | 199 |
+| `unknown` | `needs_review` | 2,599 |
+| `unknown` | `not_applicable` | 89 |
+| `unknown` | `source_missing` | 7 |
+
+No problem remains with a null response kind or answer status. Test answer-cache
+verification reported zero mismatches after the backfill.
 
 ## 2. The model
 
@@ -265,6 +281,29 @@ without inventing classifications:
 - Preserve `unknown` when evidence is insufficient.
 - Recalculate test answer caches after backfill.
 
+Phase 1 resolution is enforced at the content-sync boundary in this order:
+
+1. Preserve an explicit problem declaration.
+2. Apply an explicit test declaration as a default.
+3. Classify more than one choice as `mcq` and exactly one choice as
+   `short_answer`.
+4. Preserve every remaining response as `unknown`.
+
+For answer coverage, an explicit problem status remains authoritative; otherwise a
+usable in-range key is `known`, then a test declaration applies, proof defaults to
+`not_applicable`, key-bearing response kinds without a key become `source_missing`,
+and the remainder becomes `needs_review`.
+
+The 89 formerly null-kind/`not_applicable` rows were investigated separately. They
+come from 29 HMMT February Oral/Team tests (84 HMMT and 5 HMMT November); all have
+statements, official solutions, no choices or lexical key, and
+`is_computational = true`. Eighty-one statements explicitly request a proof or
+demonstration. The other eight are open-ended existence, game, or determination
+questions. Because neither the problem nor test imports carry a response-kind
+declaration, Phase 1 deliberately preserves all 89 as `unknown` rather than deriving
+`proof` from `not_applicable`. They need explicit upstream source declarations for a
+stronger classification.
+
 Database `CHECK` constraints generate `string | null` TypeScript fields. Narrow
 them through app-level parsers/constants at the domain boundary. Regenerate
 `src/lib/types/database.types.ts` with the Supabase CLI after schema changes; never
@@ -274,12 +313,12 @@ edit it by hand.
 
 ### Phase 1 — response domain and data coverage
 
-- [ ] Add app-level `ResponseKind` and `AnswerStatus` constants/types.
-- [ ] Implement the small pure helper module.
-- [ ] Test valid values, invalid values, legacy inference, and every outcome.
-- [ ] Add response metadata to read models/projections that need it.
-- [ ] Complete scraper classification/backfill rules.
-- [ ] Investigate or explicitly preserve the 89 ambiguous rows.
+- [x] Add app-level `ResponseKind` and `AnswerStatus` constants/types.
+- [x] Implement the small pure helper module.
+- [x] Test valid values, invalid values, legacy inference, and every outcome.
+- [x] Add response metadata to read models/projections that need it.
+- [x] Complete scraper classification/backfill rules.
+- [x] Investigate or explicitly preserve the 89 ambiguous rows.
 
 ### Phase 2 — ungraded progress correctness
 
@@ -344,10 +383,17 @@ The implementation uses these defaults unless product direction changes:
 
 ## 14. Current checkpoint
 
-Investigation and the simplified design are complete. No implementation schemas or
-application files have changed yet.
+Phase 1 is complete. `$lib/problem-response.ts` is the pure application boundary,
+with focused coverage for constrained values, invalid database strings, legacy
+choice-shape inference, input modes, comparable/missing answer semantics, and all
+four submission outcomes. `content_sync.sql` owns import/backfill resolution, and
+`user_problem_index` now includes `response_kind` and `answer_status`; generated
+database types are synchronized.
 
-The next session should begin with **Phase 1 only**. Re-read the actual schema and
-trainer code before editing because file locations and behavior may have moved since
-this investigation.
+The local backfill completed with no null metadata and zero test-cache mismatches.
+The 89 HMMT rows remain explicitly `unknown`/`not_applicable` pending source-backed
+scraper declarations. This is intentional, not incomplete inference.
 
+Phase 2 and Phase 3 are untouched. The next session should begin with **Phase 2
+only** and re-read the live progress trigger, practice-session aggregate path,
+replay function, analytics, and rating tests together before editing.
