@@ -1009,14 +1009,16 @@
       hintLevel = 0;
       hintFlashToken = 0;
    });
-   // Bootstrap is lazy, so "no connection" is unknown until the Coach has been
-   // summoned once. Hiding the rail on an unknown answer would hide it from every
-   // student who has not opened Coach mode yet — which is all of them, the first
-   // time. Offer it until we actually know better; taking a hint with no key
-   // configured lands on the connection gate, which is the honest outcome.
-   let hintsAvailable = $derived(
-      coachModeAvailable && !(coach.initialized && coach.connectionBlocked),
-   );
+   // Deliberately *not* gated on connection health. Bootstrap is lazy, so "no
+   // connection" is unknown until the Coach has been summoned once — and the first
+   // thing on this page that summons it is entering Coach mode. Gating on it meant
+   // the rail was offered, then silently withdrawn by the round trip through Coach
+   // mode, for the rest of the sitting: the student reads that as the toggle having
+   // broken hints, and a single flaky `/models` probe had the same effect as no key
+   // at all. Taking a hint with nothing configured lands on the connection gate,
+   // which explains itself and offers Settings — that is the honest outcome, and it
+   // is the one place a student who never opens Coach mode can discover any of this.
+   let hintsAvailable = $derived(coachModeAvailable);
 
    // The Coach's own chip row presents the same ladder as a single escalating
    // action — four chips beside a live transcript would be a menu, and the rail
@@ -1027,10 +1029,18 @@
       ...PROBLEM_SUPPORT_ACTIONS,
    ]);
 
-   function takeHint(rung: HintRung) {
+   // A rung is spent only once there is something that can answer it. Counting
+   // first meant a student with no connection climbed the ladder against the
+   // connection gate, losing hints they never received — `coach.send` refuses a
+   // blocked send, so the level would have been the only thing that moved.
+   async function takeHint(rung: HintRung) {
       if (!problem || !hintsAvailable) return;
-      hintLevel += 1;
       if (!coachMode) setCoachMode(true);
+      // No-ops once initialized, and awaits the bootstrap `setCoachMode` just
+      // started, so this is the first point where "blocked" is actually known.
+      await coach.initialize();
+      if (coach.connectionBlocked) return;
+      hintLevel += 1;
       void coach.send(rung.prompt);
    }
 
@@ -2191,7 +2201,7 @@
                                  level={hintLevel}
                                  disabled={paused}
                                  flashToken={hintFlashToken}
-                                 onselect={(rung) => takeHint(rung)}
+                                 onselect={(rung) => void takeHint(rung)}
                               />
                            {/if}
                            {#key problem.id}
