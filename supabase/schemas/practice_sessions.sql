@@ -41,7 +41,7 @@ create table public.practice_sessions (
   ended_at           timestamp with time zone,
   -- trigger-maintained aggregate (mirrors problem_progress counters)
   times_seen         integer not null default 0,   -- all submissions incl. skips
-  times_reviewed     integer not null default 0,   -- graded (non-skip) attempts
+  times_reviewed     integer not null default 0,   -- graded attempts (non-skip, known outcome)
   times_correct      integer not null default 0,
   times_skipped      integer not null default 0,
   total_time_ms      bigint  not null default 0,

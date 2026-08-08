@@ -10,13 +10,15 @@ this document synchronized with changes to `supabase/schemas/problems.sql`,
 
 ## 1. Status
 
-**Current phase:** Phase 1 complete; Phase 2 has not started.
+**Current phase:** Phase 2 complete; Phase 3 has not started.
 
-The response domain now narrows the database strings and owns legacy response-kind,
+The response domain narrows the database strings and owns legacy response-kind,
 input-mode, comparable-answer, missing-reference-answer, and submission-outcome
 logic. The content sync resolves declarations and unambiguous source structure into
-per-problem metadata, and `user_problem_index` projects both fields. Trainer and UI
-consumption remains intentionally deferred to Phase 3.
+per-problem metadata, and `user_problem_index` projects both fields. Live and replayed
+progress now treat a non-skipped null outcome as seen but ungraded; session aggregates
+and progress analytics use the same distinction, and ratings remain unchanged. Trainer
+and UI consumption remains intentionally deferred to Phase 3.
 
 Pre-Phase-1 local database snapshot on 2026-08-07:
 
@@ -322,13 +324,13 @@ edit it by hand.
 
 ### Phase 2 — ungraded progress correctness
 
-- [ ] Fix `handle_new_submission` for non-skipped null outcomes.
-- [ ] Fix practice-session aggregate updates.
-- [ ] Fix `recompute_problem_progress` in the same change.
-- [ ] Align affected analytics.
-- [ ] Update schema comments and rating regression coverage.
-- [ ] Generate the migration and regenerate database types through the Supabase CLI.
-- [ ] Verify live/replay parity.
+- [x] Fix `handle_new_submission` for non-skipped null outcomes.
+- [x] Fix practice-session aggregate updates.
+- [x] Fix `recompute_problem_progress` in the same change.
+- [x] Align affected analytics.
+- [x] Update schema comments and rating regression coverage.
+- [x] Generate the migration and regenerate database types through the Supabase CLI.
+- [x] Verify live/replay parity.
 
 ### Phase 3 — trainer, UI, and results
 
@@ -383,17 +385,21 @@ The implementation uses these defaults unless product direction changes:
 
 ## 14. Current checkpoint
 
-Phase 1 is complete. `$lib/problem-response.ts` is the pure application boundary,
-with focused coverage for constrained values, invalid database strings, legacy
-choice-shape inference, input modes, comparable/missing answer semantics, and all
-four submission outcomes. `content_sync.sql` owns import/backfill resolution, and
-`user_problem_index` now includes `response_kind` and `answer_status`; generated
-database types are synchronized.
+Phase 2 is complete. `handle_new_submission` and `recompute_problem_progress` now use
+the same skipped / ungraded / graded branch: all submissions count as seen, skips only
+increment the skipped counter, and only a non-null correctness outcome increments
+reviewed/correct counters or advances SM-2. Practice-session counters match the live
+problem fold. `submission_facts` and `progress_breakdown` exclude ungraded non-skips
+from graded sequences, counts, and graded-time denominators.
 
-The local backfill completed with no null metadata and zero test-cache mismatches.
-The 89 HMMT rows remain explicitly `unknown`/`not_applicable` pending source-backed
-scraper declarations. This is intentional, not incomplete inference.
+Migration `20260808022033_response_grading_phase2.sql` is applied locally without a
+database reset, database types are regenerated, and the declarative schema has no
+drift. The transactional `ungraded_progress.test.sql` regression proves that an
+ungraded non-skip creates no rating/current-state/history row and that replay exactly
+matches live progress state across mixed graded and ungraded submissions. The full
+database test suite passes 37 assertions. `bun run check` reports no diagnostics, and
+all 827 Bun tests pass.
 
-Phase 2 and Phase 3 are untouched. The next session should begin with **Phase 2
-only** and re-read the live progress trigger, practice-session aggregate path,
-replay function, analytics, and rating tests together before editing.
+Phase 3 is untouched. The next session should begin with **Phase 3 only**: trainer,
+input, reference-answer affordances, fixed-test retention, and neutral ungraded result
+surfaces.

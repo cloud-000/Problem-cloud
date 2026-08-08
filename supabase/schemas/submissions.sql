@@ -19,7 +19,7 @@ create table public.submissions (
   -- response lets a later re-grade + recompute_ratings repair a grading change, and
   -- lets the results screen show what was typed after a reload.
   answer          text,
-  is_correct      boolean,                  -- null when skipped
+  is_correct      boolean,                  -- null when ungraded, including skips
   skipped         boolean not null default false,
   flagged         boolean not null default false,
   elapsed_ms      integer,                  -- time spent on this attempt
@@ -46,6 +46,9 @@ create table public.submissions (
 create index submissions_user_problem_idx on public.submissions(user_id, problem_id);
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
 create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
+
+comment on column public.submissions.is_correct is
+  'Grading outcome: true for correct, false for incorrect, and null for ungraded submissions (including skips).';
 
 -- A Test-format session records exactly one graded submission per problem, all
 -- inserted in a single batch at submit time. This partial unique index makes that
@@ -102,7 +105,7 @@ create table public.problem_progress (
   problem_id         bigint references public.problems(id) on delete cascade not null,
   -- counters
   times_seen         integer not null default 0,   -- all submissions incl. skips
-  times_reviewed     integer not null default 0,   -- graded (non-skip) attempts
+  times_reviewed     integer not null default 0,   -- graded attempts (non-skip, known outcome)
   times_correct      integer not null default 0,
   times_skipped      integer not null default 0,
   total_time_ms      bigint  not null default 0,
@@ -201,12 +204,13 @@ begin
   if new.skipped then
     -- Skips do not advance the SM-2 schedule.
     prog.times_skipped := prog.times_skipped + 1;
-  else
+  elsif new.is_correct is not null then
+    -- Ungraded non-skips count as seen, but do not become reviews or alter SM-2.
     prog.times_reviewed := prog.times_reviewed + 1;
     prog.last_reviewed_at := new.created_at;
-    prog.last_correct := coalesce(new.is_correct, false);
+    prog.last_correct := new.is_correct;
 
-    if coalesce(new.is_correct, false) then
+    if new.is_correct then
       prog.times_correct := prog.times_correct + 1;
       q := 5;
     else
@@ -276,9 +280,11 @@ begin
   if new.session_id is not null then
     update public.practice_sessions set
       times_seen         = times_seen + 1,
-      times_reviewed     = times_reviewed + (case when new.skipped then 0 else 1 end),
+      times_reviewed     = times_reviewed
+                             + (case when not new.skipped and new.is_correct is not null
+                                     then 1 else 0 end),
       times_correct      = times_correct
-                             + (case when not new.skipped and coalesce(new.is_correct, false)
+                             + (case when not new.skipped and new.is_correct is true
                                      then 1 else 0 end),
       times_skipped      = times_skipped + (case when new.skipped then 1 else 0 end),
       total_time_ms      = total_time_ms + coalesce(new.elapsed_ms, 0),
@@ -486,11 +492,12 @@ begin
     last_sub := s.created_at;
     if s.skipped then
       tk := tk + 1;                         -- skips don't advance SM-2
-    else
+    elsif s.is_correct is not null then
+      -- Ungraded non-skips count as seen, but do not become reviews or alter SM-2.
       tr := tr + 1;
       last_rev := s.created_at;
-      last_cor := coalesce(s.is_correct, false);
-      if coalesce(s.is_correct, false) then
+      last_cor := s.is_correct;
+      if s.is_correct then
         tc := tc + 1; q := 5;
       else
         q := 2;

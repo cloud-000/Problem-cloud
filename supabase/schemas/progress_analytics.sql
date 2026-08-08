@@ -48,16 +48,18 @@ select
     partition by s.user_id, s.problem_id
     order by s.created_at, s.id
   ) as attempt_seq,
-  -- 1,2,3… over graded (non-skip) attempts only; null on skips. `graded_seq = 1`
+  -- 1,2,3… over graded attempts only; null on skips and ungraded non-skips.
+  -- `graded_seq = 1`
   -- is the user's first real attempt at the problem — the basis for
   -- first-attempt accuracy (a skip must not be miscounted as that first try).
   -- True first-try accuracy pairs this with `tries_used = 0`: graded_seq picks the
   -- first *encounter*, tries_used confirms it was nailed on the first *try* within
   -- it (multi-try practice can burn wrong tries that never became their own rows).
-  case when not s.skipped then
-    row_number() over (
-      partition by s.user_id, s.problem_id, s.skipped
+  case when not s.skipped and s.is_correct is not null then
+    count(*) filter (where not s.skipped and s.is_correct is not null) over (
+      partition by s.user_id, s.problem_id
       order by s.created_at, s.id
+      rows between unbounded preceding and current row
     )
   end as graded_seq
 from public.submissions s
@@ -90,7 +92,7 @@ returns table (
   bucket_key        text,
   bucket_label      text,
   seen              bigint,   -- all submissions (incl. skips)
-  graded            bigint,   -- non-skip attempts
+  graded            bigint,   -- non-skip attempts with a known outcome
   correct           bigint,   -- graded attempts that were correct
   skipped           bigint,
   first_graded      bigint,   -- problems attempted (graded) for the first time
@@ -138,14 +140,18 @@ as $$
       else dim_key
     end as bucket_label,
     count(*)                                                        as seen,
-    count(*) filter (where not skipped)                            as graded,
+    count(*) filter (where not skipped and is_correct is not null) as graded,
     count(*) filter (where is_correct)                             as correct,
     count(*) filter (where skipped)                                as skipped,
     count(*) filter (where graded_seq = 1)                         as first_graded,
     count(*) filter (where graded_seq = 1 and is_correct and coalesce(tries_used, 0) = 0) as first_correct,
     count(distinct problem_id)                                     as distinct_problems,
-    coalesce(sum(elapsed_ms) filter (where not skipped and elapsed_ms is not null), 0) as graded_time_ms,
-    count(*) filter (where not skipped and elapsed_ms is not null) as graded_timed,
+    coalesce(sum(elapsed_ms) filter (
+      where not skipped and is_correct is not null and elapsed_ms is not null
+    ), 0)                                                          as graded_time_ms,
+    count(*) filter (
+      where not skipped and is_correct is not null and elapsed_ms is not null
+    )                                                              as graded_timed,
     max(created_at)                                                as last_activity
   from base
   where dim_key is not null
