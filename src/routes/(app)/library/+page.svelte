@@ -1,5 +1,7 @@
 <script lang="ts">
     import type { PageData } from "./$types";
+    import { onMount } from "svelte";
+    import { page as pageStore } from "$app/state";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
@@ -32,6 +34,14 @@
         { value: "tests", label: "Tests" },
         { value: "series", label: "Series" },
     ];
+
+    // Seed the search filter from `?search=` (e.g. the home page's focused-series
+    // worklist links to `/library?search=<problem id>`) so the linked-to problem
+    // is actually surfaced. Read once at mount — the store owns the field after.
+    onMount(() => {
+        const search = pageStore.url.searchParams.get("search");
+        if (search) store.patchFilters({ search });
+    });
 
     let filtersOpen = $state(false);
     let pageRoot = $state<HTMLDivElement | null>(null);

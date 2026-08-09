@@ -8,9 +8,13 @@ create table public.profiles (
   created_at timestamp with time zone default now() not null,
   updated_at timestamp with time zone default now() not null,
   last_active_at timestamp with time zone default now() not null,
+  -- Up to 3 contest series (series.id) the user is currently focused on;
+  -- drives the home page's per-series stats/worklist. Self-updatable.
+  focused_series bigint[] not null default '{}'::bigint[],
 
   -- Username length constraint
-  constraint username_length check (char_length(username) >= 3)
+  constraint username_length check (char_length(username) >= 3),
+  constraint focused_series_max_three check (cardinality(focused_series) <= 3)
 );
 
 -- Enable Row Level Security (RLS)

@@ -28,7 +28,11 @@
         type Pacing,
         type TimingRule,
     } from "$lib/test-timing";
-    import { defaultPracticeSettings, defaultTestSettings } from "$lib/trainer";
+    import {
+        defaultPracticeSettings,
+        defaultTestSettings,
+        type PracticeSettings,
+    } from "$lib/trainer";
     import {
         parsePracticeLaunch,
         type PracticeLaunchIntent,
@@ -36,6 +40,8 @@
     import { cn } from "$lib/utils";
     import { onMount } from "svelte";
     import SessionCard from "./SessionCard.svelte";
+    import Track from "./Track.svelte";
+    import { createTrackValue, type TrackValue } from "./practice-settings";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -75,8 +81,15 @@
     // Countdown problem the moment its segment is submitted.
     let allowPause = $state(false);
     let revealPerSegment = $state(false);
+    // Practice-format track (topic/series/division-format), front-loaded in the
+    // dialog. Optional: an empty selection means "any" (today's default), so it
+    // never gates `canCreate`. Shared with SettingsPanel's mid-session Track.
+    let track = $state<TrackValue>(createTrackValue());
 
-    let seriesOptions = $derived<SelectOption[]>(
+    // Typed narrower than `SelectOption[]` (no bare-string variant) so this same
+    // array can feed both the test-format `<Select>` below and the practice-format
+    // `<Track>`, which needs the `{ value; label }` object shape.
+    let seriesOptions = $derived<{ value: string; label: string }[]>(
         series.map((s) => ({ value: String(s.id), label: s.name })),
     );
     // Tests scoped to the chosen series, newest first (fetch order preserved).
@@ -137,6 +150,7 @@
         strictTiming = true;
         allowPause = false;
         revealPerSegment = false;
+        track = createTrackValue();
     }
 
     function openDialog(format: "practice" | "test" = "practice") {
@@ -237,7 +251,12 @@
         busy = true;
         try {
             let name = dialogName.trim() || null;
-            let settings = defaultPracticeSettings();
+            let settings: PracticeSettings = {
+                ...defaultPracticeSettings(),
+                topic: track.topic,
+                seriesIds: track.seriesIds,
+                seriesScopes: track.seriesScopes,
+            };
             if (dialogFormat === "test") {
                 const testId = Number(selectedTestId);
                 const timeLimitSeconds =
@@ -515,6 +534,13 @@
                 {/each}
             </div>
         </div>
+
+        <!-- Practice options: what this session is about. Optional — an empty
+             selection means "any" (today's default), same shared Track step as
+             the mid-session settings panel. -->
+        {#if dialogFormat === "practice"}
+            <Track bind:value={track} {seriesOptions} {supabase} />
+        {/if}
 
         <!-- Test options -->
         {#if dialogFormat === "test"}

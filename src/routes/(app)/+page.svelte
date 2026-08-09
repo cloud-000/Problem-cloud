@@ -1,16 +1,18 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { onMount } from "svelte";
+    import { onMount, untrack } from "svelte";
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import { toasts } from "$lib/state/toast.svelte";
     import {
+        fetchByIds,
         fetchPlayerRating,
         playerRatingIsProvisional,
         topicLabel,
         type PlayerRating,
+        type SeriesRow,
     } from "$lib/library";
     import {
         fetchProblemStateSummary,
@@ -22,6 +24,10 @@
         fetchSessions,
         type PracticeSessionRow,
     } from "$lib/sessions";
+    import { fetchFocusedSeriesWorklist, type WorklistItem } from "$lib/home";
+    import FocusedSeriesChips from "./FocusedSeriesChips.svelte";
+    import FocusedSeriesStats from "./FocusedSeriesStats.svelte";
+    import FocusedWorklist from "./FocusedWorklist.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user, profile } = $derived(data);
@@ -31,6 +37,61 @@
     let activeSession = $state<PracticeSessionRow | null>(null);
     let recentSubmissions = $state<RecentSubmissionRow[]>([]);
     let loading = $state(true);
+
+    // Source of truth for the "Focused series" section — locally mutable so
+    // FocusedSeriesChips's optimistic edits are reflected immediately, distinct
+    // from `profile.focused_series` which only updates on the next page load.
+    let focusedSeriesIds = $state<number[]>(
+        untrack(() => profile?.focused_series ?? []),
+    );
+    let focusedSeriesNames = $state<Map<number, string>>(new Map());
+    let focusedStats = $state<
+        { seriesId: number; name: string; summary: ProblemStateSummary }[]
+    >([]);
+    let focusedWorklist = $state<WorklistItem[]>([]);
+
+    // Refetches the focused-series names/stats/worklist whenever the set of
+    // focused series changes — on first load (seeded from the profile) and
+    // again whenever FocusedSeriesChips adds/removes one. Kept separate from
+    // loadHome() so editing focus doesn't re-fetch the rest of the page.
+    $effect(() => {
+        const ids = focusedSeriesIds;
+        if (!user || ids.length === 0) {
+            focusedSeriesNames = new Map();
+            focusedStats = [];
+            focusedWorklist = [];
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const [seriesRows, summaries, worklist] = await Promise.all([
+                    fetchByIds(supabase, "series", ids) as Promise<SeriesRow[]>,
+                    Promise.all(ids.map((id) => fetchProblemStateSummary(supabase, id))),
+                    fetchFocusedSeriesWorklist(supabase, ids),
+                ]);
+                if (cancelled) return;
+                const names = new Map(seriesRows.map((row) => [row.id, row.name]));
+                focusedSeriesNames = names;
+                focusedStats = ids.map((id, index) => ({
+                    seriesId: id,
+                    name: names.get(id) ?? `Series ${id}`,
+                    summary: summaries[index],
+                }));
+                focusedWorklist = worklist;
+            } catch (e) {
+                if (!cancelled)
+                    toasts.error(
+                        (e as Error).message || "Failed to load your focused series.",
+                    );
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    });
 
     async function loadHome() {
         if (!user) {
@@ -193,6 +254,30 @@
                     </Button>
                 </div>
             </section>
+
+            {#if user}
+                <Page.Section
+                    title="Focused series"
+                    description="Pick up to 3 series to track closely on this page."
+                >
+                    <div class="flex flex-col gap-5">
+                        <FocusedSeriesChips
+                            {supabase}
+                            userId={user.id}
+                            bind:focusedSeriesIds
+                            seriesNames={focusedSeriesNames}
+                        />
+
+                        {#if focusedSeriesIds.length > 0}
+                            <FocusedSeriesStats entries={focusedStats} />
+                            <FocusedWorklist
+                                items={focusedWorklist}
+                                seriesNames={focusedSeriesNames}
+                            />
+                        {/if}
+                    </div>
+                </Page.Section>
+            {/if}
 
             <Page.Section
                 title="Recommended next"

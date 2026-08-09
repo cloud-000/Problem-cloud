@@ -32,11 +32,6 @@
       type PracticeSource,
       type ProblemProgress,
    } from "$lib/trainer";
-   import {
-      dimensionOptions,
-      fetchSeriesDimensions,
-      type SeriesDimensionRow,
-   } from "$lib/series-review";
    import { recordSubmission, setProblemMastery, type Mastery } from "$lib/progress";
    import { countdownRemainingMs } from "$lib/countdown";
    import {
@@ -111,7 +106,6 @@
       createPracticeSettingsForm,
       practiceSettingsFromForm,
       type PracticeSettingsForm,
-      type SeriesScopeConfig,
    } from "./practice-settings";
    import {
       applyTestOutcome,
@@ -134,10 +128,6 @@
       createPracticeSettingsForm(),
    );
    let seriesOptions = $state<{ value: string; label: string }[]>([]);
-   // One entry per *selected* series that carries division/format vocabulary, so
-   // the settings panel can show a per-series division/format row (unclassified
-   // series contribute none). Populated by the effect below.
-   let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
    let showWhiteboard = $derived(utilityPanel.activeView === "whiteboard");
    const whiteboardPersistKey = "whiteboard:scratch";
    const restoredWhiteboard = WhiteboardStore.restore(whiteboardPersistKey);
@@ -214,64 +204,6 @@
    // Progress-backed modes need per-user progress. Without a session, pin to New.
    $effect(() => {
       if (!user && settingsForm.mode !== "new") settingsForm.mode = "new";
-   });
-
-   // Division/format is a per-series narrowing (each series has its own
-   // vocabulary), so for every selected series we fetch its dimensions and build
-   // a scope row — but only for classified series (those with actual division or
-   // format values). Fetched dimensions are cached across selection changes.
-   let dimensionToken = 0;
-   const dimensionCache = new Map<number, SeriesDimensionRow[]>();
-
-   // Keep `settingsForm.seriesScopes` in step with the classified selection:
-   // drop entries for deselected series (so stale tags never leak into the draw
-   // or the persisted snapshot) and seed an empty entry for each classified one
-   // so the panel's comboboxes have a bindable target.
-   function reconcileScopes(classifiedIds: string[]) {
-      const scopes = settingsForm.seriesScopes;
-      const keep = new Set(classifiedIds);
-      for (const key of Object.keys(scopes)) {
-         if (!keep.has(key)) delete scopes[key];
-      }
-      for (const id of classifiedIds) {
-         scopes[id] ??= { divisions: [], formats: [] };
-      }
-   }
-
-   $effect(() => {
-      const ids = [...settingsForm.seriesIds];
-      const names = seriesOptions;
-      const token = ++dimensionToken;
-
-      void (async () => {
-         const configs: SeriesScopeConfig[] = [];
-         for (const idStr of ids) {
-            const id = Number(idStr);
-            if (!Number.isFinite(id)) continue;
-            let rows = dimensionCache.get(id);
-            if (!rows) {
-               try {
-                  rows = await fetchSeriesDimensions(supabase, id);
-               } catch (e) {
-                  console.error("Failed to fetch series dimensions:", e);
-                  continue;
-               }
-               dimensionCache.set(id, rows);
-            }
-            const divisions = dimensionOptions(rows, "division");
-            const formats = dimensionOptions(rows, "format");
-            if (divisions.length === 0 && formats.length === 0) continue;
-            configs.push({
-               id: idStr,
-               name: names.find((o) => o.value === idStr)?.label ?? `Series ${idStr}`,
-               divisionOptions: divisions,
-               formatOptions: formats,
-            });
-         }
-         if (token !== dimensionToken) return;
-         reconcileScopes(configs.map((c) => c.id));
-         seriesScopeConfigs = configs;
-      })();
    });
 
    // Cross-load draw state for interleaving and forward progress.
@@ -2443,7 +2375,7 @@
          <SettingsPanel
             bind:form={settingsForm}
             {seriesOptions}
-            {seriesScopeConfigs}
+            {supabase}
             canReview={!!user}
             {isTest}
             {testName}

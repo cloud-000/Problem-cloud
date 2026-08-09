@@ -35,6 +35,22 @@ export type SeriesScopeConfig = {
     formatOptions: DimensionOption[];
 };
 
+/**
+ * The "what is this session about" slice of {@link PracticeSettingsForm} —
+ * topic + series + division/format narrowing. Shared by the session-creation
+ * dialog (`Track.svelte` in `SessionsView`) and the mid-session settings panel
+ * (`Track.svelte` in `SettingsPanel`), so a full `PracticeSettingsForm`
+ * structurally satisfies it with zero conversion.
+ */
+export type TrackValue = Pick<
+    PracticeSettingsForm,
+    "topic" | "seriesIds" | "seriesScopes"
+>;
+
+export function createTrackValue(): TrackValue {
+    return { topic: [], seriesIds: [], seriesScopes: {} };
+}
+
 /** Deep-clone the per-series scope map so form and snapshot never share arrays. */
 function cloneScopes(raw: SeriesScopes | undefined | null): SeriesScopes {
     const out: SeriesScopes = {};

@@ -895,6 +895,7 @@ export type Database = {
         Row: {
           admin_rank: number
           created_at: string
+          focused_series: number[]
           id: string
           last_active_at: string
           status: string | null
@@ -904,6 +905,7 @@ export type Database = {
         Insert: {
           admin_rank?: number
           created_at?: string
+          focused_series?: number[]
           id: string
           last_active_at?: string
           status?: string | null
@@ -913,6 +915,7 @@ export type Database = {
         Update: {
           admin_rank?: number
           created_at?: string
+          focused_series?: number[]
           id?: string
           last_active_at?: string
           status?: string | null
