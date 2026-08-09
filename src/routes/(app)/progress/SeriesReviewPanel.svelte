@@ -1,5 +1,9 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
+    import { untrack } from "svelte";
+    import { replaceState } from "$app/navigation";
+    import { resolve } from "$app/paths";
+    import { page } from "$app/state";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
@@ -20,6 +24,11 @@
     import SeriesReviewGrid from "./SeriesReviewGrid.svelte";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
+
+    // Read once at mount: a caller (e.g. the home page's focused-series links)
+    // can request an initial series via `?series=<id>`. Once mounted, the sync
+    // below takes over and keeps the param following the Select instead.
+    const requestedSeriesId = page.url.searchParams.get("series");
 
     let seriesOptions = $state<{ value: string; label: string }[]>([]);
     let seriesId = $state("");
@@ -86,9 +95,13 @@
                             new Date(a.last_activity!).getTime(),
                     )[0];
                 const preferred = mostRecent?.bucket_key;
-                seriesId = seriesOptions.some((option) => option.value === preferred)
-                    ? preferred
-                    : (seriesOptions[0]?.value ?? "");
+                seriesId = seriesOptions.some(
+                    (option) => option.value === requestedSeriesId,
+                )
+                    ? requestedSeriesId!
+                    : seriesOptions.some((option) => option.value === preferred)
+                      ? preferred
+                      : (seriesOptions[0]?.value ?? "");
                 errorMsg = null;
             })
             .catch((error) => {
@@ -102,6 +115,21 @@
         return () => {
             cancelled = true;
         };
+    });
+
+    // Keeps `?series=` following the Select. Guarded on a non-empty seriesId
+    // so it doesn't fire (and strip a URL-provided series) before the mount
+    // fetch above has resolved. Uses replaceState, not goto — this mirrors
+    // the current pick, it doesn't navigate, so it shouldn't grow history the
+    // way selecting through several series in a row would with pushState.
+    $effect(() => {
+        if (!seriesId) return;
+        const current = page.url.searchParams.get("series");
+        if (seriesId === current) return;
+        const url = new URL(page.url);
+        url.searchParams.set("series", seriesId);
+        const route = `/progress${url.search}` as `/progress?${string}`;
+        untrack(() => replaceState(resolve(route), page.state));
     });
 
     $effect(() => {
