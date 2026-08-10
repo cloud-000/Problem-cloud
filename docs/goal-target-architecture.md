@@ -124,10 +124,10 @@ which is the only layer that knows how much room it has.
 ## 6. Registry
 
 ```ts
-type TargetSpec<T extends GoalTargetData> = {
-    family: GoalFamily;
-    requires(target: T, scope: GoalScope): DataRequest;
-    evaluate(target: T, data: DataFor<T["family"]>): GoalProgressResult;
+type TargetSpec<T extends GoalTargetData, F extends GoalFamily> = {
+    family: F;
+    requires(target: T, scope: GoalScope, ctx: RequestContext): DataRequest;
+    evaluate(target: T, data: FamilyData[F]): GoalProgressResult;
     validate(target: T, ctx: ValidationContext): string | null;
     describe(target: T): string;   // "Attempt 80% of eligible problems"
 };
@@ -139,8 +139,19 @@ export const TARGETS = {
 } satisfies { [K in GoalTargetType]: TargetSpec<Extract<GoalTargetData, { type: K }>> };
 ```
 
+Two adjustments the implementation forced, both in `src/lib/goals/registry.ts`:
+the family is a second type parameter (`DataFor<T["family"]>` cannot work — a
+target carries no `family` field, by design, since content selection and family
+membership are the registry's job, not the stored JSON's), and `requires` takes a
+`RequestContext`. The latter is what makes a `since_creation` volume period
+expressible at all: the range depends on the goal's own `createdAt`, which the
+target does not know. `now` rides along so period arithmetic is testable and so
+every goal in one render shares a single notion of it.
+
 `satisfies` over the mapped type is the load-bearing part: a new union member
-fails compilation until it is registered. The previous revision used a `switch`
+fails compilation until it is registered. Verified by mutation, not by
+assumption — adding an unregistered `mastery_percent` member fails `bun run
+check` with "Property 'mastery_percent' is missing". The previous revision used a `switch`
 with `default: throw` and `(data as any).type`, which silently accepted an
 unhandled member — its own extensibility example, `mastery_percent`, was in the
 union and threw at runtime.

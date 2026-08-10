@@ -234,6 +234,13 @@ export type Database = {
             foreignKeyName: "ai_conversations_problem_id_fkey"
             columns: ["problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -330,6 +337,53 @@ export type Database = {
             foreignKeyName: "ai_preferences_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          achieved_at: string | null
+          archived_at: string | null
+          created_at: string
+          deadline: string | null
+          id: number
+          scope: Json
+          target: Json
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achieved_at?: string | null
+          archived_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          id?: number
+          scope?: Json
+          target: Json
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          achieved_at?: string | null
+          archived_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          id?: number
+          scope?: Json
+          target?: Json
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -554,6 +608,13 @@ export type Database = {
             foreignKeyName: "practice_sessions_current_problem_id_fkey"
             columns: ["current_problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "practice_sessions_current_problem_id_fkey"
+            columns: ["current_problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -642,6 +703,13 @@ export type Database = {
             foreignKeyName: "problem_progress_problem_id_fkey"
             columns: ["problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "problem_progress_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -697,6 +765,13 @@ export type Database = {
             foreignKeyName: "problem_rating_history_problem_id_fkey"
             columns: ["problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "problem_rating_history_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -729,6 +804,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "problem_rating_stats_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: true
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
           {
             foreignKeyName: "problem_rating_stats_problem_id_fkey"
             columns: ["problem_id"]
@@ -777,6 +859,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "problem_ratings_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
           {
             foreignKeyName: "problem_ratings_problem_id_fkey"
             columns: ["problem_id"]
@@ -861,6 +950,13 @@ export type Database = {
           verified?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
           {
             foreignKeyName: "problems_canonical_id_fkey"
             columns: ["canonical_id"]
@@ -1125,6 +1221,13 @@ export type Database = {
             foreignKeyName: "submissions_problem_id_fkey"
             columns: ["problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "submissions_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -1280,6 +1383,13 @@ export type Database = {
             foreignKeyName: "user_submitted_feedback_problem_id_fkey"
             columns: ["problem_id"]
             isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "user_submitted_feedback_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
             referencedRelation: "problems"
             referencedColumns: ["id"]
           },
@@ -1308,6 +1418,49 @@ export type Database = {
       }
     }
     Views: {
+      canonical_placements: {
+        Row: {
+          canonical_id: number | null
+          division: string | null
+          format: string | null
+          gradeable: boolean | null
+          placement_id: number | null
+          series_id: number | null
+          test_id: number | null
+          topic: string | null
+          year: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problems_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["test_id"]
+          },
+          {
+            foreignKeyName: "problems_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tests_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tests_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "submission_facts"
+            referencedColumns: ["series_id"]
+          },
+        ]
+      }
       submission_facts: {
         Row: {
           attempt_seq: number | null
@@ -1333,6 +1486,13 @@ export type Database = {
           verified: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "submissions_problem_id_fkey"
+            columns: ["problem_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
           {
             foreignKeyName: "submissions_problem_id_fkey"
             columns: ["problem_id"]
@@ -1400,6 +1560,13 @@ export type Database = {
           verified: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "problems_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_placements"
+            referencedColumns: ["placement_id"]
+          },
           {
             foreignKeyName: "problems_canonical_id_fkey"
             columns: ["canonical_id"]
@@ -1481,6 +1648,58 @@ export type Database = {
           w: number
         }
         Returns: Record<string, unknown>
+      }
+      goal_scope_canonicals: {
+        Args: { p_scope: Json }
+        Returns: {
+          canonical_id: number
+          gradeable: boolean
+        }[]
+      }
+      goal_set_progress: {
+        Args: { p_requests: Json }
+        Returns: {
+          attempted: number
+          eligible_total: number
+          idx: number
+          solved: number
+        }[]
+      }
+      goal_streak_progress: {
+        Args: { p_requests: Json }
+        Returns: {
+          idx: number
+          streak_days: number
+          today_count: number
+        }[]
+      }
+      goal_volume_progress: {
+        Args: { p_requests: Json }
+        Returns: {
+          graded_submissions: number
+          idx: number
+        }[]
+      }
+      goal_window_progress: {
+        Args: { p_requests: Json }
+        Returns: {
+          fresh_correct: number
+          fresh_sample: number
+          graded_correct: number
+          graded_sample: number
+          idx: number
+          timed_sample: number
+          timed_total_ms: number
+        }[]
+      }
+      is_gradeable: {
+        Args: {
+          p_answer_index: number
+          p_answer_status: string
+          p_choices: string[]
+          p_statement: string
+        }
+        Returns: boolean
       }
       problem_state_summary: {
         Args: { p_series_id?: number }

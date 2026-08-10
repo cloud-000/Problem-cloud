@@ -304,8 +304,14 @@ function scopesTests(settings: PracticeSettings): boolean {
     return (settings.seriesIds?.length ?? 0) > 0;
 }
 
-/** Whether any selected series carries a division/format narrowing. */
-function hasSeriesScope(settings: PracticeSettings): boolean {
+/**
+ * Whether any selected series carries a division/format narrowing.
+ *
+ * Exported for the goals scope-contract test: the SQL resolver owns the
+ * definition of scope matching and this filter is its mirror, so the test must
+ * exercise this code rather than a copy of it (`docs/goals.md` §3).
+ */
+export function hasSeriesScope(settings: PracticeSettings): boolean {
     const scopes = settings.seriesScopes ?? {};
     return (settings.seriesIds ?? []).some((id) => {
         const scope = scopes[id];
@@ -332,7 +338,7 @@ function pgQuote(value: string): string {
  * Only called when {@link hasSeriesScope} is true; otherwise the plainer
  * `series_id in (…)` membership filter is used.
  */
-function seriesScopeFilter(settings: PracticeSettings): string {
+export function seriesScopeFilter(settings: PracticeSettings): string {
     const scopes = settings.seriesScopes ?? {};
     return (settings.seriesIds ?? [])
         .map((id) => {

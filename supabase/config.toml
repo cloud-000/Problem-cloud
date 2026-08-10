@@ -75,6 +75,12 @@ schema_paths = [
     "./schemas/progress_analytics.sql",
     "./schemas/content_sync.sql",
     "./schemas/ratings.sql",
+    # Goal scope resolution. Reads only the catalog (problems/tests), so it needs
+    # nothing above beyond problems.sql; kept next to the goal tables that follow.
+    "./schemas/goal_scope.sql",
+    # Goals themselves: the table plus the four family evaluators, which read
+    # problem_progress (submissions.sql) and submission_facts (progress_analytics.sql).
+    "./schemas/goals.sql",
     # Loaded last: joins both problem_progress (submissions.sql) and problem_ratings (ratings.sql).
     "./schemas/user_problem_index.sql"
 ]

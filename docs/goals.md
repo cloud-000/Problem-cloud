@@ -298,15 +298,30 @@ extensibility means *more kinds of goal*, never *one goal with more conditions*.
 
 ## 11. Open decisions
 
-1. **Who stamps `achieved_at`.** The browser observes the finish line being met,
-   but a client PATCH is both spoofable and racy across tabs. Preferred: the
-   client calls a small RPC that re-evaluates server-side and stamps only if the
-   target is genuinely met.
+None. The last one closed below.
 
 Settled 2026-08-10, previously open:
 
-- **Year range is in**, as a user-chosen field on both the goal scope and the
-  practice Track (§3).
+- **The client stamps `achieved_at`**, with `... where achieved_at is null` so
+  the write is idempotent and first-writer-wins across tabs
+  (`markGoalAchieved`). The re-evaluating RPC was rejected on cost: it needs a
+  second implementation of every evaluator in SQL — the largest single piece of
+  work in the feature, and the one most likely to drift from the TypeScript
+  registry — and the only thing it prevents is a student lying to themselves
+  about their own private goal. Goals are RLS'd to their owner and nothing is
+  scored, ranked, or rewarded on them. Revisit if a goal ever becomes visible to
+  anyone else; the column-level UPDATE grant already bounds what a hand-rolled
+  PATCH can touch.
+- **Year range is implemented in the SQL resolver but authored by nothing.**
+  Adding it to the Track means touching `PracticeSettingsForm`, the persisted
+  settings snapshot, `Track.svelte` and the trainer draw, for an axis no V1
+  target needs — so it is deferred as a slice. Scope ≡ Track is preserved by it
+  being absent from *both*, which is why it must reach the Track and the goal
+  form together or not at all.
+
+- **Year range is in** the model, as a user-chosen field on both the goal scope
+  and the practice Track (§3) — see the deferral note above for what has
+  actually shipped.
 - **Volume's period is user-chosen** — rolling, calendar, or since-creation (§6).
 - **Accuracy and speed sample sizes are user-chosen**, with floors enforced at
   validation (§7).
@@ -318,7 +333,28 @@ Settled 2026-08-10, previously open:
 - **`submission_facts` needs no new columns** — the `canonical_placements`
   semi-join replaced the proposal to widen it (§3).
 
-## 12. Done when
+## 12. What exists (2026-08-10)
+
+The headless half is built and tested; nothing renders yet.
+
+| Layer | Where | State |
+| --- | --- | --- |
+| Eligibility, placements, scope resolver | `supabase/schemas/goal_scope.sql` | done — `is_gradeable`, `canonical_placements`, `goal_scope_canonicals` |
+| Goals table + four family RPCs | `supabase/schemas/goals.sql` | done — `goal_set_progress`, `goal_window_progress`, `goal_volume_progress`, `goal_streak_progress` |
+| Types, registry, batching, period math | `src/lib/goals/` | done — `types`, `registry`, `plan`, `period`, `data` |
+| SQL semantics | `supabase/tests/goal_scope.test.sql`, `goal_families.test.sql` | 39 pgTAP assertions |
+| Pure evaluation | `src/lib/goals/*.test.ts` | 54 unit tests |
+| Trainer ≡ SQL scope contract | `src/lib/goals/scope-contract.test.ts` | 10 scope cases + fixture guards; skips without a local stack |
+| **UI** | `src/routes/(app)/goals/` | **not started** |
+
+Migrations are local-only (`20260810232659_goal_scope`, `20260810233431_goals`)
+and have not been pushed to the cloud.
+
+Two things the next session should not have to rediscover: the `/goals` route
+does not exist and is not in the nav; and `roadmap_goals` is an unrelated table
+(product roadmap voting), so `goals` is the right name and there is no clash.
+
+## 13. Done when
 
 A signed-in student can create a goal of any V1 type from a Track-based scope,
 see what already counts toward it, see active / achieved / archived goals, open a
