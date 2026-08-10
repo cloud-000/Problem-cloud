@@ -11,14 +11,43 @@
         { key: "skipped", label: "Times skipped" },
     ];
 
-    const MODES: { value: PracticeMode; label: string; needsAuth: boolean }[] =
-        [
-            { value: "new", label: "New", needsAuth: false },
-            { value: "review", label: "Due Review", needsAuth: true },
-            { value: "skipped", label: "Skipped, unsolved", needsAuth: true },
-            { value: "list", label: "My list", needsAuth: true },
-            { value: "mixed", label: "Mixed", needsAuth: true },
-        ];
+    const MODES: {
+        value: PracticeMode;
+        label: string;
+        hint: string;
+        needsAuth: boolean;
+    }[] = [
+        {
+            value: "new",
+            label: "New",
+            hint: "Problems you've never attempted.",
+            needsAuth: false,
+        },
+        {
+            value: "review",
+            label: "Due Review",
+            hint: "Problems due for spaced-repetition review, most overdue first.",
+            needsAuth: true,
+        },
+        {
+            value: "skipped",
+            label: "Skipped, unsolved",
+            hint: "Problems you've skipped at least once and haven't solved yet.",
+            needsAuth: true,
+        },
+        {
+            value: "list",
+            label: "My list",
+            hint: "Problems from one of your lists (Working on / Revisit / Later / Ignored), chosen below.",
+            needsAuth: true,
+        },
+        {
+            value: "mixed",
+            label: "Mixed",
+            hint: "Alternates due reviews with new problems, about 1 review per 2 new.",
+            needsAuth: true,
+        },
+    ];
 
     const MASTERY_OPTIONS: { value: Mastery | "unassessed"; label: string }[] =
         [
@@ -119,8 +148,8 @@
     }
 
     function answerAvailabilityLabel(value: TriState) {
-        if (value === "on") return "Missing (help add it)";
-        if (value === "off") return "Known";
+        if (value === "on") return "Known";
+        if (value === "off") return "Missing (help add it)";
         return "Any";
     }
 
@@ -280,7 +309,7 @@
                                         {disabled}
                                         title={disabled
                                             ? "Sign in to review problems"
-                                            : undefined}
+                                            : m.hint}
                                         onclick={() => (form.mode = m.value)}
                                         class={cn(
                                             "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
@@ -295,6 +324,10 @@
                                     </button>
                                 {/each}
                             </div>
+                            <span class="text-xs text-muted-foreground">
+                                {MODES.find((m) => m.value === form.mode)
+                                    ?.hint}
+                            </span>
                             {#if form.mode === "list"}
                                 <Select
                                     options={PLAN_OPTIONS}
@@ -333,7 +366,7 @@
                                         Adaptive difficulty
                                     </span>
                                     {#if form.adaptive}
-                                        <span class="text-xxs text-muted-foreground">
+                                        <span class="text-xs text-muted-foreground">
                                             Near your rating (±{form.adaptiveRange})
                                         </span>
                                     {/if}
@@ -345,8 +378,8 @@
                                     class="flex flex-col gap-2"
                                     transition:fly={{ y: -6, duration: 150 }}
                                 >
-                                    <span class="text-xxs text-muted-foreground">
-                                        Rating range (±{form.adaptiveRange})
+                                    <span class="text-xs text-muted-foreground">
+                                        Rating range
                                     </span>
                                     <RangeSlider
                                         single
@@ -362,7 +395,7 @@
                                     class="flex flex-col gap-2"
                                     transition:fly={{ y: -6, duration: 150 }}
                                 >
-                                    <span class="text-xxs text-muted-foreground">
+                                    <span class="text-xs text-muted-foreground">
                                         Difficulty — problem rating ({form
                                             .difficulty[0]}–{form.difficulty[1]})
                                     </span>
@@ -386,7 +419,7 @@
                                 >
                                     Tries per problem
                                 </span>
-                                <span class="text-xxs text-muted-foreground">
+                                <span class="text-xs text-muted-foreground">
                                     {form.triesPerProblem === 1
                                         ? "1 try"
                                         : `${form.triesPerProblem} tries`}
@@ -413,9 +446,9 @@
                                     >
                                         Timed practice
                                     </span>
-                                    <span class="text-xxs text-muted-foreground">
+                                    <span class="text-xs text-muted-foreground">
                                         {form.perProblemSeconds == null
-                                            ? "Off — no per-problem limit"
+                                            ? "Off"
                                             : `${form.perProblemSeconds}s per problem`}
                                     </span>
                                 </div>
@@ -456,7 +489,7 @@
                                 >
                                     Verified only
                                 </span>
-                                <span class="text-xxs text-muted-foreground">
+                                <span class="text-xs text-muted-foreground">
                                     {form.verifiedOnly ? "Verified" : "Any"}
                                 </span>
                             </div>
@@ -470,7 +503,7 @@
                                 >
                                     Computational
                                 </span>
-                                <span class="text-xxs text-muted-foreground">
+                                <span class="text-xs text-muted-foreground">
                                     {computationalLabel(form.computational)}
                                 </span>
                             </div>
@@ -487,7 +520,7 @@
                                 >
                                     Reference answer
                                 </span>
-                                <span class="text-xxs text-muted-foreground">
+                                <span class="text-xs text-muted-foreground">
                                     {answerAvailabilityLabel(
                                         form.answerAvailability,
                                     )}
@@ -506,7 +539,7 @@
                                 >
                                     Solution availability
                                 </span>
-                                <span class="text-xxs text-muted-foreground">
+                                <span class="text-xs text-muted-foreground">
                                     {solutionAvailabilityLabel(
                                         form.solutionAvailability,
                                     )}
@@ -557,7 +590,7 @@
                                                     class="flex items-center gap-2"
                                                 >
                                                     <span
-                                                        class="text-xxs text-muted-foreground"
+                                                        class="text-xs text-muted-foreground"
                                                     >
                                                         {form.counterEnabled[
                                                             c.key

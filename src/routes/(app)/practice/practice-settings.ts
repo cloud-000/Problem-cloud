@@ -104,7 +104,7 @@ const COUNTER_FIELDS: Record<CounterKey, keyof PracticeSettings> = {
 function availabilityToTri(
     value: "with" | "without" | "any" | undefined,
 ): PracticeTriState {
-    return value === "without" ? "on" : value === "any" ? "neutral" : "off";
+    return value === "with" ? "on" : value === "without" ? "off" : "neutral";
 }
 
 function solutionToTri(
@@ -221,10 +221,10 @@ export function practiceSettingsFromForm(
         computational: triToBool(form.computational),
         answerAvailability:
             form.answerAvailability === "on"
-                ? "without"
+                ? "with"
                 : form.answerAvailability === "neutral"
                   ? "any"
-                  : "with",
+                  : "without",
         solutionAvailability:
             form.solutionAvailability === "on"
                 ? "with"
