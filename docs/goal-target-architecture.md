@@ -67,6 +67,11 @@ export type GoalTargetData =
 
 export type GoalTargetType = GoalTargetData["type"];
 export type GoalFamily = "set" | "window" | "accumulation" | "period";
+
+export type VolumePeriod =
+    | { kind: "rolling"; days: number }
+    | { kind: "calendar"; unit: "week" | "month"; timeZone: string }
+    | { kind: "since_creation" };
 ```
 
 Note what is *not* here: no `seriesId` on any target. Content selection is

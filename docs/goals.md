@@ -45,7 +45,8 @@ what each needs first — both are blocked on modelling work, not on effort.
 
 ```ts
 // src/routes/(app)/practice/practice-settings.ts
-type GoalScope = TrackValue; // { topic: string[]; seriesIds: string[]; seriesScopes: SeriesScopes }
+type GoalScope = TrackValue & { yearRange: [number, number] | null };
+// TrackValue = { topic: string[]; seriesIds: string[]; seriesScopes: SeriesScopes }
 ```
 
 Each selected series is one clause carrying its own division/format narrowing;
@@ -56,9 +57,13 @@ no narrowing on that axis.
 Scope being structurally identical to `TrackValue` is what makes "Practice
 remaining" free: the goal's scope is handed to the trainer unchanged.
 
-**Year range is excluded from V1** — `tests.year` is not in `user_problem_index`
-and `PracticeSettingsForm` has no year field, so it costs a view change, a Track
-control, and the scope-≡-Track equivalence. See open decision #1.
+**Year range is user-chosen**, so `PracticeSettingsForm` gains a
+`yearRange` field and the Track gains a control for it. Adding it to the Track
+rather than to goals alone is what preserves scope ≡ Track: if a goal could
+narrow by year and a Track could not, "Practice remaining" would silently draw
+from a wider pool than the goal measures. `tests.year` already exists and the
+library filters on it (`src/lib/library.ts:431`); `canonical_placements` carries
+it, so no `user_problem_index` change is required.
 
 ### How scope is matched
 
@@ -160,8 +165,16 @@ repeats add nothing; skips and ungraded interactions never count.
 Strictly stronger than attempted, and unlike `mastery` it cannot be self-declared.
 
 **Volume** — count of graded non-skip submissions in scope. Unlike the set
-family, **repeats count** — that is the point of a volume goal. Optionally
-bounded to a rolling period or to work since the goal was created.
+family, **repeats count** — that is the point of a volume goal. The student
+chooses the period: a rolling window (last N days), a calendar week or month, or
+since the goal was created. Calendar periods need a timezone for the same reason
+streaks do, and take it from the same field on the goal — a week that starts on
+a different day depending on where you open the app is not a week.
+
+The period also decides whether a volume goal is finishable: since-creation and
+rolling-window goals can be achieved once and stay achieved, while a calendar
+period re-evaluates each cycle. Both are legitimate; the creation flow must state
+which one the student is choosing.
 
 **Accuracy** — correct ÷ total over the most recent N graded attempts in scope,
 restricted to `graded_seq = 1` (each problem's *first* graded attempt). That
@@ -190,6 +203,12 @@ Every target states a **direction** (`at_least` or `at_most`), a **value**, and
 for set targets a **unit** (`count` or `percent`, 1–100). Count targets are
 positive integers and may not exceed the current denominator at creation or
 material edit.
+
+Where the student chooses a sample size or period, validation enforces floors: a
+sample of three is noise, not a form reading, and a target computed over it will
+swing wildly enough to make the goal meaningless. The creation flow should state
+the sample in the goal's own sentence — *"85% over my next 30 fresh problems"* —
+so the student can see what they picked without opening an edit screen.
 
 Creation shows the literal interpretation before saving: *"Attempt 80% of 240
 currently eligible problems in AMC 10 geometry. You have already attempted 96."*
@@ -279,14 +298,18 @@ extensibility means *more kinds of goal*, never *one goal with more conditions*.
 
 ## 11. Open decisions
 
-1. **Year range** — excluded (§3) to keep scope ≡ Track. If it is required, it
-   costs a view column, a Track control, and that equivalence.
-2. **Volume's period** — rolling window, calendar week, or since-creation. Affects
-   whether volume is achievable-once or continuously re-evaluated.
-3. **Whether `accuracy`/`speed` sample sizes are user-chosen or fixed.** User
-   choice is more flexible; fixed is far easier to explain and to compare.
+1. **Who stamps `achieved_at`.** The browser observes the finish line being met,
+   but a client PATCH is both spoofable and racy across tabs. Preferred: the
+   client calls a small RPC that re-evaluates server-side and stamps only if the
+   target is genuinely met.
 
 Settled 2026-08-10, previously open:
+
+- **Year range is in**, as a user-chosen field on both the goal scope and the
+  practice Track (§3).
+- **Volume's period is user-chosen** — rolling, calendar, or since-creation (§6).
+- **Accuracy and speed sample sizes are user-chosen**, with floors enforced at
+  validation (§7).
 
 - **Scope matching** lives in SQL for Goals and stays PostgREST in the trainer,
   with SQL authoritative and a contract test between them (§3).
