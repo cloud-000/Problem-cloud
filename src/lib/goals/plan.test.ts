@@ -5,12 +5,18 @@ import {
 } from "../../routes/(app)/practice/practice-settings";
 import {
     evaluateGoals,
+    newlyAchieved,
     planGoalRequests,
     requestedFamilies,
     scopeKey,
 } from "./plan";
 import { createGoalScope } from "./types";
-import type { Goal, GoalScope, GoalTargetData } from "./types";
+import type {
+    Goal,
+    GoalProgressResult,
+    GoalScope,
+    GoalTargetData,
+} from "./types";
 
 const NOW = new Date("2026-08-10T12:00:00Z");
 
@@ -274,5 +280,46 @@ describe("evaluation", () => {
         const broken = goal({ type: "nope" } as unknown as GoalTargetData);
         const plan = planGoalRequests([broken], { now: NOW });
         expect(evaluateGoals([broken], plan, { set: [] }).get(broken.id)).toBeNull();
+    });
+});
+
+describe("achievement stamping", () => {
+    const solved = (): Goal => goal({ type: "solved_count", count: 10 });
+    const result = (o: Partial<GoalProgressResult> = {}): GoalProgressResult => ({
+        status: "ok",
+        direction: "at_least",
+        currentValue: 10,
+        targetValue: 10,
+        unit: "problems",
+        percentToTarget: 100,
+        isTargetMet: true,
+        ...o,
+    });
+
+    test("stamps only met, unstamped, unarchived, measurable goals", () => {
+        const met = solved();
+        const short = solved();
+        const already = { ...solved(), achievedAt: "2026-08-01T00:00:00Z" };
+        const archived = { ...solved(), archivedAt: "2026-08-01T00:00:00Z" };
+        const unevaluated = solved();
+        const unmeasurable = solved();
+
+        const results = new Map<number, GoalProgressResult | null>([
+            [met.id, result()],
+            [short.id, result({ isTargetMet: false })],
+            [already.id, result()],
+            [archived.id, result()],
+            // A family that failed to load: absence is not achievement.
+            [unevaluated.id, null],
+            // "Met" by an unmeasurable window: also not achievement.
+            [unmeasurable.id, result({ status: "insufficient_data" })],
+        ]);
+
+        expect(
+            newlyAchieved(
+                [met, short, already, archived, unevaluated, unmeasurable],
+                results,
+            ),
+        ).toEqual([met.id]);
     });
 });

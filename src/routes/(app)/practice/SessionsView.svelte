@@ -360,7 +360,7 @@
         <div
             class="flex flex-col items-start gap-4 border-t border-border/60 py-10"
         >
-            <div class="max-w-xl">
+            <div class="max-w-3xl">
                 <h2 class="type-section-title">
                     Sign in to practice and track sessions
                 </h2>

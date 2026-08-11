@@ -8,8 +8,8 @@
         type GoalProgressResult,
     } from "$lib/goals";
     import { cn } from "$lib/utils";
-    import GoalProgressBar from "./GoalProgressBar.svelte";
-    import { hasRemainingSet } from "./goal-practice";
+    import { GoalProgressBar } from "$lib/components/goal-progress-bar";
+    import { hasRemainingSet } from "$lib/goals/practice";
     import {
         achievementNote,
         deadlineLabel,
@@ -17,7 +17,7 @@
         progressSummary,
         statusChip,
         type SeriesNames,
-    } from "./goal-presentation";
+    } from "$lib/goals/presentation";
 
     let {
         goal,
@@ -116,7 +116,7 @@
                 disabled={busy}
             >
                 <Icon name="sprint" class="size-[1em]" />
-                {hasRemainingSet(goal) ? "Practise what's left" : "Practise this scope"}
+                {hasRemainingSet(goal) ? "Practise what's left" : "Practice"}
             </Button>
             <Button variant="ghost" size="xs" onclick={() => onopen(goal)}>
                 Details

@@ -6,13 +6,14 @@
  * only thing this module decides is *which* problems in that scope still count
  * as remaining, expressed in the draw filters the trainer already has.
  *
- * It lives beside the route rather than in `$lib/goals` on purpose: the domain
- * layer knows nothing about the trainer, and giving it a dependency on
- * `PracticeSettings` would make "what is a goal" answerable only with the
- * practice module loaded.
+ * Deliberately NOT re-exported from `index.ts`: the domain layer knows nothing
+ * about the trainer, and putting `PracticeSettings` in the barrel would make
+ * "what is a goal" answerable only with the practice module loaded. Import it
+ * as `$lib/goals/practice` — the deeper path is the layering, made visible.
  */
 
-import { targetOf, type Goal, type GoalScope } from "$lib/goals";
+import { targetOf } from "./registry";
+import type { Goal, GoalScope } from "./types";
 import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
 
 /** Deep-clone the per-series map so a live goal and a stored session snapshot

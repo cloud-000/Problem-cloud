@@ -42,6 +42,16 @@
     let currentMonth = $state(new Date().getMonth());
     let currentYear = $state(new Date().getFullYear());
     let containerEl = $state<HTMLDivElement | null>(null);
+    let calendarEl = $state<HTMLDivElement | null>(null);
+
+    // The calendar is absolutely positioned, so inside a scrolling container (a
+    // dialog body) it can open below the fold. Bring it into view on open, the
+    // same courtesy Select does for its highlighted option.
+    $effect(() => {
+        if (open && calendarEl) {
+            calendarEl.scrollIntoView({ block: "nearest" });
+        }
+    });
 
     // Sync calendar view month/year to selected value when the picker is opened or value is set
     $effect(() => {
@@ -348,6 +358,7 @@
 
     {#if open}
         <div
+            bind:this={calendarEl}
             role="dialog"
             aria-label="Calendar view"
             class="absolute top-full left-0 md:right-auto right-0 z-50 mt-1 w-[310px] rounded-md border border-border bg-surface-container-low p-3 shadow-md outline-none"

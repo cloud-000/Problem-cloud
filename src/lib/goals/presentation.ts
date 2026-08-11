@@ -4,22 +4,29 @@
  * `GoalProgressResult` deliberately carries no presentation strings
  * (`docs/goal-target-architecture.md` §5): the domain layer does not know how
  * much room a card has. This module is that missing layer, kept pure and out of
- * the components so a card, a detail view and a future home tile all read the
- * same sentence — and so the awkward cases (an `at_most` speed target, an
+ * the components so the goals list, the detail view and the home page all read
+ * the same sentence — and so the awkward cases (an `at_most` speed target, an
  * `insufficient_data` window, a scope with per-series narrowing) are settled
  * once, with tests, rather than three times in markup.
+ *
+ * Deliberately NOT re-exported from `index.ts`: it reaches for `topicLabel`, so
+ * a consumer that only wants the domain layer should not pay for `$lib/library`.
+ * Import it as `$lib/goals/presentation`.
  */
 
+import { describeTarget } from "./registry";
+import { scopeKey } from "./plan";
+// Type-only, and deliberately so: `promote.ts` imports `daysUntil` from here at
+// runtime, and a value import back would close the cycle.
+import type { PromotedGoal } from "./promote";
 import {
-    describeTarget,
     goalStatus,
-    scopeKey,
     type Goal,
     type GoalProgressResult,
     type GoalProgressUnit,
     type GoalScope,
     type GoalStatus,
-} from "$lib/goals";
+} from "./types";
 import { topicLabel } from "$lib/library";
 
 /** Series id (string, as the Track stores it) → display name. */
@@ -235,6 +242,44 @@ export function achievementNote(
     return `${achieved} · currently ${formatMetric(result.currentValue, result.unit)}`;
 }
 
+/**
+ * The one line a promoted goal leads with on the home page — the *reason* it is
+ * there, in words.
+ *
+ * It lives here rather than in the component so two surfaces showing the same
+ * promoted goal can never disagree about what is urgent about it, and so the
+ * ranking in `promote.ts` stays free of prose. Returns null for an ordinary
+ * goal, which has no urgency to state and leads with its commitment instead.
+ */
+export function promotionLine(entry: PromotedGoal): string | null {
+    switch (entry.reason) {
+        case "streak_today": {
+            const more = entry.todayShortfall ?? 0;
+            const run = Math.round(entry.result?.currentValue ?? 0);
+            const problems = `${more} more ${more === 1 ? "problem" : "problems"} today`;
+            return run > 0
+                ? `${problems} to keep your ${run}-day streak`
+                : `${problems} to start your streak`;
+        }
+        case "deadline": {
+            const days = entry.daysLeft ?? 0;
+            if (days < 0) {
+                const late = Math.abs(days);
+                return `${late} ${late === 1 ? "day" : "days"} past due`;
+            }
+            if (days === 0) return "Due today";
+            if (days === 1) return "Due tomorrow";
+            return `${days} days left`;
+        }
+        case "achieved": {
+            const on = formatDate(entry.goal.achievedAt);
+            return on ? `Achieved ${on}` : "Achieved";
+        }
+        case "remaining":
+            return null;
+    }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Editing                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -273,33 +318,6 @@ export function isMaterialEdit(
         scopeKey(next.scope) !== scopeKey(goal.scope) ||
         targetKey(next.target) !== targetKey(goal.target)
     );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Achievement stamping                                                       */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Goals whose finish line is met but whose `achieved_at` is still null — the
- * ones a surface should stamp on load (`markGoalAchieved`, which is idempotent
- * and first-writer-wins).
- *
- * An unevaluated goal (a family that failed to load) is never stamped: absence
- * of data is not evidence of achievement. Neither is an archived goal, which is
- * no longer promoted, nor an `insufficient_data` result.
- */
-export function newlyAchieved(
-    goals: Goal[],
-    results: Map<number, GoalProgressResult | null>,
-): number[] {
-    const out: number[] = [];
-    for (const goal of goals) {
-        if (goal.achievedAt || goal.archivedAt) continue;
-        const result = results.get(goal.id);
-        if (!result || result.status !== "ok" || !result.isTargetMet) continue;
-        out.push(goal.id);
-    }
-    return out;
 }
 
 /** List order: unfinished work first, then achieved, then archived; newest

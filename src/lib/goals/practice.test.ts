@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { Goal, GoalTargetData } from "$lib/goals";
-import type { TrackValue } from "../practice/practice-settings";
+import type { Goal, GoalScope, GoalTargetData } from "./types";
 import {
     hasRemainingSet,
     practiceSessionName,
     practiceSettingsForGoal,
-} from "./goal-practice";
+} from "./practice";
 
 function goal(target: GoalTargetData): Pick<Goal, "scope" | "target"> {
     return {
@@ -28,13 +27,14 @@ describe("practice handoff", () => {
         expect(settings.seriesScopes).toEqual({
             "7": { divisions: ["12A"], formats: [] },
         });
-        // Scope ≡ Track is what makes this free — assert it structurally.
-        const track: TrackValue = {
+        // Scope ≡ Track is what makes this free; `plan.test.ts` fences the type
+        // identity itself, so this only has to check the values cross over.
+        const scope: GoalScope = {
             topic: settings.topic,
             seriesIds: settings.seriesIds ?? [],
             seriesScopes: settings.seriesScopes ?? {},
         };
-        expect(track.seriesScopes["7"].divisions).toEqual(["12A"]);
+        expect(scope.seriesScopes["7"].divisions).toEqual(["12A"]);
     });
 
     test("never shares arrays with the goal it came from", () => {

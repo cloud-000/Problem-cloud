@@ -346,7 +346,8 @@ Both halves are built: the headless layers and the `/goals` route.
 | Pure evaluation | `src/lib/goals/*.test.ts` | 54 unit tests |
 | Trainer ≡ SQL scope contract | `src/lib/goals/scope-contract.test.ts` | 10 scope cases + fixture guards; skips without a local stack |
 | UI | `src/routes/(app)/goals/` | done — list, create/edit dialog, detail, practice handoff; nav entry in `(app)/+layout.svelte` |
-| Presentation + handoff | `goal-presentation.ts`, `goal-practice.ts` (+ tests) | 25 unit tests |
+| Presentation, handoff, promotion | `src/lib/goals/presentation.ts`, `practice.ts`, `promote.ts` (+ tests) | 36 unit tests |
+| Home integration | `src/routes/(app)/+page.svelte`, `HomeGoalRow.svelte` | done — goal-aware hero, promoted strip, empty state |
 
 Migrations are local-only (`20260810232659_goal_scope`, `20260810233431_goals`)
 and have not been pushed to the cloud.
@@ -370,25 +371,66 @@ same query-param idiom as `/practice?session=` rather than a dynamic segment.
   and absence of data is never evidence of achievement. Creation reloads through
   the same path, which is how "a goal existing work already satisfies saves as
   achieved immediately" (§7) falls out rather than being a second code path.
-- **Presentation strings live in `goal-presentation.ts`**, not in the components:
+- **Three modules sit beside the domain layer but outside its barrel**, and the
+  deeper import path is the layering made visible: `presentation.ts` reaches for
+  `topicLabel`, `practice.ts` for `PracticeSettings`, and neither belongs in what
+  a consumer gets from `import … from "$lib/goals"`. Anything re-exported from
+  `index.ts` must stay free of both.
+- **Presentation strings live in `presentation.ts`**, not in the components:
   `GoalProgressResult` deliberately carries none (architecture doc §5), and the
   awkward cases (an `at_most` speed target, an `insufficient_data` window, a
   scope with per-series narrowing, achieved-but-currently-below) are settled once
   with tests instead of three times in markup.
-- **The handoff is `goal-practice.ts`**, and it is where "remaining" is defined
+- **The handoff is `practice.ts`**, and it is where "remaining" is defined
   per family: attempted → `mode: "new"`; solved → `mode: "mixed"` with
   `timesCorrect: [0, 0]` so a solved problem can never come back as remaining;
   event families → mixed practice in the scope, because any work in scope moves
-  them and a narrower filter would count work the goal does not. It lives beside
-  the route rather than in `$lib/goals` so the domain layer keeps knowing nothing
-  about the trainer.
+  them and a narrower filter would count work the goal does not.
 - **Editing reopens explicitly.** The form compares `scopeKey` and the target
   JSON; a material change to an achieved goal confirms first and passes
-  `reopen`, and title/deadline never do (§7).
+  `reopen`, and title/deadline never do (§7). The comparison canonicalizes key
+  order, because `target` is jsonb and Postgres returns its keys sorted by
+  (length, bytes) — a plain `JSON.stringify` diff called every unedited streak
+  goal a material change.
 
-Still deferred from the route: the remaining-problems *list* (§8's paged
-drill-down — the detail view states the count from the same set-family row, but
-does not enumerate the problems), home cards, and the year-range control (§11).
+### Home
+
+Goals are the only thing in the app the student authors as a commitment, so home
+leads with them rather than linking to them.
+
+- **The hero is goal-aware.** The "continue where you left off" card answers
+  *what was I doing*; the promoted goal beneath it answers *why*, and owns the
+  button that moves it. One card, not two sections.
+- **`promote.ts` decides what appears**, and it ranks by **what can move today**,
+  not by what is closest to done: an unfed streak (which expires at midnight)
+  outranks a near deadline, which outranks a fresh achievement, which outranks
+  ordinary progress. A goals list sorted by completion is just the goals page
+  with fewer rows. The cap is part of the policy — a home page showing every
+  goal is a second goals page.
+- **The streak rung is why `PeriodData.todayCount` exists.** It deliberately
+  never reaches `GoalProgressResult` (§9's rule: a target needing a bespoke
+  result field belongs in a new family), so home reads the period row directly —
+  which is exactly what the type comment says surfaces wanting it should do.
+- **Home stamps achievements too**, through the same `stampAchievedGoals`: the
+  student should see "Achieved" on the screen they open first, and
+  `where achieved_at is null` makes two surfaces racing a non-event. One
+  definition of "just crossed the line", not one per page.
+- **The empty state is the feature**, not a fallback: goals are invisible to
+  exactly the students who have none. Home offers `/goals?new=1`, a one-shot
+  command the goals page consumes and replaces out of the URL.
+- **Goals never fail the home page.** They load on their own and fail quietly to
+  a missing section, because a full-catalog scope resolution should not be able
+  to cost the student their rating, review queue, and history.
+
+Still deferred: the remaining-problems *list* (§8's paged drill-down — the detail
+view states the count from the same set-family row, but does not enumerate the
+problems) and the year-range control (§11).
+
+**Open, and worth deciding:** home's "Focused series" section is the same intent
+as a goal with the finish line removed, and "Recommended next" now restates the
+review-due stat that sits below it. Both predate goals. They are left in place
+here, but two sections answering "what do I care about" is what made goals feel
+absent from home in the first place.
 
 ## 13. Done when
 

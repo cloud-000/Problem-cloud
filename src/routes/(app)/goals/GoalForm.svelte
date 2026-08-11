@@ -26,7 +26,7 @@
         describeScope,
         isMaterialEdit,
         type SeriesNames,
-    } from "./goal-presentation";
+    } from "$lib/goals/presentation";
 
     type Supabase = SupabaseClient<Database>;
 
@@ -419,12 +419,15 @@
     </div>
 {/snippet}
 
+<!-- The body scrolls rather than overflowing: this form grows with the target
+     family and the scope Track, and an `overflow-visible` panel ran off the
+     bottom of short viewports. The dialog's own `max-h-[90vh]` is the ceiling;
+     Select and DatePicker scroll their popovers into view inside it. -->
 <Modal
     bind:open
     title={goal ? "Edit goal" : "New goal"}
     size="md"
     class="flex flex-col min-h-120"
-    overflowVisible={true}
 >
     <div class="flex w-full flex-col gap-4">
         <div class="flex flex-col gap-1.5">

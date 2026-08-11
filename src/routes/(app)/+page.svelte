@@ -7,6 +7,7 @@
     import * as Page from "$lib/components/page";
     import { toasts } from "$lib/state/toast.svelte";
     import {
+        fetchAllSeries,
         fetchByIds,
         fetchPlayerRating,
         playerRatingIsProvisional,
@@ -24,10 +25,26 @@
         fetchSessions,
         type PracticeSessionRow,
     } from "$lib/sessions";
+    import {
+        evaluateGoals,
+        fetchGoalProgress,
+        fetchGoals,
+        planGoalRequests,
+        stampAchievedGoals,
+        type Goal,
+        type GoalFamilyResults,
+        type GoalRequestPlan,
+    } from "$lib/goals";
+    import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
+    import type { SeriesNames } from "$lib/goals/presentation";
+    import { promoteGoals, type GoalSnapshot } from "$lib/goals/promote";
+    import { startSession } from "$lib/sessions";
+    import { goto } from "$app/navigation";
     import { fetchFocusedSeriesWorklist, type WorklistItem } from "$lib/home";
     import FocusedSeriesChips from "./FocusedSeriesChips.svelte";
     import FocusedSeriesStats from "./FocusedSeriesStats.svelte";
     import FocusedWorklist from "./FocusedWorklist.svelte";
+    import HomeGoalRow from "./HomeGoalRow.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user, profile } = $derived(data);
@@ -49,6 +66,111 @@
         { seriesId: number; name: string; summary: ProblemStateSummary }[]
     >([]);
     let focusedWorklist = $state<WorklistItem[]>([]);
+
+    // Goals are loaded on their own, not inside `loadHome`: they are the one
+    // section that can fail without costing the student anything else on the
+    // page, and a full-catalog scope resolution should never hold up the rest.
+    let goals = $state<Goal[]>([]);
+    let goalEvaluation = $state<{
+        plan: GoalRequestPlan;
+        results: GoalFamilyResults;
+    } | null>(null);
+    let goalsLoaded = $state(false);
+    let startingGoal = $state(false);
+    // One "now" for every goal in a render pass.
+    let goalsNow = $state(new Date());
+
+    // Series names for rendering goal scopes. Fetched only when a goal actually
+    // names a series — a student whose goals are all whole-catalog should not
+    // pay for the series list to render the words "the whole catalog".
+    let seriesNames = $state<SeriesNames>(new Map());
+
+    /**
+     * What the promoter needs: each goal's evaluated result, plus the raw period
+     * row for streaks. `todayCount` never reaches `GoalProgressResult` — "how
+     * many more today" is the most actionable number on this page and cannot be
+     * derived from a streak length, so it is read from the family data directly
+     * (as `types.ts` says surfaces wanting it should).
+     */
+    let goalSnapshots = $derived.by<GoalSnapshot[]>(() => {
+        const evaluation = goalEvaluation;
+        if (!evaluation) return [];
+        const progress = evaluateGoals(goals, evaluation.plan, evaluation.results);
+        return goals.map((goal) => {
+            const slot = evaluation.plan.slots.get(goal.id);
+            return {
+                goal,
+                result: progress.get(goal.id) ?? null,
+                period:
+                    slot?.family === "period"
+                        ? (evaluation.results.period?.[slot.index] ?? null)
+                        : null,
+            };
+        });
+    });
+
+    let promoted = $derived(promoteGoals(goalSnapshots, goalsNow));
+    // The hero carries the single most urgent one (it owns the action); the
+    // section below lists the rest, so nothing is shown twice.
+    let heroGoal = $derived(promoted[0] ?? null);
+    let otherGoals = $derived(promoted.slice(1));
+
+    async function loadGoals() {
+        if (!user) {
+            goalsLoaded = true;
+            return;
+        }
+        try {
+            const rows = await fetchGoals(supabase);
+            goalsNow = new Date();
+            const plan = planGoalRequests(rows, { now: goalsNow });
+            const results = await fetchGoalProgress(supabase, plan);
+            // Home stamps achievements too, through the same helper the goals
+            // page uses: the student should see "Achieved" on the screen they
+            // open first, and the write is idempotent so both surfaces racing is
+            // a non-event.
+            const outcome = await stampAchievedGoals(
+                supabase,
+                rows,
+                evaluateGoals(rows, plan, results),
+            );
+            goals = outcome.goals;
+            goalEvaluation = { plan, results };
+            for (const goal of outcome.stamped) {
+                toasts.success(goal.title, { title: "Goal achieved" });
+            }
+            if (rows.some((goal) => (goal.scope.seriesIds ?? []).length > 0)) {
+                const series = await fetchAllSeries(supabase);
+                seriesNames = new Map(
+                    series.map((row) => [String(row.id), row.name]),
+                );
+            }
+        } catch {
+            // Deliberately quiet: a goals section that could not load is a
+            // missing section, not a broken home page.
+            goals = [];
+            goalEvaluation = null;
+        } finally {
+            goalsLoaded = true;
+        }
+    }
+
+    /** The same handoff the goals page uses — the goal's scope, narrowed to what
+     * it still needs, as a named session. */
+    async function practiceGoal(goal: Goal) {
+        if (!user || startingGoal) return;
+        startingGoal = true;
+        try {
+            const session = await startSession(supabase, user.id, {
+                name: practiceSessionName(goal),
+                settings: practiceSettingsForGoal(goal),
+            });
+            await goto(`${resolve("/practice")}?session=${session.id}`);
+        } catch (e) {
+            toasts.error((e as Error).message || "Failed to start practice.");
+            startingGoal = false;
+        }
+    }
 
     // Refetches the focused-series names/stats/worklist whenever the set of
     // focused series changes — on first load (seeded from the profile) and
@@ -120,7 +242,10 @@
         }
     }
 
-    onMount(loadHome);
+    onMount(() => {
+        void loadHome();
+        void loadGoals();
+    });
 
     let provisional = $derived(playerRatingIsProvisional(rating));
     let practiceHref = $derived(
@@ -253,7 +378,72 @@
                         <Icon name="arrow_forward" />
                     </Button>
                 </div>
+
+                <!-- The commitment behind the session. The hero answers "what was
+                     I doing"; a goal answers "why", and owns the action that
+                     moves it — so it belongs in the same card, not in a widget
+                     further down the page. -->
+                {#if heroGoal}
+                    <HomeGoalRow
+                        entry={heroGoal}
+                        {seriesNames}
+                        busy={startingGoal}
+                        onpractice={practiceGoal}
+                        class="border-t border-border/60 pt-5"
+                    />
+                {/if}
             </section>
+
+            {#if user && goalsLoaded && goals.length === 0}
+                <!-- The empty state is the point: goals are invisible to exactly
+                     the students who have none, which on day one is everyone. -->
+                <section
+                    class="flex flex-col items-start gap-4 rounded-xl border border-dashed border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+                >
+                    <!-- 3xl is the app's prose measure (Page.Header's own title
+                         block). The "Set a goal" button is `shrink-0` beside it,
+                         so the cap only has to stay clear of that. -->
+                    <div class="max-w-3xl">
+                        <h2 class="type-section-title text-foreground">
+                            Set a finish line
+                        </h2>
+                        <p class="mt-1 type-secondary text-muted-foreground">
+                            Commit to something you can finish — 80% of AMC 10
+                            geometry, 100 problems this month, a two-week streak.
+                            Everything you have already done counts toward it from
+                            the moment you set it.
+                        </p>
+                    </div>
+                    <Button href={`${resolve("/goals")}?new=1`} class="shrink-0">
+                        <Icon name="flag" class="size-[1em]" />
+                        Set a goal
+                    </Button>
+                </section>
+            {:else if otherGoals.length > 0}
+                <Page.Section
+                    title="Your goals"
+                    description="What you committed to, and what can move today."
+                >
+                    {#snippet actions()}
+                        <Button href={resolve("/goals")} variant="ghost" size="sm">
+                            All goals
+                            <Icon name="arrow_forward" />
+                        </Button>
+                    {/snippet}
+
+                    <div class="divide-y divide-border border-y border-border">
+                        {#each otherGoals as entry (entry.goal.id)}
+                            <HomeGoalRow
+                                {entry}
+                                {seriesNames}
+                                busy={startingGoal}
+                                onpractice={practiceGoal}
+                                class="py-4"
+                            />
+                        {/each}
+                    </div>
+                </Page.Section>
+            {/if}
 
             {#if user}
                 <Page.Section

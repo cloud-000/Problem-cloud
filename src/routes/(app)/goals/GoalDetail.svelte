@@ -11,8 +11,8 @@
         type SetData,
     } from "$lib/goals";
     import { cn } from "$lib/utils";
-    import GoalProgressBar from "./GoalProgressBar.svelte";
-    import { hasRemainingSet } from "./goal-practice";
+    import { GoalProgressBar } from "$lib/components/goal-progress-bar";
+    import { hasRemainingSet } from "$lib/goals/practice";
     import {
         achievementNote,
         deadlineLabel,
@@ -23,7 +23,7 @@
         sampleNote,
         statusChip,
         type SeriesNames,
-    } from "./goal-presentation";
+    } from "$lib/goals/presentation";
 
     let {
         goal,
@@ -83,7 +83,9 @@
     });
 </script>
 
-<Page.Root width="narrow">
+<!-- Same width as the goal list: the detail is a drill-down of that page, and a
+     narrower shell made moving between the two look like a different app. -->
+<Page.Root width="standard">
     <Page.Header
         title={goal.title}
         description={`${describeTarget(goal.target)} in ${describeScope(goal.scope, seriesNames)}.`}
@@ -115,7 +117,7 @@
         {#snippet actions()}
             <Button onclick={() => onpractice(goal)} disabled={busy}>
                 <Icon name="sprint" class="size-[1em]" />
-                {hasRemainingSet(goal) ? "Practise what's left" : "Practise this scope"}
+                {hasRemainingSet(goal) ? "Practise what's left" : "Practice"}
             </Button>
         {/snippet}
     </Page.Header>

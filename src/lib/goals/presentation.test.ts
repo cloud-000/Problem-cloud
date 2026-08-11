@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Goal, GoalProgressResult } from "$lib/goals";
+import type { Goal, GoalProgressResult } from "./types";
 import {
     achievementNote,
     daysUntil,
@@ -8,14 +8,13 @@ import {
     formatMetric,
     goalSentence,
     isMaterialEdit,
-    newlyAchieved,
     progressSummary,
     sampleNote,
     sortGoals,
     statusChip,
     unitNoun,
     type SeriesNames,
-} from "./goal-presentation";
+} from "./presentation";
 
 const NAMES: SeriesNames = new Map([
     ["7", "AMC 10"],
@@ -306,38 +305,6 @@ describe("material edits", () => {
                 },
             }),
         ).toBe(true);
-    });
-});
-
-describe("achievement stamping", () => {
-    test("stamps only met, unstamped, unarchived, measurable goals", () => {
-        const goals = [
-            goal({ id: 1 }),
-            goal({ id: 2 }),
-            goal({ id: 3, achievedAt: "2026-08-01T00:00:00.000Z" }),
-            goal({ id: 4, archivedAt: "2026-08-01T00:00:00.000Z" }),
-            goal({ id: 5 }),
-            goal({ id: 6 }),
-        ];
-        const results = new Map<number, GoalProgressResult | null>([
-            [1, ok({ isTargetMet: true })],
-            [2, ok({ isTargetMet: false })],
-            [3, ok({ isTargetMet: true })],
-            [4, ok({ isTargetMet: true })],
-            // A family that failed to load: absence is not achievement.
-            [5, null],
-            // Met by an unmeasurable window: also not achievement.
-            [
-                6,
-                ok({
-                    status: "insufficient_data",
-                    direction: "at_most",
-                    isTargetMet: true,
-                }),
-            ],
-        ]);
-
-        expect(newlyAchieved(goals, results)).toEqual([1]);
     });
 });
 

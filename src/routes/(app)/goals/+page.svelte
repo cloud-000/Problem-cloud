@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { goto } from "$app/navigation";
+    import { afterNavigate, goto, replaceState } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
     import { Button } from "$lib/components/button";
@@ -14,8 +14,8 @@
         fetchGoalProgress,
         fetchGoals,
         goalStatus,
-        markGoalAchieved,
         planGoalRequests,
+        stampAchievedGoals,
         type Goal,
         type GoalFamilyResults,
         type GoalRequestPlan,
@@ -28,8 +28,8 @@
     import GoalCard from "./GoalCard.svelte";
     import GoalDetail from "./GoalDetail.svelte";
     import GoalForm from "./GoalForm.svelte";
-    import { practiceSessionName, practiceSettingsForGoal } from "./goal-practice";
-    import { newlyAchieved, sortGoals, type SeriesNames } from "./goal-presentation";
+    import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
+    import { sortGoals, type SeriesNames } from "$lib/goals/presentation";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -111,26 +111,15 @@
     }
 
     /**
-     * Stamp every finish line that is met but unrecorded. The write is
-     * idempotent and first-writer-wins (`markGoalAchieved`), so a second tab
-     * doing this at the same moment cannot move an existing date — and a goal
-     * that existing work already satisfies is achieved the moment it is created,
-     * because creation reloads through here (`docs/goals.md` §7).
+     * Stamp every finish line that is met but unrecorded, through the shared
+     * helper the home page also uses — one definition of "just crossed the
+     * line". A goal that existing work already satisfies is achieved the moment
+     * it is created, because creation reloads through here (`docs/goals.md` §7).
      */
     async function stampAchievements() {
-        const ids = newlyAchieved(goals, progress);
-        if (ids.length === 0) return;
-        const stamped = await Promise.all(
-            ids.map((id) =>
-                markGoalAchieved(supabase, id).catch(() => null),
-            ),
-        );
-        const byId = new Map(
-            stamped.filter((row): row is Goal => row !== null).map((row) => [row.id, row]),
-        );
-        if (byId.size === 0) return;
-        goals = goals.map((goal) => byId.get(goal.id) ?? goal);
-        for (const goal of byId.values()) {
+        const outcome = await stampAchievedGoals(supabase, goals, progress);
+        goals = outcome.goals;
+        for (const goal of outcome.stamped) {
             toasts.success(goal.title, { title: "Goal achieved" });
         }
     }
@@ -153,6 +142,25 @@
         return () => {
             cancelled = true;
         };
+    });
+
+    // `?new=1` is a one-shot command, not state: home's empty state links here
+    // to open the dialog, so consume it and replace the history entry with a
+    // clean URL — otherwise Back, or a reload, re-opens the dialog forever.
+    // (Same treatment the trainer gives its launch params.)
+    afterNavigate(() => {
+        if (page.url.searchParams.get("new") !== "1") return;
+        const cleaned = new URL(page.url);
+        cleaned.searchParams.delete("new");
+        replaceState(
+            resolve(
+                cleaned.search
+                    ? (`/goals${cleaned.search}` as `/goals?${string}`)
+                    : "/goals",
+            ),
+            page.state,
+        );
+        openCreate();
     });
 
     function openGoal(goal: Goal) {
@@ -185,7 +193,7 @@
 
     /**
      * The handoff: the goal's scope, handed to the trainer unchanged, filtered
-     * to what the goal still needs (`goal-practice.ts`). Same session-creation
+     * to what the goal still needs (`$lib/goals/practice`). Same session-creation
      * path as every other surface — `startSession` then `/practice?session=<id>`.
      */
     async function practiceGoal(goal: Goal) {
@@ -306,7 +314,10 @@
             </div>
         {:else if visible.length === 0}
             <div class="flex flex-col items-start gap-4 border-t border-border/60 py-12">
-                <div class="max-w-xl">
+                <!-- Same measure as Page.Header's own title + description block:
+                     this is the same kind of prose, directly beneath it, and a
+                     tighter cap made it wrap noticeably short of the page. -->
+                <div class="max-w-3xl">
                     <h2 class="type-section-title text-foreground">
                         {archivedCount > 0 ? "No active goals" : "No goals yet"}
                     </h2>

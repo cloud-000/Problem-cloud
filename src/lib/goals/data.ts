@@ -9,12 +9,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "$lib/types/database.types";
-import { requestedFamilies } from "./plan";
+import { newlyAchieved, requestedFamilies } from "./plan";
 import type { GoalFamilyResults, GoalRequestPlan } from "./plan";
 import { targetOf, validateTarget } from "./registry";
 import type {
     Goal,
     GoalFamily,
+    GoalProgressResult,
     GoalScope,
     GoalTargetData,
     SeriesScope,
@@ -230,6 +231,39 @@ export async function markGoalAchieved(
         .maybeSingle();
     if (error) throw error;
     return data ? mapGoalRow(data) : null;
+}
+
+/**
+ * Stamp every finish line that is met but unrecorded, and return the goals with
+ * the stamped rows replaced.
+ *
+ * Every surface that evaluates goals also stamps them — the goals list and the
+ * home page both do — so this is one function rather than one per surface: two
+ * implementations of "which goals just crossed the line" is how the app would
+ * end up with two answers. Concurrency is safe by construction: the update is
+ * `where achieved_at is null`, so a second tab (or the other surface, a moment
+ * later) cannot move a date that already exists.
+ *
+ * A failed stamp is swallowed per goal: not recording an achievement is a
+ * missing date, while failing the page over it costs the student everything
+ * else on it.
+ */
+export async function stampAchievedGoals(
+    supabase: Supabase,
+    goals: Goal[],
+    results: Map<number, GoalProgressResult | null>,
+): Promise<{ goals: Goal[]; stamped: Goal[] }> {
+    const ids = newlyAchieved(goals, results);
+    if (ids.length === 0) return { goals, stamped: [] };
+
+    const rows = await Promise.all(
+        ids.map((id) => markGoalAchieved(supabase, id).catch(() => null)),
+    );
+    const stamped = rows.filter((row): row is Goal => row !== null);
+    if (stamped.length === 0) return { goals, stamped };
+
+    const byId = new Map(stamped.map((row) => [row.id, row]));
+    return { goals: goals.map((goal) => byId.get(goal.id) ?? goal), stamped };
 }
 
 /**

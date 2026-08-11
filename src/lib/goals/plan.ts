@@ -157,3 +157,28 @@ export function evaluateGoals(
 
     return out;
 }
+
+/**
+ * Goals whose finish line is met but whose `achieved_at` is still null — the
+ * ones a surface should stamp on load (`stampAchievedGoals`, which is
+ * idempotent and first-writer-wins).
+ *
+ * Phase three's other half, and it lives here rather than in a surface because
+ * every surface that evaluates must reach the same verdict. An unevaluated goal
+ * (a family that failed to load) is never stamped: absence of data is not
+ * evidence of achievement. Neither is an archived goal, which is no longer
+ * promoted, nor an `insufficient_data` result.
+ */
+export function newlyAchieved(
+    goals: Goal[],
+    results: Map<number, GoalProgressResult | null>,
+): number[] {
+    const out: number[] = [];
+    for (const goal of goals) {
+        if (goal.achievedAt || goal.archivedAt) continue;
+        const result = results.get(goal.id);
+        if (!result || result.status !== "ok" || !result.isTargetMet) continue;
+        out.push(goal.id);
+    }
+    return out;
+}
