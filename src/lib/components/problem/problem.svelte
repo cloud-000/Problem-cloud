@@ -3,7 +3,6 @@
     import { Icon } from "$lib/components/icon";
     import { HiddenText } from "$lib/components/hidden-text";
     import { StatusTag } from "$lib/components/status-tag";
-    import { Toggle } from "$lib/components/toggle";
     import { MathStatement } from "$lib/components/math-statement";
     import {
         topicLabel,
@@ -28,9 +27,29 @@
         resolveResponseKind,
     } from "$lib/problem-response";
     import ProblemAnswer from "./problem-answer.svelte";
+    import ProblemSolution from "./problem-solution.svelte";
 
-    type ProblemMode = "preview" | "practice" | "review";
     type ProblemAppearance = "card" | "row";
+    /**
+     * How much of the header this card renders.
+     *
+     * `"full"` names the problem (test + number) and is right for a card that
+     * stands alone. **Any surface that already names the problem — a list row,
+     * a modal title, a review header — must pass `"meta"`**, or the identity is
+     * rendered twice; that duplication is why this prop exists. `"meta"` keeps
+     * everything that is *not* identity (topic/rating/status badges, Ask,
+     * Discuss, the details popover), which a wrapper's own header rarely
+     * carries. `"none"` drops the header entirely for embeddings that supply
+     * all of their own chrome.
+     */
+    type ProblemHeader = "full" | "meta" | "none";
+    /**
+     * The official-solutions disclosure. Hidden by default and never inferred:
+     * a solution restates the answer, so revealing one mid-attempt (or under a
+     * `test-locked` Coach policy) leaks the key. Callers opt in only once the
+     * problem is finalized.
+     */
+    type ProblemSolutionState = "hidden" | "collapsed" | "open";
 
     type Props = {
         problem: ProblemRow;
@@ -39,14 +58,15 @@
         eliminated?: number[];
         mastery?: Mastery | null;
         engagement?: Engagement | null;
-        mode?: ProblemMode;
+        header?: ProblemHeader;
+        solution?: ProblemSolutionState;
+        /** Renders the tag/computational footer. Off by default. */
+        showTags?: boolean;
         /** Visual containment: cards by default, divider-separated rows in collections. */
         appearance?: ProblemAppearance;
         showAnswerState?: boolean;
         disabled?: boolean;
         isInstantFeedback?: boolean;
-        /** Enables debugging affordances, e.g. the raw-text statement toggle. */
-        debug?: boolean;
         /** Shows controls for the signed-in user's mastery and future plan. */
         showOrganization?: boolean;
         class?: string;
@@ -63,12 +83,13 @@
         eliminated = $bindable<number[]>([]),
         mastery: masteryValue,
         engagement: engagementValue,
-        mode = "practice",
+        header = "full",
+        solution = "hidden",
+        showTags = false,
         appearance = "card",
         showAnswerState = false,
         disabled = false,
         isInstantFeedback = false,
-        debug = false,
         showOrganization = false,
         class: className,
         onEnter,
@@ -76,8 +97,13 @@
         onAsk,
     }: Props = $props();
 
-    // Show the raw statement string instead of the rendered math. Debug-only.
+    // Show the raw statement source instead of the rendered math. Toggled from
+    // the details popover, which is also where the row's other raw columns are.
     let showRaw = $state(false);
+    let detailsOpen = $state(false);
+    // Whether this card names the problem itself. False wherever the caller's
+    // own header already does — see `ProblemHeader`.
+    let showIdentity = $derived(header === "full");
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
@@ -164,194 +190,216 @@
         className,
     )}
 >
-    <header
-        class={cn(
-            "flex min-w-0 items-start justify-between gap-3",
-            appearance === "row"
-                ? "flex-col pb-3 sm:flex-row"
-                : "rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4",
-        )}
-    >
-        <div class="flex min-w-0 items-start gap-3">
-            {#if appearance === "row"}
-                <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
-                    #{problem.n + 1}
-                </span>
-            {:else}
-                <div
-                    class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
-                    aria-label={`Problem ${problem.n + 1}`}
-                >
-                    <span class="type-caption text-muted-foreground">No.</span>
-                    <span class="-mt-0.5 type-body font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
-                </div>
-            {/if}
-
-            <div class="flex min-w-0 flex-col gap-1.5">
-                {#if problem.tests?.name}
-                    <div class="flex min-w-0 items-center gap-1.5">
-                        {#if aopsTestHref}
-                            <Button
-                                href={aopsTestHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                variant="link"
-                                size="xs"
-                                class="h-auto min-w-0 justify-start p-0 type-secondary font-semibold text-foreground"
-                                title={`Open ${problem.tests.name} on Art of Problem Solving`}
-                            >
-                                <span class="truncate">{problem.tests.name}</span>
-                            </Button>
-                        {:else}
-                            <span class="min-w-0 truncate type-secondary font-semibold text-foreground">{problem.tests.name}</span>
-                        {/if}
-                        {#if problem.verified}
-                            <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
-                        {/if}
-                    </div>
-                {:else}
-                    <span class="type-secondary font-semibold text-foreground">Problem {problem.n + 1}</span>
+    {#if header !== "none"}
+        <header
+            class={cn(
+                "flex min-w-0 items-start justify-between gap-3",
+                appearance === "row"
+                    ? "flex-col pb-3 sm:flex-row"
+                    : "rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4",
+            )}
+        >
+            <div class="flex min-w-0 items-start gap-3">
+                {#if showIdentity}
+                    {#if appearance === "row"}
+                        <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
+                            #{problem.n + 1}
+                        </span>
+                    {:else}
+                        <div
+                            class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
+                            aria-label={`Problem ${problem.n + 1}`}
+                        >
+                            <span class="type-caption text-muted-foreground">No.</span>
+                            <span class="-mt-0.5 type-body font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
+                        </div>
+                    {/if}
                 {/if}
 
-                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                    {#if topicName}{@render badge(topicName)}{/if}
-                    {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
-                    {#if status === "solved"}
-                        <StatusTag status="solved" size="sm" />
-                    {:else if status === "attempted"}
-                        <StatusTag status="attempted" size="sm" />
-                    {:else if status === "skipped_only"}
-                        <StatusTag status="skipped" label="Skipped only" size="sm" />
+                <div class="flex min-w-0 flex-col gap-1.5">
+                    <!-- Identity. Rendered only under `header="full"`; every caller
+                         whose own chrome names the problem passes `"meta"` and gets
+                         the badge strip below without the second name. -->
+                    {#if showIdentity}
+                        {#if problem.tests?.name}
+                            <div class="flex min-w-0 items-center gap-1.5">
+                                {#if aopsTestHref}
+                                    <Button
+                                        href={aopsTestHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        variant="link"
+                                        size="xs"
+                                        class="h-auto min-w-0 justify-start p-0 type-secondary font-semibold text-foreground"
+                                        title={`Open ${problem.tests.name} on Art of Problem Solving`}
+                                    >
+                                        <span class="truncate">{problem.tests.name}</span>
+                                    </Button>
+                                {:else}
+                                    <span class="min-w-0 truncate type-secondary font-semibold text-foreground">{problem.tests.name}</span>
+                                {/if}
+                                {#if problem.verified}
+                                    <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
+                                {/if}
+                            </div>
+                        {:else}
+                            <span class="type-secondary font-semibold text-foreground">Problem {problem.n + 1}</span>
+                        {/if}
                     {/if}
-                    {#if reviewScheduleFor(problem.progress) === "due"}
-                        <StatusTag status="review" label="Review due" size="sm" />
-                    {/if}
-                    {#if responseKind === "proof"}
-                        {@render badge("Proof")}
-                    {:else if responseMode === "unsupported"}
-                        {@render badge(responseKind === "construction" ? "Construction" : "Interactive")}
-                    {/if}
-                    {#if isReferenceAnswerMissing(problem)}
-                        <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 type-caption text-unsure">
-                            <Icon name="warning" fontsize="0.85rem" /> Reference answer missing
-                        </span>
-                    {/if}
+
+                    <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                        {#if topicName}{@render badge(topicName)}{/if}
+                        {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
+                        {#if status === "solved"}
+                            <StatusTag status="solved" size="sm" />
+                        {:else if status === "attempted"}
+                            <StatusTag status="attempted" size="sm" />
+                        {:else if status === "skipped_only"}
+                            <StatusTag status="skipped" label="Skipped only" size="sm" />
+                        {/if}
+                        {#if reviewScheduleFor(problem.progress) === "due"}
+                            <StatusTag status="review" label="Review due" size="sm" />
+                        {/if}
+                        {#if responseKind === "proof"}
+                            {@render badge("Proof")}
+                        {:else if responseMode === "unsupported"}
+                            {@render badge(responseKind === "construction" ? "Construction" : "Interactive")}
+                        {/if}
+                        {#if isReferenceAnswerMissing(problem)}
+                            <span class="inline-flex items-center gap-1 rounded-full border border-unsure/25 bg-unsure/10 px-2 py-0.5 type-caption text-unsure">
+                                <Icon name="warning" fontsize="0.85rem" /> Reference answer missing
+                            </span>
+                        {/if}
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <nav
-            class={cn(
-                "flex shrink-0 items-center gap-1",
-                appearance === "row" && "w-full justify-end sm:w-auto",
-            )}
-            aria-label="Problem actions"
-        >
-            {#if onAsk}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="px-2 text-muted-foreground"
-                    onclick={(event: MouseEvent) =>
-                        onAsk(event.currentTarget as HTMLElement)}
-                    aria-label="Ask about this problem"
-                >
-                    <Icon name="auto_awesome" />
-                    <span class="hidden h-4 items-center leading-none lg:inline-flex"
-                        >Ask</span
+            <nav
+                class={cn(
+                    "flex shrink-0 items-center gap-1",
+                    appearance === "row" && "w-full justify-end sm:w-auto",
+                )}
+                aria-label="Problem actions"
+            >
+                {#if onAsk}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="px-2 text-muted-foreground"
+                        onclick={(event: MouseEvent) =>
+                            onAsk(event.currentTarget as HTMLElement)}
+                        aria-label="Ask about this problem"
                     >
-                </Button>
-            {/if}
+                        <Icon name="auto_awesome" />
+                        <span class="hidden h-4 items-center leading-none lg:inline-flex"
+                            >Ask</span
+                        >
+                    </Button>
+                {/if}
 
-            {#if debug}
-                <Toggle
-                    variant="ghost"
-                    size="sm"
-                    class="size-8 px-0"
-                    bind:pressed={showRaw}
-                    aria-label="Toggle raw statement text"
-                    title="Toggle raw statement text"
-                >
-                    <Icon name="code" />
-                </Toggle>
-            {/if}
-
-            {#if aopsProblemHref}
-                <Button
-                    href={aopsProblemHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    variant="ghost"
-                    size="sm"
-                    class="px-2 text-muted-foreground"
-                    aria-label="Open problem discussion on Art of Problem Solving"
-                    title="Open problem discussion on Art of Problem Solving"
-                >
-                    <Icon name="forum" class="size-4" fontsize="1rem" />
-                    <span class="hidden h-4 items-center leading-none lg:inline-flex"
-                        >Discuss</span
+                {#if aopsProblemHref}
+                    <Button
+                        href={aopsProblemHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="ghost"
+                        size="sm"
+                        class="px-2 text-muted-foreground"
+                        aria-label="Open problem discussion on Art of Problem Solving"
+                        title="Open problem discussion on Art of Problem Solving"
                     >
-                </Button>
-            {/if}
+                        <Icon name="forum" class="size-4" fontsize="1rem" />
+                        <span class="hidden h-4 items-center leading-none lg:inline-flex"
+                            >Discuss</span
+                        >
+                    </Button>
+                {/if}
 
-            <details class="group/details relative">
-                <summary
-                    class="flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-                    aria-label="Problem details"
-                    title="Problem details"
-                >
-                    <Icon name="info" />
-                </summary>
-                <div
-                    class="absolute top-10 right-0 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-container-highest p-3 type-caption shadow-lg"
-                >
-                    <div class="mb-2 flex items-center gap-1.5 font-semibold text-foreground">
-                        <Icon name="database" />
-                        <span>Problem details</span>
+                <details class="group/details relative" bind:open={detailsOpen}>
+                    <summary
+                        class="flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                        aria-label="Problem details"
+                        title="Problem details"
+                    >
+                        <Icon name="info" />
+                    </summary>
+                    <div
+                        class="absolute top-10 right-0 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-container-highest p-3 type-caption shadow-lg"
+                    >
+                        <div class="mb-2 flex items-center gap-1.5 font-semibold text-foreground">
+                            <Icon name="database" />
+                            <span>Problem details</span>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            {@render detail("id", problem.id)}
+                            {@render detail("test id", problem.test_id)}
+                            <!-- Raw column, like `id` and `test id` above it: `problems.n` is
+                                 0-based, so problem #1 stores 0. Everywhere the number is
+                                 shown as a number it is rendered `n + 1`. -->
+                            {@render detail("n (0-based)", problem.n)}
+                            {#if detailsAnswer !== null}
+                                <div class="grid grid-cols-[6rem_1fr] gap-2">
+                                    <span class="text-muted-foreground"
+                                        >{mcq
+                                            ? "answer index"
+                                            : "answer"}</span
+                                    >
+                                    <HiddenText
+                                        bind:blocked={detailsAnswerBlocked}
+                                    >
+                                        <span class="min-w-0 break-words font-mono text-foreground">
+                                            {String(detailsAnswer)}
+                                        </span>
+                                    </HiddenText>
+                                </div>
+                            {/if}
+                            {@render detail("verified", problem.verified)}
+                            {@render detail(
+                                "rating",
+                                problem.rating
+                                    ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
+                                    : null,
+                            )}
+                            {@render detail("difficulty", problem.difficulty)}
+                            {@render detail("quality", problem.quality)}
+                            {@render detail("computational", problem.is_computational)}
+                            {@render detail("topic", problem.topic)}
+                            {@render detail("tags", problem.tags?.join(", "))}
+                            {@render detail("solutions", officialSolutionCount)}
+                            {@render detail("built", problem.built_at)}
+                            {@render detail("notes", problem.notes)}
+                        </div>
+
+                        <!-- Closes the popover on its way: the point of the
+                             toggle is to look at the statement, which this
+                             panel is sitting on top of. The label names the
+                             state being switched *to*, so the control still
+                             reads correctly while shut. -->
+                        <div class="mt-2.5 border-t border-border/60 pt-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-8 w-full justify-start gap-1.5 px-1.5 type-caption text-muted-foreground"
+                                onclick={() => {
+                                    showRaw = !showRaw;
+                                    detailsOpen = false;
+                                }}
+                                aria-pressed={showRaw}
+                            >
+                                <Icon
+                                    name={showRaw ? "description" : "code"}
+                                    fontsize="1rem"
+                                />
+                                {showRaw
+                                    ? "Show rendered statement"
+                                    : "Show raw statement"}
+                            </Button>
+                        </div>
                     </div>
-                    <div class="flex flex-col gap-1.5">
-                        {@render detail("id", problem.id)}
-                        {@render detail("test id", problem.test_id)}
-                        <!-- Raw column, like `id` and `test id` above it: `problems.n` is
-                             0-based, so problem #1 stores 0. Everywhere the number is
-                             shown as a number it is rendered `n + 1`. -->
-                        {@render detail("n (0-based)", problem.n)}
-                        {#if detailsAnswer !== null}
-                            <div class="grid grid-cols-[6rem_1fr] gap-2">
-                                <span class="text-muted-foreground"
-                                    >{mcq
-                                        ? "answer index"
-                                        : "answer"}</span
-                                >
-                                <HiddenText
-                                    bind:blocked={detailsAnswerBlocked}
-                                >
-                                    <span class="min-w-0 break-words font-mono text-foreground">
-                                        {String(detailsAnswer)}
-                                    </span>
-                                </HiddenText>
-                            </div>
-                        {/if}
-                        {@render detail("verified", problem.verified)}
-                        {@render detail(
-                            "rating",
-                            problem.rating
-                                ? `${Math.round(problem.rating.rating)} ±${Math.round(problem.rating.rd)} (${problem.rating.attempts})`
-                                : null,
-                        )}
-                        {@render detail("difficulty", problem.difficulty)}
-                        {@render detail("quality", problem.quality)}
-                        {@render detail("computational", problem.is_computational)}
-                        {@render detail("topic", problem.topic)}
-                        {@render detail("tags", problem.tags?.join(", "))}
-                        {@render detail("solutions", officialSolutionCount)}
-                        {@render detail("built", problem.built_at)}
-                        {@render detail("notes", problem.notes)}
-                    </div>
-                </div>
-            </details>
-        </nav>
-    </header>
+                </details>
+            </nav>
+        </header>
+    {/if}
 
     <div class={appearance === "row" ? "py-2" : "px-3 py-4 sm:px-5 sm:py-5"}>
         <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -372,7 +420,7 @@
             {/if}
 
             <section aria-label={`Problem ${problem.n + 1} statement`}>
-                {#if debug && showRaw}
+                {#if showRaw}
                     <pre
                         class="min-w-0 overflow-x-auto rounded-lg border border-border/60 bg-surface-container-low p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-foreground">{problem.statement ??
                             ""}</pre>
@@ -412,10 +460,21 @@
                     />
                 {/key}
             </section>
+
+            <!-- Keyed so `defaultOpen` re-seeds when the card is reused for a
+                 different problem; the panel self-hides when there are none. -->
+            {#if solution !== "hidden"}
+                {#key problem.id}
+                    <ProblemSolution
+                        solutions={problem.official_solutions}
+                        defaultOpen={solution === "open"}
+                    />
+                {/key}
+            {/if}
         </div>
     </div>
 
-    {#if mode !== "preview" && ((problem.tags?.length ?? 0) > 0 || problem.is_computational)}
+    {#if showTags && ((problem.tags?.length ?? 0) > 0 || problem.is_computational)}
         <footer
             class="flex flex-wrap items-center gap-1.5 rounded-b-xl border-t border-border/60 bg-surface-container-low px-3 py-2.5 sm:px-5"
         >

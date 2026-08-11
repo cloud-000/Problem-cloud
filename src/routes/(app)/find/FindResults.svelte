@@ -73,7 +73,7 @@
     {:else}
         {#each results as row (row.id)}
             {@const p = row as ProblemRow}
-            <Problem problem={p} mode="preview" isInstantFeedback={true} debug />
+            <Problem problem={p} solution="collapsed" isInstantFeedback={true} />
         {/each}
     {/if}
 

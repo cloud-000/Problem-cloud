@@ -9,6 +9,7 @@
     import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu/index.js";
     import {
         fetchSessionSubmissions,
+        reviewEntryFromSubmission,
         type RecentSubmissionRow,
     } from "$lib/progress";
 
@@ -275,14 +276,10 @@
                     {#each submissions as sub (sub.id)}
                         {#if sub.problems}
                             <ProblemReview
-                                entry={{
-                                    problem: sub.problems,
-                                    selectedChoice: sub.selected_choice,
-                                    answer: sub.answer ?? "",
-                                    correct: sub.is_correct,
-                                    flagged: sub.flagged,
-                                    skipped: sub.skipped,
-                                }}
+                                entry={reviewEntryFromSubmission(
+                                    sub,
+                                    sub.problems,
+                                )}
                                 autoRevealSolution={false}
                             />
                         {:else}

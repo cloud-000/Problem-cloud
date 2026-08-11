@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { reviewScheduleFor, statusFor, type ProblemProgress } from "./progress";
+import {
+    reviewEntryFromSubmission,
+    reviewScheduleFor,
+    statusFor,
+    type ProblemProgress,
+    type RecentSubmissionRow,
+} from "./progress";
+import type { ProblemRow } from "./library";
 
 function progress(overrides: Partial<ProblemProgress> = {}): ProblemProgress {
     return {
@@ -47,5 +54,63 @@ describe("problem state dimensions", () => {
         expect(
             reviewScheduleFor(progress({ next_review_at: "2026-07-10T12:01:00Z" }), now),
         ).toBe("upcoming");
+    });
+});
+
+describe("reviewEntryFromSubmission", () => {
+    const problem = { id: 7, n: 4 } as ProblemRow;
+
+    function submission(
+        overrides: Partial<RecentSubmissionRow> = {},
+    ): RecentSubmissionRow {
+        return {
+            selected_choice: null,
+            answer: null,
+            is_correct: null,
+            flagged: false,
+            skipped: false,
+            problems: problem,
+            ...overrides,
+        } as RecentSubmissionRow;
+    }
+
+    test("carries the stored response through unchanged", () => {
+        expect(
+            reviewEntryFromSubmission(
+                submission({
+                    selected_choice: 2,
+                    answer: "42",
+                    is_correct: true,
+                    flagged: true,
+                }),
+                problem,
+            ),
+        ).toEqual({
+            problem,
+            selectedChoice: 2,
+            answer: "42",
+            correct: true,
+            flagged: true,
+            skipped: false,
+        });
+    });
+
+    test("a blank stored answer is not a skip", () => {
+        // Persisted submissions store no free-text answer, so inferring a skip
+        // from the blank would misread a graded free-response as skipped. The
+        // row's own `skipped` is the only authority.
+        const entry = reviewEntryFromSubmission(
+            submission({ answer: null, is_correct: false }),
+            problem,
+        );
+        expect(entry.answer).toBe("");
+        expect(entry.skipped).toBe(false);
+    });
+
+    test("an explicit skip is preserved", () => {
+        expect(
+            reviewEntryFromSubmission(submission({ skipped: true }), problem)
+                .skipped,
+        ).toBe(true);
     });
 });

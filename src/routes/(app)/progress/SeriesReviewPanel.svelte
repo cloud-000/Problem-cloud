@@ -20,6 +20,7 @@
     } from "$lib/series-review";
     import { modal } from "$lib/state/modal.svelte";
     import type { Database } from "$lib/types/database.types";
+    import { problemLabel } from "$lib/utils";
     import SeriesProblemModal from "./SeriesProblemModal.svelte";
     import SeriesReviewGrid from "./SeriesReviewGrid.svelte";
 
@@ -171,10 +172,7 @@
             modal.show(
                 SeriesProblemModal,
                 { problem },
-                {
-                    title: `${problem.tests?.name ?? "Problem"} · #${problem.n + 1}`,
-                    size: "xl",
-                },
+                { title: problemLabel(problem), size: "xl" },
             );
         } catch (error) {
             errorMsg = (error as Error).message || "Failed to open problem";

@@ -38,6 +38,19 @@
     let focusedIndex = $state(0);
     let reviewOpen = $state(false);
     let focusedEntry = $derived(history[focusedIndex]);
+    // The focused problem's test and time spent. This is the modal's one
+    // identity line, which is why the review inside it renders no header.
+    let focusedDescription = $derived.by(() => {
+        if (!focusedEntry) return "Test review";
+        const parts: string[] = [];
+        if (focusedEntry.problem.tests?.name) {
+            parts.push(focusedEntry.problem.tests.name);
+        }
+        if (focusedEntry.elapsedMs != null) {
+            parts.push(formatElapsed(focusedEntry.elapsedMs));
+        }
+        return parts.length ? parts.join(" · ") : "Test review";
+    });
 
     // Graph states
     let graphHoverIndex = $state<number | null>(null);
@@ -287,13 +300,16 @@
     bind:open={reviewOpen}
     size="xl"
     title={focusedEntry ? `Problem ${focusedEntry.problem.n + 1}` : "Problem review"}
-    description={focusedEntry?.problem.tests?.name ?? "Test review"}
+    description={focusedDescription}
     onClose={() => (reviewOpen = false)}
 >
     {#if focusedEntry}
+        <!-- The modal's own title and description already name the problem, its
+             test, and the time spent, so the review header would be the second
+             telling. `elapsedMs` rides in the description for the same reason. -->
         <ProblemReview
             entry={focusedEntry}
-            elapsedMs={focusedEntry.elapsedMs}
+            showHeader={false}
             showOrganization
             class="border-0 bg-transparent p-0"
         />

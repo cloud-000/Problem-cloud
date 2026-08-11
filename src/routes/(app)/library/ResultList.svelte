@@ -57,6 +57,13 @@
     } = $props();
 
     const level = $derived(store.current.level);
+    /**
+     * Problem rows name their test only when the page isn't already naming it.
+     * Drilling into a test puts its name in the scope chip above the list, so a
+     * per-row repeat is the same fact once per row; an unscoped list (a filtered
+     * search across tests) genuinely needs it on each row to be readable.
+     */
+    const problemHeader = $derived(store.current.context.test ? "meta" : "full");
     const displayedResults = $derived(
         resultsLevel === level ? results : [],
     );
@@ -271,8 +278,9 @@
         {@const draft = problemDraft(problem)}
         <Problem
             {problem}
-            mode="preview"
+            header={problemHeader}
             appearance="row"
+            solution="collapsed"
             {isInstantFeedback}
             bind:answer={draft.answer}
             bind:selectedChoice={draft.selectedChoice}

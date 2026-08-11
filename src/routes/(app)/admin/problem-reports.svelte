@@ -154,9 +154,11 @@
                 <section class="border-b border-border py-6" aria-label={`Reports for problem ${group.problemId}`}>
                     <div class="pb-5">
                         {#if group.problem}
+                            <!-- Solutions on: triaging a report about a wrong
+                                 answer key needs the worked solution to hand. -->
                             <Problem
                                 problem={group.problem}
-                                mode="preview"
+                                solution="collapsed"
                                 disabled={true}
                             />
                         {:else}

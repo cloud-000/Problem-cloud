@@ -12,6 +12,7 @@
     import { TriStateSwitch, type TriState } from "$lib/components/toggle";
     import {
         fetchRecentSubmissions,
+        reviewEntryFromSubmission,
         type RecentSubmissionRow,
     } from "$lib/progress";
     import ProgressNav from "../progress/ProgressNav.svelte";
@@ -451,14 +452,10 @@
                                         <div class="border-t border-border bg-surface-container-low/30 px-4 py-5">
                                             {#if sub.problems}
                                                 <ProblemReview
-                                                    entry={{
-                                                        problem: sub.problems,
-                                                        selectedChoice: sub.selected_choice,
-                                                        answer: sub.answer ?? "",
-                                                        correct: sub.is_correct,
-                                                        flagged: sub.flagged,
-                                                        skipped: sub.skipped,
-                                                    }}
+                                                    entry={reviewEntryFromSubmission(
+                                                        sub,
+                                                        sub.problems,
+                                                    )}
                                                     showHeader={false}
                                                     autoRevealSolution={false}
                                                     showOrganization

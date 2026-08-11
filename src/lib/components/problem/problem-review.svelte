@@ -9,7 +9,6 @@
     import { cn, formatElapsed, isMultipleChoice } from "$lib/utils";
     import { submissionOutcome } from "$lib/problem-response";
     import Problem from "./problem.svelte";
-    import ProblemSolution from "./problem-solution.svelte";
 
     let {
         entry,
@@ -21,10 +20,13 @@
     }: {
         entry: ProblemReviewEntry;
         /** Render the AoPS-links + status-tag header. Off for callers (e.g. the
-         * history row) that already provide their own summary header. */
+         * history row, the focused test-review modal) that already name the
+         * problem themselves — this is the card's *only* identity either way,
+         * since the inner `Problem` always renders `header="meta"`. */
         showHeader?: boolean;
         /** Auto-open the solution on a wrong answer (trainer post-test review).
-         * Off in long lists so solutions start collapsed. */
+         * Off in long lists so solutions start collapsed. The panel itself is
+         * always present (inside `Problem`) when the problem has solutions. */
         autoRevealSolution?: boolean;
         /** Show the problem's mastery and future-plan controls. */
         showOrganization?: boolean;
@@ -109,22 +111,23 @@
             {/if}
         </div>
     {/if}
+    <!-- `header="meta"` unconditionally: this card names the problem when
+         `showHeader` is on, and a caller that turns it off (the `/history` row,
+         the focused test-review modal) does so precisely because *it* names the
+         problem. Either way the inner card must not name it a second time — it
+         keeps only the badges and actions, which no wrapper header carries. -->
     <Problem
         problem={entry.problem}
+        header="meta"
         mastery={entry.progress?.mastery}
         engagement={entry.progress?.engagement}
         selectedChoice={entry.selectedChoice}
         answer={entry.answer}
         showAnswerState={true}
         disabled={true}
-        mode="preview"
+        solution={autoRevealSolution && entry.correct === false
+            ? "open"
+            : "collapsed"}
         {showOrganization}
     />
-    {#if entry.problem.official_solutions?.length}
-        <ProblemSolution
-            class="mt-3"
-            solutions={entry.problem.official_solutions}
-            defaultOpen={autoRevealSolution && entry.correct === false}
-        />
-    {/if}
 </div>

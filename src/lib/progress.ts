@@ -8,6 +8,7 @@ import {
     normalizeEmbeds,
     type ProblemRow,
     type ProblemRating,
+    type ProblemReviewEntry,
 } from "$lib/library";
 
 type Supabase = SupabaseClient<Database>;
@@ -273,6 +274,31 @@ export async function fetchDueReviews(
 export type RecentSubmissionRow = Tables<"submissions"> & {
     problems: ProblemRow | null;
 };
+
+/**
+ * The `ProblemReviewEntry` for one persisted submission. `/history` and the
+ * practice session card both review the same row shape, so the mapping lives
+ * here rather than being re-typed at each call site — notably the explicit
+ * `skipped`, which must be passed through rather than inferred, since a
+ * persisted submission stores no free-text answer and a blank one would
+ * otherwise read as a skip.
+ *
+ * `problem` is taken separately because callers already narrow `sub.problems`
+ * (it is nullable when the embed fails) before they have anything to render.
+ */
+export function reviewEntryFromSubmission(
+    sub: RecentSubmissionRow,
+    problem: ProblemRow,
+): ProblemReviewEntry {
+    return {
+        problem,
+        selectedChoice: sub.selected_choice,
+        answer: sub.answer ?? "",
+        correct: sub.is_correct,
+        flagged: sub.flagged,
+        skipped: sub.skipped,
+    };
+}
 
 /**
  * Fetch the current user's submissions with embedded problem + test + series data.
