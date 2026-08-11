@@ -89,6 +89,7 @@
       { href: "/practice", icon: "sprint", label: "Practice" },
       { href: "/library", icon: "book_5", label: "Library" },
       { href: "/progress", icon: "insights", label: "Progress" },
+      { href: "/goals", icon: "flag", label: "Goals" },
    ] as const;
 
    // The Coach's full-screen surface. Deliberately the *only* way in: nothing

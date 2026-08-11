@@ -335,7 +335,7 @@ Settled 2026-08-10, previously open:
 
 ## 12. What exists (2026-08-10)
 
-The headless half is built and tested; nothing renders yet.
+Both halves are built: the headless layers and the `/goals` route.
 
 | Layer | Where | State |
 | --- | --- | --- |
@@ -345,14 +345,50 @@ The headless half is built and tested; nothing renders yet.
 | SQL semantics | `supabase/tests/goal_scope.test.sql`, `goal_families.test.sql` | 39 pgTAP assertions |
 | Pure evaluation | `src/lib/goals/*.test.ts` | 54 unit tests |
 | Trainer ≡ SQL scope contract | `src/lib/goals/scope-contract.test.ts` | 10 scope cases + fixture guards; skips without a local stack |
-| **UI** | `src/routes/(app)/goals/` | **not started** |
+| UI | `src/routes/(app)/goals/` | done — list, create/edit dialog, detail, practice handoff; nav entry in `(app)/+layout.svelte` |
+| Presentation + handoff | `goal-presentation.ts`, `goal-practice.ts` (+ tests) | 25 unit tests |
 
 Migrations are local-only (`20260810232659_goal_scope`, `20260810233431_goals`)
 and have not been pushed to the cloud.
 
-Two things the next session should not have to rediscover: the `/goals` route
-does not exist and is not in the nav; and `roadmap_goals` is an unrelated table
-(product roadmap voting), so `goals` is the right name and there is no clash.
+`roadmap_goals` is an unrelated table (product roadmap voting), so `goals` is the
+right name and there is no clash.
+
+### How the route is put together
+
+One route, two views: `/goals` lists, `/goals?goal=<id>` opens the detail — the
+same query-param idiom as `/practice?session=` rather than a dynamic segment.
+
+- **The page owns the round trips.** `+page.svelte` runs the three phases once
+  for the whole list (`planGoalRequests` → `fetchGoalProgress` → `evaluateGoals`)
+  and passes each card its answer. A card never fetches, which is what keeps a
+  list of eight goals at one query per family (§8). The plan and its results are
+  stored as one object so a plan whose results have not arrived can never
+  evaluate every goal to null.
+- **Achievement is stamped on load**, from `newlyAchieved` — met, unstamped,
+  unarchived, and *measurable*: a family that failed to load evaluates to null,
+  and absence of data is never evidence of achievement. Creation reloads through
+  the same path, which is how "a goal existing work already satisfies saves as
+  achieved immediately" (§7) falls out rather than being a second code path.
+- **Presentation strings live in `goal-presentation.ts`**, not in the components:
+  `GoalProgressResult` deliberately carries none (architecture doc §5), and the
+  awkward cases (an `at_most` speed target, an `insufficient_data` window, a
+  scope with per-series narrowing, achieved-but-currently-below) are settled once
+  with tests instead of three times in markup.
+- **The handoff is `goal-practice.ts`**, and it is where "remaining" is defined
+  per family: attempted → `mode: "new"`; solved → `mode: "mixed"` with
+  `timesCorrect: [0, 0]` so a solved problem can never come back as remaining;
+  event families → mixed practice in the scope, because any work in scope moves
+  them and a narrower filter would count work the goal does not. It lives beside
+  the route rather than in `$lib/goals` so the domain layer keeps knowing nothing
+  about the trainer.
+- **Editing reopens explicitly.** The form compares `scopeKey` and the target
+  JSON; a material change to an achieved goal confirms first and passes
+  `reopen`, and title/deadline never do (§7).
+
+Still deferred from the route: the remaining-problems *list* (§8's paged
+drill-down — the detail view states the count from the same set-family row, but
+does not enumerate the problems), home cards, and the year-range control (§11).
 
 ## 13. Done when
 
