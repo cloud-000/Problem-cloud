@@ -156,7 +156,7 @@ These rules require regression tests at every affected layer:
 | Response kind | Initial input | Initial grading | Reference-answer behavior |
 | --- | --- | --- | --- |
 | `mcq` | Existing choice picker | Choice key | Expected when `known` |
-| `short_answer` | Existing single-line math input | Normalized `answersMatch` | Expected when `known` |
+| `short_answer` | Existing single-line math input | `answersMatch` (lexical, then numeric value) | Expected when `known` |
 | `proof` | Multiline text/LaTeX editor | Ungraded | Normally `not_applicable` |
 | `estimation` | Numeric-style input | Ungraded until tolerance metadata exists | Do not treat exact text as sufficient |
 | `construction` | Explicit unsupported-response surface | Ungraded/unsupported | Evaluator-dependent |

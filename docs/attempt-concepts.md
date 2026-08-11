@@ -160,10 +160,15 @@ Contrast the same three attempts under **Route A** (not what we do): 3 rows,
 
 - **Column:** `submissions.answer text` (null for MCQ, whose choice is in
   `selected_choice`, and for skips).
-- **What it's for:** free-response / computational problems are graded **lexically**
-  by `answersMatch` (`src/lib/utils/answer-matcher.ts`) — it strips unit labels and
-  normalizes LaTeX/whitespace/decimals — because a stored correct answer often
-  carries a label (e.g. `"8 pies"`, `"19 cm"`) the solver won't retype. Persisting
+- **What it's for:** free-response / computational problems are graded by
+  `answersMatch` (`src/lib/utils/answer-matcher.ts`), the single entry point for
+  every grading site in the app. It compares in two layers: **lexically** (strip
+  unit labels, normalize LaTeX/whitespace/decimals — because a stored correct
+  answer often carries a label like `"8 pies"`, `"19 cm"` the solver won't
+  retype), then by **numeric value** via `answer-value.ts`, a closed arithmetic
+  evaluator that makes `1/2`, `0.5` and `\frac{2}{4}` compare equal. Neither
+  layer does symbolic algebra, and the evaluator answers `null` — never a guess —
+  for anything it doesn't fully understand. Persisting
   the raw response keeps a graded answer **auditable and re-gradable**: a later
   grading change can re-run `answersMatch` over stored answers and
   `recompute_ratings()` to repair `is_correct`. It also lets the deferred-grading

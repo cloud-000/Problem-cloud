@@ -1,9 +1,17 @@
 // Shared answer-normalization + comparison for grading free-response answers.
+// `answersMatch` is the single entry point for "is this answer right?" — every
+// grading site in the app routes through it, so a rule added here applies to
+// live practice, fixed tests, and re-grades of stored answers alike.
 //
-// This is deliberately *lexical*, not symbolic: it canonicalizes cosmetic LaTeX
-// and numeric variation so equivalent renderings of the same answer compare
-// equal, but it performs no CAS/algebraic evaluation. `1/2` and `\frac12`
-// normalize to the same string; `1/2` and `0.5` do NOT (that would require CAS).
+// Two layers, asked in order. This module is *lexical*: it canonicalizes
+// cosmetic LaTeX and numeric spelling so equivalent renderings of the same
+// answer compare equal (`\frac12` ≡ `1/2`), with no algebra. When that finds no
+// match, `answer-value.ts` asks the independent question of whether both sides
+// denote the same *number* (`1/2` ≡ `0.5` ≡ `\frac{2}{4}`). Neither layer does
+// symbolic algebra: `\frac{a}{b}` and `a/b` match lexically, but nothing
+// simplifies `\frac{2x}{4}` to `x/2`.
+
+import { numericallyEqual } from "./answer-value";
 
 /** Command aliases collapsed to a single canonical spelling. Keep small. */
 const COMMAND_ALIASES: Record<string, string> = {
@@ -118,8 +126,13 @@ function parseNextLatexArg(rest: string): [string, string] {
  * Checks if a LaTeX argument string contains mathematical operations that would
  * require parenthesis grouping when translated to slash-based division notation.
  */
-function needsParentheses(s: string): boolean {
+function needsParentheses(s: string, position: "numerator" | "denominator"): boolean {
     const trimmed = s.trim();
+    // A *leading* minus is safe in a numerator — `\frac{-1}{2}` → `-1/2` reads
+    // correctly — which is why the `-` scan below skips the first character.
+    // In a denominator it is not: `\frac{a}{-b}` → `a/-b` is ambiguous, and
+    // would never converge with the `a/(-b)` a student actually types.
+    if (position === "denominator" && trimmed.startsWith("-")) return true;
     if (trimmed.includes("+")) return true;
     if (trimmed.slice(1).includes("-")) return true;
     if (trimmed.includes("*")) return true;
@@ -129,8 +142,19 @@ function needsParentheses(s: string): boolean {
 }
 
 /**
+ * A whole number written immediately before a fraction is a mixed number, so
+ * the juxtaposition means addition: `2\frac12` is 2½, not 2×½. Requiring the
+ * digits to be a standalone integer keeps this off genuine juxtaposition —
+ * `\frac12\frac34` (a product) ends in digits too, but they are part of a
+ * command, and `x\frac12` / `(1+2)\frac12` don't end in digits at all.
+ */
+function endsWithWholeNumber(before: string): boolean {
+    return /(?:^|[^0-9a-zA-Z}\\])\d+$/.test(before);
+}
+
+/**
  * Recursively convert LaTeX fractions to standard division slash notation.
- * e.g., \frac{1}{4} -> 1/4, \frac{x+1}{y} -> (x+1)/y.
+ * e.g., \frac{1}{4} -> 1/4, \frac{x+1}{y} -> (x+1)/y, 2\frac{1}{2} -> 2+1/2.
  */
 function convertFracToSlash(s: string): string {
     let idx;
@@ -139,9 +163,10 @@ function convertFracToSlash(s: string): string {
         const rest = s.slice(idx + 5);
         const [arg1, rest1] = parseNextLatexArg(rest);
         const [arg2, rest2] = parseNextLatexArg(rest1);
-        const formatArg1 = needsParentheses(arg1) ? `(${arg1})` : arg1;
-        const formatArg2 = needsParentheses(arg2) ? `(${arg2})` : arg2;
-        s = before + `${formatArg1}/${formatArg2}` + rest2;
+        const formatArg1 = needsParentheses(arg1, "numerator") ? `(${arg1})` : arg1;
+        const formatArg2 = needsParentheses(arg2, "denominator") ? `(${arg2})` : arg2;
+        const join = endsWithWholeNumber(before) ? "+" : "";
+        s = before + join + `${formatArg1}/${formatArg2}` + rest2;
     }
     return s;
 }
@@ -186,6 +211,35 @@ function stripUnitsAndLabels(s: string): string {
     return val.trim();
 }
 
+/** Text-mode wrappers whose braced content is the answer itself. */
+const TEXT_COMMANDS = [
+    "\\text",
+    "\\textbf",
+    "\\textit",
+    "\\textrm",
+    "\\mathrm",
+    "\\mathbf",
+    "\\mathit",
+    "\\mbox",
+    "\\operatorname",
+];
+
+/** Replace `\text{foo}` (and friends) with `foo`, innermost-outermost, to a fixed point. */
+function unwrapTextCommands(s: string): string {
+    for (let guard = 0; guard < 32; guard++) {
+        let changed = false;
+        for (const command of TEXT_COMMANDS) {
+            const at = s.indexOf(command + "{");
+            if (at === -1) continue;
+            const [inner, rest] = parseNextLatexArg(s.slice(at + command.length));
+            s = s.slice(0, at) + inner + rest;
+            changed = true;
+        }
+        if (!changed) return s;
+    }
+    return s;
+}
+
 /**
  * Canonicalize a raw answer string into a comparable form. Purely lexical; see
  * the module header. Idempotent for already-normalized input.
@@ -203,6 +257,14 @@ export function normalizeAnswer(raw: string): string {
         .replace(/\\displaystyle(?![a-zA-Z])/g, "")
         .replace(/\\(?:qquad|quad)(?![a-zA-Z])/g, "")
         .replace(/\\[!,;: ]/g, "");
+
+    // 2a. Unwrap text-mode commands: the words inside are the answer, the
+    //     command is only how they were typeset (`\text{none}` → `none`).
+    s = unwrapTextCommands(s);
+
+    // 2b. Fold the dash characters a keyboard, a PDF, and KaTeX each produce
+    //     for the same minus sign onto ASCII `-`.
+    s = s.replace(/[−‒–—]/g, "-");
 
     // 3. Collapse command aliases to their canonical spelling.
     for (const [from, to] of Object.entries(COMMAND_ALIASES)) {
@@ -226,6 +288,11 @@ export function normalizeAnswer(raw: string): string {
         s = s.replace(/\(([a-zA-Z]+|\d+(?:\.\d+)?|\\\\[a-zA-Z]+)\)/g, "$1");
     } while (s !== prev);
 
+    // 6a. Escaped braces are a *set*, not a LaTeX group, so they are unescaped
+    //     only now — after group-stripping, which must not consume them.
+    //     `\{1,2\}` and `{1,2}` then agree, while `{x}` still reduces to `x`.
+    s = s.replace(/\\([{}])/g, "$1");
+
     // 7. Numeric canonicalization: thousands commas + leading decimals.
     s = stripThousandsCommas(s);
     s = padLeadingDecimals(s);
@@ -237,19 +304,38 @@ export function normalizeAnswer(raw: string): string {
     return s;
 }
 
-/** Parse `s` as a plain finite decimal number, or null if it isn't one. */
-function parsePlainNumber(s: string): number | null {
-    if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
+/**
+ * Drop a `variable =` prefix, so restating the question ("x = 5") compares as
+ * the value it asserts. Only a bare single-variable left side qualifies, and
+ * only one side of a comparison may ever be stripped — see `assignmentForms`.
+ */
+function stripVariableAssignment(s: string): string {
+    const match = /^(?:[a-zA-Z]|\\[a-zA-Z]+)(?:_\{?[a-zA-Z0-9]+\}?)?=(.+)$/.exec(s);
+    return match ? match[1] : s;
 }
 
 /**
- * True when `a` and `b` represent the same answer, checked in tiers:
+ * The comparable forms of `a` and `b` once at most *one* of them has shed a
+ * `variable =` prefix. Stripping both would equate `y=2x+1` with `z=2x+1`,
+ * which name different things; stripping neither would fail `x=5` against `5`.
+ */
+function assignmentForms(a: string, b: string): [string, string][] {
+    return [
+        [stripVariableAssignment(a), b],
+        [a, stripVariableAssignment(b)],
+    ];
+}
+
+/**
+ * True when `a` and `b` represent the same answer, checked in widening tiers —
+ * each is a strictly weaker notion of sameness than the last, so the first hit
+ * wins and a miss costs only the next comparison:
  *   1. exact (trimmed) string equality,
- *   2. normalized (lexical) equality,
- *   3. numeric equality when *both* normalize to plain finite numbers
- *      (so `1.50` == `1.5`). No symbolic/CAS evaluation is performed.
+ *   2. lexical equality after normalization (`\dfrac12` == `1/2`),
+ *   3. lexical equality ignoring a `x =` prefix on either side,
+ *   4. numeric value equality (`1/2` == `0.5` == `\frac{2}{4}`), which applies
+ *      only when *both* sides are closed arithmetic — see `answer-value.ts`.
+ * No symbolic algebra is performed at any tier.
  */
 export function answersMatch(a: string, b: string): boolean {
     const cleanA = stripUnitsAndLabels(a);
@@ -261,9 +347,10 @@ export function answersMatch(a: string, b: string): boolean {
     const nb = normalizeAnswer(cleanB);
     if (na === nb) return true;
 
-    const fa = parsePlainNumber(na);
-    const fb = parsePlainNumber(nb);
-    if (fa !== null && fb !== null) return fa === fb;
+    for (const [formA, formB] of assignmentForms(na, nb)) {
+        if (formA === formB) return true;
+        if (numericallyEqual(formA, formB)) return true;
+    }
 
     // Fallback to raw comparison (in case stripping stripped too much)
     if (a.trim() === b.trim()) return true;

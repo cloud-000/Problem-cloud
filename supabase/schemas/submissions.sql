@@ -14,7 +14,8 @@ create table public.submissions (
   selected_choice integer,                 -- null for skips / non-MCQ
   -- The solver's free-text response for non-MCQ (computational / free-response)
   -- problems; null for MCQ (the choice is in selected_choice) and skips. Persisted
-  -- so a graded answer stays auditable/re-gradable: grading is lexical (answersMatch)
+  -- so a graded answer stays auditable/re-gradable: grading happens in the client
+  -- (answersMatch: lexical, then numeric value -- never symbolic algebra)
   -- and the stored correct answer can carry unit labels/LaTeX, so keeping the raw
   -- response lets a later re-grade + recompute_ratings repair a grading change, and
   -- lets the results screen show what was typed after a reload.
