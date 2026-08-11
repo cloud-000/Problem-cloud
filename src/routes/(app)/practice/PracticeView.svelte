@@ -2133,10 +2133,14 @@
                           Do not reintroduce an alignment swap here. -->
                      <div class="my-auto flex min-h-fit w-full flex-none items-start justify-center">
                         {#if debugMode && showRawLatex && !focusModeActive}
+                           <!-- The interpolation butts against both tags on
+                                purpose: `<pre>` preserves whitespace, so laying
+                                this out over three indented lines would prepend
+                                a newline and this block's own indentation to the
+                                statement, which is exactly how it renders. -->
                            <pre
-                              class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-[48rem] py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">
-                                            {problem.statement ?? ""}
-                                        </pre>
+                              class="font-mono text-sm text-foreground leading-relaxed text-left w-full max-w-[48rem] py-4 bg-surface-container/50 px-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-words border border-border/80">{problem.statement ??
+                                 ""}</pre>
                         {:else}
                            <MathStatement
                               text={formatProblemText(
