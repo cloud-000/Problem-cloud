@@ -20,6 +20,21 @@ const COMMAND_ALIASES: Record<string, string> = {
     "\\overline": "\\bar",
 };
 
+/**
+ * Fold Unicode pi glyphs into the LaTeX spelling used by the lexical and
+ * numeric layers. Checking each code point's compatibility form also covers
+ * styled Mathematical Alphanumeric Symbols such as `𝜋`, without applying
+ * NFKC to unrelated input (where it could erase meaningful notation).
+ */
+function canonicalizeUnicodeMathSymbols(s: string): string {
+    return Array.from(s, (char) => {
+        const compatibilityForm = char.normalize("NFKC");
+        if (compatibilityForm === "π") return "\\pi";
+        if (compatibilityForm === "Π") return "\\Pi";
+        return char;
+    }).join("");
+}
+
 /** A single LaTeX "token": a `\command` name, or any single non-brace char. */
 const TOKEN = "(\\\\[a-zA-Z]+|[^{}\\\\])";
 
@@ -176,7 +191,7 @@ function convertFracToSlash(s: string): string {
  * e.g., "$5" -> "5", "5 cheeses" -> "5", "5 cm" -> "5", "5 m" -> "5", "5m" -> "5m"
  */
 function stripUnitsAndLabels(s: string): string {
-    let val = s.trim();
+    let val = canonicalizeUnicodeMathSymbols(s).trim();
 
     // 1. Strip leading currency symbols. A leading `$` is only currency when
     //    it's unpaired; if a second `$` follows it's a `$…$` math delimiter
@@ -246,7 +261,7 @@ function unwrapTextCommands(s: string): string {
  */
 export function normalizeAnswer(raw: string): string {
     // 1. Trim + strip a surrounding math-mode wrapper.
-    let s = stripMathWrappers(raw);
+    let s = stripMathWrappers(canonicalizeUnicodeMathSymbols(raw));
 
     // 2. Drop delimiter-sizing, spacing, and display commands (no semantic
     //    weight for grading). Lookaheads prevent chewing into longer names

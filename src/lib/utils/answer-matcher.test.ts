@@ -14,6 +14,7 @@ describe("normalizeAnswer", () => {
             "\\dfrac{1}{6}",
             "$1{,}000$",
             "2\\frac{1}{2}",
+            "𝜋",
             "\\text{none}",
             "\\left(1+2\\right)",
         ]) {
@@ -26,6 +27,12 @@ describe("normalizeAnswer", () => {
         // `\pi` and `\Pi` are different symbols; `ABC` and `abc` are not.
         expect(normalizeAnswer("\\Pi")).toBe("\\Pi");
         expect(normalizeAnswer("ABC")).toBe("abc");
+    });
+
+    test("canonicalizes Unicode pi glyphs to LaTeX", () => {
+        expect(normalizeAnswer("π")).toBe("\\pi");
+        expect(normalizeAnswer("𝜋")).toBe("\\pi");
+        expect(normalizeAnswer("Π")).toBe("\\Pi");
     });
 
     test("a whole number before a fraction is read as a mixed number", () => {
@@ -50,6 +57,14 @@ describe("equivalent spellings of the same answer", () => {
         expect(matches("\\[5\\]", "5")).toBe(true);
         expect(matches("\\left(1+2\\right)", "(1+2)")).toBe(true);
         expect(matches("2\\pi", "2 \\pi")).toBe(true);
+    });
+
+    test("Unicode and LaTeX pi spellings", () => {
+        expect(matches("π", "\\pi")).toBe(true);
+        expect(matches("𝜋", "\\pi")).toBe(true);
+        expect(matches("2π", "2\\pi")).toBe(true);
+        expect(matches("π/2", "\\frac{\\pi}{2}")).toBe(true);
+        expect(matches("π radians", "\\pi")).toBe(true);
     });
 
     test("text-mode wrappers", () => {
@@ -239,6 +254,8 @@ describe("what must stay wrong", () => {
 
     test("case matters for command names", () => {
         expect(matches("\\pi", "\\Pi")).toBe(false);
+        expect(matches("π", "Π")).toBe(false);
+        expect(matches("Π", "\\Pi")).toBe(true);
     });
 
     test("an empty answer matches nothing but itself", () => {
