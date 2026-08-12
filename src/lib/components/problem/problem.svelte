@@ -34,15 +34,16 @@
      * How much of the header this card renders.
      *
      * `"full"` names the problem (test + number) and is right for a card that
-     * stands alone. **Any surface that already names the problem — a list row,
-     * a modal title, a review header — must pass `"meta"`**, or the identity is
-     * rendered twice; that duplication is why this prop exists. `"meta"` keeps
-     * everything that is *not* identity (topic/rating/status badges, Ask,
-     * Discuss, the details popover), which a wrapper's own header rarely
-     * carries. `"none"` drops the header entirely for embeddings that supply
-     * all of their own chrome.
+     * stands alone. `"number"` keeps only the number when surrounding chrome
+     * already names the test. **Any surface that already names both the test
+     * and problem — a list row, a modal title, a review header — must pass
+     * `"meta"`**, or the identity is rendered twice; that duplication is why
+     * this prop exists. `"meta"` keeps everything that is *not* identity
+     * (topic/rating/status badges, Ask, Discuss, the details popover), which a
+     * wrapper's own header rarely carries. `"none"` drops the header entirely
+     * for embeddings that supply all of their own chrome.
      */
-    type ProblemHeader = "full" | "meta" | "none";
+    type ProblemHeader = "full" | "number" | "meta" | "none";
     /**
      * The official-solutions disclosure. Hidden by default and never inferred:
      * a solution restates the answer, so revealing one mid-attempt (or under a
@@ -101,9 +102,10 @@
     // the details popover, which is also where the row's other raw columns are.
     let showRaw = $state(false);
     let detailsOpen = $state(false);
-    // Whether this card names the problem itself. False wherever the caller's
-    // own header already does — see `ProblemHeader`.
-    let showIdentity = $derived(header === "full");
+    // Identity can be split when surrounding chrome names the test but not the
+    // individual problem — see `ProblemHeader`.
+    let showNumber = $derived(header === "full" || header === "number");
+    let showSource = $derived(header === "full");
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
@@ -200,7 +202,7 @@
             )}
         >
             <div class="flex min-w-0 items-start gap-3">
-                {#if showIdentity}
+                {#if showNumber}
                     {#if appearance === "row"}
                         <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
                             #{problem.n + 1}
@@ -217,10 +219,10 @@
                 {/if}
 
                 <div class="flex min-w-0 flex-col gap-1.5">
-                    <!-- Identity. Rendered only under `header="full"`; every caller
-                         whose own chrome names the problem passes `"meta"` and gets
-                         the badge strip below without the second name. -->
-                    {#if showIdentity}
+                    <!-- The source is rendered only under `header="full"`. A caller
+                         that already names the test can use `"number"` to retain the
+                         problem number alongside the metadata without repeating it. -->
+                    {#if showSource}
                         {#if problem.tests?.name}
                             <div class="flex min-w-0 items-center gap-1.5">
                                 {#if aopsTestHref}

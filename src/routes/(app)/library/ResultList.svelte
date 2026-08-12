@@ -59,11 +59,12 @@
     const level = $derived(store.current.level);
     /**
      * Problem rows name their test only when the page isn't already naming it.
-     * Drilling into a test puts its name in the scope chip above the list, so a
-     * per-row repeat is the same fact once per row; an unscoped list (a filtered
-     * search across tests) genuinely needs it on each row to be readable.
+     * Drilling into a test puts its name in the scope chip above the list, but
+     * each row keeps its problem number so it remains identifiable while the
+     * chip has scrolled out of view. An unscoped list (a filtered search across
+     * tests) genuinely needs both the test and number on each row.
      */
-    const problemHeader = $derived(store.current.context.test ? "meta" : "full");
+    const problemHeader = $derived(store.current.context.test ? "number" : "full");
     const displayedResults = $derived(
         resultsLevel === level ? results : [],
     );
