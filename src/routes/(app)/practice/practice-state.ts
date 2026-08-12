@@ -13,6 +13,11 @@ export type PracticeAnswerState = {
     correct: boolean | null;
     flagged: boolean;
     elapsedMs: number;
+    // Timed practice: the `elapsedMs` value the active per-problem limit started
+    // counting down from (see `rebaseCountdownBaseline`, `$lib/countdown`). Zero
+    // unless the limit was retuned mid-problem; carried here so back/forward
+    // navigation doesn't hand the problem back a countdown it already spent.
+    limitBaselineMs: number;
     attemptIndex: number | null;
     triesUsed: number;
     triedAnswers: string[];
@@ -42,6 +47,7 @@ export function createPracticeAnswerState(
         correct: overrides.correct ?? null,
         flagged: overrides.flagged ?? false,
         elapsedMs: overrides.elapsedMs ?? 0,
+        limitBaselineMs: overrides.limitBaselineMs ?? 0,
         attemptIndex: overrides.attemptIndex ?? null,
         triesUsed: overrides.triesUsed ?? 0,
         triedAnswers: [...(overrides.triedAnswers ?? [])],

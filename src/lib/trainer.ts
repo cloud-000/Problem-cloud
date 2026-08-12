@@ -65,9 +65,11 @@ export type PracticeSettings = {
     triesPerProblem?: number;
     // Practice-format only: a per-problem answering time limit in seconds. When
     // set, the trainer runs a countdown on the current problem and, at zero,
-    // auto-finishes it (grades the entered answer, else skips) and advances to the
-    // next. `null`/absent = untimed (count-up). Optional so older snapshots are
-    // tolerated (treated as untimed).
+    // auto-finishes it in place — grading the entered answer (forced final, no
+    // retries), else recording a skip — and reveals it; the user advances. Editable
+    // mid-problem, so the countdown window rebases rather than expiring the problem
+    // retroactively (`rebaseCountdownBaseline`, `$lib/countdown`). `null`/absent =
+    // untimed (count-up). Optional so older snapshots are tolerated.
     perProblemSeconds?: number | null;
     // Adaptive difficulty. When on, every draw is constrained to problems whose
     // overall Glicko rating sits within `adaptiveRange` points of the player's

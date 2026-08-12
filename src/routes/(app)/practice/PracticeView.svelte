@@ -33,7 +33,7 @@
       type ProblemProgress,
    } from "$lib/trainer";
    import { recordSubmission, setProblemMastery, type Mastery } from "$lib/progress";
-   import { countdownRemainingMs } from "$lib/countdown";
+   import { countdownRemainingMs, rebaseCountdownBaseline } from "$lib/countdown";
    import {
       isLastSegment,
       segmentCount,
@@ -1125,9 +1125,16 @@
          ? settingsForm.perProblemSeconds * 1000
          : null,
    );
+   // `limitBaselineMs` is the elapsed value the active limit started counting
+   // from — zero for the whole life of a problem unless the limit was retuned
+   // mid-problem (see the rebasing effect below). It rides on the answer state so
+   // back/forward navigation restores it with the rest of the problem's clock.
    let problemRemainingMs = $derived(
       perProblemLimitMs != null && !answerState.submitted && isLatest
-         ? countdownRemainingMs(perProblemLimitMs, elapsedMs)
+         ? countdownRemainingMs(
+              perProblemLimitMs,
+              elapsedMs - answerState.limitBaselineMs,
+           )
          : null,
    );
 
@@ -1890,12 +1897,43 @@
       }
    });
 
-   // Timed practice: auto-finish + advance the moment the per-problem clock hits
-   // zero. `problemRemainingMs` is only non-null for the active (latest,
-   // unanswered) problem, and `timerRunning` gates out paused/loading/frozen
-   // states, so this fires exactly once per problem.
+   // The settings panel writes `perProblemSeconds` straight through (no apply
+   // step, and the slider writes while dragging), so a limit can change with a
+   // problem already open and time already on it. Restart the countdown window
+   // whenever the new limit wouldn't leave a usable margin — otherwise time spent
+   // under the old limit expires the problem the instant the new one lands, which
+   // is un-undoable (it grades or skips). Only the limit is a dependency here:
+   // reacting to `elapsedMs` too would re-baseline every tick and the clock would
+   // never run down.
+   let lastLimitMs: number | null = null;
+   $effect(() => {
+      const limit = perProblemLimitMs;
+      untrack(() => {
+         if (limit === lastLimitMs) return;
+         lastLimitMs = limit;
+         if (limit == null) return;
+         answerState.limitBaselineMs = rebaseCountdownBaseline(
+            limit,
+            elapsedMs,
+            answerState.limitBaselineMs,
+         );
+      });
+   });
+
+   // Timed practice: auto-finish (in place — see `handleTimeExpired`) the moment
+   // the per-problem clock hits zero. `problemRemainingMs` is only non-null for
+   // the active (latest, unanswered) problem, `timerRunning` gates out
+   // paused/loading/frozen states, and the effect above keeps a retuned limit from
+   // landing already-expired, so this fires at most once per problem.
    $effect(() => {
       if (!timerRunning) return;
+      // A limit the rebasing effect hasn't taken up yet is measured against a
+      // baseline belonging to the *previous* limit, and expiring on that is the
+      // exact retroactive finish the rebasing exists to prevent. Skip this flush
+      // and let the rebase settle: if it moves the baseline, this re-runs on the
+      // corrected countdown; if it doesn't, the new limit left a usable margin and
+      // there was nothing to expire. Keeps the two effects order-independent.
+      if (perProblemLimitMs !== lastLimitMs) return;
       if (problemRemainingMs === 0) {
          handleTimeExpired();
       }

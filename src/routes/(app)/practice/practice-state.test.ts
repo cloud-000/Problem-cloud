@@ -39,6 +39,7 @@ describe("practice answer history", () => {
             correct: null,
             flagged: false,
             elapsedMs: 0,
+            limitBaselineMs: 0,
             attemptIndex: null,
             triesUsed: 0,
             triedAnswers: [],
@@ -59,6 +60,7 @@ describe("practice answer history", () => {
             correct: false,
             flagged: true,
             elapsedMs: 321,
+            limitBaselineMs: 100,
             attemptIndex: 4,
             triesUsed: 2,
             triedAnswers: ["c:0", "a:x"],
@@ -83,6 +85,27 @@ describe("practice answer history", () => {
             attemptIndex: 4,
             triesUsed: 2,
         });
+    });
+
+    test("carries the timed-practice countdown baseline across navigation", () => {
+        // The baseline is where a retuned per-problem limit restarted counting. If
+        // back/forward navigation dropped it, returning to the problem would hand
+        // it a countdown it had already spent — and expire it on arrival.
+        const entry = createPracticeHistoryEntry({
+            problem,
+            source: "practice",
+            progress: null,
+        });
+        expect(entry.limitBaselineMs).toBe(0);
+
+        const live = createPracticeAnswerState({
+            elapsedMs: 52_000,
+            limitBaselineMs: 40_000,
+        });
+        commitPracticeHistoryEntry(entry, live, null);
+
+        expect(entry.limitBaselineMs).toBe(40_000);
+        expect(restorePracticeAnswerState(entry).limitBaselineMs).toBe(40_000);
     });
 
     test("converts fetched submissions into historical entries", () => {
