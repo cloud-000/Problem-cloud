@@ -193,34 +193,64 @@ function convertFracToSlash(s: string): string {
 function stripUnitsAndLabels(s: string): string {
     let val = canonicalizeUnicodeMathSymbols(s).trim();
 
-    // 1. Strip leading currency symbols. A leading `$` is only currency when
-    //    it's unpaired; if a second `$` follows it's a `$…$` math delimiter
-    //    (e.g. "$\frac{1}{4}$"), which must be left for normalizeAnswer.
-    val = val.replace(/^[£€¥]\s*/g, "");
-    if (val.startsWith("$") && !val.slice(1).includes("$")) {
-        val = val.replace(/^\$\s*/, "");
-    }
+    // 1. Dollar signs are cosmetic here whether they mean currency or math
+    //    delimiters. Removing every one also makes the value next to a label
+    //    visible (`$10$ cents`, `$2\sqrt{3}$ cm$^2$`). Other currency symbols
+    //    only make sense at the start of an answer.
+    val = val.replace(/\\?\$/g, "").replace(/^[£€¥]\s*/g, "");
+
+    // Text wrappers sometimes carry a unit rather than the value itself:
+    // `100\pi \text{ in}^2`. Unwrapping before label recognition gives that
+    // the same shape as `100\pi in^2`; normalizeAnswer also does this later for
+    // wrappers that are part of the answer (`\text{none}`).
+    val = unwrapTextCommands(val);
+
+    // A lone trailing answer-sheet separator is a source artifact, not an
+    // absolute-value bar. Requiring whitespace before it preserves `|x|`.
+    val = val.replace(/\s+\|\s*$/, "");
 
     // 2. Strip leading approximation words
     val = val.replace(/^(?:approx\.?|about|around)\s+/gi, "");
 
-    // 3. Strip a trailing parenthesized word-label: "900 (pieces)", "48(cm)",
+    // 3. A few source answer sheets put a word-label before the answer, e.g.
+    //    `(page) 509` or `(June) 20`. Requiring at least two letters plus a
+    //    separating space keeps mathematical `(x)5` intact.
+    val = val.replace(/^\(\s*[a-zA-Z][a-zA-Z.\s]+\)\s+(?=\S)/, "");
+
+    // Some OCR rows repeat the value after its label (`15 (integers) 15`).
+    // Collapse only when both visible values normalize identically, so a real
+    // multi-part answer cannot lose one of its parts.
+    const repeated = /^(.*?)\s+\(\s*[a-zA-Z][a-zA-Z.\s]*\)\s+(.+)$/.exec(val);
+    if (repeated && normalizeAnswer(repeated[1]) === normalizeAnswer(repeated[2])) {
+        val = repeated[1];
+    }
+
+    // 4. Strip a trailing parenthesized word-label: "900 (pieces)", "48(cm)",
     //    "$\frac{1}{4}$ (square meters)". The parens must contain only letters,
     //    spaces, and dots (a label/unit, never a math expression like "(n+1)"
     //    or an ordered pair like "(a,b)"), and must follow an actual value (a
     //    non-space char) so a fully-parenthesized answer like "(x)" is left be.
-    val = val.replace(/(\S)\s*\(\s*[a-zA-Z][a-zA-Z.\s]*\)\s*$/, "$1");
+    val = val.replace(
+        /(\S)\s*\(\s*[a-zA-Z][a-zA-Z.\s]*(?:(?:\^\{?[23]\}?)|[²³]|\s[23])?\s*\)\s*\*?$/,
+        "$1",
+    );
 
-    // 4. Strip trailing word labels.
+    // Quoted labels occur in a few imported keys (`24 "words"`). Give them
+    // the ordinary trailing-label shape before applying the unit rule.
+    val = val.replace(/\s*["“”]([a-zA-Z][a-zA-Z.\s]*)["“”]\s*$/, " $1");
+
+    // 5. Strip trailing word labels, including square/cubic exponents. The
+    //    exponent is removable only after a word label, so the mathematical
+    //    answer `5^2` is never reduced to `5`.
     // Units of 2+ characters can have optional space (e.g. 5cm, 5 cm).
     // Single character units (m, s, g, etc.) require at least one space (e.g. 5 m) to distinguish from variables.
-    const unitRegex = /([\d})\]]|\\pi|\\theta|\\infty)(?:\s*[a-zA-Z]{2,}\.?|\s+[msglLhd]\.?)(?:\s+[a-zA-Z]+\.?)*$/;
+    const unitRegex = /([\d})\]]|\\pi|\\theta|\\infty)(?:\s*[a-zA-Z]{2,}\.?(?:\/[a-zA-Z]+\.?)*|\s+[msglLhd]\.?)(?:\s+[a-zA-Z]+\.?)*(?:\s*(?:\^\{?[23]\}?|[²³])|\s+[23])?\s*\*?$/;
     val = val.replace(unitRegex, "$1");
 
-    // 5. Strip trailing percent or degree symbol/words
+    // 6. Strip trailing percent or degree symbol/words
     val = val.replace(/\s*(?:%|°|percent|degrees?)\s*$/gi, "");
 
-    // 6. Clean up any trailing period
+    // 7. Clean up any trailing period
     val = val.replace(/\.$/, "");
 
     return val.trim();
@@ -353,6 +383,54 @@ function assignmentForms(a: string, b: string): [string, string][] {
  * No symbolic algebra is performed at any tier.
  */
 export function answersMatch(a: string, b: string): boolean {
+    const alternativesA = answerAlternatives(a);
+    const alternativesB = answerAlternatives(b);
+
+    return alternativesA.some((alternativeA) =>
+        alternativesB.some((alternativeB) =>
+            singleAnswerMatches(alternativeA, alternativeB),
+        ),
+    );
+}
+
+/** Split source-declared alternatives such as `0.3 or .3` into accepted forms. */
+function answerAlternatives(raw: string): string[] {
+    const alternatives: string[] = [];
+    let start = 0;
+    let roundDepth = 0;
+    let squareDepth = 0;
+    let braceDepth = 0;
+
+    for (let i = 0; i < raw.length; i++) {
+        const char = raw[i];
+        if (
+            char === "(" &&
+            raw[i - 1] !== "\\" &&
+            raw.indexOf(")", i + 1) !== -1
+        ) {
+            roundDepth++;
+        } else if (char === ")" && raw[i - 1] !== "\\") roundDepth--;
+        else if (char === "[" && raw[i - 1] !== "\\") squareDepth++;
+        else if (char === "]" && raw[i - 1] !== "\\") squareDepth--;
+        else if (char === "{" && raw[i - 1] !== "\\") braceDepth++;
+        else if (char === "}" && raw[i - 1] !== "\\") braceDepth--;
+
+        if (roundDepth > 0 || squareDepth > 0 || braceDepth > 0) continue;
+
+        const separator = /^\s+or\s+/i.exec(raw.slice(i));
+        if (!separator) continue;
+
+        alternatives.push(raw.slice(start, i).trim());
+        i += separator[0].length - 1;
+        start = i + 1;
+    }
+
+    alternatives.push(raw.slice(start).trim());
+    return alternatives;
+}
+
+/** Compare one form from each side after alternative expansion. */
+function singleAnswerMatches(a: string, b: string): boolean {
     const cleanA = stripUnitsAndLabels(a);
     const cleanB = stripUnitsAndLabels(b);
 

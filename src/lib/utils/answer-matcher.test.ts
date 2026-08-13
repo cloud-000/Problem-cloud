@@ -92,6 +92,7 @@ describe("units, labels and decoration", () => {
     test("trailing unit words", () => {
         expect(matches("8 pies", "8")).toBe(true);
         expect(matches("19 cm", "19")).toBe(true);
+        expect(matches("5 m", "5")).toBe(true);
         expect(matches("12 square meters", "12")).toBe(true);
         expect(matches("\\frac{1}{4} square meters", "\\frac14")).toBe(true);
     });
@@ -106,6 +107,55 @@ describe("units, labels and decoration", () => {
     test("parenthesized labels and approximation words", () => {
         expect(matches("900 (pieces)", "900")).toBe(true);
         expect(matches("about 7", "7")).toBe(true);
+    });
+
+    test("labels separated from math by dollar delimiters", () => {
+        expect(matches("$10$ cents", "10")).toBe(true);
+        expect(matches("$2\\sqrt{14}$ units", "2\\sqrt{14}")).toBe(true);
+        expect(matches("$16\\sqrt{3}$ cm²", "16\\sqrt{3}")).toBe(true);
+    });
+
+    test("square and cubic unit markup", () => {
+        expect(matches("50 cm²", "50")).toBe(true);
+        expect(matches("64 units$^2$", "64")).toBe(true);
+        expect(matches("$\\frac{48}{5}$ units$^2$", "48/5")).toBe(true);
+        expect(matches("54 units 2", "54")).toBe(true);
+        expect(matches("96\\pi units 3", "96\\pi")).toBe(true);
+        expect(matches("$\\frac{4}{15}$ mi/h", "4/15")).toBe(true);
+        expect(matches("$72\\pi$ (cm$^2$)", "72\\pi")).toBe(true);
+        // Only an exponent attached to a word-label is decoration.
+        expect(matches("5^2", "5")).toBe(false);
+    });
+
+    test("LaTeX text units inside math delimiters", () => {
+        expect(matches("$100\\pi \\text{ in}^2$", "100\\pi")).toBe(true);
+        expect(matches("$102 \\, (\\text{degrees})$", "102")).toBe(true);
+    });
+
+    test("source labels before and between duplicated values", () => {
+        expect(matches("(page) 509", "509")).toBe(true);
+        expect(matches("(June) 20", "20")).toBe(true);
+        expect(matches("15 (integers) 15", "15")).toBe(true);
+        expect(matches('$24$ "words"', "24")).toBe(true);
+        expect(matches("(x) 5", "5")).toBe(false);
+    });
+
+    test("source-declared alternative forms", () => {
+        expect(matches("$30 or 30.00", "30")).toBe(true);
+        expect(matches("0.3 or .3", ".3")).toBe(true);
+        expect(matches("$60$ or $60.00$", "60")).toBe(true);
+        expect(matches("2 + \\sqrt{3} or \\sqrt{3} + 2", "2 + \\sqrt{3}")).toBe(
+            true,
+        );
+        expect(matches("30 or 30.00", "31")).toBe(false);
+        expect(matches("($80 or 80.00", "80")).toBe(true);
+        // `or` inside a label describes the unit; it is not an answer separator.
+        expect(matches("25 (quarts or quarts per minute)", "25")).toBe(true);
+    });
+
+    test("answer-sheet separator artifacts", () => {
+        expect(matches("$\\frac{3}{7}$ |", "3/7")).toBe(true);
+        expect(matches("|3/7|", "3/7")).toBe(false);
     });
 
     test("numeric formatting", () => {
