@@ -1,6 +1,7 @@
 <script lang="ts">
     import { MathStatement } from "$lib/components/math-statement";
     import { Icon } from "$lib/components/icon";
+    import { Button } from "$lib/components/button";
     import {
         DropdownMenu,
         type DropdownOption,
@@ -8,6 +9,7 @@
     import { slide } from "svelte/transition";
     import { untrack } from "svelte";
     import { cn } from "$lib/utils";
+    import { partitionProblemSolutions } from "./problem-solutions";
 
     type Props = {
         /** The problem's `official_solutions`; the panel self-hides when empty. */
@@ -27,9 +29,13 @@
         class: className,
     }: Props = $props();
 
-    // Blank entries are dropped; a problem with no real solutions renders nothing.
-    let items = $derived((solutions ?? []).filter((s) => s?.trim()));
+    // Video links share the source column with written solutions, but are a
+    // separate resource rather than another numbered solution.
+    let partitioned = $derived(partitionProblemSolutions(solutions));
+    let items = $derived(partitioned.written);
+    let videoLinks = $derived(partitioned.videoLinks);
     let count = $derived(items.length);
+    let totalCount = $derived(count + videoLinks.length);
 
     // One-time seed: the panel mounts fresh per problem (callers key it), so the
     // initial-value read is deliberate, not a stale-closure bug.
@@ -53,7 +59,7 @@
     );
 </script>
 
-{#if count > 0}
+{#if totalCount > 0}
     <div class={cn("mx-auto w-full max-w-4xl", className)}>
         <button
             type="button"
@@ -66,7 +72,7 @@
                 opticalSize={20}
                 class={cn(toggleIconCls, expanded && "rotate-180")}
             />
-            <span>{count > 1 ? "Solutions" : "Solution"}</span>
+            <span>{totalCount > 1 ? "Solutions" : "Solution"}</span>
         </button>
 
         {#if expanded}
@@ -106,10 +112,59 @@
                     </div>
                 {/if}
 
-                <MathStatement
-                    text={items[selected] ?? ""}
-                    class="text-left font-serif text-base leading-relaxed text-foreground md:text-lg"
-                />
+                {#if count > 0}
+                    <MathStatement
+                        text={items[selected] ?? ""}
+                        class="text-left font-serif text-base leading-relaxed text-foreground md:text-lg"
+                    />
+                {/if}
+
+                {#if videoLinks.length > 0}
+                    <section
+                        class={cn(
+                            count > 0 && "mt-5 border-t border-border/50 pt-4",
+                        )}
+                    >
+                        <h3 class="text-sm font-semibold text-foreground">
+                            {videoLinks.length > 1
+                                ? "Video solutions"
+                                : "Video solution"}
+                        </h3>
+                        <ul class="mt-2 flex flex-col gap-1.5">
+                            {#each videoLinks as link, i (link)}
+                                <li>
+                                    <Button
+                                        href={link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        variant="outline"
+                                        class="group h-auto w-full min-w-0 justify-start gap-3 bg-background px-3 py-2.5 text-left shadow-xs hover:border-foreground/25 hover:bg-surface-container-low hover:text-foreground"
+                                    >
+                                        <Icon
+                                            name="play_circle"
+                                            fill
+                                            class="shrink-0 text-[1.35em] text-destructive"
+                                        />
+                                        <span class="flex min-w-0 flex-1 flex-col">
+                                            <span class="font-medium text-foreground">
+                                                Video solution{videoLinks.length > 1
+                                                    ? ` ${i + 1}`
+                                                    : ""}
+                                            </span>
+                                            <span
+                                                class="truncate text-xs font-normal text-muted-foreground"
+                                            >{link}</span>
+                                        </span>
+                                        <Icon
+                                            name="open_in_new"
+                                            class="ml-auto shrink-0 text-[1em] text-foreground/70 transition-colors group-hover:text-foreground"
+                                        />
+                                    </Button>
+                                </li>
+                            {/each}
+                        </ul>
+                    </section>
+                {/if}
             </div>
         {/if}
     </div>
