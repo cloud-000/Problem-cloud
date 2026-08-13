@@ -562,7 +562,8 @@ export function astToHtml(nodes: ASTNode[]): string {
 // Rebuild an allowlisted table as sanitized markup. Only the fixed tag set and
 // a fixed class are emitted — no attribute from the source is ever reproduced —
 // and cell contents run back through `astToHtml`, so they are escaped like any
-// other inline text. The table is wrapped so wide tables scroll horizontally.
+// other inline text. The table is wrapped so wide tables scroll horizontally
+// (`.pc-table-wrap`, styled globally in layout.css alongside `.pc-table`).
 function tableToHtml(node: Extract<ASTNode, { type: "table" }>): string {
     const renderRow = (row: TableRow): string => {
         const cells = row.cells
@@ -574,7 +575,7 @@ function tableToHtml(node: Extract<ASTNode, { type: "table" }>): string {
         return `<tr>${cells}</tr>`;
     };
 
-    let out = '<div class="overflow-x-auto"><table class="pc-table">';
+    let out = '<div class="pc-table-wrap"><table class="pc-table">';
     if (node.head.length > 0) {
         out += `<thead>${node.head.map(renderRow).join("")}</thead>`;
     }

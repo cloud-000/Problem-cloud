@@ -635,23 +635,77 @@
 /* Allowlisted HTML tables rendered inside math statements (see math-parser.ts,
    `.pc-table`). Injected via {@html} into the KaTeX render clone, so these must
    be global rules rather than component-scoped. */
+/* The scroll track is centered with `text-align` + an inline-table rather than
+   flex/`justify-content`, which makes the left edge of an overflowing table
+   unreachable inside a scroll container. */
+.pc-table-wrap {
+    overflow-x: auto;
+    text-align: center;
+}
+
 .pc-table {
-    border-collapse: collapse;
-    margin: var(--spacing-md) 0;
+    /* `separate` (with zero spacing) so the outer radius can be rounded on the
+       corner cells — a collapsed table's borders ignore `border-radius`. */
+    border-collapse: separate;
+    border-spacing: 0;
+    display: inline-table;
+    margin: var(--spacing-md) auto;
     font-size: var(--text-body);
+    background-color: var(--color-surface-container-lowest);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
 }
 
 .pc-table th,
 .pc-table td {
-    border: 1px solid var(--color-border);
     padding: var(--spacing-sm) var(--spacing-md);
-    text-align: left;
-    vertical-align: top;
+    text-align: center;
+    vertical-align: middle;
+    /* Interior hairlines only; the outer edge is the table's own border. */
+    border-right: 1px solid
+        color-mix(in oklab, var(--color-border) 60%, transparent);
+    border-bottom: 1px solid
+        color-mix(in oklab, var(--color-border) 60%, transparent);
 }
 
-.pc-table th {
-    background-color: var(--color-surface-container-low);
+.pc-table tr > *:last-child {
+    border-right: 0;
+}
+
+/* `> *:last-child` is the last section (tbody, or thead when it is alone). */
+.pc-table > *:last-child > tr:last-child > * {
+    border-bottom: 0;
+}
+
+.pc-table thead th {
+    background-color: var(--color-surface-container-high);
     font-weight: 600;
+    border-bottom-color: var(--color-border);
+}
+
+.pc-table tbody tr:nth-child(even) > * {
+    background-color: color-mix(
+        in oklab,
+        var(--color-surface-container-low) 55%,
+        transparent
+    );
+}
+
+/* Corner rounding, inset by the 1px border so the fill never bleeds past it. */
+.pc-table > *:first-child > tr:first-child > *:first-child {
+    border-top-left-radius: calc(var(--radius-md) - 1px);
+}
+
+.pc-table > *:first-child > tr:first-child > *:last-child {
+    border-top-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.pc-table > *:last-child > tr:last-child > *:first-child {
+    border-bottom-left-radius: calc(var(--radius-md) - 1px);
+}
+
+.pc-table > *:last-child > tr:last-child > *:last-child {
+    border-bottom-right-radius: calc(var(--radius-md) - 1px);
 }
 
 /* Model-authored prose (see utils/markdown.ts). Global for the same reason as
