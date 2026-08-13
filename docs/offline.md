@@ -1,329 +1,734 @@
-# Offline Mode — Design Proposal
+# Offline Mode — Revised Design Proposal
 
 > [!IMPORTANT]
-> **Status: proposal. Nothing in this document is built.** No service worker, no local
-> cache, no outbox exists in the codebase as of 2026-08-12. This is the design and the
-> reasoning behind it, plus the specific hazards found while tracing the current data
-> path. Update the build-state table (§9) as slices land; until a row says shipped, the
-> code does not do this.
+> **Status: proposal. Nothing in this document is built as of 2026-08-13.** There
+> is no service worker, offline entry route, local problem cache, or outbox in
+> the codebase. The implementation gates in §11 must be cleared before the
+> corresponding slice starts, and the build-state table must be updated as each
+> slice lands.
+>
+> The concrete v1 wire, query, repository, sync, and acceptance contracts live
+> in [`offline-contracts.md`](./offline-contracts.md).
 
-The goal: a user selects a **scope** of problems the same way they scope a goal —
-topic, series, division/format, year range — downloads it while online, and can
-practice that scope with no network at all (a flight, a train), with their work syncing
-correctly on reconnect.
+The product goal is a **downloaded local read replica for a defined scope**.
+While online, a signed-in user downloads every problem and the supporting
+metadata in a goal-shaped scope. While offline, supported app features query
+that local dataset instead of Supabase, layer pending local work over the
+downloaded snapshot, and sync raw writes exactly once after reconnecting.
 
-Design decisions were settled 2026-08-12; §7 records what was chosen and why, including
-the two that are non-obvious (timestamp anchoring, multi-device collisions).
+The package is not a pre-drawn queue and is not tied conceptually to one order
+of practice. It is a reusable local database boundary: queries may narrow what
+was downloaded, but may never expand beyond it.
 
----
+The architecture is viable, but the first draft had three unsafe assumptions:
 
-## 1. SSR is not the obstacle
+1. a personalized SvelteKit `__data.json` response could be used as the offline
+   identity cache;
+2. backdated submissions could pass through the live progress/rating triggers
+   without changing their meaning; and
+3. repeatedly calling the current draw function would be a suitable way to
+   materialize a reusable local dataset.
 
-The instinct is that Supabase SSR makes offline hard. It does not, because the app
-barely uses SSR for data:
-
-- **One server load exists in the entire app**: `src/routes/+layout.server.ts` (session,
-  profile, and a `last_active_at` touch). There is no `+page.server.ts` under `(app)/`.
-- **Every read and write is client-side**, through the browser Supabase client, via
-  `$lib/library.ts`, `$lib/trainer.ts`, `$lib/progress.ts`, `$lib/sessions.ts`. All of
-  these already take `supabase` as their first argument, which is the natural seam for a
-  local implementation.
-- **Grading already happens in the browser** (`answersMatch`, `PracticeView.svelte:1458`).
-  The answer key is therefore *already* shipped to the client for any problem being
-  attempted; offline grading discloses nothing new.
-- **Problem content is pure text.** No storage buckets, no image URLs — figures are
-  Asymptote source rendered client-side by `src/lib/asy/`. A 25-problem test with
-  official solutions is on the order of 100–200 KB, so a downloaded scope is small and
-  IndexedDB is comfortably sufficient.
-
-Offline is therefore not an SSR rearchitecture. It is four separable problems, and only
-two of them are hard: **identity** and **writes**.
+None is true. This revision separates the credential-free shell, downloaded
+catalog data, local identity, and pending writes; keeps database truth in server
+receipt order; and materializes the complete resolved scope in bulk.
 
 ---
 
-## 2. Shell and assets
+## 1. Product boundary and first shipping slice
 
-There is no `src/service-worker.ts`. Add one built on `$service-worker`'s `build`/`files`
-manifest: precache the app shell, and answer navigations **cache-first** when the network
-is unavailable.
+The architecture targets a general scoped local query source. The first shipping
+slice is deliberately smaller than the storage/query foundation so the first
+write-and-recovery path can be proven end to end.
 
-Two hazards, both easy to miss and both fatal on their own:
+The foundation supports:
 
-- **KaTeX and the icon font are loaded from CDNs.** `src/app.html` pulls
-  `katex.min.css` / `katex.min.js` / `auto-render.min.js` from `cdn.jsdelivr.net` and
-  Material Symbols Rounded from `fonts.googleapis.com`. Offline that means **no math
-  rendering and no icons** — the app is unusable no matter how good the data cache is.
-  **Decision: self-host both** (§7 D6), which also removes two CDN dependencies from the
-  critical render path for online users. Self-hosting the icon font changes the subset
-  workflow, so `scripts/icon-subset.ts` (and the test that fences it) must learn the new
-  location.
-- **`authGuard` must never be reached offline.** `src/hooks.server.ts:86` redirects
-  unauthenticated requests to `/auth/login`. Offline, a navigation that reaches the
-  Worker simply fails and the browser shows its own offline page instead of the app. The
-  service worker has to answer navigations before the network, not fall back to it.
+- one signed-in account's downloaded data at a time;
+- goal-shaped scope axes that the current UI actually authors: topic,
+  `seriesIds`, and per-series division/format filters;
+- every canonical problem reached by the scope, including current rating,
+  progress, placement, answer, and solution metadata needed by local queries;
+- reusable queries within the downloaded boundary rather than a fixed queue;
+- a downloaded server snapshot plus an immediate local overlay of pending
+  submissions, mastery, engagement, and session state;
+- browser grading through `answersMatch`;
+- local optimistic history and counters;
+- idempotent foreground sync after the user's server session is valid again.
 
-The root layout's server data (`__data.json`) is fetched on every client navigation
-because the root layout has a server load. Cache it stale-while-revalidate; offline,
-`+layout.ts` takes the `isBrowser()` branch anyway and never needs the server client.
+The first shipping slice exposes:
 
----
+- one explicitly downloaded package;
+- one dedicated practice session created online with a real server id;
+- **New** mode as the first consumer of the general local query repository;
+- offline reload/resume, grading, local history, and synchronization.
 
-## 3. Identity offline is not a session
+The first shipping slice does **not** expose:
 
-This is where offline-Supabase attempts usually die. Access tokens expire in an hour
-(`supabase/config.toml:187`, `jwt_expiry = 3600`); `autoRefreshToken` fails mid-flight,
-and the resulting auth events are easy to mistake for a sign-out — at which point the
-app helpfully throws away the user's downloaded work.
+- arbitrary offline navigation through the authenticated app;
+- root/free practice;
+- Review, Skipped, Mixed, List, or Test modes;
+- offline library, goals, history, progress, or analytics;
+- offline Coach persistence or work-thread anchors;
+- background sync while no authenticated page is open;
+- simultaneous offline work for multiple accounts in one browser profile.
 
-**The rule: offline identity is a locally persisted profile, not a live JWT.** Capture
-`{ userId, username, profile }` while online. Gate the offline UI on *"there is a local
-profile and a downloaded scope for this user id"* — never on a valid session. Nothing
-offline touches PostgREST, so no token needs to be valid for any of it to work.
-
-Consequences:
-
-- A failed token refresh while `!navigator.onLine` **must not** clear local state. An
-  explicit `offline` flag in app state, set from connectivity plus failed-request signal.
-- On reconnect, refresh normally. If the refresh token is dead, **require login before
-  flushing the outbox**. The outbox is keyed by `userId`, so it survives re-login intact
-  and flushes afterward.
-- Refresh-token rotation is on (`config.toml:193`) with a 10s reuse interval, so multiple
-  tabs racing a refresh on reconnect can burn each other's token and force a re-login.
-  The outbox must be durable across that, which the `userId` keying already gives.
-- Do not attempt to extend token lifetimes to cover a flight. The fix is to stop needing
-  a token, not to hold one longer.
+Those modes must not be designed out of the repository. New mode simply removes
+the hardest encounter-reconstruction case from the first release: it never
+intentionally repeats a previously seen problem. A dedicated, pre-created
+session also avoids local-to-server session-id rewriting until offline-created
+sessions are designed.
 
 ---
 
-## 4. Reads: download a scope, walk a queue
+## 2. Local data layers and trust levels
 
-### 4a. Scope selection reuses the goal scope resolver
+Offline mode must not blur different kinds of persisted state.
 
-A downloaded scope is the **same shape as a goal's scope** — topic, `seriesIds`,
-per-series divisions/formats, year range — and resolves through the same function:
-`public.goal_scope_canonicals(p_scope jsonb)` (`supabase/schemas/goal_scope.sql:121`).
-It is `stable` / `security invoker`, returns `(canonical_id, gradeable)`, and is measured
-at ~20ms for a two-series scope and ~87ms for the whole catalog.
+| Layer | Contents | Authority | Lifetime |
+|---|---|---|---|
+| Versioned asset cache | JS, CSS, self-hosted fonts, KaTeX, neutral offline document | build | replaced per deployment |
+| Revision-scoped media cache | statement/choice/solution images, including rendered Asymptote images | package snapshot | retained while its ready package revision is active |
+| Local account marker | active user id and minimal display label; **no tokens or cookies** | convenience only | cleared on logout/account change |
+| Package manifest | scope, membership, versions, counts, freshness, download state | server snapshot | refreshable/evictable |
+| Shared catalog records | canonical problem content and placement/test/series metadata | server snapshot | retained while referenced by a package |
+| Personal base state | frozen ratings, progress, mastery, engagement, and server sessions | server snapshot | refreshed after sync/package refresh |
+| Local overlay | effective progress/session changes derived from pending local operations | provisional local state | reconciled after sync |
+| Outbox | submissions and other pending operations | unsynced user work | never evicted for age or cache pressure |
 
-This is a hard rule inherited from the goals layer: **scope always resolves through
-`goal_scope_canonicals` — never re-derive it.** The download path is a new caller, not a
-new resolver, and the scope editor UI in `src/routes/(app)/goals/` is the model for the
-picker.
+Every IndexedDB record is keyed by `userId`. The currently active offline user
+is a separate pointer, not an inference from whichever record happens to exist.
+Opening offline data for user A after user B signs in is forbidden.
 
-### 4b. The server draws the queue, not the client
+Problem content is stored once per user/content revision and packages reference
+it through membership records. Overlapping downloads must not create independent
+copies or independent personal progress. One canonical problem and one effective
+personal state can belong to many packages.
 
-Do **not** port the trainer's draw functions offline. `fetchNewProblem`,
-`fetchDueReviewProblem`, and friends (`src/lib/trainer.ts:616-683`) are rating-band and
-exclusion-list SQL against `problem_ratings` and `problem_progress` with random offsets.
-Reimplementing that locally is a large surface that will silently drift from the SQL —
-the same failure mode the client-side rating mirror is explicitly guarded against (see
-[`docs/ratings.md`](./ratings.md)).
-
-Instead, **"download a scope" means the server hands back a pre-drawn, ordered queue.**
-One RPC resolves the scope, applies the draw, and returns:
-
-- the problem rows for the queue,
-- the user's `problem_progress` rows for them,
-- current `problem_ratings`,
-- and a **pre-minted `practice_sessions` row**.
-
-Pre-minting the session while still online is what sidesteps local-id→server-id mapping
-entirely: every offline submission already has a real `session_id` to point at, so replay
-needs no id rewriting.
-
-### 4c. The trainer walks the queue
-
-Test format already loads a whole test upfront (`fetchTestProblems`,
-`PracticeView.svelte:321`), so it needs nothing new. Practice mode draws one problem at a
-time (`drawIndex`, `fetchProblemById`, lines 548/1337) and is where the work is: offline,
-the draw resolves against the cached queue instead of a round trip.
-
-### 4d. Cache freshness
-
-A scope goes stale — ratings move, progress changes on other devices. **Max age is 5
-days** (§7 D5), with a manual re-sync button. Staleness **warns, it does not block**:
-refusing to open a queue on day six mid-flight is the worst possible failure mode. A
-stale scope shows a resync prompt and is excluded from background refresh; queued work
-still runs, and un-flushed outbox entries are never discarded for staleness.
-
-### 4e. The `choices` hazard travels with the cache
-
-A downloaded scope contains answer keys (`choices[answer_index]` for free-response — see
-CLAUDE.md). Every offline read path must gate on `isMultipleChoice()` exactly as the
-online one does, and if Coach context is compiled offline, `test-locked` must still
-withhold the key **structurally** rather than by asking the model.
+Downloaded problem data includes answer keys. It is no more secret than the same
+rows already returned to the browser online, but it is durable local data and
+must be described honestly in the download UI. Logging out hides downloads
+immediately. Synced packages may be deleted; pending outbox records must remain
+sealed to their user id until that same account authenticates and syncs or
+explicitly discards them.
 
 ---
 
-## 5. Writes: an outbox of raw submissions, replayed
+## 3. Shell and identity: never cache personalized SvelteKit data
 
-The architecture is unusually well suited here. Ratings and SM-2 progress are **DB-owned
-and derived from `submissions` by trigger**, and `docs/ratings.md` already commits to a
-live ≡ replay determinism contract. So the offline write model falls out:
+### 3a. Why `__data.json` is not the offline identity
 
-**Queue raw submission rows locally; replay them in order on reconnect; let the triggers
-derive everything else.**
+`src/routes/+layout.server.ts` currently serializes `session`, `user`,
+`profile`, and `cookies`. The reconstructed session contains access and refresh
+tokens (`src/hooks.server.ts`). Caching that response would persist credentials
+in CacheStorage and could resurrect the wrong account after logout or account
+switching.
 
-- Do **not** compute Glicko client-side. The mirror in `src/lib/library.ts` is a preview
-  and is explicitly subordinate to the SQL.
-- Do **not** persist optimistic progress as if it were truth. Show optimistic UI; treat
-  the server as authoritative once the flush completes.
-- Flush strictly in timestamp order — the encounter trigger assumes chronological arrival
-  (§6a).
-- The Test-format batch insert (`PracticeView.svelte:405`) drops into this cleanly — it
-  is already one atomic batch of rows.
+It is also unnecessary. A root layout server load is retained across ordinary
+child navigation until one of its dependencies is invalidated; it is not fetched
+on every client navigation merely because it exists.
 
-Also outbox: the `problem_progress` mastery/engagement RPCs (`src/lib/progress.ts`), and
-Coach message persistence (§8).
+Hard rules:
 
-**The flush cannot be a pure client→PostgREST write.** Both repair functions
-(`recompute_problem_progress`, `recompute_ratings`) are service_role, so reconnect needs
-an `/api/sync`-style endpoint. The precedent is `/api/ai/messages`, which writes
-service-role for the same class of reason — but note this is the first non-Coach
-server-side write in the app.
+- never runtime-cache `__data.json`, `/_data.json`, API responses, Supabase
+  responses, or authenticated HTML;
+- never store access tokens, refresh tokens, cookie values, or the serialized
+  `Session` in the offline database;
+- never use a cached server response to decide that the user is authenticated;
+- require a freshly validated server session before flushing.
+
+### 3b. A neutral offline entry document
+
+The service worker needs a credential-free document it can return when a
+navigation cannot reach the server. The clean route is:
+
+1. Move the authenticated root server/universal loads from `src/routes/` into
+   the `(app)` route group, leaving the root layout presentation-only.
+2. Add a neutral `/offline` route outside `(app)` that has no server data and is
+   safe to prerender/cache.
+3. Precache that document plus `build` and the deliberately selected files from
+   `static` using `$service-worker`.
+4. Use cache-first only for versioned build/static assets. Use network-first for
+   navigations and fall back to the neutral offline document on a network
+   failure.
+5. The offline route reads the active account marker and complete packages from
+   IndexedDB. With no valid package, it shows an explanation rather than an
+   imitation of the signed-in app.
+
+The service worker must not cache every successful GET opportunistically. The
+app has personalized reads, answer-bearing payloads, and API responses whose
+staleness rules differ; the IndexedDB repository owns the data cache explicitly.
+
+### 3c. Connectivity is a state machine
+
+`navigator.onLine` is only a hint. Track at least:
+
+- `online`: a recent application request succeeded;
+- `offline`: the browser reports offline or a connectivity probe failed;
+- `auth-required`: the network is back but the session could not be refreshed;
+- `syncing` / `sync-error`: connectivity exists and outbox work is being handled.
+
+Do not clear local data because token refresh failed. On reconnect, validate the
+session first, confirm its user id matches the outbox, then acquire the sync lock.
+Refresh-token races between tabs can still require login; that is an auth state,
+not data loss.
 
 ---
 
-## 6. Timestamps, and why they are the crux
+## 4. Self-host every critical rendering asset
 
-Everything derived from a submission keys off `created_at`, in three different ways:
+`src/app.html` currently loads KaTeX from jsDelivr and Material Symbols Rounded
+from Google Fonts; `layout.css` also imports Inter, JetBrains Mono, and Source
+Serif 4 from Google Fonts. Without them, offline problems lose math rendering,
+icons, or their intended typography.
 
-| Consumer | Needs |
+Self-host:
+
+- `katex.min.css`, `katex.min.js`, `auto-render.min.js`, and every KaTeX font
+  referenced by the stylesheet;
+- the Material Symbols Rounded variable-font subset used by the app;
+- the text-font faces and weights actually used by the app.
+
+Keep the existing icon extraction bias: `scripts/icon-subset.ts` intersects all
+string literals with the official glyph list because dynamic icon names cannot
+be found reliably from `<Icon>` call sites alone. Change its output from a Google
+Fonts URL to the locally generated subset and update `icon-subset.test.ts` to
+verify both glyph coverage and the vendored asset.
+
+Problem-authored media is package data, not build data. The package protocol
+extracts image references from statements, choices, and official solutions,
+including `[asy=<url>]`, `[img]`, and markdown images. The browser downloads
+them into a revision-scoped staging CacheStorage cache and commits the package
+only when every required image is present. The service worker serves the
+original URL from the active package revision while offline. A failed media
+fetch leaves the previous ready revision untouched; orphaned staging caches are
+removed on startup after consulting IndexedDB.
+
+This self-hosting slice is independently shippable and should land first.
+
+---
+
+## 5. Scope packages and bulk materialization
+
+### 5a. The SQL resolver remains authoritative
+
+A download scope uses the same shape and semantics as a goal:
+
+```ts
+type OfflineScope = {
+    topic: string[];
+    seriesIds: string[];
+    seriesScopes: Record<string, { divisions: string[]; formats: string[] }>;
+};
+```
+
+Membership must flow through
+`public.goal_scope_canonicals(p_scope jsonb)`. It is placement-aware: a
+canonical may enter the scope through an alias placement under another test.
+Filtering canonical rows directly by their own test metadata is not equivalent.
+
+`yearRange` is accepted by the SQL function but no current goal/practice editor
+authors it. Do not advertise a year filter in offline v1 until the shared scope
+UI and practice contract both own it.
+
+### 5b. A package contains the complete scope, not a draw
+
+The existing New draw:
+
+- rereads `problem_progress` on every call;
+- grows an uncapped `id.in.(...)` URL exclusion list;
+- applies an adaptive band around one rating;
+- does not consume the canonical-id set returned by
+  `goal_scope_canonicals`.
+
+Calling it repeatedly is therefore slow, does not make the resolver the actual
+membership boundary, and produces a queue rather than the reusable local query
+source the product requires.
+
+Add a paginated/streamed materialization RPC or server endpoint that:
+
+1. calls `goal_scope_canonicals`;
+2. returns every canonical reached by the scope, without applying a practice
+   mode's seen/gradeable/mastery/engagement filters;
+3. joins canonical problem content, answer and solution metadata, and every
+   matching placement needed for local series/division/format/test queries;
+4. returns current overall problem ratings and the user's frozen progress,
+   mastery, and engagement for those canonicals;
+5. returns the frozen player rating and the server sessions needed by the first
+   supported offline workflow;
+6. returns stable pages/cursors, total counts, byte estimates, content revision,
+   and package revision;
+7. enforces hard server-side row, page, and payload limits without silently
+   sampling away part of the requested scope;
+8. creates the package checkout and, for the first shipping slice, its dedicated
+   `practice_sessions` row in the same online workflow.
+
+The endpoint derives `userId` from the authenticated request. It never accepts
+an arbitrary owner from the body.
+
+This endpoint materializes scope membership and facts; it does not reproduce any
+trainer mode or ordering. If the requested scope exceeds a product/storage hard
+limit, the download must explain the size and ask the user to narrow the scope.
+It must never present a sample as though it were the complete downloaded scope.
+
+### 5c. Package shape and atomic installation
+
+Do not reduce a package to `ProblemRow[]`. A reusable local query source needs
+normalized entities and explicit membership:
+
+```ts
+type OfflinePackageManifest = {
+    id: string;
+    userId: string;
+    scope: OfflineScope;
+    contentRevision: string;
+    packageRevision: string;
+    requestId: string;
+    personalStateAt: string;
+    downloadedAt: string;
+    checkoutId: string;
+    problemCount: number;
+    placementCount: number;
+    assetCount: number;
+    byteCount: number;
+    state: "staging" | "ready" | "stale";
+};
+```
+
+The IndexedDB schema should contain stores equivalent to:
+
+- `packages` and `packageMembership`;
+- `problems` keyed by canonical id/content revision;
+- `placements` keyed by placement id with canonical/test/series coordinates;
+- `ratings` and `personalState` keyed by user/canonical;
+- `sessions`, `localSubmissions`, `organizationOverrides`, and `outbox`.
+
+Raw `CANONICAL_STATE_SELECT` embeds still pass through `normalizeEmbeds` before
+they feed a UI `ProblemRow`, but the durable package keeps normalized placement
+and personal-state records rather than embedding mutable state into copied
+problem objects.
+
+A download installs into a staging package. Each page is validated and written
+transactionally. Only after every page, count, revision, and checksum agrees is
+the package marked `ready`. A failed refresh leaves the previous ready package
+intact.
+
+`packageId` is the stable local identity shown to the user. Each initial
+download or refresh has a fresh `requestId` (its idempotency key) and receives a
+new immutable `checkoutId`/`packageRevision`. Pending operations retain the
+checkout under which they were created, so refreshing a package cannot rewrite
+or invalidate unsynced work from its previous revision.
+
+The package manifest also includes:
+
+- schema version and app build compatibility version;
+- user id, scope, and any pre-created server session ids;
+- server `downloadedAt` and `checkoutId`;
+- frozen player rating;
+- problem/placement counts, byte count, and page/checksum metadata;
+- last successful sync time and outbox count.
+
+Cache freshness is five days. Staleness warns and prevents automatic refresh; it
+never blocks opening an existing package and never deletes pending work.
+
+### 5d. Refresh and overlapping packages
+
+Refreshing a package first syncs or preserves its pending overlay, resolves the
+scope again, downloads changed/added records into staging, updates membership,
+and atomically swaps the ready revision. Removing a membership never deletes a
+canonical record still referenced by another ready package.
+
+Personal base state is shared per user/canonical, not copied per package. A
+successful sync or online refresh can therefore update effective progress in
+every overlapping package at once.
+
+---
+
+## 6. Offline trainer behavior
+
+The trainer needs a domain-level data-source seam, not a fake Supabase client.
+The fluent PostgREST query builder is not a useful interface for IndexedDB.
+
+Define a query contract plus explicit entity/write operations, for example:
+
+- `queryProblems(query: PracticeQuery)`;
+- `getProblem(problemId)`;
+- `getEffectiveProgress(problemId)`;
+- `getPlayerRating()`;
+- `loadSession()`;
+- `recordSubmission()`;
+- `setMastery()`;
+- `setEngagement()`;
+- `setCurrentProblem()`;
+- `finishSession()`.
+
+The online implementation delegates to the existing library/session functions;
+the offline implementation reads/writes one IndexedDB transaction. The
+component should not scatter `if (offline)` around individual Supabase calls.
+
+### 6a. Local queries may narrow, never expand
+
+The package membership set is the outer authorization/data boundary. A local
+query can filter that set by:
+
+- topic, series, division, format, and eventually year;
+- answer, solution, verified, and computational attributes;
+- manual/adaptive rating range;
+- seen/solved/skipped/review status;
+- mastery and engagement;
+- current-session exclusions and ordering.
+
+A query that asks for data outside every ready package returns an explicit
+`not_downloaded` result. It never silently goes to the network while the app is
+in an offline session.
+
+IndexedDB indexes should retrieve a reasonably small candidate set; a pure
+TypeScript query layer applies remaining compound predicates, canonical collapse,
+sorting, and seeded random selection. Candidate semantics live in shared pure
+functions wherever possible so online and offline repositories can be contract
+tested against the same fixture dataset.
+
+If measured whole-scope sizes make IndexedDB candidate filtering inadequate,
+the repository boundary permits moving the local implementation to SQLite/WASM
+in OPFS. Do not accept that added asset, migration, browser-compatibility, and
+worker complexity without measurements; defined scopes are expected to fit the
+simpler IndexedDB design.
+
+### 6b. Snapshot plus overlay equals effective state
+
+The downloaded personal state is a frozen base. Every local query reads the
+effective state formed by applying pending operations over that base:
+
+```text
+downloaded server snapshot
+          +
+pending local submissions and organization changes
+          =
+effective offline state
+```
+
+Recording a submission atomically appends local history/outbox data and updates
+the overlay used by later queries. New mode must immediately exclude that
+problem; skipped/list filters must see local outcomes when those modes ship; and
+mastery/engagement changes must be visible across every package containing the
+canonical. Optimistic derived state is provisional and is replaced by refreshed
+server truth after sync.
+
+### 6c. New mode is the first query consumer
+
+For the first shipping slice, `queryProblems` applies New-mode predicates to the
+complete package and chooses one result:
+
+- Adaptive off: follow the stored seeded order.
+- Adaptive on: choose among locally indexed candidates near a shadow player
+  rating, with seeded tie-breaking so equal candidates do not collapse to id
+  order.
+- Never display or sync the shadow rating.
+- Problems with no rating remain eligible through the existing fallback
+  semantics.
+
+Update the shadow through the existing `glickoMatchPreview` only:
+
+```ts
+shadow += correct ? preview.deltaWin : preview.deltaLoss;
+```
+
+This is approximate selection state, not a client rating. It resets after a
+successful sync; server ratings remain the only truth.
+
+Later modes reuse the same package/query/overlay foundation. Review requires an
+explicit policy for provisional local scheduling; Test requires complete ordered
+placement sets and atomic batch sync; neither requires a new local database.
+
+### 6d. Network touchpoints
+
+| Current touchpoint | V1 offline behavior |
 |---|---|
-| Rating replay fold (`recompute_ratings`) | relative **order** only |
-| Encounter grouping (`set_submission_encounter`) | **deltas** within a `(user, problem)` pair |
-| SM-2 `next_review_at`, RD staleness inflation, history display | **absolute** value |
+| `fetchProblemRating` | read frozen rating from shared local rating state |
+| `refreshPlayerRating` | do not call; show the downloaded rating as offline/stale |
+| session settings/current problem | update the local session snapshot |
+| `recordSubmission` | append one idempotent outbox operation transactionally with local history/counters |
+| automatic mastery | append/update a mastery operation after the submission |
+| older server history | unavailable; Back is limited to this local run |
+| `endSession` | append a session-finish operation after prior session operations |
+| Coach work thread | disabled with an explicit offline explanation in v1 |
 
-### 6a. Anchored relative timestamps
+The overloaded `choices` rule does not change offline. Every rendering/context
+path gates options through `isMultipleChoice()`. A free-response answer key is
+never rendered as option A, and `test-locked` context withholding remains
+structural if Coach support is added later.
 
-Naively stamping every offline row at flush time is actively wrong: the encounter trigger
-(`ratings.sql:341`) compares `new.created_at - prev.created_at` against `encounter_gap`,
-so a block of rows all sharing one timestamp collapses separate sittings on the same
-problem into a single encounter and inflates `attempt`. Naively trusting the device clock
-is also wrong — laptops crossing timezones mid-flight adjust it.
+---
 
-**The client records a monotonic offset (`performance.now()`) per submission, not a wall
-clock, and the server anchors the block at flush:**
+## 7. Time semantics: occurrence is not rating order
 
+The original design backdated `submissions.created_at` at flush. That cannot
+pass safely through the current live triggers:
+
+- `set_submission_encounter` reads the newest existing row, so a backdated insert
+  can produce a negative delta and wrong encounter/attempt;
+- `handle_submission_rating` applies the old event to already-current rating
+  state and then moves `last_match_at` backwards;
+- `handle_new_submission` can move progress timestamps and schedules backwards;
+- repairing one user's progress does not repair shared problem ratings.
+
+V1 therefore uses two clocks:
+
+- `created_at`: server receipt time and authoritative trigger/replay order;
+- `occurred_at`: nullable client occurrence time for display/audit only.
+
+For online submissions, both are effectively now. For offline submissions, the
+sync endpoint supplies a bounded `occurred_at` but leaves `created_at` to the
+database. Ratings, encounter annotations, progress folding, SM-2 scheduling,
+and session aggregates continue to use `created_at` in v1. A long trip therefore
+delays the next-review schedule by roughly the offline duration. That is an
+explicit fidelity tradeoff in exchange for live ≡ replay determinism and no
+global rebuild on every reconnect.
+
+### 7a. Durable local ordering
+
+`performance.now()` alone is not durable: it resets across reloads, browser
+restarts, and different tabs. Each local event stores:
+
+- a monotonically increasing outbox `sequence` allocated in IndexedDB;
+- a `runtimeId` and monotonic offset within that runtime;
+- device wall time for user-facing occurrence display;
+- the server-issued `checkoutId` and `downloadedAt` bound.
+
+At sync, the server clamps `occurred_at` to the interval from the server-issued
+download time through the sync receipt time and preserves `sequence` as the
+stable order. Exact spacing is promised only within one runtime segment;
+cross-restart wall time is best-effort. Timezone changes do not alter Unix time,
+but manual clock changes can, which is why the server clamp is required.
+
+### 7b. Why New-only matters
+
+New mode excludes prior factual activity and consumes every downloaded canonical
+at most once. Consequently the offline block does not need to reconstruct two
+separate sittings for the same `(user, problem)` pair. The receipt-time encounter
+trigger creates a fresh encounter and the deterministic rating fold remains
+valid.
+
+List/review modes can repeat an already-seen problem. Supporting them requires a
+settled encounter-boundary representation and replay contract; they remain out
+of v1 rather than receiving subtly wrong annotations.
+
+---
+
+## 8. Outbox and sync protocol
+
+The outbox is a typed operation log, not a queue of arbitrary HTTP requests.
+
+```ts
+type OfflineOperation = {
+    id: string;              // client UUID / idempotency key
+    userId: string;
+    checkoutId: string;
+    sessionId: number;
+    sequence: number;
+    occurredAt: string;
+    type: "submission" | "mastery" | "engagement" | "session-finish";
+    dependsOn: string[];
+    payload: unknown;
+    state: "pending" | "syncing" | "failed";
+};
 ```
-created_at = flush_time − (last_offset − this_offset)
-```
 
-The final offline submission lands at flush time; everything before it keeps its true
-spacing. Properties:
+### 8a. Required database surface
 
-- encounter deltas are **exact**,
-- replay order within the user is **exact**,
-- backdating is **bounded by the offline block's duration** and never more,
-- `next_review_at` shifts by at most that duration,
-- device clock skew and timezone changes are irrelevant,
-- the server-side clamp is trivial: every row in a flush must land in
-  `[now − max_window, now]`.
+The declarative schema needs:
 
-**Residual drift, accepted:** other users' matches that landed during your offline window
-sort before your backdated rows in the global replay but arrived after them live, so live
-state diverges from a full rebuild by a bounded amount until the next
-`recompute_ratings()`. `recompute_ratings()` takes no arguments — it is a **global**
-replay with no per-user variant, and one is not really definable, since your matches move
-*problem* ratings that every other player shares. This is exactly the drift the repair
-path was built to absorb.
+- nullable `submissions.client_key uuid` plus a unique partial index on
+  `(user_id, client_key)`;
+- nullable `submissions.occurred_at timestamptz` for bounded display/audit time;
+- an `offline_checkouts` table (or equivalently named package-checkout table)
+  carrying checkout id, user, device, package scope/revision, optional
+  pre-created session, download/sync/completion timestamps, and lifecycle state;
+- transient `offline_package_pages` rows containing the exact materialized JSON
+  and checksum for each page, so retries cannot observe content/progress changes
+  behind the same revision; finalize deletes them and unfinished rows expire
+  after seven days;
+- a singleton catalog revision advanced by every successful content sync,
+  including deletions;
+- a complete-scope materialization function that calls
+  `goal_scope_canonicals`, pages stable normalized facts, and cannot be used to
+  read another user's personal state;
+- a closed, versioned transactional sync function returning operation
+  acknowledgements and `client_key -> submission_id` mappings.
 
-### 6b. What actually changes in the schema
+Schema changes are made in `supabase/schemas/`, followed through the Supabase CLI
+diff/migration flow, and then regenerate
+`src/lib/types/database.types.ts`. Do not hand-edit the generated types. RLS and
+grants must make checkouts owner-readable while keeping sync-derived writes
+behind the narrow function/endpoint; neither function accepts an arbitrary
+effective user from the client.
 
-`created_at` needs **no grant or column change** to become client-supplied: the grant is a
-plain `grant select, insert` with no column restriction (`submissions.sql:333`), and
-`set_submission_encounter` already reads `new.created_at` rather than `now()`. The change
-is only the **clamp trigger** described above, to stop a client stamping rows outside the
-allowed window.
+### 8b. Application protocol
 
-The one genuine addition is an **idempotency key**: a nullable client-generated
-`client_key uuid`, unique per user, so a partially-failed flush is retryable without
-duplicating rows. Direct precedent — the Coach deliberately mints conversation and
-message ids in the browser for exactly this reason (CLAUDE.md, "The browser owns
-conversation and message identity").
+Rules:
 
-Regenerate `src/lib/types/database.types.ts` after either change.
+- Creating a local history entry, updating consumed ids/counters, and appending
+  its submission operation is one IndexedDB transaction.
+- Submission operations carry every raw field currently sent by
+  `recordSubmission`, including answer text and `tries_used`.
+- The sync endpoint authenticates the request, derives the user id, validates
+  checkout/session ownership, bounds batch and field sizes, and rejects a mixed
+  user batch.
+- A database RPC applies one ordered batch transactionally. Submission inserts
+  use the idempotency key and return `client_key -> submission_id` mappings.
+- Mastery/engagement writes run after their dependencies. Session finish runs
+  last.
+- The endpoint returns acknowledged operation ids and authoritative session
+  counters. Only acknowledged entries are removed locally.
+- A retry of an interrupted batch is safe. An unknown outcome is retried, never
+  guessed successful.
 
-### 6c. Multi-device collisions
+Do not expose a general service-role write endpoint. The accepted operation
+union and allowed columns are closed and versioned.
 
-The failure is specific. You solve problem #500 offline at 14:00; your phone solves #500
-online at 15:00; you flush at 18:00 and the row is anchored back to ~14:00. The encounter
-trigger picks `prev` by `order by created_at desc` — the 15:00 row — computes a *negative*
-delta, finds it is not greater than `encounter_gap`, and files the 14:00 attempt as
-attempt #2 of an encounter that began after it. The annotations are wrong, which
-mis-weights the rating slightly and mis-orders analytics. It does not corrupt anything.
-
-Mitigation, in order of cost:
-
-1. **Advisory device checkout.** The flag is set at *download* time — "this device has a
-   scope checked out" — and cleared at flush, because a device cannot announce it is
-   offline *while* offline. Other devices show a warning banner. It is advisory, not a
-   lock; there is no way to actually stop the other device.
-2. **Collision detection at flush.** The sync endpoint can see any existing submission for
-   the same `(user, problem)` newer than an incoming row, and repair those problems
-   specifically.
-3. **An annotation repair function.** `recompute_problem_progress(p_user_id, p_problem_id)`
-   (`submissions.sql:461`) rebuilds counters and the SM-2 schedule but **not** the
-   `encounter` / `attempt` / `encounter_ms` annotations. A full repair wants a companion
-   `recompute_submission_encounters(user, problem)`, which does not exist yet.
+Sync runs in a foreground authenticated page. Acquire a Web Lock keyed by user
+id (with a BroadcastChannel fallback/status channel) so two tabs do not flush
+the same outbox concurrently. Service-worker Background Sync is deferred: it
+cannot safely assume a refreshed Supabase session and is not consistently
+available across target browsers.
 
 ---
 
-## 7. Decisions (settled 2026-08-12)
+## 9. Multi-device and account conflicts
 
-| # | Decision | Choice |
-|---|---|---|
-| D1 | Rating fidelity vs. honest timestamps | **Anchored relative timestamps** (§6a) — backdating bounded to the offline block, drift absorbed by the global repair path |
-| D2 | v1 scope | **Full**: goal-style scope picker, practice-mode queues, IndexedDB store, trainer walks the cached queue |
-| D3 | Scope granularity | Same shape as a goal's scope, resolved by `goal_scope_canonicals` (§4a) |
-| D4 | Multi-device conflicts | **Advisory checkout flag** set at download, cleared at flush, plus flush-time collision repair (§6c) |
-| D5 | Cache freshness | Manual re-sync button; **5-day max age**; stale warns, never blocks (§4d) |
-| D6 | Self-host KaTeX + icon font | **Yes**, unconditionally — it benefits online users too |
+The download endpoint creates an advisory checkout record containing user,
+device id, checkout id, package scope/revision, optional pre-created session ids,
+and timestamps. Other devices may warn that offline work is outstanding, but
+this is not a lock.
 
----
+For New mode, online activity on another device can consume a problem after it
+was downloaded. The offline submission is still valid work and syncs in receipt
+order. It may no longer be the user's first encounter by then; the database
+truth wins. The response reports such overlaps so the UI can say that server
+progress changed while this device was away.
 
-## 8. The Coach works offline, for the case that matters
+Account rules:
 
-BYOK against a local Ollama/vLLM on the same laptop is *the* flight scenario, and it
-already works by construction: the browser talks straight to the model with no proxy hop
-and no server involvement. Cloud providers obviously will not.
-
-`/api/ai/messages` persistence is already best-effort and off the streaming path, so it
-degrades correctly rather than surfacing as a failed answer — route those writes through
-the same outbox so the transcript is not lost.
-
----
-
-## 9. Build order and state
-
-| # | Slice | State |
-|---|---|---|
-| 1 | Self-host KaTeX + icon font; update `scripts/icon-subset.ts` and its test | not started |
-| 2 | Service worker: precache shell, cache-first navigations | not started |
-| 3 | Offline identity: local profile, `offline` state flag, no sign-out on refresh failure | not started |
-| 4 | Download-scope RPC (`goal_scope_canonicals` + draw + pre-minted session) | not started |
-| 5 | IndexedDB store; scope picker UI; trainer walks the cached queue | not started |
-| 6 | Outbox + `/api/sync` flush: clamp trigger, `client_key`, anchored timestamps | not started |
-| 7 | Device checkout flag + flush-time collision repair | not started |
-
-Slice 1 is worth doing regardless of whether offline ever ships.
-
-**Still to measure** (both affect sizing, neither blocks design):
-
-- Real payload size per scope — `pg_column_size` over `problems` for a representative
-  scope, which sets download expectations and any storage cap.
-- Global `recompute_ratings()` runtime at current data volume, which decides whether a
-  scheduled repair is viable or whether §6a's residual drift persists until an admin runs
-  one.
+- an outbox flush requires `auth.uid()` to equal every operation's `userId`;
+- signing into another account hides the prior account's download and outbox;
+- logout clears the active offline-user pointer and evicts synced snapshots;
+- pending work is not silently deleted on logout; it can be discarded only by
+  an explicit destructive action naming the affected session/count;
+- replacing or refreshing a download never deletes unacknowledged operations.
 
 ---
 
-## 10. Non-goals
+## 10. Coach is a later slice
 
-- **No local Postgres (PGlite or otherwise).** Replicating the rating and SM-2 triggers
-  offline means two implementations of the thing the repo insists has exactly one.
-- **No client-side rating math beyond the existing preview.** Ratings settle on flush.
-- **No offline-first rewrite.** Online remains the normal path; offline is a downloaded,
-  bounded, explicitly-entered mode.
-- **No offline library browsing, goals, history, or analytics in v1.** Each is a set of
-  live queries and its own port; those routes show an honest offline state instead.
+A local Ollama/vLLM connection can stream without the internet because BYOK
+requests go directly from the browser. The current Coach still cannot initialize
+fully offline: `#loadBootstrap()` awaits `/api/ai/bootstrap` and the local catalog
+together, so a failed server response discards the successful local catalog.
+
+Offline Coach support therefore needs its own design:
+
+- a local-only bootstrap using browser credentials and cached non-secret
+  preferences;
+- no server-owned provider or tool claims while offline;
+- durable conversation/message operations with their existing browser UUIDs;
+- work-anchor conflict handling on reconnect;
+- dependency mapping from a local conclusion key to the synced submission id;
+- preservation of context snapshots and the `test-locked` answer boundary.
+
+Until those exist, the offline trainer hides/disables Coach with an explicit
+message. Best-effort fetch failure is not persistence: without an outbox, the
+finished transcript is lost on reload.
+
+---
+
+## 11. Verification gates
+
+### Before shell work
+
+- Move the authenticated root server/universal load behavior into `(app)`, keep
+  the root layout presentation-only, and prerender `/offline` outside `(app)` as
+  specified in the contracts document. Give `(splash)` its own anonymous
+  Supabase client for the public welcome count; it must not inherit app auth
+  data merely because the old root client did both jobs.
+- Add Playwright with Chromium and WebKit projects. The v1 release gate is
+  Chromium 111+ and Safari/iOS 16.4+; Firefox 114+ is best-effort and embedded
+  Kindle/E-Ink browsers are unsupported.
+- Obtain explicit authorization before running `bun run build`, preview, or dev,
+  per repository policy.
+
+The browser suite must cover first install, update activation, offline deep-link
+navigation, reload while offline, missing download, logout, account switch, and
+returning online. It must assert that CacheStorage contains no token-bearing
+layout/API response.
+
+### Before data/store work
+
+- Measure representative and worst-case scope row/byte counts.
+- Implement the versioned IndexedDB schema, migrations, explicit quota failure,
+  and atomic write tests against the contracts document.
+- Validate the provisional limits (10,000 canonicals, 50 MiB JSON, 250 MiB with
+  media, 250 problems/page) and tune them only if corpus/device measurements
+  justify it.
+- Contract-test the local query repository against shared fixtures for every
+  predicate used by the first shipping mode.
+- Test overlapping package membership, staged refresh failure, and reference-safe
+  eviction.
+
+### Before sync work
+
+- Add SQL tests for idempotent retry, ordered application, ownership rejection,
+  canonicalization, duplicate client keys, dependency failure, and transaction
+  rollback.
+- Prove live ratings equal `recompute_ratings()` after an offline batch, because
+  both now use receipt-order `created_at`.
+- Test browser restart, repeated reconnect events, two flushing tabs, expired
+  auth, account switch, a newer online submission, and partial/unknown responses.
+- Implement checkout retention (active for one year after issue/last sync, 30
+  days after sync, and 90 days after abandonment/expiration) and structured
+  server logs keyed by checkout, batch, and operation id. Logs contain
+  codes/counts/timing, never answer text.
+
+Every code slice still clears `bun run check` and `bun test`. Every changed
+Svelte file also goes through the required Svelte MCP autofixer. The production
+browser suite is an additional gate, not a replacement.
+
+---
+
+## 12. Build order and state
+
+| # | Slice | State | Exit condition |
+|---|---|---|---|
+| 0 | Revise design and settle v1 boundary | **complete** | this document reflects code-path review |
+| 1 | Self-host KaTeX and Material Symbols; update subset script/tests | not started | no critical CDN request; subset test passes |
+| 2 | Production browser harness + credential-free `/offline` route/load relocation | not started | offline reload/account tests pass |
+| 3 | Minimal service worker for versioned assets and navigation fallback | not started | no personalized response enters CacheStorage |
+| 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | not started | migration/quota/atomicity/overlap tests pass |
+| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | not started | resolver-contract, completeness, revision, limit, and payload tests pass |
+| 6 | Local `PracticeQuery` engine + snapshot overlay + New-mode trainer/shadow selection | not started | repository contract and reload/lifecycle component tests pass |
+| 7 | Typed outbox schema + sync RPC/endpoint | not started | SQL idempotency and live≡replay tests pass |
+| 8 | Foreground sync coordinator, auth recovery, multi-tab lock | not started | reconnect/account/concurrency browser tests pass |
+| 9 | Advisory checkout and conflict reporting | not started | multi-device overlap is visible and non-destructive |
+| 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
+
+No UI for a later slice should ship ahead of its persistence and recovery path.
+In particular, do not offer “Download” until a browser can reload the session
+offline and retain a submission across a failed, retried sync.
+
+---
+
+## 13. Measurements still required
+
+- Payload size and problem/placement count for representative narrow, medium,
+  and whole-catalog scopes after canonical collapse.
+- Candidate counts and query latency for representative combinations of topic,
+  series, rating, answer, progress, mastery, and engagement filters.
+- Storage duplication avoided by shared records across overlapping packages.
+- IndexedDB quota behavior on target Safari/iOS and Chromium browsers.
+- Material Symbols and KaTeX self-hosted transfer/storage sizes.
+- Sync transaction time for 25, 100, and maximum-size operation batches.
+- Current global `recompute_ratings()` runtime as a diagnostic benchmark, even
+  though v1 sync no longer requires running it.
+
+These measurements validate or tune package limits, determine index choices,
+and show whether the IndexedDB query implementation remains sufficient. The shell/auth,
+receipt-order timestamp, complete-scope materialization, repository boundary,
+and typed-outbox decisions do not depend on their exact values.
