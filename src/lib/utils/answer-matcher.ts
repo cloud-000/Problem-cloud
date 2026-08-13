@@ -226,12 +226,12 @@ function stripUnitsAndLabels(s: string): string {
     }
 
     // 4. Strip a trailing parenthesized word-label: "900 (pieces)", "48(cm)",
-    //    "$\frac{1}{4}$ (square meters)". The parens must contain only letters,
-    //    spaces, and dots (a label/unit, never a math expression like "(n+1)"
-    //    or an ordered pair like "(a,b)"), and must follow an actual value (a
-    //    non-space char) so a fully-parenthesized answer like "(x)" is left be.
+    //    "$\frac{1}{4}$ (square meters)". The parens may contain ordinary words
+    //    or multi-letter hyphenated words (`one-point`), never math such as
+    //    `(x-y)` / `(n+1)` or an ordered pair like `(a,b)`, and must follow an
+    //    actual value so a fully-parenthesized answer like `(x)` is left be.
     val = val.replace(
-        /(\S)\s*\(\s*[a-zA-Z][a-zA-Z.\s]*(?:(?:\^\{?[23]\}?)|[²³]|\s[23])?\s*\)\s*\*?$/,
+        /(\S)\s*\(\s*(?:[a-zA-Z.]+(?:\s+[a-zA-Z.]+)*|[a-zA-Z]{2,}(?:-[a-zA-Z]{2,})+(?:\s+[a-zA-Z.]+)*)(?:(?:\^\{?[23]\}?)|[²³]|\s[23])?\s*\)\s*\*?$/,
         "$1",
     );
 

@@ -106,7 +106,11 @@ describe("units, labels and decoration", () => {
 
     test("parenthesized labels and approximation words", () => {
         expect(matches("900 (pieces)", "900")).toBe(true);
+        expect(matches("41 (one-point game pieces)", "41")).toBe(true);
         expect(matches("about 7", "7")).toBe(true);
+        // Hyphens in mathematical expressions are not label punctuation.
+        expect(matches("5 (x-y)", "5")).toBe(false);
+        expect(matches("5 (n-1)", "5")).toBe(false);
     });
 
     test("labels separated from math by dollar delimiters", () => {
