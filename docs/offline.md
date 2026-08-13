@@ -1,14 +1,19 @@
 # Offline Mode — Revised Design Proposal
 
 > [!IMPORTANT]
-> **Status: proposal. Nothing in this document is built as of 2026-08-13.** There
-> is no service worker, offline entry route, local problem cache, or outbox in
-> the codebase. The implementation gates in §11 must be cleared before the
-> corresponding slice starts, and the build-state table must be updated as each
-> slice lands.
+> **Status: partially built as of 2026-08-13.** The offline *core and shell* have
+> landed: self-hosted rendering assets, the credential-free `/offline` route with
+> the authenticated load relocated into `(app)`, a minimal service worker, the
+> versioned IndexedDB repository with staged package installation, the local
+> New-mode query engine, the snapshot-plus-overlay state, and the typed outbox —
+> all driven by **fixtures**. No Supabase package-materialization or sync
+> endpoint exists yet, and no trainer or download UI is wired to any of it.
+> §12 tracks exactly what is in and what is not; keep it current as each slice
+> lands.
 >
 > The concrete v1 wire, query, repository, sync, and acceptance contracts live
-> in [`offline-contracts.md`](./offline-contracts.md).
+> in [`offline-contracts.md`](./offline-contracts.md). The implementation lives
+> in `src/lib/offline/`.
 
 The product goal is a **downloaded local read replica for a defined scope**.
 While online, a signed-in user downloads every problem and the supporting
@@ -57,8 +62,9 @@ The foundation supports:
 
 The first shipping slice exposes:
 
-- one explicitly downloaded package;
-- one dedicated practice session created online with a real server id;
+- multiple retained downloads for one account, with exactly one package opened
+  by an offline practice client at a time;
+- one dedicated practice session with a real server id per package;
 - **New** mode as the first consumer of the general local query repository;
 - offline reload/resume, grading, local history, and synchronization.
 
@@ -198,12 +204,24 @@ Problem-authored media is package data, not build data. The package protocol
 extracts image references from statements, choices, and official solutions,
 including `[asy=<url>]`, `[img]`, and markdown images. The browser downloads
 them into a revision-scoped staging CacheStorage cache and commits the package
-only when every required image is present. The service worker serves the
-original URL from the active package revision while offline. A failed media
+only when every required image is present. When assembling an offline problem,
+the offline rendering adapter rewrites each known media reference to
+`/_offline/media?revision=<packageRevision>&url=<encoded-original-url>`.
+The service worker opens only that revision's cache and matches the decoded
+original URL; it never scans arbitrary revision caches, which could return stale
+bytes for a reused URL. This is deterministic across worker restarts and lets
+two tabs open different packages without shared mutable routing state. A failed media
 fetch leaves the previous ready revision untouched; orphaned staging caches are
 removed on startup after consulting IndexedDB.
 
 This self-hosting slice is independently shippable and should land first.
+
+The vendored output is generated, not committed (`static/fonts/` and
+`static/vendor/` are gitignored). `scripts/vendor-assets.ts` produces it, and
+both `prepare` and `build` run it with `--if-missing`; the build fails rather
+than shipping a bundle whose problems render without math, icons, or the
+intended typography. Any CI or deploy pipeline that does not run `bun install`
+before `bun run build` must call `bun run vendor:assets` itself.
 
 ---
 
@@ -244,7 +262,7 @@ Calling it repeatedly is therefore slow, does not make the resolver the actual
 membership boundary, and produces a queue rather than the reusable local query
 source the product requires.
 
-Add a paginated/streamed materialization RPC or server endpoint that:
+Add a paginated materialization endpoint backed by narrow RPCs that:
 
 1. calls `goal_scope_canonicals`;
 2. returns every canonical reached by the scope, without applying a practice
@@ -264,6 +282,16 @@ Add a paginated/streamed materialization RPC or server endpoint that:
 
 The endpoint derives `userId` from the authenticated request. It never accepts
 an arbitrary owner from the body.
+
+Materialization is a retryable two-phase server workflow. One database function
+resolves the scope and atomically stores immutable normalized page records under
+a `materializing` checkout. The SvelteKit endpoint reads those stored logical
+records, computes their RFC 8785 checksums with the same shared TypeScript
+canonicalizer the browser uses, and calls a narrow finalize function that stores
+all page checksums and changes the checkout to `issued`. No page is downloadable
+before finalize, and retrying the same `requestId` resumes or returns the same
+finished materialization. This preserves one database snapshot without requiring
+PostgreSQL's JSON text formatting to impersonate RFC 8785.
 
 This endpoint materializes scope membership and facts; it does not reproduce any
 trainer mode or ordering. If the requested scope exceeds a product/storage hard
@@ -326,6 +354,14 @@ The package manifest also includes:
 - frozen player rating;
 - problem/placement counts, byte count, and page/checksum metadata;
 - last successful sync time and outbox count.
+
+Package creation also returns the frozen player rating and dedicated session as
+`baseState`. `beginPackage` stages that snapshot with the revision, and
+`commitPackage` promotes the package, personal state, rating state, and session
+snapshot in one IndexedDB transaction. The already-landed fixture helper writes
+the session snapshot immediately after commit; folding that write into the
+staged commit is a small slice-5 integration change required before real network
+downloads, not a redesign of the repository.
 
 Cache freshness is five days. Staleness warns and prevents automatic refresh; it
 never blocks opening an existing package and never deletes pending work.
@@ -615,6 +651,16 @@ Account rules:
   an explicit destructive action naming the affected session/count;
 - replacing or refreshing a download never deletes unacknowledged operations.
 
+An `issued` or `ready` checkout remains sync-valid while its installed revision
+can still create work; it does not expire merely because time passed or one
+outbox became empty. After a refresh or deletion, the client may close the old
+checkout only when that revision is no longer active and no local operation
+references it. Closed rows are retained for 30 days. Explicit discard marks a
+checkout abandoned and retains it for audit for 90 days. Only unfinished
+materializations expire automatically (after seven days). This matches the
+stronger rule that stale packages remain usable and pending work is never made
+unsyncable by retention cleanup.
+
 ---
 
 ## 10. Coach is a later slice
@@ -660,9 +706,8 @@ navigation, reload while offline, missing download, logout, account switch, and
 returning online. It must assert that CacheStorage contains no token-bearing
 layout/API response.
 
-### Before data/store work
+### Data/store correctness and pre-release measurements
 
-- Measure representative and worst-case scope row/byte counts.
 - Implement the versioned IndexedDB schema, migrations, explicit quota failure,
   and atomic write tests against the contracts document.
 - Validate the provisional limits (10,000 canonicals, 50 MiB JSON, 250 MiB with
@@ -673,6 +718,11 @@ layout/API response.
 - Test overlapping package membership, staged refresh failure, and reference-safe
   eviction.
 
+The fixture-backed correctness work above has landed. Representative and
+worst-case scope sizes, target-browser quota behavior, and query latency remain
+pre-release validation inputs for the provisional limits; they no longer read as
+unmet prerequisites to the repository work that already exists.
+
 ### Before sync work
 
 - Add SQL tests for idempotent retry, ordered application, ownership rejection,
@@ -682,8 +732,9 @@ layout/API response.
   both now use receipt-order `created_at`.
 - Test browser restart, repeated reconnect events, two flushing tabs, expired
   auth, account switch, a newer online submission, and partial/unknown responses.
-- Implement checkout retention (active for one year after issue/last sync, 30
-  days after sync, and 90 days after abandonment/expiration) and structured
+- Implement checkout retention (issued/ready while locally usable, 30 days after
+  an outbox-empty client close, 90 days after explicit discard, and seven days
+  for unfinished materialization) and structured
   server logs keyed by checkout, batch, and operation id. Logs contain
   codes/counts/timing, never answer text.
 
@@ -698,20 +749,67 @@ browser suite is an additional gate, not a replacement.
 | # | Slice | State | Exit condition |
 |---|---|---|---|
 | 0 | Revise design and settle v1 boundary | **complete** | this document reflects code-path review |
-| 1 | Self-host KaTeX and Material Symbols; update subset script/tests | not started | no critical CDN request; subset test passes |
-| 2 | Production browser harness + credential-free `/offline` route/load relocation | not started | offline reload/account tests pass |
-| 3 | Minimal service worker for versioned assets and navigation fallback | not started | no personalized response enters CacheStorage |
-| 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | not started | migration/quota/atomicity/overlap tests pass |
-| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | not started | resolver-contract, completeness, revision, limit, and payload tests pass |
-| 6 | Local `PracticeQuery` engine + snapshot overlay + New-mode trainer/shadow selection | not started | repository contract and reload/lifecycle component tests pass |
-| 7 | Typed outbox schema + sync RPC/endpoint | not started | SQL idempotency and live≡replay tests pass |
-| 8 | Foreground sync coordinator, auth recovery, multi-tab lock | not started | reconnect/account/concurrency browser tests pass |
-| 9 | Advisory checkout and conflict reporting | not started | multi-device overlap is visible and non-destructive |
+| 1 | Self-host KaTeX and Material Symbols; update subset script/tests | **complete** | no critical CDN request; subset test passes |
+| 2 | Production browser harness + credential-free `/offline` route/load relocation | **complete** | offline reload/account tests pass |
+| 3 | Minimal service worker for versioned assets and navigation fallback | **complete** | no personalized response enters CacheStorage |
+| 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | **complete** | migration/quota/atomicity/overlap tests pass |
+| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **local core complete; atomic base-state integration and server/UI halves not started** | resolver-contract, completeness, revision, limit, and payload tests pass |
+| 6 | Local `PracticeQuery` engine + snapshot overlay + New-mode trainer/shadow selection | **query/overlay complete; trainer not started** | repository contract and reload/lifecycle component tests pass |
+| 7 | Typed outbox schema + sync RPC/endpoint | **client outbox complete; SQL/endpoint not started** | SQL idempotency and live≡replay tests pass |
+| 8 | Foreground sync coordinator, auth recovery, multi-tab lock | not started (connectivity state machine landed with slice 4) | reconnect/account/concurrency browser tests pass |
+| 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
 | 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
+
+### What the landed slices do and do not cover
+
+Slices 1–4 are complete as specified. Slices 5–7 are split, because the local
+half of each can be built and tested against fixtures while the server half
+cannot exist without schema and endpoint work:
+
+- **Slice 5.** `beginPackage` / `stagePackagePage` / `commitPackage` /
+  `abortStagingPackage` are implemented with staged-revision isolation, checksum
+  and count verification, revision-scoped media staging, and refresh that keeps
+  the previous ready revision until commit. **Not built:** the
+  `goal_scope_canonicals`-backed materialization function, the
+  `offline_checkouts` / `offline_package_pages` tables, the creation and page
+  endpoints, and the download UI. Packages come from
+  `src/lib/offline/fixtures.ts`. Before network wiring, the already-implemented
+  post-commit session-snapshot write moves into the staged atomic commit described
+  in §5c, and media lookup moves from an arbitrary cache scan to the
+  revision-addressed route in §4.
+- **Slice 6.** The `PracticeQueryV1` engine (placement-aware scope, New-mode
+  eligibility, seeded and nearest-rating ordering, `not_downloaded` vs.
+  `exhausted`) and the snapshot-plus-overlay state are implemented and contract
+  tested. **Not built:** the trainer's data-source seam, the shadow player
+  rating, and any offline practice UI.
+- **Slice 7.** The typed outbox, its coalescing rules, ordering, failure
+  handling, and `acknowledgeSync` are implemented against the wire contract.
+  **Not built:** `submissions.client_key` / `occurred_at`, the sync RPC, and the
+  endpoint. Nothing flushes yet.
+
+Where things live: `src/lib/offline/` (contracts, parsers, checksums, schema,
+storage backends, repository, query engine, overlay, media, fixtures),
+`src/service-worker.ts`, `src/routes/offline/`, `scripts/vendor-assets.ts`, and
+the Playwright harness in `playwright.config.ts` / `e2e/`.
 
 No UI for a later slice should ship ahead of its persistence and recovery path.
 In particular, do not offer “Download” until a browser can reload the session
 offline and retain a submission across a failed, retried sync.
+
+### Remaining delivery sessions
+
+The remaining numbered slices are dependency labels, not separate work
+sessions. Finish v1 in three sessions:
+
+1. **Server spine:** the server halves of 5 and 7 plus checkout provenance and
+   overlap reporting from 9 — schema, two-phase materialization, endpoints,
+   transactional sync, migrations/types, and SQL tests.
+2. **Download and recovery:** atomic base-state promotion, revision-addressed
+   media routing, the download UI/orchestrator from 5, and foreground auth,
+   locking, retry, and conflict disclosure from 8.
+3. **Trainer and release proof:** the trainer seam and New-mode consumer from 6,
+   followed by the complete browser/database acceptance scenario and the
+   pre-release measurements in §13.
 
 ---
 

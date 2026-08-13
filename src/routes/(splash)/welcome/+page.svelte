@@ -8,7 +8,9 @@
     import { fade, slide } from "svelte/transition";
 
     let { data } = $props();
-    let session = $derived(data.session);
+    // The public shell is told only whether someone is signed in, never the
+    // session itself (see `(splash)/+layout.server.ts`).
+    let signedIn = $derived(data.signedIn);
 
     /** One source of truth: the tab strip, the try-it panel, and the
      *  disciplines section all read from this list. */
@@ -218,12 +220,12 @@
 
             <div class="mt-lg flex flex-wrap items-center gap-sm">
                 <Button
-                    href={session ? "/" : "/auth/signup"}
+                    href={signedIn ? "/" : "/auth/signup"}
                     size="lg"
                     class="px-lg"
                     id="hero-get-started-btn"
                 >
-                    {session ? "Go to your dashboard" : "Start practicing"}
+                    {signedIn ? "Go to your dashboard" : "Start practicing"}
                 </Button>
                 <Button
                     href="/library"
@@ -545,12 +547,12 @@
             </p>
         </div>
         <Button
-            href={session ? "/" : "/auth/signup"}
+            href={signedIn ? "/" : "/auth/signup"}
             size="lg"
             class="px-lg"
             id="bottom-cta-btn"
         >
-            {session ? "Go to your dashboard" : "Create free account"}
+            {signedIn ? "Go to your dashboard" : "Create free account"}
         </Button>
     </section>
 </div>

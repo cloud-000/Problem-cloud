@@ -6,14 +6,18 @@
 	"scripts": {
 		"dev": "vite dev",
 		"dev:prod": "vite dev --mode production",
-		"build": "vite build",
+		"build": "bun scripts/vendor-assets.ts --if-missing && vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
+		"prepare": "svelte-kit sync || echo ''; bun scripts/vendor-assets.ts --if-missing || echo 'vendor-assets skipped; run `bun run vendor:assets` before building'",
 		"test": "bun test",
+		"test:e2e": "playwright test",
+		"vendor:assets": "bun scripts/vendor-assets.ts",
+		"vendor:check": "bun scripts/vendor-assets.ts --if-missing",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.62.1",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
 		"@sveltejs/kit": "^2.70.2",

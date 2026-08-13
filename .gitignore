@@ -24,6 +24,12 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Playwright
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
 # Supabase
 supabase/.branches/
 supabase/.temp/
@@ -48,6 +54,10 @@ src/lib/components/DOCS.md
 
 # Cloudflare
 wrangler.jsonc
+
+# static
+static/fonts/
+static/vendor/
 
 # External DOCS
 library-docs/

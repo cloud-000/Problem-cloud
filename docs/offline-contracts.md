@@ -1,10 +1,16 @@
 # Offline Mode — V1 Contracts
 
 > [!IMPORTANT]
-> **Status: implementation contract, not implemented, 2026-08-13.** This document
-> makes the first shipping slice of [`offline.md`](./offline.md) concrete. If a
-> code change needs a different wire shape, query meaning, persistence rule, or
-> sync result, update this contract before or with that change.
+> **Status: implementation contract; the browser core is implemented, the server
+> half is not (2026-08-13).** §1, §3, §4, §5 and §6 are exercised against
+> fixture packages in `src/lib/offline/`. This settlement adds two pending local
+> integration adjustments: stage `OfflinePackageCreatedV1.baseState` and promote
+> it atomically in `commitPackage` instead of writing the fixture snapshot just
+> after commit, and replace the service worker's arbitrary media-cache scan with
+> revision-addressed media URLs. §2's network workflow, §7's endpoint, and §8's
+> schema do not exist yet — no Supabase table, function, or route has been added. If a code
+> change needs a different wire shape, query meaning, persistence rule, or sync
+> result, update this contract before or with that change.
 
 The downloaded package is a local read replica for a server-resolved scope. It
 is not a queue. The first UI consumer is New-mode practice, but the package and
@@ -92,6 +98,13 @@ Validation rules:
 - The endpoint rejects an empty whole-catalog scope if it exceeds the configured
   package limit; it never silently samples or truncates it.
 
+```ts
+type OfflinePackageBaseStateV1 = {
+    playerRating: PlayerRating | null;
+    session: PracticeSessionRow;
+};
+```
+
 ### 2b. Creation response
 
 ```ts
@@ -116,6 +129,8 @@ type OfflinePackageCreatedV1 = {
     };
     pageSize: number;
     firstCursor: Cursor | null;
+    /** Frozen session/rating snapshot committed with this revision. */
+    baseState: OfflinePackageBaseStateV1;
 };
 ```
 
@@ -126,12 +141,27 @@ session. It captures a stable package revision. Every subsequent page belongs
 to that exact revision; content changing during the download must not mix
 revisions.
 
-To make this promise real across separate HTTP requests, creation materializes
-the normalized page JSON and checksums into transient server-side package-page
-rows in the same transaction. Page requests read those immutable rows; they do
-not rerun live joins behind an opaque cursor. Retrying package creation with the
-same `requestId` returns the existing issued revision while its pages remain
-available.
+`baseState.session.id` must equal `sessionId`, belong to the authenticated user,
+and carry the accepted New/practice settings. The base state is stored with the
+checkout so a retried creation response returns the identical snapshot.
+
+To make this promise real across separate HTTP requests, creation is a retryable
+two-phase server workflow:
+
+1. a narrow database function resolves the scope and atomically stores the
+   normalized logical page records under a `materializing` checkout; then
+2. the SvelteKit endpoint reads those stored records, computes RFC 8785 checksums
+   with the shared TypeScript canonicalizer used by the browser, and calls a
+   narrow finalize function that stores all checksums and marks the checkout
+   `issued`.
+
+Page requests read only finalized immutable rows; they never rerun live joins
+behind an opaque cursor. A crash between phases leaves a non-downloadable
+`materializing` checkout, and retrying the same `requestId` resumes checksum
+finalization. Retrying a completed request returns the same issued revision
+while its pages remain available. This preserves a single database snapshot and
+one checksum implementation without relying on PostgreSQL JSON serialization to
+match RFC 8785.
 
 `contentRevision` identifies catalog content. `packageRevision` identifies the
 resolved membership and personal-state snapshot used by this download. Both are
@@ -274,11 +304,12 @@ never `*`, so a new database column cannot silently alter the protocol.
 and official solutions, including `[asy=<url>]`, `[img]`, and markdown image
 syntax. The browser fetches those URLs into a revision-scoped staging
 CacheStorage cache. A package becomes ready only after all required assets are
-present. The service worker serves the original URL from the active revision's
-cache while offline. Refreshes use a new cache; startup garbage collection
-removes orphaned staging caches after consulting IndexedDB. This deliberately
-avoids storing large opaque image responses in IndexedDB while preserving the
-old ready revision on failure.
+present. Offline rendering rewrites each known reference to the revision-addressed
+same-origin media URL described in §9, and the service worker resolves it only
+against that revision's cache. Refreshes use a new cache; startup garbage
+collection removes orphaned staging caches after consulting IndexedDB. This
+deliberately avoids storing large opaque image responses in IndexedDB while
+preserving the old ready revision on failure.
 
 Membership is based only on `goal_scope_canonicals`. It includes ungradeable,
 seen, solved, ignored, and unrated problems because those are query predicates,
@@ -291,17 +322,10 @@ placement through which it can match.
 
 ### 2e. Player and session snapshot
 
-Package metadata stored alongside the pages includes:
-
-```ts
-type OfflinePackageBaseStateV1 = {
-    playerRating: PlayerRating | null;
-    session: PracticeSessionRow;
-};
-```
-
-This is returned by package creation or a dedicated metadata page and is covered
-by `packageRevision`.
+`OfflinePackageCreatedV1.baseState` is the frozen player rating and dedicated
+session captured by `packageRevision`. There is no separate metadata endpoint in
+v1. Keeping it in the creation response makes a retry self-contained and avoids
+a second wire shape.
 
 ---
 
@@ -338,6 +362,8 @@ interface OfflinePackageInstaller {
 - Creates or resets only the staging revision for `packageId`.
 - Does not disturb the previous ready revision during a refresh.
 - Stores expected counts, revisions, and the next expected cursor/page index.
+- Stages `baseState`; it does not publish or overwrite the active session
+  snapshot during a refresh.
 
 ### `stagePackagePage`
 
@@ -368,8 +394,10 @@ cache. It then uses one IndexedDB transaction to verify:
 - every record belongs to the expected revision.
 
 It then marks the staging revision ready and atomically makes it the package's
-active revision. Only after that may the old revision and now-unreferenced
-content be garbage-collected.
+active revision, promotes its staged personal/rating rows, and promotes the
+staged session/player-rating snapshot. A ready package can therefore never be
+observed without its matching session snapshot. Only after that may the old
+revision and now-unreferenced content be garbage-collected.
 
 ### `abortStagingPackage`
 
@@ -393,6 +421,18 @@ The first implementation uses one versioned database and these logical stores:
 | `organizationOverrides` | `[userId, canonicalId, axis]` | user/sequence |
 | `outbox` | `[userId, sequence]` | user/state, operation id (unique) |
 | `meta` | `key` | none |
+
+The implementation adds three revision-scoped stores to this list — `assets`,
+`stagedRatings` and `stagedPersonalState`, all keyed
+`[userId, packageRevision, …]` — for one reason. Membership, placements and
+content are already invisible while staging because they are keyed by package
+revision, but ratings and personal state are shared per `(user, canonical)` **on
+purpose**, so that one sync updates every overlapping package at once. Writing
+them directly during a refresh would therefore publish a revision that has not
+committed. They are staged revision-scoped and moved into the shared stores by
+`commitPackage`. `assets` is revision-scoped for the same reason and doubles as
+the record of what the revision's media cache must contain, which is what
+`commitPackage` verifies before promoting.
 
 Compound scope predicates still run in pure TypeScript after these indexes
 produce the package-bounded candidate set. With the 10,000-canonical package
@@ -746,7 +786,7 @@ package_revision  text not null,
 downloaded_at     timestamptz not null,
 last_synced_at    timestamptz,
 completed_at      timestamptz,
-expires_at        timestamptz not null,
+expires_at        timestamptz,
 status            text not null
 ```
 
@@ -756,16 +796,19 @@ Stable download pages are transiently persisted as:
 checkout_id       uuid not null references public.offline_checkouts(id),
 page_index        integer not null,
 records           jsonb not null,
-checksum          text not null,
+checksum          text,
 decoded_bytes     integer not null,
 created_at        timestamptz not null,
 primary key (checkout_id, page_index)
 ```
 
-The exact table name may be `offline_package_pages`. These rows are the immutable
-retry surface for one `packageRevision`, not durable user history. The finalize
-endpoint deletes them after the local package is ready; unfinished rows expire
-after seven days. At most two unfinalized materializations may exist per user.
+The exact table name may be `offline_package_pages`. `checksum` is nullable only
+while its checkout is `materializing`; checksum finalization supplies every
+checksum before changing the checkout to `issued`. These rows are the immutable
+retry surface for one `packageRevision`, not durable user history. The separate
+ready-finalize endpoint deletes them after the local package is committed;
+unfinished rows expire after seven days. At most two unfinalized
+materializations may exist per user.
 Once pages expire, resuming that revision returns `package_revision_invalid` and
 the client must explicitly restart the download, which creates a new revision
 without deleting any prior ready local package.
@@ -780,18 +823,27 @@ attempt idempotent. Many immutable checkouts may refer to one logical
 `package_id`; refresh never rewrites the checkout referenced by pending work.
 
 V1 requires this row; it is advisory provenance, not a lock. `status` is one of
-`issued`, `ready`, `synced`, `abandoned`, or `expired`. Package creation writes
-`issued`; an idempotent best-effort finalize call after local commit writes
-`ready`; a fully acknowledged outbox writes `synced`. Sync accepts both `issued`
-and `ready`, because losing the finalize request must not strand local work.
-Active checkouts expire one year after issuance or last successful sync.
-Synced rows are retained for 30 days; abandoned and expired rows for 90 days.
-Owners may select their rows through RLS. Creation, finalize, sync, abandon, and
-cleanup writes go only through their narrow functions/endpoints.
+`materializing`, `issued`, `ready`, `closed`, `abandoned`, or `expired`. The
+database snapshot step writes `materializing`; checksum finalization writes `issued`; an
+idempotent best-effort ready-finalize call after local commit writes `ready`.
+Sync accepts both `issued` and `ready`, because losing ready-finalize must not
+strand local work. Successful sync updates `last_synced_at` but does not move the
+checkout into a terminal state: an installed package may create more offline
+work later. Issued and ready rows do not expire automatically. After a refresh
+or package deletion, a narrow close operation may mark an old checkout `closed`
+only when the client says that revision is no longer active and its local outbox
+contains no reference to it; closed rows are retained for 30 days. Explicit
+discard writes `abandoned` and retains the row for 90 days. Only unfinished
+`materializing` checkouts expire automatically after seven days. This leaves a
+small provenance row durable for as long as unseen offline work could still
+arrive, while the much larger page rows remain transient.
+Owners may select their rows through RLS. Creation, finalize, sync, close,
+abandon, and cleanup writes go only through their narrow functions/endpoints.
 
-The materialization function must call `goal_scope_canonicals`, build every page
-and its checksum transactionally, and enforce the per-user/size limits. The sync
-function accepts the closed v1 operation representation and applies it
+The materialization function must call `goal_scope_canonicals`, build every
+logical page transactionally, and enforce the per-user/size limits. The endpoint
+and checksum-finalize function complete the two-phase creation protocol above.
+The sync function accepts the closed v1 operation representation and applies it
 transactionally. The server endpoints validate requests and invoke those narrow
 database functions. Neither is a general service-role write surface.
 
@@ -818,7 +870,12 @@ slices to answer differently.
 - Add Playwright as the production-browser harness. The release gate is
   Chromium 111+ and Safari/iOS 16.4+. Firefox 114+ is supported best-effort but
   is not a v1 release gate. Embedded Kindle/E-Ink browsers are explicitly
-  unsupported for offline v1.
+  unsupported for offline v1. The harness lives in `playwright.config.ts` and
+  `e2e/*.e2e.ts` (that extension, not `.spec.ts`, so `bun test` does not collect
+  them). Browsers are not vendored: run `bunx playwright install chromium
+  webkit` once. Because this repository requires explicit authorization before
+  running a build, the config does not start a server implicitly — set
+  `PC_E2E_BASE_URL`, or `PC_E2E_START=1` to let it build and preview one.
 - Foreground sync uses Web Locks where available and a BroadcastChannel lease
   fallback elsewhere; Background Sync is not required.
 
@@ -873,9 +930,15 @@ contract.
   required space, and the explicit warning that answer keys are stored locally.
 - Download states are `estimating`, `downloading` (pages/assets and bytes),
   `ready`, `stale`, `failed`, and `storage-full`. Cancel removes only staging.
-- `/offline` lists ready packages for the active local account. Opening one
+- The account may retain multiple ready packages, including overlapping ones.
+  `/offline` lists them for the active local account. Opening one
   resumes its dedicated New-mode session; it does not silently combine packages.
   A later explicit multi-package query may do so through `packageIds`.
+- When assembling an offline problem, known media references are rewritten to
+  `/_offline/media?revision=<packageRevision>&url=<encoded-original-url>`. The
+  service worker opens only that revision's cache and matches the decoded
+  original URL; it never returns the first match from an arbitrary revision
+  cache. The URL is routing metadata, not a credential.
 - Five-day staleness shows a warning and an online-only Refresh action but never
   blocks practice. Refresh retains the old ready revision until commit.
 - Delete is immediate only when the package has no pending operations. Otherwise

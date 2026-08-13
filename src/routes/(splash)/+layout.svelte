@@ -5,7 +5,9 @@
     import { Theme } from "$lib/utils/Theme.svelte";
 
     let { data, children } = $props();
-    let session = $derived(data.session);
+    // The public shell is told only whether someone is signed in — never the
+    // session itself (see `+layout.server.ts`).
+    let signedIn = $derived(data.signedIn);
 
     function toggleTheme() {
         Theme.setUserTheme(Theme.theme === "light" ? "dark" : "light");
@@ -60,7 +62,7 @@
                     />
                 </button>
 
-                {#if session}
+                {#if signedIn}
                     <Button href="/" id="nav-dashboard-btn">Dashboard</Button>
                 {:else}
                     <Button href="/auth/login" variant="ghost" id="nav-login-btn"

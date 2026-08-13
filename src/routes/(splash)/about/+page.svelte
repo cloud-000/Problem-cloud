@@ -3,9 +3,6 @@
     import { Icon } from "$lib/components/icon";
     import LaTeX from "$lib/components/LaTeX.svelte";
 
-    let { data } = $props();
-    let session = $derived(data.session);
-
     const pillars = [
         {
             title: "Algebra",
