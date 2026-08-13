@@ -273,6 +273,24 @@ end;
 $$;
 
 
+-- Opaque catalog generation captured by offline packages. A real singleton is
+-- used instead of max(problems.built_at): deletions and metadata-only imports
+-- are catalog changes too, and a timestamp aggregate cannot represent them.
+create table public.catalog_revision (
+  singleton boolean primary key default true check (singleton),
+  revision uuid not null default gen_random_uuid(),
+  updated_at timestamp with time zone not null default now()
+);
+
+insert into public.catalog_revision (singleton) values (true)
+on conflict (singleton) do nothing;
+
+alter table public.catalog_revision enable row level security;
+create policy "Catalog revision is viewable by everyone."
+  on public.catalog_revision for select to anon, authenticated using (true);
+grant select on public.catalog_revision to anon, authenticated;
+grant all on public.catalog_revision to service_role;
+
 -- ---------------------------------------------------------------------------
 -- The merge. Runs series -> tests -> problems in one transaction. Returns a
 -- one-row summary (inserted/updated per table + unmatched count). With
@@ -485,6 +503,10 @@ begin
     -- Unwind every write above; the summary vars survive the savepoint rollback.
     raise exception using errcode = 'P0001', message = 'SYNC_DRY_RUN';
   end if;
+
+  update public.catalog_revision
+     set revision = gen_random_uuid(), updated_at = now()
+   where singleton;
 
   return query select true, v_series_ins, v_series_upd, v_tests_ins, v_tests_upd,
                       v_problems_ins, v_problems_upd, v_unmatched;

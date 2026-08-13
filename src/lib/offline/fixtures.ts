@@ -279,6 +279,15 @@ export async function buildFixturePackage(
         });
     }
 
+    const base = {
+        playerRating: {
+            rating: 1200,
+            rd: 80,
+            matches: 12,
+            last_match_at: downloadedAt,
+        },
+        session: fixtureSession(spec.userId, sessionId),
+    };
     const created: OfflinePackageCreatedV1 = {
         version: 1,
         packageId,
@@ -296,20 +305,13 @@ export async function buildFixturePackage(
         estimatedBytes: { json: 0, media: 0, total: 0 },
         pageSize,
         firstCursor: pages.length ? "cursor-0" : null,
+        baseState: base,
     };
 
     return {
         created,
         pages,
-        base: {
-            playerRating: {
-                rating: 1200,
-                rd: 80,
-                matches: 12,
-                last_match_at: downloadedAt,
-            },
-            session: fixtureSession(spec.userId, sessionId),
-        },
+        base,
     };
 }
 

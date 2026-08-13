@@ -26,6 +26,12 @@ create table public.submissions (
   elapsed_ms      integer,                  -- time spent on this attempt
   source          text,                     -- 'practice' | 'library' | 'review'
   session_id      bigint references public.practice_sessions(id) on delete set null,
+  -- Browser-owned idempotency key used only by the closed offline sync RPC.
+  -- The ordinary online insert path leaves it null.
+  client_key      uuid,
+  -- Bounded occurrence metadata for display/audit. Rating, progress, encounter,
+  -- and session ordering continue to use server receipt-order created_at.
+  occurred_at     timestamp with time zone,
   -- Multi-try practice: how many wrong attempts the user burned before this
   -- recorded (final) outcome. 0 = solved/answered on the first try. Client-sent
   -- (the trainer only logs a problem's final outcome, so intermediate wrong
@@ -47,6 +53,8 @@ create table public.submissions (
 create index submissions_user_problem_idx on public.submissions(user_id, problem_id);
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
 create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
+create unique index submissions_user_client_key_uidx
+  on public.submissions(user_id, client_key) where client_key is not null;
 
 comment on column public.submissions.is_correct is
   'Grading outcome: true for correct, false for incorrect, and null for ungraded submissions (including skips).';

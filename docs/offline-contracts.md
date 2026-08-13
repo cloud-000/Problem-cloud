@@ -1,14 +1,15 @@
 # Offline Mode — V1 Contracts
 
 > [!IMPORTANT]
-> **Status: implementation contract; the browser core is implemented, the server
-> half is not (2026-08-13).** §1, §3, §4, §5 and §6 are exercised against
-> fixture packages in `src/lib/offline/`. This settlement adds two pending local
+> **Status: Session 1 server spine implemented (2026-08-13).** §1, §3, §4, §5
+> and §6 are exercised against fixture packages in `src/lib/offline/`; §2, §7,
+> and §8 now have declarative schema, two-phase materialization/package
+> endpoints, transactional sync, checkout lifecycle, and pgTAP coverage. Two local
 > integration adjustments: stage `OfflinePackageCreatedV1.baseState` and promote
 > it atomically in `commitPackage` instead of writing the fixture snapshot just
 > after commit, and replace the service worker's arbitrary media-cache scan with
-> revision-addressed media URLs. §2's network workflow, §7's endpoint, and §8's
-> schema do not exist yet — no Supabase table, function, or route has been added. If a code
+> revision-addressed media URLs. The browser download/recovery coordinator and
+> trainer integration remain deliberately unimplemented. If a code
 > change needs a different wire shape, query meaning, persistence rule, or sync
 > result, update this contract before or with that change.
 

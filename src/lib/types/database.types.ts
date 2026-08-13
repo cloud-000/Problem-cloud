@@ -342,6 +342,24 @@ export type Database = {
           },
         ]
       }
+      catalog_revision: {
+        Row: {
+          revision: string
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          revision?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          revision?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       goals: {
         Row: {
           achieved_at: string | null
@@ -456,6 +474,178 @@ export type Database = {
             columns: ["sender_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offline_applied_operations: {
+        Row: {
+          applied_at: string
+          checkout_id: string
+          operation_id: string
+          operation_type: string
+          result: Json
+        }
+        Insert: {
+          applied_at?: string
+          checkout_id: string
+          operation_id: string
+          operation_type: string
+          result?: Json
+        }
+        Update: {
+          applied_at?: string
+          checkout_id?: string
+          operation_id?: string
+          operation_type?: string
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offline_applied_operations_checkout_id_fkey"
+            columns: ["checkout_id"]
+            isOneToOne: false
+            referencedRelation: "offline_checkouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offline_checkouts: {
+        Row: {
+          abandoned_at: string | null
+          asset_count: number
+          base_state: Json
+          closed_at: string | null
+          completed_at: string | null
+          content_revision: string
+          created_at: string
+          device_id: string
+          downloaded_at: string
+          estimated_json_bytes: number
+          expires_at: string | null
+          id: string
+          issued_at: string | null
+          last_synced_at: string | null
+          package_id: string
+          package_revision: string
+          page_size: number
+          personal_baseline: Json
+          personal_state_at: string
+          placement_count: number
+          problem_count: number
+          ready_at: string | null
+          request_id: string
+          scope: Json
+          session_id: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          abandoned_at?: string | null
+          asset_count?: number
+          base_state: Json
+          closed_at?: string | null
+          completed_at?: string | null
+          content_revision: string
+          created_at?: string
+          device_id: string
+          downloaded_at: string
+          estimated_json_bytes?: number
+          expires_at?: string | null
+          id?: string
+          issued_at?: string | null
+          last_synced_at?: string | null
+          package_id: string
+          package_revision: string
+          page_size?: number
+          personal_baseline?: Json
+          personal_state_at: string
+          placement_count: number
+          problem_count: number
+          ready_at?: string | null
+          request_id: string
+          scope: Json
+          session_id: number
+          status: string
+          user_id: string
+        }
+        Update: {
+          abandoned_at?: string | null
+          asset_count?: number
+          base_state?: Json
+          closed_at?: string | null
+          completed_at?: string | null
+          content_revision?: string
+          created_at?: string
+          device_id?: string
+          downloaded_at?: string
+          estimated_json_bytes?: number
+          expires_at?: string | null
+          id?: string
+          issued_at?: string | null
+          last_synced_at?: string | null
+          package_id?: string
+          package_revision?: string
+          page_size?: number
+          personal_baseline?: Json
+          personal_state_at?: string
+          placement_count?: number
+          problem_count?: number
+          ready_at?: string | null
+          request_id?: string
+          scope?: Json
+          session_id?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offline_checkouts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "practice_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offline_checkouts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offline_package_pages: {
+        Row: {
+          checkout_id: string
+          checksum: string | null
+          created_at: string
+          decoded_bytes: number
+          page_index: number
+          records: Json
+        }
+        Insert: {
+          checkout_id: string
+          checksum?: string | null
+          created_at?: string
+          decoded_bytes?: number
+          page_index: number
+          records: Json
+        }
+        Update: {
+          checkout_id?: string
+          checksum?: string | null
+          created_at?: string
+          decoded_bytes?: number
+          page_index?: number
+          records?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offline_package_pages_checkout_id_fkey"
+            columns: ["checkout_id"]
+            isOneToOne: false
+            referencedRelation: "offline_checkouts"
             referencedColumns: ["id"]
           },
         ]
@@ -1165,6 +1355,7 @@ export type Database = {
         Row: {
           answer: string | null
           attempt: number | null
+          client_key: string | null
           created_at: string
           elapsed_ms: number | null
           encounter: number | null
@@ -1172,6 +1363,7 @@ export type Database = {
           flagged: boolean
           id: number
           is_correct: boolean | null
+          occurred_at: string | null
           problem_id: number
           selected_choice: number | null
           session_id: number | null
@@ -1183,6 +1375,7 @@ export type Database = {
         Insert: {
           answer?: string | null
           attempt?: number | null
+          client_key?: string | null
           created_at?: string
           elapsed_ms?: number | null
           encounter?: number | null
@@ -1190,6 +1383,7 @@ export type Database = {
           flagged?: boolean
           id?: never
           is_correct?: boolean | null
+          occurred_at?: string | null
           problem_id: number
           selected_choice?: number | null
           session_id?: number | null
@@ -1201,6 +1395,7 @@ export type Database = {
         Update: {
           answer?: string | null
           attempt?: number | null
+          client_key?: string | null
           created_at?: string
           elapsed_ms?: number | null
           encounter?: number | null
@@ -1208,6 +1403,7 @@ export type Database = {
           flagged?: boolean
           id?: never
           is_correct?: boolean | null
+          occurred_at?: string | null
           problem_id?: number
           selected_choice?: number | null
           session_id?: number | null
@@ -1700,6 +1896,49 @@ export type Database = {
           p_statement: string
         }
         Returns: boolean
+      }
+      offline_abandon_checkout: {
+        Args: { p_checkout_id: string }
+        Returns: undefined
+      }
+      offline_begin_package: {
+        Args: {
+          p_device_id: string
+          p_package_id: string
+          p_request_id: string
+          p_scope: Json
+          p_session_id: number
+          p_session_name: string
+          p_session_settings: Json
+        }
+        Returns: Json
+      }
+      offline_checkout_created: {
+        Args: { p_checkout_id: string }
+        Returns: Json
+      }
+      offline_cleanup_checkouts: { Args: never; Returns: number }
+      offline_close_checkout: {
+        Args: { p_checkout_id: string }
+        Returns: undefined
+      }
+      offline_finalize_package: {
+        Args: { p_checkout_id: string; p_pages: Json }
+        Returns: Json
+      }
+      offline_mark_checkout_ready: {
+        Args: { p_checkout_id: string }
+        Returns: undefined
+      }
+      offline_sync_v1: {
+        Args: {
+          p_checkout_id: string
+          p_device_id: string
+          p_operations: Json
+          p_package_id: string
+          p_package_revision: string
+        }
+        Returns: Json
       }
       problem_state_summary: {
         Args: { p_series_id?: number }

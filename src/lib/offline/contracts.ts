@@ -22,6 +22,7 @@ import {
 import type {
     OfflineAssetV1,
     OfflineOperationV1,
+    OfflinePackageCreateRequestV1,
     OfflinePackageCreatedV1,
     OfflinePackageMembershipV1,
     OfflinePackagePageV1,
@@ -139,6 +140,34 @@ export const parsePracticeSessionRow: p.Parser<PracticeSessionRow> = ((
 
 // --- Package creation --------------------------------------------------------
 
+const parsePracticeSettings = ((value: unknown, path = "") => {
+    const settings = p.objectOf<{ mode: string; format: string }>({
+        mode: p.string,
+        format: p.string,
+    })(value, path);
+    if (settings.mode !== "new" || settings.format !== "practice") {
+        throw new p.OfflineParseError(
+            path,
+            'offline sessions require settings.mode="new" and settings.format="practice"',
+        );
+    }
+    return value as OfflinePackageCreateRequestV1["session"]["settings"];
+}) as p.Parser<OfflinePackageCreateRequestV1["session"]["settings"]>;
+
+export const parsePackageCreateRequest: p.Parser<OfflinePackageCreateRequestV1> =
+    p.objectOf<OfflinePackageCreateRequestV1>({
+        version: p.literal(1),
+        packageId: p.uuid,
+        requestId: p.uuid,
+        deviceId: p.uuid,
+        scope: parseScope,
+        session: p.objectOf({
+            sessionId: p.nullable(p.integer),
+            name: p.nullable(p.string),
+            settings: parsePracticeSettings,
+        }),
+    });
+
 export const parsePackageCreated: p.Parser<OfflinePackageCreatedV1> =
     p.objectOf<OfflinePackageCreatedV1>({
         version: p.literal(1),
@@ -161,6 +190,10 @@ export const parsePackageCreated: p.Parser<OfflinePackageCreatedV1> =
         }),
         pageSize: p.nonNegativeInteger,
         firstCursor: p.nullable(p.nonEmptyString),
+        baseState: p.objectOf({
+            playerRating: p.nullable(parsePlayerRating),
+            session: parsePracticeSessionRow,
+        }),
     });
 
 // --- Package records ---------------------------------------------------------

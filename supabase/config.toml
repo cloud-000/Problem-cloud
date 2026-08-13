@@ -81,6 +81,9 @@ schema_paths = [
     # Goals themselves: the table plus the four family evaluators, which read
     # problem_progress (submissions.sql) and submission_facts (progress_analytics.sql).
     "./schemas/goals.sql",
+    # Offline packages and transactional sync depend on sessions, submissions,
+    # ratings, the catalog revision, and the shared goal-scope resolver.
+    "./schemas/offline.sql",
     # Loaded last: joins both problem_progress (submissions.sql) and problem_ratings (ratings.sql).
     "./schemas/user_problem_index.sql"
 ]

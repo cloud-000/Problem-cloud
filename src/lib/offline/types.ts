@@ -56,6 +56,11 @@ export type OfflinePackageCreateRequestV1 = {
     };
 };
 
+export type OfflinePackageBaseStateV1 = {
+    playerRating: PlayerRating | null;
+    session: PracticeSessionRow;
+};
+
 export type OfflinePackageCreatedV1 = {
     version: 1;
     packageId: UUID;
@@ -77,6 +82,8 @@ export type OfflinePackageCreatedV1 = {
     };
     pageSize: number;
     firstCursor: Cursor | null;
+    /** Frozen server state captured in the materialization transaction. */
+    baseState: OfflinePackageBaseStateV1;
 };
 
 export type OfflinePackageMembershipV1 = {
@@ -198,11 +205,6 @@ export type OfflinePackagePageV1 = {
     /** base64url SHA-256 over the RFC 8785 canonicalization; see `checksum.ts`. */
     checksum: string;
     records: OfflinePackageRecordsV1;
-};
-
-export type OfflinePackageBaseStateV1 = {
-    playerRating: PlayerRating | null;
-    session: PracticeSessionRow;
 };
 
 /** What `listPackages` shows the user; a superset of the manifest fields. */

@@ -1,13 +1,15 @@
 # Offline Mode — Revised Design Proposal
 
 > [!IMPORTANT]
-> **Status: partially built as of 2026-08-13.** The offline *core and shell* have
+> **Status: server spine complete as of 2026-08-13.** The offline *core and shell* have
 > landed: self-hosted rendering assets, the credential-free `/offline` route with
 > the authenticated load relocated into `(app)`, a minimal service worker, the
 > versioned IndexedDB repository with staged package installation, the local
 > New-mode query engine, the snapshot-plus-overlay state, and the typed outbox —
-> all driven by **fixtures**. No Supabase package-materialization or sync
-> endpoint exists yet, and no trainer or download UI is wired to any of it.
+> fixture coverage, and the Session 1 server spine has landed: declarative
+> Supabase package/checkout schema, retryable two-phase materialization, package
+> endpoints, transactional idempotent sync, overlap reporting, lifecycle,
+> migrations/types, and SQL tests. No trainer or download UI is wired to it yet.
 > §12 tracks exactly what is in and what is not; keep it current as each slice
 > lands.
 >
@@ -753,27 +755,27 @@ browser suite is an additional gate, not a replacement.
 | 2 | Production browser harness + credential-free `/offline` route/load relocation | **complete** | offline reload/account tests pass |
 | 3 | Minimal service worker for versioned assets and navigation fallback | **complete** | no personalized response enters CacheStorage |
 | 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | **complete** | migration/quota/atomicity/overlap tests pass |
-| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **local core complete; atomic base-state integration and server/UI halves not started** | resolver-contract, completeness, revision, limit, and payload tests pass |
+| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **local core + server materialization complete; browser orchestrator/UI not started** | resolver-contract, completeness, revision, limit, and payload tests pass |
 | 6 | Local `PracticeQuery` engine + snapshot overlay + New-mode trainer/shadow selection | **query/overlay complete; trainer not started** | repository contract and reload/lifecycle component tests pass |
-| 7 | Typed outbox schema + sync RPC/endpoint | **client outbox complete; SQL/endpoint not started** | SQL idempotency and live≡replay tests pass |
+| 7 | Typed outbox schema + sync RPC/endpoint | **complete (client contract + SQL/RPC/endpoint)** | SQL idempotency and live≡replay tests pass |
 | 8 | Foreground sync coordinator, auth recovery, multi-tab lock | not started (connectivity state machine landed with slice 4) | reconnect/account/concurrency browser tests pass |
 | 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
 | 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
 
 ### What the landed slices do and do not cover
 
-Slices 1–4 are complete as specified. Slices 5–7 are split, because the local
-half of each can be built and tested against fixtures while the server half
-cannot exist without schema and endpoint work:
+Slices 1–4 are complete as specified. Session 1 completed the server halves of
+slices 5 and 7; their remaining browser integration is described below:
 
 - **Slice 5.** `beginPackage` / `stagePackagePage` / `commitPackage` /
   `abortStagingPackage` are implemented with staged-revision isolation, checksum
   and count verification, revision-scoped media staging, and refresh that keeps
-  the previous ready revision until commit. **Not built:** the
-  `goal_scope_canonicals`-backed materialization function, the
-  `offline_checkouts` / `offline_package_pages` tables, the creation and page
-  endpoints, and the download UI. Packages come from
-  `src/lib/offline/fixtures.ts`. Before network wiring, the already-implemented
+  the previous ready revision until commit. The server now provides the
+  `goal_scope_canonicals`-backed two-phase materializer, the
+  `offline_checkouts` / `offline_package_pages` tables, RFC 8785 checksum
+  finalization, and the creation/page/lifecycle endpoints. **Not built:** the
+  browser download orchestrator and UI; fixture packages remain the only caller
+  of the local installer. Before that wiring, the already-implemented
   post-commit session-snapshot write moves into the staged atomic commit described
   in §5c, and media lookup moves from an arbitrary cache scan to the
   revision-addressed route in §4.
@@ -784,8 +786,9 @@ cannot exist without schema and endpoint work:
   rating, and any offline practice UI.
 - **Slice 7.** The typed outbox, its coalescing rules, ordering, failure
   handling, and `acknowledgeSync` are implemented against the wire contract.
-  **Not built:** `submissions.client_key` / `occurred_at`, the sync RPC, and the
-  endpoint. Nothing flushes yet.
+  `submissions.client_key` / `occurred_at`, the closed transactional sync RPC,
+  operation ledger, overlap reporting, and authenticated endpoint have landed.
+  **Not built:** the foreground browser coordinator, so nothing flushes yet.
 
 Where things live: `src/lib/offline/` (contracts, parsers, checksums, schema,
 storage backends, repository, query engine, overlay, media, fixtures),
@@ -801,9 +804,9 @@ offline and retain a submission across a failed, retried sync.
 The remaining numbered slices are dependency labels, not separate work
 sessions. Finish v1 in three sessions:
 
-1. **Server spine:** the server halves of 5 and 7 plus checkout provenance and
-   overlap reporting from 9 — schema, two-phase materialization, endpoints,
-   transactional sync, migrations/types, and SQL tests.
+1. **Server spine — complete:** the server halves of 5 and 7 plus checkout
+   provenance and overlap reporting from 9 — schema, two-phase materialization,
+   endpoints, transactional sync, migrations/types, and SQL tests.
 2. **Download and recovery:** atomic base-state promotion, revision-addressed
    media routing, the download UI/orchestrator from 5, and foreground auth,
    locking, retry, and conflict disclosure from 8.
