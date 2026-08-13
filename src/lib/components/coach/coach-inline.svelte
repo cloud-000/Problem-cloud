@@ -86,14 +86,18 @@
             Loading Coach…
         </div>
     {:else if !coach.bootstrap || coach.connectionBlocked}
-        <div class={cn(rail, "shrink-0")}><CoachContextTray /></div>
+        {#if !compact}
+            <div class={cn(rail, "shrink-0")}><CoachContextTray /></div>
+        {/if}
         <CoachConnectionGate />
     {:else}
-        <div class={cn(rail, "shrink-0")}>
-            <CoachContextTray />
-            <CoachDebugToggle />
-            <CoachRequestInspector />
-        </div>
+        {#if !compact}
+            <div class={cn(rail, "shrink-0")}>
+                <CoachContextTray />
+                <CoachDebugToggle />
+                <CoachRequestInspector />
+            </div>
+        {/if}
         {#if coach.resumePrompt}
             <!-- Above the transcript, not over it: the choice is which thread to attach
                  to, and the blank Coach behind it is already usable. -->
@@ -136,7 +140,12 @@
                 actions={quickActions}
                 layout="row"
                 disabled={coach.streaming}
-                class="pointer-events-auto px-3 pb-1 pt-2 sm:px-4"
+                class={cn(
+                    "pointer-events-auto px-3 sm:px-4",
+                    compact
+                        ? "flex-nowrap overflow-x-auto pb-0 pt-1"
+                        : "pb-1 pt-2",
+                )}
                 onselect={(action) => onQuickAction(action)}
             />
             <AIChatComposer

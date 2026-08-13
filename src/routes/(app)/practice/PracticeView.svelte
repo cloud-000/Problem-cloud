@@ -921,15 +921,46 @@
    // explicit px height in *both* states. Interpolating `flex-1` against a
    // `max-height` is not a thing CSS can do; interpolating px against
    // `min(42dvh,22rem)` (which resolves to px) is.
+   //
+   // The empty Coach cannot be the first source of its own footprint: it only
+   // mounts after the answer UI is removed, and its dimension binding lands one
+   // render later. Using `0` for that intervening frame recentres the statement
+   // with nothing below it, then moves it again when the measurement arrives.
+   // Keep the outgoing answer region's measured footprint as the floor instead.
+   // The extra 20px is the shelf's `gap-5` that used to sit between the statement
+   // and that region.
+   const STATEMENT_STACK_GAP_PX = 20;
    let problemRegionHeight = $state(0);
-   let coachBoxHeight = $state(0);
+   let answerBoxHeight = $state(0);
+   let coachCompactHeight = $state(0);
+   let emptyCoachFootprint = $derived(
+      answerBoxHeight > 0 ? answerBoxHeight + STATEMENT_STACK_GAP_PX : 0,
+   );
    let statementShelfHeight = $derived(
       coachExpanded
          ? "min(42dvh, 22rem)"
          : problemRegionHeight > 0
-           ? `${Math.max(0, problemRegionHeight - (coachMode ? coachBoxHeight : 0))}px`
+           ? `${Math.max(
+                0,
+                problemRegionHeight -
+                   (coachMode
+                      ? Math.max(coachCompactHeight, emptyCoachFootprint)
+                      : 0),
+             )}px`
            : "100%",
    );
+
+   function measureCompactCoach(height: number | undefined) {
+      // The same wrapper becomes the full transcript after the first message.
+      // Do not let that much larger geometry poison the next empty-state swap.
+      if (!coachExpanded && height != null) coachCompactHeight = height;
+   }
+
+   function measureAnswerBox(height: number | undefined) {
+      // Ignore the binding's teardown value: this is deliberately the outgoing
+      // box's last height, kept across the conditional swap into Coach mode.
+      if (height != null && height > 0) answerBoxHeight = height;
+   }
 
    // ── Hints ───────────────────────────────────────────────────────────────────
    // Rungs taken on the problem on screen. Deliberately *not* part of
@@ -2193,7 +2224,10 @@
                         <!-- No `mt-auto` here: the statement's own auto margins
                              have already taken every pixel of free space, so
                              this sits at the bottom of the region on its own. -->
-                        <div class="flex w-full max-w-[48rem] flex-col gap-1.5">
+                        <div
+                           bind:clientHeight={null, measureAnswerBox}
+                           class="flex w-full max-w-[48rem] flex-col gap-1.5"
+                        >
                            <!-- The ladder sits over the answer box, collapsed to a
                                 single lightbulb until it is hovered, focused, or
                                 offered after a wrong try. Help is one gesture away
@@ -2289,10 +2323,15 @@
                           replaced; measured either way, because the shelf above
                           sizes itself against whatever this takes. -->
                      <div
-                        bind:clientHeight={coachBoxHeight}
+                        bind:clientHeight={null, measureCompactCoach}
+                        style:min-height={!coachExpanded && emptyCoachFootprint > 0
+                           ? `${emptyCoachFootprint}px`
+                           : undefined}
                         class={cn(
                            "flex w-full flex-col",
-                           coachExpanded ? "min-h-0 flex-1" : "shrink-0",
+                           coachExpanded
+                              ? "min-h-0 flex-1"
+                              : "shrink-0 justify-end",
                         )}
                      >
                         <CoachInline
