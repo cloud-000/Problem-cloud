@@ -796,6 +796,18 @@ browser suite is an additional gate, not a replacement.
 | 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
 | 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
 
+A failed navigation to any other app route recovers through `/offline`, and no
+slice above changes that. Making those routes boot their own frame offline,
+serving catalog reads from the downloaded package, and giving the user a visible
+offline mode are proposed separately in
+[`offline-resilient-pages.md`](./offline-resilient-pages.md). It is not
+scheduled. The frame and mode work is presentation outside this document's data
+contract, but the catalog reads are **not**: they add a browse intent to the
+local query contract in [`offline-contracts.md`](./offline-contracts.md) §4 —
+specify it together with the List and Skipped practice members rather than twice
+— and test/series-level reads additionally need catalog fields the package does
+not carry today.
+
 ### What the landed slices do and do not cover
 
 Slices 1–5, 7, and 8 are complete as specified. Session 2 supplied the browser
