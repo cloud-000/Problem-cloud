@@ -13,13 +13,25 @@
  * error by deleting the database — that is unsynced user work.
  */
 
-import type { OfflineOperationV1, OfflineScope, PackageState, UUID } from "./types";
+import type {
+    OfflineOperationV1,
+    OfflinePackageBaseStateV1,
+    OfflineScope,
+    PackageState,
+    UUID,
+} from "./types";
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
 import type { PracticeSessionRow } from "$lib/sessions";
 import type { PlayerRating } from "$lib/library";
 
 export const OFFLINE_DB_NAME = "problem-cloud-offline";
-export const OFFLINE_SCHEMA_VERSION = 1;
+/**
+ * V2 is an additive repair upgrade for browsers that opened the database while
+ * the pre-release v1 store list was still incomplete. `upgradeSchema` walks the
+ * full declared schema, so it creates only missing stores/indexes and preserves
+ * every existing package and outbox record.
+ */
+export const OFFLINE_SCHEMA_VERSION = 2;
 
 export type IndexSchema = {
     name: string;
@@ -220,6 +232,8 @@ export type PackageRevisionRecord = {
 
 /** Progress of a download that is not visible to queries yet. */
 export type StagingRecord = PackageRevisionRecord & {
+    /** Frozen session/rating snapshot, invisible until this revision commits. */
+    baseState: OfflinePackageBaseStateV1;
     nextPageIndex: number;
     /** Checksums already staged, so a retried page is recognized as a retry. */
     pages: { pageIndex: number; checksum: string }[];
@@ -344,4 +358,7 @@ export const META = {
     sequence: (userId: UUID) => `sequence:${userId}`,
     /** This runtime's id, for durable ordering within a browser session. */
     runtime: "runtime",
+    deviceId: "deviceId",
+    /** Immutable local provenance retained while a checkout can own outbox work. */
+    checkout: (checkoutId: UUID) => `checkout:${checkoutId}`,
 } as const;

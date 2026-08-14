@@ -24,6 +24,7 @@ type OfflineHandle = {
         queryProblems(query: unknown): Promise<{ status: string; problems: { canonicalId: number }[] }>;
         recordSubmission(input: unknown): Promise<{ clientKey: string }>;
         pendingOperations(userId: string, limit: number): Promise<{ id: string }[]>;
+        loadSession(userId: string, sessionId: number): Promise<{ row: { id: number } } | null>;
     }>;
     fixtures: typeof import("../src/lib/offline/fixtures");
     refresh: () => Promise<void>;
@@ -147,6 +148,7 @@ test.describe("a downloaded package in a real browser", () => {
                 return {
                     result: await repository.queryProblems(query),
                     pending: (await repository.pendingOperations(userId, 100)).length,
+                    session: await repository.loadSession(userId, 1),
                 };
             },
             { userId: USER, query: newQuery(USER) },
@@ -155,6 +157,7 @@ test.describe("a downloaded package in a real browser", () => {
         const offered = after.result.problems.map((entry) => entry.canonicalId);
         for (const canonicalId of answered) expect(offered).not.toContain(canonicalId);
         expect(after.pending).toBe(2);
+        expect(after.session?.row.id).toBe(1);
     });
 
     test("shows the installed package on the offline page", async ({ page }) => {
@@ -176,5 +179,10 @@ test.describe("a downloaded package in a real browser", () => {
 
         await expect(page.getByRole("heading", { name: "Downloaded and ready" })).toBeVisible();
         await expect(page.getByText("4 problems")).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Download problems" })).toBeVisible();
+        await expect(page.getByLabel("Problems to download")).toHaveValue("20");
+        await expect(
+            page.getByRole("button", { name: "Download 20 problems" }),
+        ).toBeEnabled();
     });
 });

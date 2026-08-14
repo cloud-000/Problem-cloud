@@ -1,7 +1,7 @@
 # Offline Mode — Revised Design Proposal
 
 > [!IMPORTANT]
-> **Status: server spine complete as of 2026-08-13.** The offline *core and shell* have
+> **Status: Session 2 download and recovery complete as of 2026-08-13.** The offline *core and shell* have
 > landed: self-hosted rendering assets, the credential-free `/offline` route with
 > the authenticated load relocated into `(app)`, a minimal service worker, the
 > versioned IndexedDB repository with staged package installation, the local
@@ -9,7 +9,10 @@
 > fixture coverage, and the Session 1 server spine has landed: declarative
 > Supabase package/checkout schema, retryable two-phase materialization, package
 > endpoints, transactional idempotent sync, overlap reporting, lifecycle,
-> migrations/types, and SQL tests. No trainer or download UI is wired to it yet.
+> migrations/types, and SQL tests. The browser now downloads/refreshes/deletes
+> packages through those APIs, atomically promotes base state, routes media by
+> revision, and foreground-syncs pending work with auth and multi-tab recovery.
+> Trainer integration remains intentionally deferred to Session 3.
 > §12 tracks exactly what is in and what is not; keep it current as each slice
 > lands.
 >
@@ -250,7 +253,7 @@ Filtering canonical rows directly by their own test metadata is not equivalent.
 authors it. Do not advertise a year filter in offline v1 until the shared scope
 UI and practice contract both own it.
 
-### 5b. A package contains the complete scope, not a draw
+### 5b. A package contains an explicitly bounded membership, not a hidden draw
 
 The existing New draw:
 
@@ -267,8 +270,9 @@ source the product requires.
 Add a paginated materialization endpoint backed by narrow RPCs that:
 
 1. calls `goal_scope_canonicals`;
-2. returns every canonical reached by the scope, without applying a practice
-   mode's seen/gradeable/mastery/engagement filters;
+2. deterministically selects up to the user-visible requested problem amount
+   from the canonicals reached by the scope, without applying a practice mode's
+   seen/gradeable/mastery/engagement filters;
 3. joins canonical problem content, answer and solution metadata, and every
    matching placement needed for local series/division/format/test queries;
 4. returns current overall problem ratings and the user's frozen progress,
@@ -277,8 +281,8 @@ Add a paginated materialization endpoint backed by narrow RPCs that:
    supported offline workflow;
 6. returns stable pages/cursors, total counts, byte estimates, content revision,
    and package revision;
-7. enforces hard server-side row, page, and payload limits without silently
-   sampling away part of the requested scope;
+7. enforces the explicit requested amount and hard server-side row, page, and
+   payload limits without adding a hidden truncation during paging;
 8. creates the package checkout and, for the first shipping slice, its dedicated
    `practice_sessions` row in the same online workflow.
 
@@ -295,10 +299,13 @@ before finalize, and retrying the same `requestId` resumes or returns the same
 finished materialization. This preserves one database snapshot without requiring
 PostgreSQL's JSON text formatting to impersonate RFC 8785.
 
-This endpoint materializes scope membership and facts; it does not reproduce any
-trainer mode or ordering. If the requested scope exceeds a product/storage hard
-limit, the download must explain the size and ask the user to narrow the scope.
-It must never present a sample as though it were the complete downloaded scope.
+This endpoint materializes bounded scope membership and facts; it does not
+reproduce any trainer mode or ordering. The browser defaults the download amount
+to 20 and discloses it before creation. That amount limits only the local package,
+not the online practice session. If the requested package exceeds a
+product/storage hard limit, the download must explain the size and ask the user
+to lower the amount or narrow the filters. It must never add an undisclosed cap
+and present that result as the requested package.
 
 ### 5c. Package shape and atomic installation
 
@@ -755,17 +762,17 @@ browser suite is an additional gate, not a replacement.
 | 2 | Production browser harness + credential-free `/offline` route/load relocation | **complete** | offline reload/account tests pass |
 | 3 | Minimal service worker for versioned assets and navigation fallback | **complete** | no personalized response enters CacheStorage |
 | 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | **complete** | migration/quota/atomicity/overlap tests pass |
-| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **local core + server materialization complete; browser orchestrator/UI not started** | resolver-contract, completeness, revision, limit, and payload tests pass |
+| 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **complete** | resolver-contract, completeness, revision, limit, and payload tests pass |
 | 6 | Local `PracticeQuery` engine + snapshot overlay + New-mode trainer/shadow selection | **query/overlay complete; trainer not started** | repository contract and reload/lifecycle component tests pass |
 | 7 | Typed outbox schema + sync RPC/endpoint | **complete (client contract + SQL/RPC/endpoint)** | SQL idempotency and live≡replay tests pass |
-| 8 | Foreground sync coordinator, auth recovery, multi-tab lock | not started (connectivity state machine landed with slice 4) | reconnect/account/concurrency browser tests pass |
+| 8 | Foreground sync coordinator, auth recovery, multi-tab lock | **complete** | reconnect/account/concurrency browser tests pass |
 | 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
 | 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
 
 ### What the landed slices do and do not cover
 
-Slices 1–4 are complete as specified. Session 1 completed the server halves of
-slices 5 and 7; their remaining browser integration is described below:
+Slices 1–5, 7, and 8 are complete as specified. Session 2 supplied the browser
+halves of slices 5 and 8:
 
 - **Slice 5.** `beginPackage` / `stagePackagePage` / `commitPackage` /
   `abortStagingPackage` are implemented with staged-revision isolation, checksum
@@ -773,12 +780,12 @@ slices 5 and 7; their remaining browser integration is described below:
   the previous ready revision until commit. The server now provides the
   `goal_scope_canonicals`-backed two-phase materializer, the
   `offline_checkouts` / `offline_package_pages` tables, RFC 8785 checksum
-  finalization, and the creation/page/lifecycle endpoints. **Not built:** the
-  browser download orchestrator and UI; fixture packages remain the only caller
-  of the local installer. Before that wiring, the already-implemented
-  post-commit session-snapshot write moves into the staged atomic commit described
-  in §5c, and media lookup moves from an arbitrary cache scan to the
-  revision-addressed route in §4.
+  finalization, and the creation/page/lifecycle endpoints. The browser client now
+  drives the full API, performs quota/persistence checks, stages and commits all
+  pages, recovers lifecycle calls, and exposes confirmation/progress, refresh,
+  cancel, and guarded deletion. `baseState` promotes in the same IndexedDB
+  transaction as the revision, and media resolves only through the addressed
+  revision cache.
 - **Slice 6.** The `PracticeQueryV1` engine (placement-aware scope, New-mode
   eligibility, seeded and nearest-rating ordering, `not_downloaded` vs.
   `exhausted`) and the snapshot-plus-overlay state are implemented and contract
@@ -788,7 +795,10 @@ slices 5 and 7; their remaining browser integration is described below:
   handling, and `acknowledgeSync` are implemented against the wire contract.
   `submissions.client_key` / `occurred_at`, the closed transactional sync RPC,
   operation ledger, overlap reporting, and authenticated endpoint have landed.
-  **Not built:** the foreground browser coordinator, so nothing flushes yet.
+  The foreground coordinator groups operations by immutable checkout provenance,
+  serializes tabs with Web Locks (and a BroadcastChannel-coordinated fallback),
+  retries transient failures, resumes after reload/token refresh, and discloses
+  account/auth and overlap states without dropping the outbox.
 
 Where things live: `src/lib/offline/` (contracts, parsers, checksums, schema,
 storage backends, repository, query engine, overlay, media, fixtures),
@@ -807,7 +817,7 @@ sessions. Finish v1 in three sessions:
 1. **Server spine — complete:** the server halves of 5 and 7 plus checkout
    provenance and overlap reporting from 9 — schema, two-phase materialization,
    endpoints, transactional sync, migrations/types, and SQL tests.
-2. **Download and recovery:** atomic base-state promotion, revision-addressed
+2. **Download and recovery — complete:** atomic base-state promotion, revision-addressed
    media routing, the download UI/orchestrator from 5, and foreground auth,
    locking, retry, and conflict disclosure from 8.
 3. **Trainer and release proof:** the trainer seam and New-mode consumer from 6,

@@ -6,6 +6,7 @@ import {
     normalizeScope,
     parsePackageCreateRequest,
     parsePackageCreated,
+    parseRecords,
 } from "$lib/offline/contracts";
 import { PAGE_MAX_DECODED_BYTES } from "$lib/offline/limits";
 import type {
@@ -53,7 +54,13 @@ async function finalizePages(input: {
                 assets.push(asset);
             }
         }
-        const records: OfflinePackageRecordsV1 = { ...page.records, problems, assets };
+        // Parse before hashing and before storing: the client can only verify
+        // the contract shape it parses, so that is what the checksum must cover.
+        const records: OfflinePackageRecordsV1 = parseRecords({
+            ...page.records,
+            problems,
+            assets,
+        });
         const checksumInput = {
             packageId: input.packageId,
             checkoutId: input.checkoutId,
@@ -99,7 +106,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
                 p_package_id: body.packageId,
                 p_request_id: body.requestId,
                 p_device_id: body.deviceId,
-                p_scope: body.scope,
+                // The resolver receives the normalized scope plus an internal
+                // membership bound. `goal_scope_canonicals` ignores unknown
+                // keys; the SQL function removes this key before calling it.
+                p_scope: { ...body.scope, problemLimit: body.problemLimit },
                 // PostgREST accepts SQL null here; generated function args do
                 // not preserve nullable parameter metadata.
                 p_session_id: body.session.sessionId as number,

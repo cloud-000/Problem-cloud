@@ -334,11 +334,6 @@ export async function installFixturePackage(
         expectedPlacements: fixture.created.placementCount,
         expectedAssets: fixture.created.assetCount,
     });
-    await repository.putSessionSnapshot(
-        userId,
-        fixture.created.packageId,
-        fixture.base,
-    );
 }
 
 // --- The shared sample corpus -----------------------------------------------

@@ -146,6 +146,7 @@ declare
   v_placement_count integer;
   v_page_count integer;
   v_page integer;
+  v_problem_limit integer;
   v_records jsonb;
   v_baseline jsonb;
   v_player jsonb;
@@ -161,6 +162,14 @@ begin
      or jsonb_array_length(coalesce(p_scope->'topic', '[]'::jsonb)) > 32
      or jsonb_array_length(coalesce(p_scope->'seriesIds', '[]'::jsonb)) > 256 then
     raise exception 'OFFLINE_OPERATION_INVALID:invalid scope';
+  end if;
+  begin
+    v_problem_limit := (p_scope->>'problemLimit')::integer;
+  exception when others then
+    raise exception 'OFFLINE_OPERATION_INVALID:problem limit';
+  end;
+  if v_problem_limit is null or v_problem_limit < 1 or v_problem_limit > 10000 then
+    raise exception 'OFFLINE_OPERATION_INVALID:problem limit';
   end if;
   if p_session_settings->>'format' <> 'practice'
      or p_session_settings->>'mode' <> 'new' then
@@ -208,10 +217,19 @@ begin
     page_index integer not null
   ) on commit drop;
   truncate offline_scope_ids;
+  -- The amount is explicit in the request and deterministically selects one
+  -- reusable subset. The package is complete for that selected membership; no
+  -- hidden truncation or page sampling occurs.
   insert into offline_scope_ids(canonical_id, page_index)
+  with selected as (
+    select canonical_id
+    from public.goal_scope_canonicals(p_scope - 'problemLimit')
+    order by md5(p_package_id::text || ':' || canonical_id::text)
+    limit v_problem_limit
+  )
   select canonical_id,
          ((row_number() over (order by canonical_id) - 1) / 250)::integer
-  from public.goal_scope_canonicals(p_scope);
+  from selected;
 
   select count(*) into v_problem_count from offline_scope_ids;
   if v_problem_count > 10000 then

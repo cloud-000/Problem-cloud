@@ -92,15 +92,17 @@ function isPrivate(url: URL): boolean {
     );
 }
 
-/** Find a problem image in whichever package revision downloaded it. */
-async function matchMedia(request: Request): Promise<Response | undefined> {
-    for (const key of await caches.keys()) {
-        if (!key.startsWith(MEDIA_CACHE_PREFIX)) continue;
-        const cache = await caches.open(key);
-        const hit = await cache.match(request.url);
-        if (hit) return hit;
+/** Resolve a rewritten route against exactly one immutable package revision. */
+async function matchMedia(url: URL): Promise<Response> {
+    const revision = url.searchParams.get("revision");
+    const original = url.searchParams.get("url");
+    if (!revision || !original || revision.includes("/")) {
+        return new Response("Invalid offline media route", { status: 400 });
     }
-    return undefined;
+    const name = `${MEDIA_CACHE_PREFIX}${revision}`;
+    if (!(await caches.has(name))) return new Response("Offline media missing", { status: 404 });
+    const hit = await (await caches.open(name)).match(original);
+    return hit ?? new Response("Offline media missing", { status: 404 });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -111,6 +113,10 @@ self.addEventListener("fetch", (event) => {
     if (isPrivate(url)) return; // straight to the network, never stored
 
     const isSameOrigin = url.origin === self.location.origin;
+    if (isSameOrigin && url.pathname === "/_offline/media") {
+        event.respondWith(matchMedia(url));
+        return;
+    }
     const isPrecached =
         isSameOrigin && PRECACHE.includes(url.pathname);
 
@@ -146,19 +152,8 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    if (request.destination === "image" && !isSameOrigin) {
-        event.respondWith(
-            (async () => {
-                try {
-                    return await fetch(request);
-                } catch (error) {
-                    const cached = await matchMedia(request);
-                    if (cached) return cached;
-                    throw error;
-                }
-            })(),
-        );
-    }
+    // External media is never searched across revisions. Rendered offline
+    // problems use the explicit same-origin route above.
 });
 
 export {};

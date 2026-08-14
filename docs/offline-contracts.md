@@ -1,21 +1,28 @@
 # Offline Mode — V1 Contracts
 
 > [!IMPORTANT]
-> **Status: Session 1 server spine implemented (2026-08-13).** §1, §3, §4, §5
+> **Status: Session 2 download/recovery implemented (2026-08-13).** §1, §3, §4, §5
 > and §6 are exercised against fixture packages in `src/lib/offline/`; §2, §7,
 > and §8 now have declarative schema, two-phase materialization/package
 > endpoints, transactional sync, checkout lifecycle, and pgTAP coverage. Two local
-> integration adjustments: stage `OfflinePackageCreatedV1.baseState` and promote
-> it atomically in `commitPackage` instead of writing the fixture snapshot just
-> after commit, and replace the service worker's arbitrary media-cache scan with
-> revision-addressed media URLs. The browser download/recovery coordinator and
-> trainer integration remain deliberately unimplemented. If a code
+> integration adjustments are now complete: `OfflinePackageCreatedV1.baseState`
+> is staged and promoted atomically in `commitPackage`, and the service worker
+> resolves revision-addressed media URLs without scanning unrelated caches. The
+> browser package client, quota-aware download/refresh/delete orchestrator,
+> checkout recovery, and foreground authenticated sync coordinator are wired.
+> Trainer integration remains deliberately unimplemented. If a code
 > change needs a different wire shape, query meaning, persistence rule, or sync
 > result, update this contract before or with that change.
 
 The downloaded package is a local read replica for a server-resolved scope. It
 is not a queue. The first UI consumer is New-mode practice, but the package and
 repository preserve the facts needed by later modes.
+
+Session 2 also makes one local persistence decision explicit: immutable
+`checkoutId -> { userId, packageId, packageRevision }` provenance is retained in
+`meta` while a checkout can own outbox work. The operation wire remains
+unchanged, but a refresh can therefore sync work created under the superseded
+revision instead of incorrectly pairing it with the newly active revision.
 
 This document settles five boundaries:
 
@@ -76,6 +83,8 @@ type OfflinePackageCreateRequestV1 = {
     requestId: UUID;
     deviceId: UUID;
     scope: OfflineScope;
+    /** User-visible membership bound; defaults to 20 in the browser. */
+    problemLimit: number;
     /** First-slice session settings; must resolve to practice/New mode. */
     session: {
         /** Null initially; the owned dedicated session id on refresh. */
@@ -94,10 +103,14 @@ Validation rules:
   referenced by older pending operations.
 - `deviceId` identifies one browser installation, not a person or secret.
 - Scope arrays are deduplicated, bounded, and normalized before resolution.
+- `problemLimit` is an explicit integer from 1 through 10,000. It limits only
+  this downloaded package; it does not cap or conclude the online practice
+  session. If fewer problems match, the package contains every match.
 - `session.settings.format` must be `"practice"` and `mode` must be `"new"`
   for the first shipping slice.
-- The endpoint rejects an empty whole-catalog scope if it exceeds the configured
-  package limit; it never silently samples or truncates it.
+- An empty scope means any topic and series. The server deterministically chooses
+  up to the disclosed `problemLimit`; it never applies a hidden second cap or
+  presents an undisclosed truncation as the full scope.
 
 ```ts
 type OfflinePackageBaseStateV1 = {
@@ -206,7 +219,16 @@ checksum. The last page has `nextCursor: null`.
 The checksum is the base64url SHA-256 digest of the UTF-8 RFC 8785 canonical
 JSON serialization of
 `{ packageId, checkoutId, packageRevision, pageIndex, records }`.
-HTTP compression does not change it. V1 accepts at most 250 problems and 2 MiB
+HTTP compression does not change it.
+
+`records` here means the **parsed** records — the shape in this section, after
+`parseRecords` has dropped anything the contract does not name — on both sides.
+The server therefore parses before it hashes and before it stores. A checksum
+taken over the materializer's raw output would agree only for as long as the SQL
+and the parser named exactly the same fields: the client can hash only what it
+parsed, so the first additive server column would fail every download with "page
+0 failed its checksum" — undoing the whole reason unknown keys are dropped
+rather than rejected. V1 accepts at most 250 problems and 2 MiB
 of decoded canonical JSON per page; the server may return a smaller page.
 
 ### 2d. Normalized package records
@@ -332,6 +354,41 @@ a second wire shape.
 
 ## 3. Local installation
 
+### Claiming the local account
+
+Every local read and write is gated on the active-user marker, so one explicit
+step establishes it:
+
+```ts
+claimAccount(userId: UUID, label?: string | null):
+    Promise<"claimed" | "current" | "owner-mismatch">;
+```
+
+It is idempotent, it never takes over a store another account owns (that store
+may hold work that account has not synced — the caller reports it instead), and
+a call with no `label` never erases the display name already stored. `label` is
+a display name only; no token, cookie or serialized session is ever written.
+
+Claiming must not be a side effect of anything conditional. It was originally
+performed only by the foreground sync coordinator's first pass, which runs
+behind a connectivity check and a cross-tab lease, so a download started before
+that pass landed failed with "no offline user is active". `downloadOfflinePackage`
+and the sync coordinator both claim first, unconditionally.
+
+### Transaction scope is part of the contract
+
+A local transaction may only touch the stores it is opened over. `commitPackage`
+is the widest, because it promotes shared state, writes the session snapshot
+beside the local work that may outrank it, **and** drops the superseded revision
+— so `placements`, `assets`, `sessions` and `localSubmissions` are all in its
+scope even though a reading of its body alone might not suggest it.
+
+Both storage backends enforce this. IndexedDB always did (`objectStore()` throws
+`NotFoundError` outside the scope); the in-process backend now does too, because
+while it did not, an under-scoped transaction passed every `bun test` and failed
+only in a real browser — which is how `commitPackage` shipped reaching for an
+unopened `sessions` and failed every download at the last step.
+
 ### What `stagePackagePage` means
 
 Earlier notes used the ambiguous name `installPage`. It did **not** mean install
@@ -439,7 +496,10 @@ Compound scope predicates still run in pure TypeScript after these indexes
 produce the package-bounded candidate set. With the 10,000-canonical package
 limit, v1 does not add an inverted-index subsystem prematurely.
 
-Schema upgrades are additive and transactional. An incompatible old package may
+Schema upgrades are additive and transactional. IndexedDB schema v2 is an
+additive repair pass for pre-release v1 databases that may have been opened
+before the complete store list landed; it creates missing stores/indexes without
+deleting packages or outbox work. An incompatible old package may
 be marked `incompatible` and redownloaded, but an upgrade must always preserve
 and parse versioned outbox records. Application startup never responds to a
 migration error by deleting the database.
@@ -887,7 +947,8 @@ slices to answer differently.
   server estimate over the row/JSON limits is rejected before download. Because
   third-party media lengths are not always knowable up front, the browser also
   enforces the 250 MiB limit cumulatively while staging. Crossing it aborts the
-  new revision. A package is never sampled.
+  new revision. Package membership is bounded by the user's explicit requested
+  amount; it is never silently sampled again during paging or installation.
 - Before downloading, request persistent storage after the user's gesture when
   that API exists and call `navigator.storage.estimate()`. A persistence denial
   warns but does not block. Require room for the new package, its staging copy
@@ -926,8 +987,12 @@ contract.
 
 ### First-slice UX
 
-- Online Practice exposes `Download for offline` beside the scope/session
-  settings. Confirmation shows normalized scope, problem/media estimates,
+- `/offline` is the primary package-management surface and, while online,
+  exposes an explicit problem amount (20 by default) plus optional
+  topic/series/division/format filters. An empty scope means that amount from
+  the whole catalog. Online Practice also exposes `Download for offline` as a
+  shortcut using that session's scope, while leaving the session itself
+  unlimited. Confirmation shows normalized scope, problem/media estimates,
   required space, and the explicit warning that answer keys are stored locally.
 - Download states are `estimating`, `downloading` (pages/assets and bytes),
   `ready`, `stale`, `failed`, and `storage-full`. Cancel removes only staging.
@@ -940,6 +1005,11 @@ contract.
   service worker opens only that revision's cache and matches the decoded
   original URL; it never returns the first match from an arbitrary revision
   cache. The URL is routing metadata, not a credential.
+- Required images are fetched directly when their origin permits CORS. If it
+  does not, the browser uses an authenticated same-origin fallback keyed by
+  checkout and asset digest. The server serves only an asset declared in that
+  user's issued checkout and only from approved immutable image origins; it is
+  not an arbitrary URL proxy. A failed required image still aborts staging.
 - Five-day staleness shows a warning and an online-only Refresh action but never
   blocks practice. Refresh retains the old ready revision until commit.
 - Delete is immediate only when the package has no pending operations. Otherwise

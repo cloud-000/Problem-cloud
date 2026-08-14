@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createMemoryStorage } from "./memory";
-import { OFFLINE_STORES, STORE } from "./schema";
-import { keyFor } from "./storage";
+import { OFFLINE_SCHEMA_VERSION, OFFLINE_STORES, STORE } from "./schema";
+import { keyFor, type OfflineTx } from "./storage";
 import { upgradeSchema } from "./idb";
 
 describe("the memory storage backend", () => {
@@ -44,6 +44,28 @@ describe("the memory storage backend", () => {
                 await tx.put(STORE.meta, { key: "a", value: 1 });
             }),
         ).rejects.toThrow(/readonly/);
+    });
+
+    // IndexedDB throws `NotFoundError` for a store outside the transaction's
+    // scope. The memory backend has to as well, or a missing entry in a
+    // `transaction([...])` list passes every test and fails only in a browser —
+    // which is how `commitPackage` shipped reaching for an unopened `sessions`.
+    test("refuses a store the transaction was not opened over", async () => {
+        const storage = createMemoryStorage();
+        for (const [mode, touch] of [
+            ["readonly", (tx: OfflineTx) => tx.get(STORE.sessions, ["u", 1])],
+            ["readonly", (tx: OfflineTx) => tx.getAll(STORE.sessions)],
+            ["readonly", (tx: OfflineTx) => tx.count(STORE.sessions)],
+            ["readwrite", (tx: OfflineTx) => tx.put(STORE.sessions, { userId: "u", sessionId: 1 })],
+            ["readwrite", (tx: OfflineTx) => tx.delete(STORE.sessions, ["u", 1])],
+            ["readwrite", (tx: OfflineTx) => tx.deleteAll(STORE.sessions)],
+        ] as const) {
+            await expect(
+                storage.transaction([STORE.meta], mode, async (tx) => {
+                    await touch(tx);
+                }),
+            ).rejects.toThrow(/"sessions" is not in this transaction's scope/);
+        }
     });
 
     test("leaves a record out of an index when a component is absent", async () => {
@@ -128,6 +150,37 @@ describe("the schema", () => {
         expect(created).toEqual(OFFLINE_STORES.map((entry) => entry.name));
         expect(indexes).toHaveLength(
             OFFLINE_STORES.reduce((total, entry) => total + entry.indexes.length, 0),
+        );
+    });
+
+    test("v2 repairs an incomplete v1 database without recreating existing stores", () => {
+        expect(OFFLINE_SCHEMA_VERSION).toBe(2);
+        const existing = STORE.meta;
+        const created: string[] = [];
+        const store = {
+            indexNames: { contains: () => false },
+            createIndex: () => undefined,
+        };
+        const db = {
+            objectStoreNames: { contains: (name: string) => name === existing },
+            createObjectStore: (name: string) => {
+                created.push(name);
+                return store;
+            },
+        } as unknown as IDBDatabase;
+        const transaction = {
+            objectStore: (name: string) => {
+                expect(name).toBe(existing);
+                return store;
+            },
+        } as unknown as IDBTransaction;
+
+        upgradeSchema(db, transaction, 1, 2);
+
+        expect(created).toEqual(
+            OFFLINE_STORES.filter((entry) => entry.name !== existing).map(
+                (entry) => entry.name,
+            ),
         );
     });
 });

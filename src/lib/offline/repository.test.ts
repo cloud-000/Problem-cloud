@@ -76,6 +76,30 @@ beforeEach(() => {
     repository = makeRepository();
 });
 
+describe("claiming the local account", () => {
+    test("claims an unowned store, and says so only the first time", async () => {
+        expect(await repository.claimAccount(USER, "ada")).toBe("claimed");
+        expect(await repository.claimAccount(USER)).toBe("current");
+        expect(await repository.getAccountMarker()).toEqual({ userId: USER, label: "ada" });
+    });
+
+    test("refuses to take a store owned by another account", async () => {
+        await repository.claimAccount(OTHER_USER, "grace");
+        expect(await repository.claimAccount(USER, "ada")).toBe("owner-mismatch");
+        // The resident account may hold unsynced work, so nothing moves.
+        expect(await repository.getAccountMarker()).toEqual({
+            userId: OTHER_USER,
+            label: "grace",
+        });
+    });
+
+    test("a claim without a label does not erase the one already stored", async () => {
+        await repository.claimAccount(USER, "ada");
+        await repository.claimAccount(USER, null);
+        expect((await repository.getAccountMarker())?.label).toBe("ada");
+    });
+});
+
 describe("staged installation", () => {
     test("stages across pages and commits one ready package", async () => {
         const fixture = await geometryPackage();
@@ -101,6 +125,7 @@ describe("staged installation", () => {
         );
         expect(result.status).toBe("package_unavailable");
         if (result.status === "package_unavailable") expect(result.reason).toBe("staging");
+        expect(await repository.loadSession(USER, fixture.created.sessionId)).toBeNull();
     });
 
     test("re-staging the identical page is a no-op, not a duplicate", async () => {
@@ -187,6 +212,12 @@ describe("staged installation", () => {
             packageRevision: fixtureUuid("revision-2"),
             checkoutId: fixtureUuid("checkout-2"),
         });
+        refresh.created.baseState.playerRating = {
+            rating: 1999,
+            rd: 40,
+            matches: 99,
+            last_match_at: refresh.created.downloadedAt,
+        };
         await repository.beginPackage(refresh.created);
         await repository.stagePackagePage(refresh.pages[0]);
         // The second page never arrives; the download is abandoned.
@@ -195,6 +226,7 @@ describe("staged installation", () => {
         const [manifest] = await repository.listPackages(USER);
         expect(manifest.packageRevision).toBe(fixture.created.packageRevision);
         expect(manifest.problemCount).toBe(4);
+        expect((await repository.getPlayerRating(USER, manifest.sessionId))?.rating).toBe(1200);
         const result = await repository.queryProblems(newQuery());
         expect(result.status).toBe("ok");
     });
@@ -435,6 +467,35 @@ describe("local writes and the overlay", () => {
 });
 
 describe("the outbox", () => {
+    test("keeps the originating revision after a package refresh", async () => {
+        const original = await geometryPackage();
+        await installFixturePackage(repository, original, USER);
+        await repository.recordSubmission({
+            userId: USER,
+            packageId: original.created.packageId,
+            checkoutId: original.created.checkoutId,
+            sessionId: 1,
+            canonicalId: 101,
+            selectedChoice: 0,
+            answer: null,
+            isCorrect: true,
+            skipped: false,
+            flagged: false,
+            elapsedMs: 10,
+            triesUsed: 1,
+        });
+        const refresh = await geometryPackage({
+            packageId: original.created.packageId,
+            checkoutId: fixtureUuid("checkout-refresh"),
+            packageRevision: fixtureUuid("revision-refresh"),
+        });
+        await installFixturePackage(repository, refresh, USER);
+
+        const [batch] = await repository.pendingSyncBatches(USER, 10);
+        expect(batch.checkoutId).toBe(original.created.checkoutId);
+        expect(batch.packageRevision).toBe(original.created.packageRevision);
+    });
+
     test("hands out operations in sequence order and stops at a failure", async () => {
         const fixture = await geometryPackage();
         await installFixturePackage(repository, fixture, USER);

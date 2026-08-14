@@ -80,16 +80,36 @@ class IdbTx implements OfflineTx {
         private readonly schemas: Map<string, StoreSchema>,
     ) {}
 
-    #source(store: string, options?: QueryOptions): IDBObjectStore | IDBIndex {
+    /**
+     * IndexedDB's own message for a store outside the transaction's scope
+     * ("The specified object store was not found") names neither the store nor
+     * the scope, which makes a missing entry in a `transaction([...])` list
+     * genuinely hard to place. Say both.
+     */
+    #store(store: string): IDBObjectStore {
         if (!this.schemas.has(store)) {
             throw new Error(`Unknown offline store "${store}"`);
         }
-        const objectStore = this.tx.objectStore(store);
+        try {
+            return this.tx.objectStore(store);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === "NotFoundError") {
+                throw new Error(
+                    `Offline store "${store}" is not in this transaction's scope ` +
+                        `(opened over: ${[...this.tx.objectStoreNames].join(", ")})`,
+                );
+            }
+            throw error;
+        }
+    }
+
+    #source(store: string, options?: QueryOptions): IDBObjectStore | IDBIndex {
+        const objectStore = this.#store(store);
         return options?.index ? objectStore.index(options.index) : objectStore;
     }
 
     async get<T>(store: string, key: StoreKey): Promise<T | undefined> {
-        return request(this.tx.objectStore(store).get(key as IDBValidKey));
+        return request(this.#store(store).get(key as IDBValidKey));
     }
 
     async getAll<T>(store: string, options?: QueryOptions): Promise<T[]> {
@@ -102,7 +122,7 @@ class IdbTx implements OfflineTx {
 
     async put(store: string, value: unknown): Promise<void> {
         try {
-            await request(this.tx.objectStore(store).put(value as never));
+            await request(this.#store(store).put(value as never));
         } catch (error) {
             if (isQuotaError(error)) throw new OfflineQuotaExceeded();
             throw error;
@@ -110,7 +130,7 @@ class IdbTx implements OfflineTx {
     }
 
     async delete(store: string, key: StoreKey): Promise<void> {
-        await request(this.tx.objectStore(store).delete(key as IDBValidKey));
+        await request(this.#store(store).delete(key as IDBValidKey));
     }
 
     async deleteAll(store: string, options?: QueryOptions): Promise<number> {
@@ -123,7 +143,7 @@ class IdbTx implements OfflineTx {
                 ? source.getAllKeys(range)
                 : source.getAllKeys(range),
         )) as IDBValidKey[];
-        const objectStore = this.tx.objectStore(store);
+        const objectStore = this.#store(store);
         for (const key of keys) await request(objectStore.delete(key));
         return keys.length;
     }
@@ -186,7 +206,26 @@ export async function openOfflineDatabase(
                     "Another tab is holding an older version of the offline database open",
                 ),
             );
-        open.onsuccess = () => resolve(open.result);
+        open.onsuccess = () => {
+            const db = open.result;
+            const missing = OFFLINE_STORES.filter(
+                (store) => !db.objectStoreNames.contains(store.name),
+            ).map((store) => store.name);
+            if (missing.length > 0) {
+                db.close();
+                reject(
+                    new OfflineStorageUnavailable(
+                        "migration-failed",
+                        `Offline schema upgrade is incomplete; missing stores: ${missing.join(", ")}`,
+                    ),
+                );
+                return;
+            }
+            // Let a newer app tab perform its own additive upgrade instead of
+            // holding that tab in `blocked` until this page is manually closed.
+            db.onversionchange = () => db.close();
+            resolve(db);
+        };
         open.onerror = () =>
             reject(
                 new OfflineStorageUnavailable(

@@ -398,6 +398,7 @@
                     description="Pick up where you left off."
                 >
                     <SessionCard
+                        userId={user!.id}
                         session={activeSession}
                         {supabase}
                         {busy}
@@ -442,6 +443,7 @@
                     <div class="border-y border-border/60">
                         {#each savedSessions as session (session.id)}
                             <SessionCard
+                                userId={user!.id}
                                 {session}
                                 {supabase}
                                 {busy}

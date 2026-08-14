@@ -39,6 +39,7 @@
    } from "$lib/sidebar-persistence";
    import { modal } from "$lib/state/modal.svelte";
    import FeedbackModal from "./settings/FeedbackModal.svelte";
+   import { offlineSyncStatus, startForegroundOfflineSync } from "$lib/offline/sync";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -50,6 +51,7 @@
          utilityPanel.activeView === null,
    );
    let appScrollViewport = $state<HTMLElement | null>(null);
+   const syncStatus = offlineSyncStatus();
    setAppScrollViewport({ getElement: () => appScrollViewport });
 
    $effect(() => {
@@ -135,6 +137,12 @@
    onMount(() => {
       expanded = loadSidebarExpanded(localStorage);
       sidebarPreferenceLoaded = true;
+      if (!user) return;
+      return startForegroundOfflineSync({
+         userId: user.id,
+         label: profile?.username ?? session?.user?.email ?? null,
+         supabase,
+      });
    });
 
    function setSidebarExpanded(value: boolean) {
@@ -258,6 +266,22 @@
 </script>
 
 <svelte:window onkeydown={handleCoachShortcut} />
+
+{#if $syncStatus.state === "auth-required" || $syncStatus.state === "owner-mismatch" || $syncStatus.state === "overlap" || $syncStatus.state === "retrying" || $syncStatus.state === "failed"}
+   <div class="fixed inset-x-0 top-0 z-[70] bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
+      {#if $syncStatus.state === "auth-required"}
+         {$syncStatus.pending} offline change{$syncStatus.pending === 1 ? "" : "s"} remain on this device. Sign in again to sync.
+      {:else if $syncStatus.state === "owner-mismatch"}
+         Offline data belongs to another account on this device. Switch back to sync or open it.
+      {:else if $syncStatus.state === "overlap"}
+         Offline work synced. {$syncStatus.overlaps.length} item{$syncStatus.overlaps.length === 1 ? "" : "s"} also changed online; the server applied offline answers in receipt order.
+      {:else if $syncStatus.state === "retrying"}
+         Offline changes are safe on this device. Sync will retry automatically.
+      {:else}
+         Offline changes are still on this device, but need attention before later work can sync: {$syncStatus.message}
+      {/if}
+   </div>
+{/if}
 
 {#snippet sidebarLink(
    href: string,

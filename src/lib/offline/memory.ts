@@ -37,9 +37,30 @@ class MemoryTx implements OfflineTx {
         private readonly tables: Map<string, Table>,
         private readonly schemas: Map<string, StoreSchema>,
         private readonly readonlyMode: boolean,
+        /** The stores this transaction was opened over. See {@link #scoped}. */
+        private readonly scope: ReadonlySet<string>,
     ) {}
 
+    /**
+     * A transaction may only touch the stores it was opened over.
+     *
+     * IndexedDB enforces this — `tx.objectStore(name)` throws `NotFoundError`
+     * for a store outside the transaction's scope — so a backend that let the
+     * repository read an unlisted store would pass every `bun test` while the
+     * real database threw on the same code path. That is exactly what happened:
+     * `commitPackage` reached for `sessions` it had not opened, and the failure
+     * appeared only in a browser, at the very end of a download.
+     */
+    #scoped(store: string): void {
+        if (this.scope.has(store)) return;
+        throw new Error(
+            `Offline store "${store}" is not in this transaction's scope ` +
+                `(opened over: ${[...this.scope].join(", ") || "nothing"})`,
+        );
+    }
+
     #schema(store: string): StoreSchema {
+        this.#scoped(store);
         const schema = this.schemas.get(store);
         if (!schema) throw new Error(`Unknown offline store "${store}"`);
         return schema;
@@ -69,6 +90,7 @@ class MemoryTx implements OfflineTx {
     }
 
     #matching(store: string, options?: QueryOptions) {
+        this.#scoped(store);
         const rows = this.#rows(store);
         if (!options?.index) {
             if (!options?.only) return rows;
@@ -98,6 +120,7 @@ class MemoryTx implements OfflineTx {
     }
 
     async get<T>(store: string, key: StoreKey): Promise<T | undefined> {
+        this.#scoped(store);
         const encoded = encode(key);
         const pending = this.#writes.get(store)?.get(encoded);
         if (pending !== undefined) return (pending?.value as T) ?? undefined;
@@ -175,8 +198,9 @@ export function createMemoryStorage(): MemoryStorage {
                     throw new Error(`Unknown offline store "${store}"`);
                 }
             }
+            const scope = new Set(stores);
             const run = queue.then(async () => {
-                const tx = new MemoryTx(tables, schemas, mode === "readonly");
+                const tx = new MemoryTx(tables, schemas, mode === "readonly", scope);
                 const result = await body(tx);
                 tx.commit();
                 return result;

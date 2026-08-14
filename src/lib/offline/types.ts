@@ -48,6 +48,8 @@ export type OfflinePackageCreateRequestV1 = {
     requestId: UUID;
     deviceId: UUID;
     scope: OfflineScope;
+    /** Explicit maximum membership selected from the matching scope. */
+    problemLimit: number;
     session: {
         /** Null initially; the owned dedicated session id on refresh. */
         sessionId: number | null;

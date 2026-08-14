@@ -12,6 +12,8 @@
         reviewEntryFromSubmission,
         type RecentSubmissionRow,
     } from "$lib/progress";
+    import { modal } from "$lib/state/modal.svelte";
+    import DownloadOfflineModal from "./DownloadOfflineModal.svelte";
 
     let {
         session,
@@ -21,6 +23,7 @@
         onContinue,
         onRename,
         onDelete,
+        userId,
     }: {
         session: PracticeSessionRow;
         supabase: SupabaseClient<Database>;
@@ -29,13 +32,13 @@
         onContinue: () => void;
         onRename: (name: string) => void;
         onDelete: () => void;
+        userId: string;
     } = $props();
 
     // Session format from the settings snapshot (older sessions predate it).
     const isTest = $derived(
         (session.settings as { format?: string } | null)?.format === "test",
     );
-
     // Self-contained per-card UI state.
     let expanded = $state(false);
     let submissions = $state<RecentSubmissionRow[] | null | undefined>(
@@ -45,6 +48,17 @@
     let editName = $state("");
 
     const menuOptions = $derived<DropdownOption[]>([
+        ...(!isTest ? [{
+            label: "Download for offline",
+            icon: "download",
+            onclick: () => {
+                modal.show(DownloadOfflineModal, { userId, session }, {
+                    title: "Download for offline",
+                    description: "A dedicated New-mode copy stays on this device.",
+                    size: "sm",
+                });
+            },
+        } satisfies DropdownOption] : []),
         {
             label: "Rename",
             icon: "edit",

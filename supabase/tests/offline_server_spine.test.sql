@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(27);
+select extensions.plan(29);
 
 select extensions.ok(not has_table_privilege('anon', 'public.offline_checkouts', 'TRUNCATE'),
   'anonymous callers cannot mutate checkout provenance');
@@ -48,7 +48,7 @@ select public.offline_begin_package(
   '10000000-0000-0000-0000-000000094001',
   '20000000-0000-0000-0000-000000094001',
   '30000000-0000-0000-0000-000000094001',
-  '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{}}'::jsonb,
+  '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{},"problemLimit":20}'::jsonb,
   null, 'Offline test', '{"format":"practice","mode":"new"}'::jsonb
 );
 
@@ -67,7 +67,7 @@ select public.offline_begin_package(
   '10000000-0000-0000-0000-000000094001',
   '20000000-0000-0000-0000-000000094001',
   '30000000-0000-0000-0000-000000094001',
-  '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{}}'::jsonb,
+  '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{},"problemLimit":20}'::jsonb,
   null, 'Offline test', '{"format":"practice","mode":"new"}'::jsonb
 );
 select extensions.is((select value->>'checkoutId' from retry_result),
@@ -91,10 +91,20 @@ select extensions.is((select checksum from public.offline_package_pages), 'test-
 
 select extensions.throws_ok(
   $$select public.offline_begin_package(
+    '10000000-0000-0000-0000-000000094098',
+    '20000000-0000-0000-0000-000000094098',
+    '30000000-0000-0000-0000-000000094098',
+    '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{}}'::jsonb,
+    null, null, '{"format":"practice","mode":"new"}'::jsonb)$$,
+  'P0001', 'OFFLINE_OPERATION_INVALID:problem limit',
+  'materialization requires an explicit download amount');
+
+select extensions.throws_ok(
+  $$select public.offline_begin_package(
     '10000000-0000-0000-0000-000000094099',
     '20000000-0000-0000-0000-000000094099',
     '30000000-0000-0000-0000-000000094099',
-    '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{}}'::jsonb,
+    '{"topic":[],"seriesIds":["-940002"],"seriesScopes":{},"problemLimit":20}'::jsonb,
     null, null, '{"format":"test","mode":"new"}'::jsonb)$$,
   'P0001', 'OFFLINE_OPERATION_INVALID:session must be New/practice',
   'materialization rejects a session outside the v1 boundary');
@@ -228,6 +238,18 @@ select extensions.ok((select status = 'closed'
                      and clock_timestamp() + interval '31 days'
   from public.offline_checkouts),
   'client close starts the 30-day checkout retention lifecycle');
+
+create temporary table bounded_result(value jsonb) on commit drop;
+insert into bounded_result
+select public.offline_begin_package(
+  '10000000-0000-0000-0000-000000094020',
+  '20000000-0000-0000-0000-000000094020',
+  '30000000-0000-0000-0000-000000094001',
+  '{"topic":[],"seriesIds":["-940001"],"seriesScopes":{},"problemLimit":1}'::jsonb,
+  null, 'Bounded offline test', '{"format":"practice","mode":"new"}'::jsonb
+);
+select extensions.is((select value->>'problemCount' from bounded_result), '1',
+  'the explicit download amount bounds a scope with more matching canonicals');
 
 create temporary table live_rating as
 select rating, rd, matches from public.player_ratings

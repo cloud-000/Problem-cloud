@@ -6,10 +6,10 @@
  * contract, which is why they live in one module rather than being written into
  * each validator.
  *
- * The hard rule these encode: **a package is never sampled.** Exceeding a limit
- * rejects the download and asks the user to narrow the scope. Silently returning
- * part of a requested scope would make every local "not downloaded" answer a
- * lie.
+ * The hard rule these encode: package membership is bounded only by the
+ * user-visible requested amount. Exceeding a storage/payload limit rejects the
+ * download and asks the user to lower that amount or narrow the filters; paging
+ * never applies another hidden truncation.
  */
 
 const KIB = 1024;
@@ -17,6 +17,8 @@ const MIB = 1024 * KIB;
 
 /** Canonicals in one package. */
 export const PACKAGE_MAX_CANONICALS = 10_000;
+/** Default explicit membership size offered by download UI. */
+export const DOWNLOAD_DEFAULT_PROBLEMS = 20;
 /** Canonical JSON in one package, excluding media. */
 export const PACKAGE_MAX_JSON_BYTES = 50 * MIB;
 /** Package including required image assets. Enforced cumulatively while staging,

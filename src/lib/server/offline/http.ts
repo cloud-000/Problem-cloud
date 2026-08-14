@@ -47,9 +47,27 @@ function mappedDatabaseError(message: string): {
     return { code: "temporary", retryable: true, status: 503 };
 }
 
+/**
+ * Supabase/PostgREST errors are plain objects rather than `Error` instances.
+ * Keep extraction deliberately narrow: the database marker is needed for the
+ * stable public mapping below, while SQL details must never be reflected.
+ */
+export function offlineCauseMessage(cause: unknown): string {
+    if (cause instanceof Error) return cause.message;
+    if (
+        typeof cause === "object" &&
+        cause !== null &&
+        "message" in cause &&
+        typeof cause.message === "string"
+    ) {
+        return cause.message;
+    }
+    return String(cause);
+}
+
 /** Stable v1 error envelope; database details are never reflected to clients. */
 export function offlineErrorResponse(cause: unknown, operationId?: string): Response {
-    const raw = cause instanceof Error ? cause.message : String(cause);
+    const raw = offlineCauseMessage(cause);
     const mapped = mappedDatabaseError(raw);
     const body: OfflineSyncErrorV1 = {
         version: 1,
@@ -66,7 +84,7 @@ export function offlineErrorResponse(cause: unknown, operationId?: string): Resp
 }
 
 export function parseErrorOperationId(cause: unknown): string | undefined {
-    const message = cause instanceof Error ? cause.message : String(cause);
+    const message = offlineCauseMessage(cause);
     return message.match(
         /OFFLINE_(?:OPERATION_INVALID|CONFLICT):([0-9a-f-]{36}):/i,
     )?.[1];

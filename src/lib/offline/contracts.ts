@@ -14,6 +14,7 @@ import {
     PAGE_MAX_ASSETS,
     PAGE_MAX_PLACEMENTS,
     PAGE_MAX_PROBLEMS,
+    PACKAGE_MAX_CANONICALS,
     SCOPE_MAX_SERIES,
     SCOPE_MAX_TOPICS,
     SYNC_MAX_DEPENDENCIES,
@@ -154,6 +155,17 @@ const parsePracticeSettings = ((value: unknown, path = "") => {
     return value as OfflinePackageCreateRequestV1["session"]["settings"];
 }) as p.Parser<OfflinePackageCreateRequestV1["session"]["settings"]>;
 
+const parseProblemLimit: p.Parser<number> = (value, path = "") => {
+    const limit = p.integer(value, path);
+    if (limit < 1 || limit > PACKAGE_MAX_CANONICALS) {
+        throw new p.OfflineParseError(
+            path,
+            `expected an integer from 1 to ${PACKAGE_MAX_CANONICALS}`,
+        );
+    }
+    return limit;
+};
+
 export const parsePackageCreateRequest: p.Parser<OfflinePackageCreateRequestV1> =
     p.objectOf<OfflinePackageCreateRequestV1>({
         version: p.literal(1),
@@ -161,6 +173,7 @@ export const parsePackageCreateRequest: p.Parser<OfflinePackageCreateRequestV1> 
         requestId: p.uuid,
         deviceId: p.uuid,
         scope: parseScope,
+        problemLimit: parseProblemLimit,
         session: p.objectOf({
             sessionId: p.nullable(p.integer),
             name: p.nullable(p.string),
@@ -287,7 +300,17 @@ export const parsePersonalState: p.Parser<OfflinePersonalStateV1> =
         progress: p.nullable(parseProblemProgress),
     });
 
-const parseRecords: p.Parser<OfflinePackageRecordsV1> =
+/**
+ * The page payload the checksum covers.
+ *
+ * Exported because the *server* must checksum this parsed form, not the records
+ * as its own materializer emitted them. `objectOf` drops unknown keys so that an
+ * additive server field cannot take a download down — but a checksum taken over
+ * the raw records would reintroduce exactly that failure, since the client can
+ * only ever hash what it parsed. Hashing the contract on both sides is what
+ * makes the additive guarantee real.
+ */
+export const parseRecords: p.Parser<OfflinePackageRecordsV1> =
     p.objectOf<OfflinePackageRecordsV1>({
         memberships: p.arrayOf(parseMembership, { max: PAGE_MAX_PROBLEMS }),
         problems: p.arrayOf(parseOfflineProblem, { max: PAGE_MAX_PROBLEMS }),

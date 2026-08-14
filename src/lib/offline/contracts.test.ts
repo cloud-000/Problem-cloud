@@ -3,9 +3,12 @@ import {
     countsAgree,
     normalizeScope,
     parseOperation,
+    parsePackageCreateRequest,
     parsePackagePage,
+    parseRecords,
     parseSyncResult,
 } from "./contracts";
+import { pageChecksum } from "./checksum";
 import { OfflineParseError, tryParse } from "./parse";
 import * as p from "./parse";
 import { buildFixturePackage, fixtureUuid, geometryFixtureProblems, GEOMETRY_SCOPE } from "./fixtures";
@@ -85,6 +88,38 @@ describe("scope normalization", () => {
     });
 });
 
+describe("package creation", () => {
+    const request = {
+        version: 1,
+        packageId: fixtureUuid("package"),
+        requestId: fixtureUuid("request"),
+        deviceId: fixtureUuid("device"),
+        scope: { topic: [], seriesIds: [], seriesScopes: {} },
+        problemLimit: 20,
+        session: {
+            sessionId: null,
+            name: "Offline practice",
+            settings: { mode: "new", format: "practice" },
+        },
+    };
+
+    test("accepts the explicit default download amount", () => {
+        expect(parsePackageCreateRequest(request).problemLimit).toBe(20);
+    });
+
+    test("rejects an absent or out-of-range download amount", () => {
+        expect(() =>
+            parsePackageCreateRequest({ ...request, problemLimit: undefined }),
+        ).toThrow(OfflineParseError);
+        expect(() =>
+            parsePackageCreateRequest({ ...request, problemLimit: 0 }),
+        ).toThrow(OfflineParseError);
+        expect(() =>
+            parsePackageCreateRequest({ ...request, problemLimit: 10_001 }),
+        ).toThrow(OfflineParseError);
+    });
+});
+
 describe("package pages", () => {
     test("a fixture page parses and its declared counts agree", async () => {
         const fixture = await buildFixturePackage({
@@ -107,6 +142,34 @@ describe("package pages", () => {
         const page = structuredClone(fixture.pages[0]);
         page.counts.problems += 1;
         expect(countsAgree(parsePackagePage(page))).toBe(false);
+    });
+
+    // The server checksums `parseRecords(...)` for this reason: the client can
+    // only hash what it parsed, so an additive server field must not move the
+    // digest. Hash the raw records instead and the next new column fails every
+    // download with "page 0 failed its checksum".
+    test("a field this client has never heard of does not move the page checksum", async () => {
+        const fixture = await buildFixturePackage({
+            userId: USER,
+            scope: GEOMETRY_SCOPE,
+            problems: geometryFixtureProblems(),
+        });
+        const page = fixture.pages[0];
+        const withNewColumn = structuredClone(page.records) as Record<string, unknown> & {
+            problems: Record<string, unknown>[];
+        };
+        withNewColumn.problems[0].sourceUrl = "https://example.invalid/next-release";
+        withNewColumn.newCollection = [{ canonicalId: 1 }];
+
+        expect(
+            await pageChecksum({
+                packageId: page.packageId,
+                checkoutId: page.checkoutId,
+                packageRevision: page.packageRevision,
+                pageIndex: page.pageIndex,
+                records: parseRecords(withNewColumn),
+            }),
+        ).toBe(page.checksum);
     });
 
     test("a page carrying a foreign answer_status is rejected, not coerced", async () => {

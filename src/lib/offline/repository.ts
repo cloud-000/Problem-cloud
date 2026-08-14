@@ -43,6 +43,7 @@ import {
     createMemoryMediaStore,
     type OfflineMediaStore,
 } from "./media";
+import { rewriteProblemMedia } from "./media";
 import {
     effectiveProgress,
     groupByCanonical,
@@ -165,6 +166,41 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         });
     }
 
+    /**
+     * Claim this browser's offline storage for one account.
+     *
+     * Every read and write is gated on the active-user marker, so *something*
+     * has to establish it before a download can begin. It used to be written
+     * only as a side effect of the foreground sync coordinator's first pass —
+     * which runs behind a connectivity check and a cross-tab lease, so a
+     * download started before that pass landed failed with "no offline user is
+     * active". Claiming is therefore its own explicit step, and idempotent.
+     *
+     * A store already owned by another account is **never** taken over: that is
+     * reported so the caller can tell the user, because the resident data may
+     * hold work the other account has not synced.
+     */
+    async claimAccount(
+        userId: UUID,
+        label: string | null = null,
+    ): Promise<"claimed" | "current" | "owner-mismatch"> {
+        return this.#storage.transaction([STORE.meta], "readwrite", async (tx) => {
+            const row = await tx.get<MetaRecord & { label?: string | null }>(
+                STORE.meta,
+                [META.activeUser],
+            );
+            const active = (row?.value as UUID | null) ?? null;
+            if (active && active !== userId) return "owner-mismatch";
+            await tx.put(STORE.meta, {
+                key: META.activeUser,
+                value: userId,
+                // A caller with no display name to offer must not erase one.
+                label: label ?? row?.label ?? null,
+            } as MetaRecord & { label: string | null });
+            return active ? "current" : "claimed";
+        });
+    }
+
     async getActiveUser(): Promise<UUID | null> {
         return (await this.getAccountMarker())?.userId ?? null;
     }
@@ -178,6 +214,16 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
             );
             const userId = (row?.value as UUID | null) ?? null;
             return userId ? { userId, label: row?.label ?? null } : null;
+        });
+    }
+
+    async getDeviceId(): Promise<UUID> {
+        return this.#storage.transaction([STORE.meta], "readwrite", async (tx) => {
+            const existing = await tx.get<MetaRecord>(STORE.meta, [META.deviceId]);
+            if (typeof existing?.value === "string") return existing.value;
+            const value = this.#newId();
+            await tx.put(STORE.meta, { key: META.deviceId, value } satisfies MetaRecord);
+            return value;
         });
     }
 
@@ -236,6 +282,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     sessionId: parsed.sessionId,
                     personalStateAt: parsed.personalStateAt,
                     downloadedAt: parsed.downloadedAt,
+                    baseState: parsed.baseState,
                     problemCount: parsed.problemCount,
                     placementCount: parsed.placementCount,
                     assetCount: parsed.assetCount,
@@ -312,9 +359,13 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         const staged = await this.#media.stage(
             parsed.packageRevision,
             parsed.records.assets,
+            parsed.checkoutId,
         );
 
         await this.#storage.transaction(
+            // Staging writes only revision-scoped rows. The session snapshot is
+            // not one of them: it is promoted at commit, so that it cannot
+            // become visible before the revision it belongs to.
             [STORE.meta, STORE.packages, STORE.packageMembership, STORE.problems,
              STORE.placements, STORE.assets, STORE.stagedRatings,
              STORE.stagedPersonalState],
@@ -522,9 +573,16 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         }
 
         await this.#storage.transaction(
+            // Wide on purpose: this transaction promotes shared state, writes the
+            // session snapshot beside the local work that may already outrank it,
+            // and drops the superseded revision (`#dropRevision` reaches
+            // `placements` and `assets`). Every one of those has to be in scope,
+            // or the promotion is half-applied — which is precisely what the
+            // atomic commit exists to prevent.
             [STORE.meta, STORE.packages, STORE.packageMembership, STORE.problems,
-             STORE.ratings, STORE.personalState, STORE.stagedRatings,
-             STORE.stagedPersonalState],
+             STORE.placements, STORE.assets, STORE.ratings, STORE.personalState,
+             STORE.stagedRatings, STORE.stagedPersonalState, STORE.sessions,
+             STORE.localSubmissions],
             "readwrite",
             async (tx) => {
                 const userId = await this.#activeUser(tx);
@@ -637,12 +695,47 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     only: [userId, input.packageRevision],
                 });
 
-                const { nextPageIndex, pages, complete, staged, bytes, ...revision } =
+                const existingSession = await tx.get<SessionRecord>(STORE.sessions, [
+                    userId,
+                    staging.baseState.session.id,
+                ]);
+                const localSessionWork = await tx.getAll<LocalSubmissionV1>(
+                    STORE.localSubmissions,
+                    {
+                        index: "byUserSession",
+                        only: [userId, staging.baseState.session.id],
+                    },
+                );
+                await tx.put(STORE.sessions, {
+                    userId,
+                    sessionId: staging.baseState.session.id,
+                    packageId: input.packageId,
+                    status:
+                        localSessionWork.length && existingSession
+                            ? existingSession.status
+                            : staging.baseState.session.status,
+                    row:
+                        localSessionWork.length && existingSession
+                            ? existingSession.row
+                            : staging.baseState.session,
+                    playerRating: staging.baseState.playerRating,
+                } satisfies SessionRecord);
+                await tx.put(STORE.meta, {
+                    key: META.checkout(staging.checkoutId),
+                    value: {
+                        userId,
+                        packageId: input.packageId,
+                        packageRevision: staging.packageRevision,
+                    },
+                } satisfies MetaRecord);
+
+                const { nextPageIndex, pages, complete, staged, bytes, baseState, ...revision } =
                     staging;
                 void nextPageIndex;
                 void pages;
                 void complete;
                 void staged;
+                void baseState;
                 await tx.put(STORE.packages, {
                     ...record,
                     state: "ready",
@@ -713,7 +806,8 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
     ): Promise<void> {
         const revisions = await this.#storage.transaction(
             [STORE.meta, STORE.packages, STORE.packageMembership, STORE.placements,
-             STORE.assets, STORE.stagedRatings, STORE.stagedPersonalState, STORE.outbox],
+             STORE.assets, STORE.stagedRatings, STORE.stagedPersonalState, STORE.outbox,
+             STORE.sessions, STORE.localSubmissions, STORE.organizationOverrides],
             "readwrite",
             async (tx) => {
                 const userId = await this.#activeUser(tx);
@@ -735,8 +829,25 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     );
                 }
                 if (options.discardPending) {
+                    const pendingIds = new Set(pending.map((operation) => operation.id));
                     for (const operation of pending) {
                         await tx.delete(STORE.outbox, [userId, operation.sequence]);
+                    }
+                    for (const submission of await tx.getAll<LocalSubmissionV1>(
+                        STORE.localSubmissions,
+                        { index: "byUserSession", only: [userId, record.active?.sessionId ?? -1] },
+                    )) {
+                        if (pendingIds.has(submission.operationId)) {
+                            await tx.delete(STORE.localSubmissions, [userId, submission.clientKey]);
+                        }
+                    }
+                    for (const override of await tx.getAll<OrganizationOverrideRecord>(
+                        STORE.organizationOverrides,
+                        { index: "byUser", only: [userId] },
+                    )) {
+                        if (pendingIds.has(override.operationId)) {
+                            await tx.delete(STORE.organizationOverrides, [userId, override.canonicalId, override.axis]);
+                        }
                     }
                 }
 
@@ -747,6 +858,9 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     dropped.push(revision);
                 }
                 await tx.delete(STORE.packages, [userId, packageId]);
+                if (record.active) {
+                    await tx.delete(STORE.sessions, [userId, record.active.sessionId]);
+                }
                 return dropped;
             },
         );
@@ -884,7 +998,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         return this.#storage.transaction(
             [STORE.meta, STORE.packages, STORE.packageMembership, STORE.problems,
              STORE.placements, STORE.ratings, STORE.personalState,
-             STORE.localSubmissions, STORE.organizationOverrides],
+             STORE.localSubmissions, STORE.organizationOverrides, STORE.assets],
             "readonly",
             async (tx) => {
                 await this.#requireActiveUser(tx, userId);
@@ -950,6 +1064,16 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                 const candidates = new Map<number, QueryCandidate>();
                 for (const record of packages) {
                     const active = record.active!;
+                    const revisionAssets = await tx.getAll<AssetRecord>(STORE.assets, {
+                        index: "byRevision",
+                        only: [userId, active.packageRevision],
+                    });
+                    const assetsByKey = new Map(revisionAssets.map((asset) => [asset.key, {
+                        key: asset.key,
+                        url: asset.url,
+                        kind: "problem-image" as const,
+                        required: true as const,
+                    }]));
                     const content = new Map(
                         (
                             await tx.getAll<ProblemRecord>(STORE.problems, {
@@ -996,7 +1120,14 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                         const rating = ratings.get(membership.canonicalId);
                         candidates.set(membership.canonicalId, {
                             canonicalId: membership.canonicalId,
-                            problem: problem.problem,
+                                problem: rewriteProblemMedia(
+                                    problem.problem,
+                                    active.packageRevision,
+                                    problem.problem.assetKeys.flatMap((key) => {
+                                        const asset = assetsByKey.get(key);
+                                        return asset ? [asset] : [];
+                                    }),
+                                ),
                             placements: own,
                             rating: rating
                                 ? {
@@ -1119,8 +1250,8 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         const stamp = this.#clock.stamp(this.#now());
 
         return this.#storage.transaction(
-            [STORE.meta, STORE.packages, STORE.sessions, STORE.localSubmissions,
-             STORE.outbox, STORE.personalState],
+            [STORE.meta, STORE.sessions, STORE.localSubmissions, STORE.outbox,
+             STORE.personalState],
             "readwrite",
             async (tx) => {
                 await this.#requireActiveUser(tx, input.userId);
@@ -1391,9 +1522,65 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         );
     }
 
+    async pendingSyncBatches(userId: UUID, limit: number): Promise<{
+        checkoutId: UUID;
+        packageId: UUID;
+        packageRevision: string;
+        operations: OfflineOperationV1[];
+    }[]> {
+        const operations = await this.pendingOperations(userId, limit);
+        return this.#storage.transaction([STORE.meta, STORE.packages], "readonly", async (tx) => {
+            const groups = new Map<string, OfflineOperationV1[]>();
+            for (const operation of operations) {
+                const list = groups.get(operation.checkoutId) ?? [];
+                list.push(operation);
+                groups.set(operation.checkoutId, list);
+            }
+            const batches = [];
+            for (const [checkoutId, batch] of groups) {
+                const row = await tx.get<MetaRecord>(STORE.meta, [META.checkout(checkoutId)]);
+                const value = row?.value as {
+                    userId?: string;
+                    packageId?: string;
+                    packageRevision?: string;
+                } | undefined;
+                let revision = value?.packageRevision;
+                if (!revision) {
+                    // Session 1 packages predate checkout provenance in meta.
+                    // They cannot have been refreshed through the then-absent
+                    // network orchestrator, so their active checkout is safe to
+                    // use as the one-time compatibility source.
+                    const pkg = await tx.get<PackageRecord>(STORE.packages, [
+                        userId,
+                        batch[0].packageId,
+                    ]);
+                    if (pkg?.active?.checkoutId === checkoutId) {
+                        revision = pkg.active.packageRevision;
+                    }
+                }
+                if (
+                    (value?.userId !== undefined && value.userId !== userId) ||
+                    (value?.packageId !== undefined && value.packageId !== batch[0].packageId) ||
+                    typeof revision !== "string"
+                ) continue;
+                batches.push({
+                    checkoutId,
+                    packageId: batch[0].packageId,
+                    packageRevision: revision,
+                    operations: batch,
+                });
+            }
+            return batches;
+        });
+    }
+
     /** Mark a batch in flight, so a second tab does not resend it. */
     async markSyncing(userId: UUID, operationIds: UUID[]): Promise<void> {
         await this.#setOperationState(userId, operationIds, "syncing");
+    }
+
+    async markPending(userId: UUID, operationIds: UUID[]): Promise<void> {
+        await this.#setOperationState(userId, operationIds, "pending");
     }
 
     /** Mark a batch failed. It stays put and requires an explicit retry. */
