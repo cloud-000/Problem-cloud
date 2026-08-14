@@ -1008,8 +1008,18 @@ contract.
 - Required images are fetched directly when their origin permits CORS. If it
   does not, the browser uses an authenticated same-origin fallback keyed by
   checkout and asset digest. The server serves only an asset declared in that
-  user's issued checkout and only from approved immutable image origins; it is
+  user's issued checkout and only from approved image origins; it is
   not an arbitrary URL proxy. A failed required image still aborts staging.
+- **The origin allowlist is a completeness obligation, not a formality.** Neither
+  AoPS host sends `Access-Control-Allow-Origin` (jsDelivr and imgur send `*`), so
+  for those the direct fetch is CORS-blocked and the fallback is the only path an
+  image has; because every problem image is `required`, a host missing from the
+  list fails the whole package it appears in. The list must therefore cover every origin the corpus
+  references as an image — audit it (`[img]`, `[asy=…]`, and markdown targets,
+  with repo-relative targets resolving to jsDelivr), do not assume it. Mutable
+  user-upload origins are tolerable only because the fallback copies the bytes
+  into the package at download time; the package never depends on the origin
+  again.
 - Five-day staleness shows a warning and an online-only Refresh action but never
   blocks practice. Refresh retains the old ready revision until commit.
 - Delete is immediate only when the package has no pending operations. Otherwise

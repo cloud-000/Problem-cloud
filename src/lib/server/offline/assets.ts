@@ -1,11 +1,35 @@
 import { PACKAGE_MAX_TOTAL_BYTES } from "$lib/offline/limits";
 
+/**
+ * Only known immutable problem-image origins may cross the server fallback.
+ *
+ * This list is not cosmetic and it is not advisory. A problem image is
+ * `required: true`, and neither AoPS host sends an `Access-Control-Allow-Origin`
+ * header (jsDelivr and imgur send `*`), so for those the browser's direct fetch
+ * is CORS-blocked and this fallback is the *only* way the asset can be staged.
+ * A host missing from this list therefore fails the entire package — one
+ * unreachable image, no download — which is how `cdn.artofproblemsolving.com`
+ * (35 problems in the corpus) silently broke any package that happened to
+ * include one of them. Audit the corpus before assuming this list is complete;
+ * an origin's CORS policy can also change without notice, which is the other
+ * reason membership here is decided by trust rather than by today's headers.
+ *
+ * `i.imgur.com` and `cdn.discordapp.com` are here because problem authors used
+ * them, not because they are good origins: they are user uploads, mutable, and
+ * can disappear. That is tolerable only because the fallback *copies* the bytes
+ * into the package at download time — the package never depends on the origin
+ * again. It is still the argument for re-hosting those images into the
+ * Math-Images repo, after which they resolve through jsDelivr like the rest.
+ */
 const ALLOWED_ASSET_HOSTS = new Set([
     "latex.artofproblemsolving.com",
+    "cdn.artofproblemsolving.com",
+    "services.artofproblemsolving.com",
     "cdn.jsdelivr.net",
+    "i.imgur.com",
+    "cdn.discordapp.com",
 ]);
 
-/** Only known immutable problem-image origins may cross the server fallback. */
 export function offlineAssetSource(raw: string): URL | null {
     try {
         const url = new URL(raw);

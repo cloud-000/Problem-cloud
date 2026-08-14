@@ -13,6 +13,21 @@ describe("offline asset server fallback", () => {
         expect(offlineAssetSource("https://example.com/a.png")).toBeNull();
     });
 
+    // Every origin the corpus actually references as an image must be here, or
+    // one CORS-blocked image fails the whole package it appears in.
+    test("covers the image origins problem content references", () => {
+        for (const host of [
+            "latex.artofproblemsolving.com",
+            "cdn.artofproblemsolving.com",
+            "services.artofproblemsolving.com",
+            "cdn.jsdelivr.net",
+            "i.imgur.com",
+            "cdn.discordapp.com",
+        ]) {
+            expect(offlineAssetSource(`https://${host}/a.png`)?.hostname).toBe(host);
+        }
+    });
+
     test("accepts image bytes and rejects a non-image response", async () => {
         const url = new URL("https://latex.artofproblemsolving.com/a.png");
         const image = await fetchOfflineAssetSource(
