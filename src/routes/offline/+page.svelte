@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { dev } from "$app/environment";
-    import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
@@ -16,7 +15,6 @@
     import { offlineRepository, offlineSupport } from "$lib/offline/browser";
     import { fetchAllSeries, topicLabel } from "$lib/library";
     import type { OfflinePackageManifestV1 } from "$lib/offline/types";
-    import type { OfflineRepository } from "$lib/offline/repository";
     import {
         downloadFailureMessage,
         downloadOfflinePackage,
@@ -33,7 +31,6 @@
         createTrackValue,
         type TrackValue,
     } from "../(app)/practice/practice-settings";
-    import OfflinePractice from "./OfflinePractice.svelte";
 
     type View =
         | { kind: "loading" }
@@ -57,10 +54,6 @@
     let downloadName = $state("");
     let downloadAmount = $state<number | undefined>(DOWNLOAD_DEFAULT_PROBLEMS);
     let scopeError = $state<string | null>(null);
-    let practice = $state<{
-        repository: OfflineRepository;
-        manifest: OfflinePackageManifestV1;
-    } | null>(null);
 
     function plainSeriesScopes(
         scopes: TrackValue["seriesScopes"],
@@ -145,16 +138,16 @@
                 scopeError = `Could not load series: ${String(error)}`;
             });
         void refresh();
-        if (!dev) {
+        if (!dev && import.meta.env.VITE_OFFLINE_E2E !== "1") {
             return () => {
                 window.removeEventListener("online", updateOnline);
                 window.removeEventListener("offline", updateOnline);
             };
         }
-        // A dev-only handle for the Playwright package-lifecycle spec, which
-        // has to drive a real download against real IndexedDB. It is gated on
-        // `dev` purely to keep it out of the shipped bundle — it grants nothing
-        // a same-origin script could not already do through IndexedDB directly.
+        // A test-only handle for the Playwright package-lifecycle spec, which
+        // has to drive a real download against real IndexedDB. Normal builds
+        // tree-shake it; production-browser acceptance opts in at build time
+        // with VITE_OFFLINE_E2E=1.
         void (async () => {
             const [{ offlineRepository: open }, fixtures, network] = await Promise.all([
                 import("$lib/offline/browser"),
@@ -303,24 +296,12 @@
         await refresh();
     }
 
-    async function openPractice(manifest: OfflinePackageManifestV1) {
-        scopeError = null;
-        try {
-            practice = {
-                repository: await offlineRepository(),
-                manifest,
-            };
-        } catch (error) {
-            scopeError = error instanceof Error ? error.message : String(error);
-        }
-    }
-
-    async function launchPractice(manifest: OfflinePackageManifestV1) {
-        scopeError = null;
-        await goto(
-            resolve(
-                `/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}`,
-            ),
+    function launchPractice(manifest: OfflinePackageManifestV1) {
+        // A document navigation lets the service worker choose the neutral
+        // Practice shell when this package is launched without networking.
+        // Client routing would ask for credentialed `__data.json` instead.
+        window.location.assign(
+            resolve(`/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}`),
         );
     }
 </script>
@@ -432,16 +413,7 @@
     </header>
 
     <main class="mx-auto w-full max-w-[720px] flex-1 px-md py-lg">
-        {#if practice}
-            <OfflinePractice
-                repository={practice.repository}
-                manifest={practice.manifest}
-                onExit={() => {
-                    practice = null;
-                    void refresh();
-                }}
-            />
-        {:else if view.kind === "loading"}
+        {#if view.kind === "loading"}
             <p class="text-muted-foreground type-secondary">
                 Looking for downloaded problems on this device…
             </p>
@@ -538,14 +510,6 @@
                         <div class="mt-sm flex gap-2">
                             <Button size="sm" onclick={() => launchPractice(manifest)}>
                                 Practice offline
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                title="Temporary fallback while shared-Practice parity is being verified"
-                                onclick={() => openPractice(manifest)}
-                            >
-                                Legacy trainer
                             </Button>
                             {#if typeof navigator !== "undefined" && navigator.onLine}
                                 <Button size="sm" variant="ghost" onclick={() => refreshPackage(manifest)}>Refresh</Button>

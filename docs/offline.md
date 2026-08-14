@@ -2,8 +2,7 @@
 
 > [!IMPORTANT]
 > **Status: Session 3 data-source implementation and Practice-route migration
-> phases 1–3 complete as of 2026-08-13; neutral Practice boot and release proof
-> pending.** The offline *core and shell* have
+> phases 1–5 complete as of 2026-08-13; browser release proof in progress.** The offline *core and shell* have
 > landed: self-hosted rendering assets, the credential-free `/offline` route with
 > the authenticated load relocated into `(app)`, a minimal service worker, the
 > versioned IndexedDB repository with staged package installation, the local
@@ -16,16 +15,17 @@
 > revision, and foreground-syncs pending work with auth and multi-tab recovery.
 > Downloaded packages now launch the normal `/practice` presentation through one
 > route-bound online/offline data-source seam, with local grading, organization
-> writes, session resume/finish, and runtime-only adaptive shadow selection. The
-> transitional dedicated New-mode trainer is intentionally retained as a parity
-> fallback until the shared lifecycle gates pass. Mid-session settings edits are
+> writes, session resume/finish, and runtime-only adaptive shadow selection. A
+> prerendered, client-only Practice boot document handles explicit package URLs
+> on offline reload without caching authenticated HTML or data. `/offline` is a
+> package manager/launcher and the duplicate trainer has been removed. Mid-session settings edits are
 > disabled for the first integrated offline source; its downloaded snapshot stays
-> fixed. The credential-free Practice boot and direct offline reload remain phase
-> 4 work. See
+> fixed. Later modes remain contract-gated in the order specified by the route
+> migration. See
 > [`offline-practice-route-migration.md`](./offline-practice-route-migration.md).
 > The full
-> 14-step Playwright acceptance scenario is checked in; Chromium/WebKit execution
-> and the remaining device/database measurements still gate release.
+> 14-step Playwright acceptance scenario passes in Chromium; WebKit execution and
+> the remaining device/database measurements still gate release.
 > §12 tracks exactly what is in and what is not; keep it current as each slice
 > lands.
 >
@@ -789,8 +789,8 @@ browser suite is an additional gate, not a replacement.
 | 3 | Minimal service worker for versioned assets and navigation fallback | **complete** | no personalized response enters CacheStorage |
 | 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | **complete** | migration/quota/atomicity/overlap tests pass |
 | 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **complete** | resolver-contract, completeness, revision, limit, and payload tests pass |
-| 6 | Local `PracticeQuery` engine + snapshot overlay + source seam/shadow selection | **data layer complete; standalone presentation transitional** | repository contract and current lifecycle component tests pass |
-| 6a | Fold offline New mode into the normal `/practice` route/UI and remove the duplicate trainer | **planned** | neutral offline Practice reload, parity, and no-fallback browser tests pass |
+| 6 | Local `PracticeQuery` engine + snapshot overlay + source seam/shadow selection | **complete for V1 New mode** | repository contract and current lifecycle component tests pass |
+| 6a | Fold offline New mode into the normal `/practice` route/UI and remove the duplicate trainer | **complete** | neutral offline Practice reload, parity, and no-fallback browser tests pass |
 | 7 | Typed outbox schema + sync RPC/endpoint | **complete (client contract + SQL/RPC/endpoint)** | SQL idempotency and live≡replay tests pass |
 | 8 | Foreground sync coordinator, auth recovery, multi-tab lock | **complete** | reconnect/account/concurrency browser tests pass |
 | 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
@@ -817,15 +817,15 @@ halves of slices 5 and 8:
   eligibility, seeded and nearest-rating ordering, `not_downloaded` vs.
   `exhausted`) and the snapshot-plus-overlay state are implemented and contract
   tested. `TrainerDataSource` now supplies the single online/offline domain seam.
-  As a transitional presentation, `/offline` opens the dedicated session,
-  resumes its current problem, grades
+  `/practice?offlinePackage=...` opens the dedicated session in the shared
+  Practice presentation, resumes its current problem, grades
   and records New-mode answers/skips, shares mastery/engagement overrides, limits
   Back to the local run, and disables Coach/network links with an explanation.
   Adaptive selection uses a seeded tie-break and a runtime-only shadow advanced
   exclusively by `glickoMatchPreview`; successful authoritative sync resets it.
-  Slice 6a will bind that source once in the normal Practice route, make the
-  route safely reloadable from a neutral shell, and remove the duplicate
-  trainer. The migration is specified in
+  Slice 6a binds that source once in the normal Practice route; the service
+  worker returns a credential-free Practice shell only for an explicit package
+  selector, and the duplicate trainer is gone. The migration is specified in
   [`offline-practice-route-migration.md`](./offline-practice-route-migration.md).
 - **Slice 7.** The typed outbox, its coalescing rules, ordering, failure
   handling, and `acknowledgeSync` are implemented against the wire contract.
@@ -856,11 +856,11 @@ sessions. Finish v1 through these delivery stages:
 2. **Download and recovery — complete:** atomic base-state promotion, revision-addressed
    media routing, the download UI/orchestrator from 5, and foreground auth,
    locking, retry, and conflict disclosure from 8.
-3. **Trainer integration and release proof — refactor pending:**
-   the trainer seam and New-mode consumer from 6 are implemented in a
-   transitional surface. Fold them into the normal Practice route per
-   [`offline-practice-route-migration.md`](./offline-practice-route-migration.md),
-   then run the full 14-step browser acceptance scenario in
+3. **Trainer integration — complete; release proof remains:**
+   the trainer seam and New-mode consumer from 6 are implemented in the normal
+   Practice route per
+   [`offline-practice-route-migration.md`](./offline-practice-route-migration.md).
+   The full 14-step browser acceptance scenario lives in
    `e2e/offline-acceptance.e2e.ts`.
    Chromium/WebKit execution and the external/device/database measurements in
    §13 remain the release gate.

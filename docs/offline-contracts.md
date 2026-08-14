@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Status: Session 3 data-source integration and shared Practice-route phases
-> 1–3 implemented (2026-08-13); neutral Practice boot/reload pending.** §1, §3, §4, §5
+> 1–5 implemented (2026-08-13).** §1, §3, §4, §5
 > and §6 are exercised against fixture packages in `src/lib/offline/`; §2, §7,
 > and §8 now have declarative schema, two-phase materialization/package
 > endpoints, transactional sync, checkout lifecycle, and pgTAP coverage. Two local
@@ -12,9 +12,9 @@
 > browser package client, quota-aware download/refresh/delete orchestrator,
 > checkout recovery, and foreground authenticated sync coordinator are wired.
 > The trainer now consumes one domain data-source seam with online and offline
-> implementations. `/offline` currently hosts a transitional downloaded-session
-> trainer; the settled target is for it to launch the normal `/practice` route
-> and shared Practice UI, as specified in
+> implementations. `/offline` manages and launches packages into the normal
+> `/practice` route and shared Practice UI; explicit package URLs reload through
+> a credential-free, client-only Practice shell, as specified in
 > [`offline-practice-route-migration.md`](./offline-practice-route-migration.md).
 > If a code
 > change needs a different wire shape, query meaning, persistence rule, or sync

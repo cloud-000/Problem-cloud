@@ -26,8 +26,9 @@ async function cacheContents(page: Page): Promise<string[]> {
 async function serviceWorkerReady(page: Page): Promise<boolean> {
     return page.evaluate(async () => {
         if (!("serviceWorker" in navigator)) return false;
-        const registration = await navigator.serviceWorker.getRegistration();
-        return Boolean(registration?.active);
+        const ready = navigator.serviceWorker.ready.then(() => true);
+        const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000));
+        return Promise.race([ready, timeout]);
     });
 }
 
@@ -77,8 +78,31 @@ test.describe("the service worker", () => {
 
         const urls = await cacheContents(page);
         expect(urls.some((url) => url.endsWith("/offline"))).toBe(true);
+        expect(urls.some((url) => url.endsWith("/offline-practice-shell"))).toBe(true);
         expect(urls.some((url) => url.includes("/vendor/katex/katex.min.css"))).toBe(true);
         expect(urls.some((url) => url.includes("/fonts/"))).toBe(true);
+    });
+
+    test("uses the Practice shell only for an explicit package selector", async ({
+        page,
+        context,
+    }) => {
+        await page.goto("/offline");
+        test.skip(!(await serviceWorkerReady(page)), "no service worker (dev server)");
+
+        await context.setOffline(true);
+        try {
+            await page.goto("/practice?offlinePackage=missing-package");
+            await expect(page).toHaveURL(/\/practice\?offlinePackage=missing-package/);
+            await expect(
+                page.getByRole("heading", { name: "Could not open this download" }),
+            ).toBeVisible();
+
+            await page.goto("/practice");
+            await expect(page.getByText("Offline", { exact: true })).toBeVisible();
+        } finally {
+            await context.setOffline(false);
+        }
     });
 
     test("serves the offline document when a navigation cannot reach the server", async ({

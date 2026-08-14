@@ -12,13 +12,15 @@ IndexedDB, snapshot-plus-overlay state, the outbox, foreground sync, or the
 `TrainerDataSource` seam delivered in Session 3.
 
 > [!NOTE]
-> **Implementation status (2026-08-13): phases 1–3 are implemented.** The normal
-> Practice controller is bound to one immutable online/offline source, downloaded
-> New-mode packages launch at `/practice?offlinePackage=<packageId>`, and the
-> standalone trainer remains available as a temporary parity fallback. Phase 4's
-> credential-free Practice boot/direct offline reload is deliberately not part of
-> this slice, so the integrated route is not yet the release path for an offline
-> browser restart.
+> **Implementation status (2026-08-13): phases 1–5 are implemented.** Downloaded
+> New-mode packages launch only at `/practice?offlinePackage=<packageId>`. An
+> explicit package URL can reload through the prerendered, credential-free
+> `/offline-practice-shell` document, which restores local account/package/session
+> state from IndexedDB and never carries SvelteKit auth data. `/offline` is now a
+> manager/launcher and the standalone trainer has been removed. Phase 6 stops at
+> the existing V1 contract boundary: `PracticeQueryV1` and server-owned package
+> sessions permit New/practice only, so no later mode is advertised or partially
+> enabled.
 
 ## 1. Target behavior
 
@@ -121,6 +123,15 @@ reload, answer/skip persistence, session resume/finish, and reconnect sync.
 6. **Expand mode semantics.** Add List and Skipped; specify and implement local
    Review scheduling before Mixed; add Test only with complete ordered placement
    downloads and atomic batch submission.
+
+Phase 6 is an ordered contract gate, not permission to widen only the UI. The
+current V1 package-creation RPC rejects every session except New/practice and
+`PracticeQueryV1.mode` is the literal `"new"`; consequently this migration does
+not enable List or Skipped yet. Their query union members and session persistence
+must land together first. Review follows only after a provisional scheduling
+policy is added to the snapshot-plus-overlay contract, Mixed follows Review, and
+Test remains last until packages prove complete ordered placement membership and
+the sync wire owns an atomic final submission.
 
 ## 5. Verification and release gates
 

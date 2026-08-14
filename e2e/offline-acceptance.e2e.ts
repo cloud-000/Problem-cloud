@@ -26,17 +26,38 @@ declare global {
 
 async function openHandle(page: Page) {
     await page.goto("/offline");
-    await page.waitForTimeout(250);
-    return page.evaluate(() => Boolean(window.__pcOffline));
+    try {
+        await page.waitForFunction(() => Boolean(window.__pcOffline), null, {
+            timeout: 5_000,
+        });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function serviceWorkerReady(page: Page): Promise<boolean> {
+    return page.evaluate(async () => {
+        if (!("serviceWorker" in navigator)) return false;
+        const ready = navigator.serviceWorker.ready.then(() => true);
+        const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000));
+        return Promise.race([ready, timeout]);
+    });
 }
 
 async function answerCurrent(page: Page) {
-    const current = await page.evaluate(async () => {
+    await page.waitForFunction(async (userId) => {
         const repository = await window.__pcOffline!.open();
-        const manifest = (await repository.listPackages(USER))[0];
-        const session = await repository.loadSession(USER, manifest.sessionId);
+        const manifest = (await repository.listPackages(userId))[0];
+        const session = await repository.loadSession(userId, manifest.sessionId);
+        return session?.row.current_problem_id != null;
+    }, USER);
+    const current = await page.evaluate(async (userId) => {
+        const repository = await window.__pcOffline!.open();
+        const manifest = (await repository.listPackages(userId))[0];
+        const session = await repository.loadSession(userId, manifest.sessionId);
         return session?.row.current_problem_id as number | null;
-    });
+    }, USER);
     expect(current).not.toBeNull();
     if (current === 101) {
         await page.locator("button[aria-pressed]").first().click();
@@ -44,19 +65,22 @@ async function answerCurrent(page: Page) {
         await page.getByLabel("Answer").fill(current === 102 ? "6" : "12");
     }
     await page.getByRole("button", { name: "Submit", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Next/ })).toBeVisible();
     return current!;
 }
 
-async function reopenPage(context: BrowserContext): Promise<Page> {
+async function reopenPage(context: BrowserContext, packageId: string): Promise<Page> {
     const page = await context.newPage();
-    await page.goto("/offline");
+    await page.goto(`/practice?offlinePackage=${encodeURIComponent(packageId)}`);
     await page.waitForTimeout(250);
     return page;
 }
 
 test("all 14 offline release steps", async ({ page, context }) => {
-    test.skip(!(await openHandle(page)), "the acceptance handle needs `bun run dev`");
+    test.skip(
+        !(await openHandle(page)),
+        "the acceptance handle needs dev or a VITE_OFFLINE_E2E=1 test build",
+    );
 
     // 1–2. Sign in locally as the owning fixture account, create the
     // Geometry/AMC package, stage every stable page, and commit atomically.
@@ -75,6 +99,7 @@ test("all 14 offline release steps", async ({ page, context }) => {
         return fixture.created;
     }, USER);
     await expect(page.getByText("4 problems")).toBeVisible();
+    expect(await serviceWorkerReady(page)).toBe(true);
 
     // 3. A query narrows to downloaded Geometry but cannot expand to Algebra.
     const coverage = await page.evaluate(async ({ userId, packageId, sessionId }) => {
@@ -112,25 +137,27 @@ test("all 14 offline release steps", async ({ page, context }) => {
     }, { userId: USER, packageId: installed.packageId, sessionId: installed.sessionId });
     expect(coverage).toEqual({ geometry: "ok", algebra: "not_downloaded" });
 
-    // 4. Reload with networking disabled and open the dedicated session.
+    // 4. Launch in the normal Practice route, then reload from the neutral,
+    // credential-free Practice shell with networking disabled.
+    await page.getByRole("button", { name: "Practice offline" }).click();
+    await expect(page).toHaveURL(/\/practice\?offlinePackage=/);
+    await expect(page.getByText(/Downloaded New mode/)).toBeVisible();
     await context.setOffline(true);
     await page.reload();
-    await expect(page.getByRole("button", { name: "Practice offline" })).toBeVisible();
-    await page.getByRole("button", { name: "Practice offline" }).click();
-    await expect(page.getByRole("heading", { name: "Offline New mode" })).toBeVisible();
-    await expect(page.getByText(/downloaded rating 1200 \(stale\)/)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Coach unavailable offline/ })).toBeDisabled();
+    await expect(page).toHaveURL(/\/practice\?offlinePackage=/);
+    await expect(page.getByText(/Downloaded New mode/)).toBeVisible();
 
     // 5–6. Draw adaptively and answer two different local problems.
     const first = await answerCurrent(page);
-    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("button", { name: /^Next/ }).click();
     const second = await answerCurrent(page);
     expect(second).not.toBe(first);
 
     // 6–7. Close/reopen the page (a fresh JS runtime and IDB connection), stay
     // offline, and prove neither answered canonical is offered again.
     await page.close();
-    page = await reopenPage(context);
+    page = await reopenPage(context, installed.packageId);
+    await expect(page.getByText(/Downloaded New mode/)).toBeVisible();
     const afterRestart = await page.evaluate(
         async ({ userId, packageId, sessionId, answered }) => {
             const repository = await window.__pcOffline!.open();
@@ -149,9 +176,11 @@ test("all 14 offline release steps", async ({ page, context }) => {
                 order: { kind: "nearest-rating", seed: "acceptance", ratingCenter: 1200 },
                 limit: 10,
             });
+            const pending = await repository.pendingOperations(userId, 100);
             return {
                 offered: result.problems.map((item: any) => item.canonicalId),
-                pending: (await repository.pendingOperations(userId, 100)).length,
+                pending: pending.length,
+                submissions: pending.filter((operation: any) => operation.type === "submission").length,
                 answered,
             };
         },
@@ -162,7 +191,8 @@ test("all 14 offline release steps", async ({ page, context }) => {
             answered: [first, second],
         },
     );
-    expect(afterRestart.pending).toBe(2);
+    expect(afterRestart.submissions).toBe(2);
+    expect(afterRestart.pending).toBeGreaterThanOrEqual(2);
     for (const id of afterRestart.answered) expect(afterRestart.offered).not.toContain(id);
 
     // 8. Install an overlapping package, change mastery once, and observe the
@@ -249,7 +279,7 @@ test("all 14 offline release steps", async ({ page, context }) => {
         const repository = await window.__pcOffline!.open();
         await repository.setActiveUser(userId, "Acceptance account");
         const batch = (await repository.pendingSyncBatches(userId, 100))[0];
-        const session = await repository.loadSession(userId, batch.sessionId);
+        const session = await repository.loadSession(userId, batch.operations[0].sessionId);
         return {
             request: {
                 version: 1,
@@ -329,16 +359,16 @@ test("all 14 offline release steps", async ({ page, context }) => {
         });
     }, { userId: USER, overlap: overlap.created });
 
-    const retry = await page.evaluate(async (request) => {
+    const retry = await page.evaluate(async ({ request, userId }) => {
         const handle = window.__pcOffline!;
         const repository = await handle.open();
         const result = await handle.network.sendOfflineSync(request);
         await repository.acknowledgeSync(result);
         return {
             submissions: result.submissions.length,
-            pending: (await repository.pendingOperations(USER, 100)).length,
+            pending: (await repository.pendingOperations(userId, 100)).length,
         };
-    }, syncInput.request);
+    }, { request: syncInput.request, userId: USER });
     expect(attempts).toBe(2);
     expect(committedSubmissionKeys.size).toBe(2);
     expect(retry.submissions).toBe(2);

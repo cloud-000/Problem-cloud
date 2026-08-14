@@ -568,6 +568,7 @@
    let debugMode = $derived(settings.debugMode && debugPanelOpen);
    let showRawLatex = $state(false);
    let loading = $state(true);
+   let submissionPending = $state(false);
    let error = $state<string | null>(null);
    let answerState = $state<PracticeAnswerState>(createPracticeAnswerState());
    // Whether the user made any explicit mastery choice for the on-screen problem
@@ -644,6 +645,7 @@
    let isProblemMcq = $derived(responseMode === "choice");
    let cannotSubmit = $derived(
       !problem ||
+         submissionPending ||
          paused ||
          responseMode === "unsupported" ||
          (isProblemMcq
@@ -1465,7 +1467,7 @@
 
    // `force` finalizes on this submit even if tries remain (used when the
    // per-problem timer expires — time's up, no more retries).
-   function submitAnswer(force = false) {
+   async function submitAnswer(force = false) {
       // Per-answer grading is only for formats that grade immediately; test
       // defers all grading to submitTest().
       if (!behavior.gradeImmediately) return;
@@ -1520,6 +1522,39 @@
          return;
       }
 
+      let recorded: Promise<TrainerSubmissionResult> | null = null;
+      if (user || trainerSource.kind === "offline") {
+         recorded = trainerSource.recordSubmission({
+            problemId: problem.id,
+            selectedChoice: answerState.selectedChoice,
+            answer: isProblemMcq ? null : answerState.answer,
+            isCorrect,
+            skipped: false,
+            flagged: answerState.flagged,
+            elapsedMs: elapsed,
+            source: currentSource,
+            sessionId: currentSessionId,
+            // Wrong tries burned before this final outcome (0 = first-try).
+            triesUsed: answerState.triesUsed,
+         });
+         submissionWrites.set(problem.id, recorded);
+         // The offline result is the durability acknowledgement. Revealing a
+         // finalized answer before this transaction commits lets a reload (or
+         // a very fast Next) re-offer the same New-mode problem.
+         if (trainerSource.kind === "offline") {
+            submissionPending = true;
+            try {
+               await recorded;
+            } catch (e) {
+               submissionWrites.delete(problem.id);
+               error = `Could not save this answer on the device: ${(e as Error).message}`;
+               return;
+            } finally {
+               submissionPending = false;
+            }
+         }
+      }
+
       answerState.submitted = true;
       answerState.correct = isCorrect;
       answerState.elapsedMs = elapsed;
@@ -1536,28 +1571,14 @@
          },
       ];
 
-      if (user || trainerSource.kind === "offline") {
-         const recorded = trainerSource.recordSubmission({
-            problemId: problem.id,
-            selectedChoice: answerState.selectedChoice,
-            answer: isProblemMcq ? null : answerState.answer,
-            isCorrect,
-            skipped: false,
-            flagged: answerState.flagged,
-            elapsedMs: elapsed,
-            source: currentSource,
-            sessionId: currentSessionId,
-            // Wrong tries burned before this final outcome (0 = first-try).
-            triesUsed: answerState.triesUsed,
-         });
-         submissionWrites.set(problem.id, recorded);
+      if (recorded) {
          if (capabilities.coach) {
             coach.recordWorkConclusion(
                recorded.then((result) => result.submissionId),
                problem.canonical_id ?? problem.id,
             );
          }
-         void recorded.then((result) => {
+         void recorded.then(() => {
             if (
                trainerSource.kind === "offline" &&
                isCorrect !== null &&
