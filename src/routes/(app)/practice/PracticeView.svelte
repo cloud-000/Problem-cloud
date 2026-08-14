@@ -16,23 +16,23 @@
    import DebugInfo from "./DebugInfo.svelte";
    import {
       type ProblemRow,
-      fetchAllSeries,
-      fetchPlayerRating,
-      fetchProblemRating,
       type PlayerRating,
       type ProblemRating,
    } from "$lib/library";
    import {
       createSession,
-      fetchTestProblems,
       FORMAT_BEHAVIOR,
-      nextPracticeProblem,
       type PracticeAttempt,
       type PracticeSettings,
       type PracticeSource,
       type ProblemProgress,
    } from "$lib/trainer";
-   import { recordSubmission, setProblemMastery, type Mastery } from "$lib/progress";
+   import { type Mastery } from "$lib/progress";
+   import type {
+      TrainerDataSource,
+      TrainerSubmissionResult,
+   } from "$lib/trainer-data-source";
+   import { advanceShadowRating } from "$lib/offline/shadow";
    import { countdownRemainingMs, rebaseCountdownBaseline } from "$lib/countdown";
    import {
       isLastSegment,
@@ -40,17 +40,7 @@
       segmentElapsedMs,
       segmentRange,
    } from "$lib/segment-timing";
-   import {
-      endSession,
-      fetchSession,
-      fetchSessionHistory,
-      fetchOlderSubmission,
-      fetchSessionProblemIds,
-      getOrCreateRootSession,
-      setCurrentProblem,
-      updateSessionSettings,
-      type PracticeSessionRow,
-   } from "$lib/sessions";
+   import { type PracticeSessionRow } from "$lib/sessions";
    import { cn, formatProblemText } from "$lib/utils";
    import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
    import {
@@ -79,6 +69,7 @@
    import HintRail from "./HintRail.svelte";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onDestroy, onMount, untrack } from "svelte";
+   import { SvelteMap } from "svelte/reactivity";
    import { fade } from "svelte/transition";
    import SettingsPanel from "./SettingsPanel.svelte";
    import PauseOverlay from "./PauseOverlay.svelte";
@@ -120,9 +111,19 @@
    // `sessionParam` is the `?session=` value: "root" (ungrouped work) or a
    // numeric session id. The parent route keys this component on it, so a
    // session switch fully remounts and resets all practice state.
-   let { data, sessionParam }: { data: PageData; sessionParam: string } =
-      $props();
+   let {
+      data,
+      sessionParam,
+      trainerSource,
+      backHref = "/practice",
+   }: {
+      data: PageData;
+      sessionParam: string;
+      trainerSource: TrainerDataSource;
+      backHref?: "/practice" | "/offline";
+   } = $props();
    let { supabase, user } = $derived(data);
+   let capabilities = $derived(trainerSource.capabilities);
 
    let settingsForm = $state<PracticeSettingsForm>(
       createPracticeSettingsForm(),
@@ -203,11 +204,17 @@
 
    // Progress-backed modes need per-user progress. Without a session, pin to New.
    $effect(() => {
-      if (!user && settingsForm.mode !== "new") settingsForm.mode = "new";
+      if (!capabilities.modes[settingsForm.mode]) settingsForm.mode = "new";
    });
 
    // Cross-load draw state for interleaving and forward progress.
    const session = createSession();
+   const submissionWrites = new SvelteMap<number, Promise<TrainerSubmissionResult>>();
+
+   async function submissionDependencies(problemId: number): Promise<string[] | undefined> {
+      const result = await submissionWrites.get(problemId);
+      return result?.operationId ? [result.operationId] : undefined;
+   }
    let currentSource = $state<PracticeSource>("practice");
    let currentProgress = $state<ProblemProgress | null>(null);
 
@@ -216,7 +223,7 @@
    // id and the DB trigger maintains the session's aggregate counters.
    // `sessionAttemptCount` is a local tally for the live indicator (the stored
    // counters update server-side).
-   let isRoot = $derived(sessionParam === "root");
+   let isRoot = $derived(trainerSource.kind === "online" && sessionParam === "root");
    let activeSession = $state<PracticeSessionRow | null>(null);
    let currentSessionId = $derived(activeSession?.id ?? null);
    let sessionAttemptCount = $state(0);
@@ -247,8 +254,8 @@
       if (!activeSession || isRoot || sessionBusy) return;
       sessionBusy = true;
       try {
-         await endSession(supabase, activeSession.id);
-         await goto(resolve("/practice"));
+         await trainerSource.finishSession();
+         await goto(resolve(backHref));
       } catch (e) {
          error = (e as Error).message;
          sessionBusy = false;
@@ -295,7 +302,7 @@
          // `ended` status can lag — a prior submit may have recorded the rows
          // but failed to end the session — so detect completion from the
          // submissions themselves, not just status, and render the results.
-         const graded = await fetchSessionHistory(supabase, s.id);
+         const graded = await trainerSource.getSessionHistory();
          if (s.status === "ended" || graded.length > 0) {
             // fetchSessionHistory orders by created_at, but a test's rows are
             // batch-inserted with identical timestamps, so that order is
@@ -310,7 +317,7 @@
             // Reconcile a session left active by a submit whose end-of-session
             // call failed; grading already happened, so this just flips status.
             if (s.status !== "ended") {
-               endSession(supabase, s.id).catch((e) =>
+               trainerSource.finishSession().catch((e) =>
                   console.error("Failed to reconcile test session:", e),
                );
             }
@@ -318,7 +325,7 @@
          }
 
          // Fresh / in-progress test: all problems, in order, editable.
-         const problems = await fetchTestProblems(supabase, settingsForm.testId);
+         const problems = await trainerSource.getTestProblems(settingsForm.testId);
          history = problems.map((problem) =>
             createPracticeHistoryEntry({
                problem,
@@ -378,18 +385,16 @@
             const rows = history.map((e) => {
                const outcome = applyTestOutcome(e);
                return {
-                  user_id: user.id,
-                  problem_id: e.problem.id,
-                  selected_choice: e.selectedChoice,
+                  problemId: e.problem.id,
+                  selectedChoice: e.selectedChoice,
                   // Persist the free-text response (non-MCQ) so the grade stays
                   // auditable/re-gradable; null for MCQ/blank.
                   answer: e.answer.trim() ? e.answer : null,
-                  is_correct: outcome.correct,
+                  isCorrect: outcome.correct,
                   skipped: outcome.skipped,
                   flagged: e.flagged,
-                  elapsed_ms: Math.max(0, Math.round(e.elapsedMs)),
-                  source: "test",
-                  session_id: currentSessionId,
+                  elapsedMs: Math.max(0, Math.round(e.elapsedMs)),
+                  triesUsed: 0,
                };
             });
             // Record the graded submissions. Idempotency is enforced in the
@@ -399,24 +404,14 @@
             // constraint and the whole batch rolls back atomically. This
             // replaces a count-then-insert check that could race two submits
             // past the guard and double-count every row.
-            if (rows.length > 0) {
-               const { error: insertError } = await supabase
-                  .from("submissions")
-                  .insert(rows);
-               // 23505 = unique_violation: the grades are already recorded
-               // (a prior attempt or another tab won), so treat it as an
-               // already-submitted success rather than an error.
-               if (insertError && insertError.code !== "23505") {
-                  throw insertError;
-               }
-            }
+            await trainerSource.recordTestSubmissions(rows);
             // Auto-assign the suggested mastery for every attempted problem the
             // user never rated (skips carry no knowledge signal, so they're left
             // alone). Mirrors the trainer's leave-behavior; fire-and-forget.
             for (const e of history) {
                if (e.skipped || e.correct === null || e.progress?.mastery) continue;
                const m: Mastery = e.correct ? "confident" : "needs_work";
-               setProblemMastery(supabase, e.problem.id, m).catch((err) =>
+               trainerSource.setMastery(e.problem.id, m).catch((err) =>
                   console.error("Failed to auto-assign mastery:", err),
                );
             }
@@ -428,7 +423,7 @@
             // fails the grades still stand, so don't surface it as a submit
             // failure (which would send the user back to an editable test).
             // initTest re-ends the session from the recorded grades next open.
-            endSession(supabase, currentSessionId).catch((e) =>
+            trainerSource.finishSession().catch((e) =>
                console.error("Failed to end test session:", e),
             );
          }
@@ -511,27 +506,15 @@
    // skipped (it then lives in `submissions`).
    function persistCurrentProblem(problemId: number, elapsedMs: number) {
       if (currentSessionId == null) return;
-      setCurrentProblem(supabase, currentSessionId, problemId, elapsedMs).catch(
+      trainerSource.setCurrentProblem(problemId, elapsedMs).catch(
          (e) => console.error("Failed to persist session problem:", e),
       );
    }
    function clearCurrentProblem() {
       if (currentSessionId == null) return;
-      setCurrentProblem(supabase, currentSessionId, null, 0).catch((e) =>
+      trainerSource.setCurrentProblem(null, 0).catch((e) =>
          console.error("Failed to clear session problem:", e),
       );
-   }
-
-   // Fetch a single problem with its embedded test/series (matches the trainer's
-   // select), to resume a session's in-progress problem by id.
-   async function fetchProblemById(id: number): Promise<ProblemRow | null> {
-      const { data, error: e } = await supabase
-         .from("problems")
-         .select("*, tests(name, series_id, series(name))")
-         .eq("id", id)
-         .maybeSingle();
-      if (e) throw e;
-      return (data as unknown as ProblemRow | null) ?? null;
    }
 
    // Present an already-chosen problem as the live (latest) entry, seeding its
@@ -820,13 +803,15 @@
          onclick: () => toggleFlag(),
       },
       {
-         label: "Report",
+         label: capabilities.problemReports ? "Report" : "Report (online only)",
          icon: "report",
+         disabled: !capabilities.problemReports,
          onclick: () => openProblemReport(),
       },
       {
-         label: "Share",
+         label: capabilities.sourceLinks ? "Share" : "Share (online only)",
          icon: "share",
+         disabled: !capabilities.sourceLinks,
          onclick: () => {},
       },
       ...(loading || isTest || !isLatest || answerState.submitted || !problem || !settingsForm.focusMode
@@ -863,7 +848,9 @@
 
    // The Coach lives inline in the answer region. The topbar button and the
    // footer control are mirrored toggles for this state; neither opens a panel.
-   let coachAvailable = $derived(coach.enabled && !(isTest && !testFinished));
+   let coachAvailable = $derived(
+      capabilities.coach && coach.enabled && !(isTest && !testFinished),
+   );
    let coachModeAvailable = $derived(
       coachAvailable && !!problem && !(isTest && testFinished),
    );
@@ -1238,6 +1225,10 @@
 
    function openProblemReport(emphasizeAnswer = false) {
       if (!problem) return;
+      if (!capabilities.problemReports) {
+         toasts.info("Problem reports need an online practice session.");
+         return;
+      }
       if (!user) {
          toasts.error("Sign in to report a problem.");
          return;
@@ -1261,11 +1252,11 @@
    }
 
    function persistSettingsSnapshot(settings = currentSettings()) {
-      if (currentSessionId == null) return;
+      if (currentSessionId == null || !capabilities.settings) return;
       const serialized = JSON.stringify(settings);
       if (serialized === lastPersistedSettings) return;
       lastPersistedSettings = serialized;
-      updateSessionSettings(supabase, currentSessionId, settings).catch((e) =>
+      trainerSource.updateSettings(settings).catch((e) =>
          console.error("Failed to persist session settings:", e),
       );
    }
@@ -1286,14 +1277,14 @@
    // explicit choice (including clearing to "Unassessed") sets `masteryTouched` and
    // is respected. Fire-and-forget; the DB write mirrors the ProblemOrganization path.
    function maybeAutoAssignMastery() {
-      if (!user || isTest) return;
+      if ((!user && trainerSource.kind === "online") || isTest) return;
       if (!problem || !answerState.submitted || answerState.correct === null) return;
       if (masteryTouched || currentProgress?.mastery) return;
       if (currentProgress) currentProgress.mastery = suggestedMastery;
       const id = problem.id;
-      setProblemMastery(supabase, id, suggestedMastery).catch((e) =>
-         console.error("Failed to auto-assign mastery:", e),
-      );
+      void submissionDependencies(id)
+         .then((dependsOn) => trainerSource.setMastery(id, suggestedMastery, dependsOn))
+         .catch((e) => console.error("Failed to auto-assign mastery:", e));
    }
 
    function commitCurrent() {
@@ -1355,12 +1346,12 @@
       paused = false;
 
       try {
-         const result = await nextPracticeProblem(
-            supabase,
+         await resetOfflineRatingCenterAfterSync();
+         const result = await trainerSource.queryProblems({
             settings,
             session,
-            playerRating?.rating ?? null,
-         );
+            ratingCenter,
+         });
          if (token !== loadToken) return;
 
          if (result.problem) {
@@ -1418,12 +1409,26 @@
    // `ratingDelta` is the change from the last known rating, shown in the
    // footer next to the fresh result.
    let playerRating = $state<PlayerRating | null>(null);
+   // Online this follows the authoritative rating refresh. Offline it is a
+   // runtime-only adaptive shadow and is never displayed or persisted.
+   let ratingCenter = $state<number | null>(null);
+   let syncVersion = $state<string | null>(null);
+   let offlineRatingCenterInitialized = false;
    let ratingDelta = $state<number | null>(null);
    // Guards playerRating writes against out-of-order resolution: a graded
    // wrong try followed quickly by a correct one fires two overlapping
    // fetches, and the onMount baseline fetch can straggle behind both. Only
    // the most recently-initiated fetch may win.
    let playerRatingSeq = 0;
+
+   async function resetOfflineRatingCenterAfterSync() {
+      if (trainerSource.kind !== "offline") return;
+      const latest = await trainerSource.syncVersion();
+      if (latest === syncVersion && offlineRatingCenterInitialized) return;
+      syncVersion = latest;
+      ratingCenter = (await trainerSource.getPlayerRating())?.rating ?? null;
+      offlineRatingCenterInitialized = true;
+   }
 
    // The current problem's Glicko rating, for the metadata-row elo and the debug
    // panel's match preview. Trainer draws don't embed ratings, so fetch by id
@@ -1434,9 +1439,9 @@
       problemRating = null;
       if (id == null) return;
       let current = true;
-      fetchProblemRating(supabase, id)
+      trainerSource.getProblem(id)
          .then((r) => {
-            if (current) problemRating = r;
+            if (current) problemRating = r?.rating ?? null;
          })
          .catch((e) => console.error("Failed to fetch problem rating:", e));
       return () => {
@@ -1444,15 +1449,16 @@
       };
    });
 
-   function refreshPlayerRating(after: Promise<unknown>, userId: string) {
+   function refreshPlayerRating(after: Promise<unknown>) {
       const before = playerRating?.rating ?? null;
       const seq = ++playerRatingSeq;
       after
-         .then(() => fetchPlayerRating(supabase, userId))
+         .then(() => trainerSource.getPlayerRating())
          .then((r) => {
             if (!r || seq !== playerRatingSeq) return;
             ratingDelta = before != null ? r.rating - before : null;
             playerRating = r;
+            ratingCenter = r.rating;
          })
          .catch((e) => console.error("Failed to refresh player rating:", e));
    }
@@ -1530,8 +1536,8 @@
          },
       ];
 
-      if (user) {
-         const recorded = recordSubmission(supabase, user.id, {
+      if (user || trainerSource.kind === "offline") {
+         const recorded = trainerSource.recordSubmission({
             problemId: problem.id,
             selectedChoice: answerState.selectedChoice,
             answer: isProblemMcq ? null : answerState.answer,
@@ -1544,11 +1550,33 @@
             // Wrong tries burned before this final outcome (0 = first-try).
             triesUsed: answerState.triesUsed,
          });
-         coach.recordWorkConclusion(recorded, problem.canonical_id ?? problem.id);
+         submissionWrites.set(problem.id, recorded);
+         if (capabilities.coach) {
+            coach.recordWorkConclusion(
+               recorded.then((result) => result.submissionId),
+               problem.canonical_id ?? problem.id,
+            );
+         }
+         void recorded.then((result) => {
+            if (
+               trainerSource.kind === "offline" &&
+               isCorrect !== null &&
+               ratingCenter !== null &&
+               playerRating &&
+               problemRating
+            ) {
+               ratingCenter = advanceShadowRating(
+                  ratingCenter,
+                  playerRating,
+                  problemRating,
+                  isCorrect,
+               );
+            }
+         });
          // Graded attempts are rated live; surface the rating movement.
          if (isCorrect !== null) {
             ratingDelta = null;
-            refreshPlayerRating(recorded, user.id);
+            if (trainerSource.kind === "online") refreshPlayerRating(recorded);
          }
          if (currentSessionId != null) {
             sessionAttemptCount += 1;
@@ -1581,8 +1609,8 @@
          },
       ];
 
-      if (user) {
-         const recorded = recordSubmission(supabase, user.id, {
+      if (user || trainerSource.kind === "offline") {
+         const recorded = trainerSource.recordSubmission({
             problemId: problem.id,
             selectedChoice: null,
             isCorrect: null,
@@ -1592,7 +1620,13 @@
             source: currentSource,
             sessionId: currentSessionId,
          });
-         coach.recordWorkConclusion(recorded, problem.canonical_id ?? problem.id);
+         submissionWrites.set(problem.id, recorded);
+         if (capabilities.coach) {
+            coach.recordWorkConclusion(
+               recorded.then((result) => result.submissionId),
+               problem.canonical_id ?? problem.id,
+            );
+         }
          if (currentSessionId != null) {
             sessionAttemptCount += 1;
             clearCurrentProblem(); // skipped → now lives in submissions
@@ -1645,18 +1679,18 @@
    // re-paged. Fired once on start and again after each step further back. Skipped
    // for tests (fixed set) and signed-out/ephemeral practice (no session).
    async function prefetchOlder() {
-      if (currentSessionId == null || !user || isTest) return;
+      if (
+         currentSessionId == null ||
+         !capabilities.serverHistory ||
+         isTest
+      ) return;
       if (olderLoading || olderPrefetch || olderExhausted) return;
       // Cursor = the id of the last-paged older entry (now history[0]), or null
       // to start from the newest. Nothing between here and a fetch advances it.
       const cursorId = history[0]?.submissionId ?? null;
       olderLoading = true;
       try {
-         const row = await fetchOlderSubmission(
-            supabase,
-            currentSessionId,
-            cursorId,
-         );
+         const row = await trainerSource.getOlderSubmission(cursorId);
          if (!row) {
             olderExhausted = true;
             return;
@@ -1764,18 +1798,14 @@
    // tweaking a control must not fire a reload per change.
    onMount(async () => {
       try {
-         const list = await fetchAllSeries(supabase);
-         seriesOptions = list.map((s) => ({
-            value: String(s.id),
-            label: s.name,
-         }));
+         seriesOptions = await trainerSource.getSeriesOptions();
       } catch (e) {
          console.error("Failed to fetch series options:", e);
       }
 
       // Signed-out: no session row and no persistence anywhere (root or a
       // deep-linked session RLS won't reveal). Draw a fresh problem ephemerally.
-      if (!user) {
+      if (!user && trainerSource.kind === "online") {
          loadProblem();
          return;
       }
@@ -1783,16 +1813,18 @@
       // Baseline for the live rating-delta chip; no await — it renders
       // whenever it lands.
       const seq = ++playerRatingSeq;
-      fetchPlayerRating(supabase, user.id)
+      trainerSource.getPlayerRating()
          .then((r) => {
-            if (seq === playerRatingSeq) playerRating = r;
+            if (seq === playerRatingSeq) {
+               playerRating = r;
+               ratingCenter = r?.rating ?? null;
+            }
          })
          .catch((e) => console.error("Failed to fetch player rating:", e));
 
       try {
-         const s = isRoot
-            ? await getOrCreateRootSession(supabase, user.id)
-            : await fetchSession(supabase, Number(sessionParam));
+         const loaded = await trainerSource.loadSession();
+         const s = loaded?.row ?? null;
          if (s) {
             activeSession = s;
             applySettings(s.settings as unknown as PracticeSettings);
@@ -1802,6 +1834,9 @@
             // Test format has its own setup (whole problem set up front,
             // deferred grading, results on completion) — don't fall through
             // to the random/review practice loop.
+            if (!capabilities.formats[settingsForm.format]) {
+               throw new Error("This downloaded session supports New-mode practice only.");
+            }
             if (settingsForm.format === "test") {
                await initTest(s);
                return;
@@ -1822,7 +1857,9 @@
             // re-show a problem already covered this session, without
             // materializing the full history.
             try {
-               const ids = await fetchSessionProblemIds(supabase, s.id);
+               const ids = loaded?.localSubmissions.length
+                  ? loaded.localSubmissions.map((submission) => submission.canonicalId)
+                  : await trainerSource.getSessionProblemIds();
                for (const id of ids) session.shownIds.add(id);
                session.drawIndex = ids.length;
             } catch (e) {
@@ -1835,12 +1872,12 @@
             // Resume the in-progress problem instead of generating a new one,
             // continuing its elapsed timer where it left off.
             if (s.current_problem_id != null) {
-               const pending = await fetchProblemById(s.current_problem_id);
+               const pending = await trainerSource.getProblem(s.current_problem_id);
                if (pending) {
                   showProblem(
-                     pending,
+                     pending.problem,
                      "practice",
-                     null,
+                     pending.progress,
                      s.current_elapsed_ms ?? 0,
                   );
                   return;
@@ -1872,7 +1909,7 @@
       const pid = problem!.id;
 
       const timer = setInterval(() => {
-         setCurrentProblem(supabase, sid, pid, liveElapsed()).catch((e) =>
+         trainerSource.setCurrentProblem(pid, liveElapsed()).catch((e) =>
             console.error("Failed to persist session progress:", e),
          );
       }, 5000);
@@ -1989,6 +2026,7 @@
 <div class="flex h-full w-full flex-col gap-0 overflow-hidden">
    <PracticeTopbar
       sessionName={activeSession?.name ?? (isTest ? testName : "Quick practice")}
+      {backHref}
       {isTest}
       {showWhiteboard}
       {focusModeActive}
@@ -2024,6 +2062,15 @@
       <main
          class="flex-1 w-full min-w-0 flex flex-col justify-between pt-0 min-h-0 overflow-hidden"
       >
+         {#if trainerSource.kind === "offline"}
+            <div class="mx-4 mt-2 flex items-center gap-2 rounded-md bg-surface-container-low px-3 py-2 text-xs text-muted-foreground sm:mx-6">
+               <Icon name="download" class="shrink-0" />
+               <span>
+                  Downloaded New mode. Coach, reports, source links, server history,
+                  and other practice modes remain online-only.
+               </span>
+            </div>
+         {/if}
          {#if loading}
             <div
                class="flex-1 flex flex-col items-center justify-center gap-3 text-center"
@@ -2133,6 +2180,7 @@
                </div>
             </div>
          {:else}
+            {@const displayedProblemId = problem.id}
             <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
                <div
                   bind:clientHeight={problemRegionHeight}
@@ -2166,7 +2214,7 @@
                            {isTest}
                            {historyIndex}
                            historyLength={history.length}
-                           revealLinks={answerState.submitted}
+                           revealLinks={capabilities.sourceLinks && answerState.submitted}
                         />
                      {/key}
 
@@ -2278,6 +2326,20 @@
                               prompt={!currentProgress?.mastery}
                               promptPresentation="persistent"
                               {suggestedMastery}
+                              saveMastery={user || trainerSource.kind === "offline" ? async (value) => {
+                                 await trainerSource.setMastery(
+                                    displayedProblemId,
+                                    value,
+                                    await submissionDependencies(displayedProblemId),
+                                 );
+                              } : undefined}
+                              saveEngagement={user || trainerSource.kind === "offline" ? async (value) => {
+                                 await trainerSource.setEngagement(
+                                    displayedProblemId,
+                                    value,
+                                    await submissionDependencies(displayedProblemId),
+                                 );
+                              } : undefined}
                               onchange={(state) => {
                                  masteryTouched = true;
                                  currentProgress = currentProgress ?? {
@@ -2413,7 +2475,7 @@
                   {submittingTest}
                   {cannotSubmit}
                   {hasAnswer}
-                  {answerContributionAvailable}
+                  answerContributionAvailable={capabilities.problemReports && answerContributionAvailable}
                   onReport={() => openProblemReport(true)}
                   triesUsed={answerState.triesUsed}
                   triesPerProblem={settingsForm.triesPerProblem}
@@ -2453,19 +2515,36 @@
             },
          }}
       >
-         <SettingsPanel
-            bind:form={settingsForm}
-            {seriesOptions}
-            {supabase}
-            canReview={!!user}
-            {isTest}
-            {testName}
-            timeLimitSeconds={settingsForm.timeLimitSeconds}
-            pacing={settingsForm.pacing}
-            strictTiming={settingsForm.strictTiming ?? true}
-            onFocusModeChange={setFocusMode}
-            onClose={() => utilityPanel.close()}
-         />
+         {#if capabilities.settings}
+            <SettingsPanel
+               bind:form={settingsForm}
+               {seriesOptions}
+               loadSeriesDimensions={trainerSource.getSeriesDimensions}
+               canReview={!!user}
+               enabledModes={capabilities.modes}
+               {isTest}
+               {testName}
+               timeLimitSeconds={settingsForm.timeLimitSeconds}
+               pacing={settingsForm.pacing}
+               strictTiming={settingsForm.strictTiming ?? true}
+               onFocusModeChange={setFocusMode}
+               onClose={() => utilityPanel.close()}
+            />
+         {:else}
+            <div class="flex h-full flex-col gap-3 bg-surface-container-lowest p-5">
+               <div class="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
+                  <h2 class="text-sm font-semibold">Downloaded session</h2>
+                  <Button variant="ghost" size="icon-xs" aria-label="Close settings" onclick={() => utilityPanel.close()}>
+                     <Icon name="close" />
+                  </Button>
+               </div>
+               <p class="text-xs text-muted-foreground">
+                  This package keeps the New-mode settings chosen when it was downloaded.
+                  List, Skipped, Review, Mixed, and Test need additional offline contracts
+                  and cannot be selected yet.
+               </p>
+            </div>
+         {/if}
       </UtilityPanelRegister>
 
       <UtilityPanelRegister

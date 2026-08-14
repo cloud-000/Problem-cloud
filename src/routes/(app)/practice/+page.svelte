@@ -2,7 +2,8 @@
     import type { PageData } from "./$types";
     import { page } from "$app/state";
     import SessionsView from "./SessionsView.svelte";
-    import PracticeView from "./PracticeView.svelte";
+    import OnlinePracticeRoute from "./OnlinePracticeRoute.svelte";
+    import OfflinePracticeRoute from "./OfflinePracticeRoute.svelte";
 
     let { data }: { data: PageData } = $props();
 
@@ -11,12 +12,17 @@
     //   "root"        → ungrouped practice
     //   "<id>"        → practice filed into that session (resumes its settings)
     let sessionParam = $derived(page.url.searchParams.get("session"));
+    let offlinePackage = $derived(page.url.searchParams.get("offlinePackage"));
 </script>
 
-{#if sessionParam == null}
+{#if offlinePackage != null}
+    {#key offlinePackage}
+        <OfflinePracticeRoute {data} packageId={offlinePackage} />
+    {/key}
+{:else if sessionParam == null}
     <SessionsView {data} />
 {:else}
     {#key sessionParam}
-        <PracticeView {data} {sessionParam} />
+        <OnlinePracticeRoute {data} {sessionParam} />
     {/key}
 {/if}

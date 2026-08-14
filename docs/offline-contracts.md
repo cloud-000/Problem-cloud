@@ -1,7 +1,8 @@
 # Offline Mode — V1 Contracts
 
 > [!IMPORTANT]
-> **Status: Session 2 download/recovery implemented (2026-08-13).** §1, §3, §4, §5
+> **Status: Session 3 data-source integration and shared Practice-route phases
+> 1–3 implemented (2026-08-13); neutral Practice boot/reload pending.** §1, §3, §4, §5
 > and §6 are exercised against fixture packages in `src/lib/offline/`; §2, §7,
 > and §8 now have declarative schema, two-phase materialization/package
 > endpoints, transactional sync, checkout lifecycle, and pgTAP coverage. Two local
@@ -10,7 +11,12 @@
 > resolves revision-addressed media URLs without scanning unrelated caches. The
 > browser package client, quota-aware download/refresh/delete orchestrator,
 > checkout recovery, and foreground authenticated sync coordinator are wired.
-> Trainer integration remains deliberately unimplemented. If a code
+> The trainer now consumes one domain data-source seam with online and offline
+> implementations. `/offline` currently hosts a transitional downloaded-session
+> trainer; the settled target is for it to launch the normal `/practice` route
+> and shared Practice UI, as specified in
+> [`offline-practice-route-migration.md`](./offline-practice-route-migration.md).
+> If a code
 > change needs a different wire shape, query meaning, persistence rule, or sync
 > result, update this contract before or with that change.
 
@@ -620,6 +626,45 @@ interface OfflinePracticeRepositoryV1
 }
 ```
 
+### Trainer-facing seam
+
+The UI does not consume the repository interface or a PostgREST builder
+directly. The normal Practice route/controller selects one `TrainerDataSource`
+for the mounted practice surface,
+with domain operations for problem queries/lookups, ratings, session load/current
+problem/finish, submissions, organization writes, settings, series dimensions,
+server history, and online Test loading/submission. Operations that exist only to
+preserve the online presentation are still capability-gated; the offline source
+never implements them by falling through to Supabase.
+
+The selection is explicit and stable for the mount: ordinary `/practice` uses
+the online source, while `/practice?offlinePackage=<packageId>` binds the ready
+package, checkout, local account, and dedicated server session. A connectivity
+change never silently switches an online session to offline or lets an offline
+operation fall through to the network.
+
+As part of the route migration, the seam exposes an immutable capability
+descriptor consumed by the shared Practice controls. The first integrated
+offline source enables New, local answer/skip/Back, mastery, engagement, and
+adaptive selection. It explicitly disables List, Skipped, Review, Mixed, Test,
+Coach, Discuss, source links, server history, problem reports, and mid-session
+settings edits until their contracts ship. The loaded download snapshot still
+populates the shared settings state, but the offline settings panel is explanatory
+and read-only so its series controls cannot trigger a network dimension lookup.
+The UI does not infer capability from connectivity or hide a partial failure.
+
+The online implementation delegates to the existing library, progress, trainer,
+and session functions. The offline implementation binds one user/package/
+checkout/session identity and delegates every operation to `OfflineRepository`.
+No operation falls through to the network after that choice.
+
+Offline adaptive selection keeps a runtime-only shadow center initialized from
+the downloaded player rating. A graded answer advances it only with
+`glickoMatchPreview`; the current value is neither rendered nor persisted. When
+`lastSyncedAt` advances, the selector resets from the newly acknowledged local
+server snapshot. The rating shown in the offline header remains explicitly the
+stale rating captured when that Practice surface opened.
+
 ### Effective progress
 
 The repository stores frozen server `ProblemProgress` as base state. It derives
@@ -926,8 +971,13 @@ slices to answer differently.
   for public reads such as the welcome-page count; it does not inherit app auth
   data.
 - `/offline` lives outside `(app)`, has no server or universal load, and is
-  prerendered. It renders the limited offline shell directly from the local
-  repository and never consumes cached auth data.
+  prerendered. It renders the package-management/recovery shell directly from
+  the local repository and never consumes cached auth data.
+- An explicit downloaded-package launch uses the normal `/practice` URL and
+  shared Practice presentation. Its offline entry is also a build-owned,
+  credential-free shell: it restores local package/session state from IndexedDB
+  and never consumes cached personalized SvelteKit data. A generic failed
+  navigation still returns `/offline`; it does not choose a package implicitly.
 - Add Playwright as the production-browser harness. The release gate is
   Chromium 111+ and Safari/iOS 16.4+. Firefox 114+ is supported best-effort but
   is not a v1 release gate. Embedded Kindle/E-Ink browsers are explicitly
@@ -997,8 +1047,9 @@ contract.
 - Download states are `estimating`, `downloading` (pages/assets and bytes),
   `ready`, `stale`, `failed`, and `storage-full`. Cancel removes only staging.
 - The account may retain multiple ready packages, including overlapping ones.
-  `/offline` lists them for the active local account. Opening one
-  resumes its dedicated New-mode session; it does not silently combine packages.
+  `/offline` lists them for the active local account. Opening one launches the
+  normal `/practice` surface with explicit package identity and resumes its
+  dedicated New-mode session; it does not silently combine packages.
   A later explicit multi-package query may do so through `packageIds`.
 - When assembling an offline problem, known media references are rewritten to
   `/_offline/media?revision=<packageRevision>&url=<encoded-original-url>`. The
@@ -1042,7 +1093,8 @@ scenario proves all of the following:
 2. Download every stable page and atomically commit the package.
 3. Verify a query can narrow the package but cannot expand into undownloaded
    Algebra content.
-4. Reload without networking and open the dedicated session.
+4. Launch the package in the normal Practice route, reload without networking,
+   and restore the dedicated session from IndexedDB.
 5. Query a New adaptive problem locally and answer it.
 6. Answer a second problem, then restart the browser.
 7. Continue offline without either problem being offered again.

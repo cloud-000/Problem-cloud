@@ -11,6 +11,7 @@
     } from "$lib/series-review";
     import { cn } from "$lib/utils";
     import { fly } from "svelte/transition";
+    import { SvelteMap } from "svelte/reactivity";
     import type { SeriesScopeConfig, TrackValue } from "./practice-settings";
 
     type Supabase = SupabaseClient<Database>;
@@ -19,10 +20,12 @@
         value = $bindable<TrackValue>(),
         seriesOptions = [],
         supabase,
+        loadSeriesDimensions,
     }: {
         value: TrackValue;
         seriesOptions: { value: string; label: string }[];
-        supabase: Supabase;
+        supabase?: Supabase;
+        loadSeriesDimensions?: (seriesId: number) => Promise<SeriesDimensionRow[]>;
     } = $props();
 
     // Per-series scope rows expand/collapse independently. A row defaults to open
@@ -37,7 +40,7 @@
     // selection changes.
     let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
     let dimensionToken = 0;
-    const dimensionCache = new Map<number, SeriesDimensionRow[]>();
+    const dimensionCache = new SvelteMap<number, SeriesDimensionRow[]>();
 
     // Keep `value.seriesScopes` in step with the classified selection: drop
     // entries for deselected series (so stale tags never leak into the draw or
@@ -67,7 +70,13 @@
                 let rows = dimensionCache.get(id);
                 if (!rows) {
                     try {
-                        rows = await fetchSeriesDimensions(supabase, id);
+                        if (loadSeriesDimensions) {
+                            rows = await loadSeriesDimensions(id);
+                        } else if (supabase) {
+                            rows = await fetchSeriesDimensions(supabase, id);
+                        } else {
+                            rows = [];
+                        }
                     } catch (e) {
                         console.error("Failed to fetch series dimensions:", e);
                         continue;

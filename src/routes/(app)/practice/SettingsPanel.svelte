@@ -82,6 +82,7 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
     import type { Database } from "$lib/types/database.types";
+    import type { SeriesDimensionRow } from "$lib/series-review";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
@@ -111,7 +112,10 @@
         form = $bindable<PracticeSettingsForm>(),
         seriesOptions = [],
         supabase,
+        loadSeriesDimensions,
         canReview = true,
+        enabledModes,
+        disabledModeReason = "This mode is unavailable for this practice source.",
         isTest = false,
         testName = null,
         timeLimitSeconds = null,
@@ -122,8 +126,11 @@
     }: {
         form: PracticeSettingsForm;
         seriesOptions: { value: string; label: string }[];
-        supabase: Supabase;
+        supabase?: Supabase;
+        loadSeriesDimensions?: (seriesId: number) => Promise<SeriesDimensionRow[]>;
         canReview?: boolean;
+        enabledModes?: Readonly<Record<PracticeMode, boolean>>;
+        disabledModeReason?: string;
         /** Test format: show a read-only summary instead of the editable filters. */
         isTest?: boolean;
         testName?: string | null;
@@ -262,7 +269,7 @@
         {:else}
             <!-- Track: what this session is about (topic, series, division/format).
          Front-loaded and always visible, shared with the session-creation dialog. -->
-            <Track bind:value={form} {seriesOptions} {supabase} />
+            <Track bind:value={form} {seriesOptions} {supabase} {loadSeriesDimensions} />
 
             <!-- Session mechanics (collapsible): everything else — mode, mastery,
          difficulty, pacing, and the nested Advanced filters sub-group. -->
@@ -301,14 +308,18 @@
                                 aria-label="Problem mode"
                             >
                                 {#each MODES as m (m.value)}
-                                    {@const disabled = m.needsAuth && !canReview}
+                                    {@const disabled =
+                                        (m.needsAuth && !canReview) ||
+                                        enabledModes?.[m.value] === false}
                                     <button
                                         type="button"
                                         role="radio"
                                         aria-checked={form.mode === m.value}
                                         {disabled}
                                         title={disabled
-                                            ? "Sign in to review problems"
+                                            ? enabledModes?.[m.value] === false
+                                                ? disabledModeReason
+                                                : "Sign in to review problems"
                                             : m.hint}
                                         onclick={() => (form.mode = m.value)}
                                         class={cn(

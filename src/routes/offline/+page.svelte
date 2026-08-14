@@ -1,6 +1,8 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { dev } from "$app/environment";
+    import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
@@ -14,6 +16,7 @@
     import { offlineRepository, offlineSupport } from "$lib/offline/browser";
     import { fetchAllSeries, topicLabel } from "$lib/library";
     import type { OfflinePackageManifestV1 } from "$lib/offline/types";
+    import type { OfflineRepository } from "$lib/offline/repository";
     import {
         downloadFailureMessage,
         downloadOfflinePackage,
@@ -30,6 +33,7 @@
         createTrackValue,
         type TrackValue,
     } from "../(app)/practice/practice-settings";
+    import OfflinePractice from "./OfflinePractice.svelte";
 
     type View =
         | { kind: "loading" }
@@ -53,6 +57,10 @@
     let downloadName = $state("");
     let downloadAmount = $state<number | undefined>(DOWNLOAD_DEFAULT_PROBLEMS);
     let scopeError = $state<string | null>(null);
+    let practice = $state<{
+        repository: OfflineRepository;
+        manifest: OfflinePackageManifestV1;
+    } | null>(null);
 
     function plainSeriesScopes(
         scopes: TrackValue["seriesScopes"],
@@ -148,12 +156,13 @@
         // `dev` purely to keep it out of the shipped bundle — it grants nothing
         // a same-origin script could not already do through IndexedDB directly.
         void (async () => {
-            const [{ offlineRepository: open }, fixtures] = await Promise.all([
+            const [{ offlineRepository: open }, fixtures, network] = await Promise.all([
                 import("$lib/offline/browser"),
                 import("$lib/offline/fixtures"),
+                import("$lib/offline/network"),
             ]);
             Object.assign(window, {
-                __pcOffline: { open, fixtures, refresh },
+                __pcOffline: { open, fixtures, network, refresh },
             });
         })();
         return () => {
@@ -293,6 +302,27 @@
         ).catch(() => undefined);
         await refresh();
     }
+
+    async function openPractice(manifest: OfflinePackageManifestV1) {
+        scopeError = null;
+        try {
+            practice = {
+                repository: await offlineRepository(),
+                manifest,
+            };
+        } catch (error) {
+            scopeError = error instanceof Error ? error.message : String(error);
+        }
+    }
+
+    async function launchPractice(manifest: OfflinePackageManifestV1) {
+        scopeError = null;
+        await goto(
+            resolve(
+                `/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}`,
+            ),
+        );
+    }
 </script>
 
 {#snippet downloadForm()}
@@ -402,7 +432,16 @@
     </header>
 
     <main class="mx-auto w-full max-w-[720px] flex-1 px-md py-lg">
-        {#if view.kind === "loading"}
+        {#if practice}
+            <OfflinePractice
+                repository={practice.repository}
+                manifest={practice.manifest}
+                onExit={() => {
+                    practice = null;
+                    void refresh();
+                }}
+            />
+        {:else if view.kind === "loading"}
             <p class="text-muted-foreground type-secondary">
                 Looking for downloaded problems on this device…
             </p>
@@ -497,6 +536,17 @@
                             <p class="text-muted-foreground type-caption mt-sm">Refreshing: {action.progress.problems} / {action.progress.totalProblems} problems</p>
                         {/if}
                         <div class="mt-sm flex gap-2">
+                            <Button size="sm" onclick={() => launchPractice(manifest)}>
+                                Practice offline
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                title="Temporary fallback while shared-Practice parity is being verified"
+                                onclick={() => openPractice(manifest)}
+                            >
+                                Legacy trainer
+                            </Button>
                             {#if typeof navigator !== "undefined" && navigator.onLine}
                                 <Button size="sm" variant="ghost" onclick={() => refreshPackage(manifest)}>Refresh</Button>
                             {/if}
@@ -506,13 +556,6 @@
                 {/each}
             </ul>
 
-            <!-- Practising from a download arrives with the offline trainer
-                 (docs/offline.md §12, slice 6). Offering a button now would be
-                 UI ahead of its persistence and recovery path. -->
-            <p class="text-muted-foreground type-caption mt-lg">
-                Practising from a download is not switched on yet. Everything
-                listed here is stored and will be waiting.
-            </p>
         {/if}
     </main>
 </div>

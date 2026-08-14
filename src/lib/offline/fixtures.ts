@@ -1,11 +1,12 @@
 /**
  * Fixture packages: a real, checksum-correct download with no server behind it.
  *
- * The package endpoints do not exist yet, and the first shipping slice's rule is
- * that no UI ships ahead of its persistence and recovery path. So the whole
- * install → query → write → overlay path is exercised against packages built
- * here — by the same `pageChecksum` the installer verifies with, so a fixture
- * that would not survive the real installer does not pass here either.
+ * The production package endpoints exist; these fixtures keep the repository
+ * and browser lifecycle deterministic without requiring a signed-in server for
+ * every unit/E2E run. The whole install → query → write → overlay path is
+ * exercised against packages built here — by the same `pageChecksum` the
+ * installer verifies, so a fixture that would not survive the real installer
+ * does not pass here either.
  *
  * These are also the shared dataset the contract asks for: "contract tests must
  * run the same fixtures through the online eligibility mirror and local engine".

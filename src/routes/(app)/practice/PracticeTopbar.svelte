@@ -11,6 +11,7 @@
 
     let {
         sessionName,
+        backHref = "/practice",
         isTest,
         testFinished,
         historyIndex,
@@ -39,6 +40,7 @@
         onTogglePause,
     }: {
         sessionName: string | null;
+        backHref?: "/practice" | "/offline";
         isTest: boolean;
         testFinished: boolean;
         historyIndex: number;
@@ -113,7 +115,7 @@
 {#snippet contextLeft()}
     <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <a
-            href={resolve("/practice")}
+            href={resolve(backHref)}
             class="inline-flex size-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Back to Practice"
             title="Back to Practice"

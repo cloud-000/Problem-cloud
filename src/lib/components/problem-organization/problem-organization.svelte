@@ -23,6 +23,8 @@
         prompt = false,
         promptPresentation = "transient",
         suggestedMastery = null,
+        saveMastery,
+        saveEngagement,
         onchange,
         class: className,
     }: {
@@ -34,6 +36,10 @@
         promptPresentation?: "persistent" | "transient";
         /** Optional recommendation to emphasize without saving it for the user. */
         suggestedMastery?: Mastery | null;
+        /** Domain write seam used by credential-free/offline surfaces. */
+        saveMastery?: (value: Mastery | null) => Promise<void>;
+        /** Domain write seam used by credential-free/offline surfaces. */
+        saveEngagement?: (value: Engagement | null) => Promise<void>;
         onchange?: (state: PersonalProblemState) => void;
         class?: string;
     } = $props();
@@ -61,7 +67,10 @@
     let supabase = $derived(
         page.data.supabase as SupabaseClient<Database> | undefined,
     );
-    let canEdit = $derived(Boolean(page.data.user && supabase));
+    let canEdit = $derived(
+        Boolean(page.data.user && supabase) ||
+            Boolean(saveMastery && saveEngagement),
+    );
 
     function emit(resolvedProblemId = problemId) {
         onchange?.({
@@ -72,16 +81,21 @@
     }
 
     async function chooseMastery(value: Mastery | null) {
-        if (!supabase || !canEdit || saving) return;
+        if (!canEdit || saving) return;
         const previous = localMastery;
         localMastery = value;
         saving = "mastery";
         emit();
         try {
-            const state = await setProblemMastery(supabase, problemId, value);
-            localMastery = state.mastery;
-            localEngagement = state.engagement;
-            onchange?.(state);
+            if (saveMastery) {
+                await saveMastery(value);
+                emit();
+            } else if (supabase) {
+                const state = await setProblemMastery(supabase, problemId, value);
+                localMastery = state.mastery;
+                localEngagement = state.engagement;
+                onchange?.(state);
+            }
         } catch (error) {
             localMastery = previous;
             emit();
@@ -92,16 +106,21 @@
     }
 
     async function chooseEngagement(value: Engagement | null) {
-        if (!supabase || !canEdit || saving) return;
+        if (!canEdit || saving) return;
         const previous = localEngagement;
         localEngagement = value;
         saving = "engagement";
         emit();
         try {
-            const state = await setProblemEngagement(supabase, problemId, value);
-            localMastery = state.mastery;
-            localEngagement = state.engagement;
-            onchange?.(state);
+            if (saveEngagement) {
+                await saveEngagement(value);
+                emit();
+            } else if (supabase) {
+                const state = await setProblemEngagement(supabase, problemId, value);
+                localMastery = state.mastery;
+                localEngagement = state.engagement;
+                onchange?.(state);
+            }
         } catch (error) {
             localEngagement = previous;
             emit();
