@@ -40,6 +40,7 @@
    import { modal } from "$lib/state/modal.svelte";
    import FeedbackModal from "./settings/FeedbackModal.svelte";
    import { offlineSyncStatus, startForegroundOfflineSync } from "$lib/offline/sync";
+   import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -68,7 +69,7 @@
 
       fetchUnread(supabase, userId).then((rows) => {
          for (const row of rows) toasts.add(toToast(row));
-      });
+      }).catch(() => undefined);
 
       const channel = subscribeToNotifications(supabase, userId, (row) => {
          toasts.add(toToast(row));
@@ -187,6 +188,11 @@
          icon: "settings",
          onclick: () => goto(resolve("/settings")),
       });
+      list.push({
+         label: "Downloaded content",
+         icon: "download",
+         onclick: () => goto(resolve("/offline")),
+      });
       if (user) {
          list.push({
             label: "Send feedback",
@@ -242,6 +248,7 @@
    );
    let isProfileActive = $derived(
       routeMatches(page.url.pathname, "/settings") ||
+         routeMatches(page.url.pathname, "/offline") ||
          routeMatches(page.url.pathname, "/admin") ||
          routeMatches(page.url.pathname, "/testing-features"),
    );
@@ -267,16 +274,16 @@
 
 <svelte:window onkeydown={handleCoachShortcut} />
 
-{#if $syncStatus.state === "auth-required" || $syncStatus.state === "owner-mismatch" || $syncStatus.state === "overlap" || $syncStatus.state === "retrying" || $syncStatus.state === "failed"}
-   <div class="fixed inset-x-0 top-0 z-[70] bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
+<OfflineModeChip showControl={false} />
+
+{#if $syncStatus.state === "auth-required" || $syncStatus.state === "owner-mismatch" || $syncStatus.state === "overlap" || $syncStatus.state === "failed"}
+   <div class="pointer-events-none fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-xl rounded-lg bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
       {#if $syncStatus.state === "auth-required"}
          {$syncStatus.pending} offline change{$syncStatus.pending === 1 ? "" : "s"} remain on this device. Sign in again to sync.
       {:else if $syncStatus.state === "owner-mismatch"}
          Offline data belongs to another account on this device. Switch back to sync or open it.
       {:else if $syncStatus.state === "overlap"}
          Offline work synced. {$syncStatus.overlaps.length} item{$syncStatus.overlaps.length === 1 ? "" : "s"} also changed online; the server applied offline answers in receipt order.
-      {:else if $syncStatus.state === "retrying"}
-         Offline changes are safe on this device. Sync will retry automatically.
       {:else}
          Offline changes are still on this device, but need attention before later work can sync: {$syncStatus.message}
       {/if}

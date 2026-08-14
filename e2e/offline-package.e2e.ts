@@ -185,4 +185,30 @@ test.describe("a downloaded package in a real browser", () => {
             page.getByRole("button", { name: "Download 20 problems" }),
         ).toBeEnabled();
     });
+
+    test("normal Practice starts a package-independent local session", async ({ page }) => {
+        await openOffline(page);
+        test.skip(!(await hasHandle(page)), "the offline test handle needs `bun run dev`");
+
+        await page.evaluate(async (userId) => {
+            const handle = window.__pcOffline!;
+            const repository = await handle.open();
+            const fixture = await handle.fixtures.buildFixturePackage({
+                userId,
+                scope: handle.fixtures.GEOMETRY_SCOPE,
+                problems: handle.fixtures.geometryFixtureProblems(),
+            });
+            await handle.fixtures.installFixturePackage(repository as never, fixture, userId);
+            await repository.setActiveUser(userId, "Test account");
+            localStorage.setItem("settings:downloadedOnly", "true");
+        }, USER);
+
+        // A document navigation reconstructs the device preference just as a
+        // real visit from the app navigation does.
+        await page.goto("/practice");
+        await expect(page.getByRole("heading", { name: "Practice" })).toBeVisible();
+        await page.getByRole("button", { name: "Practice freely" }).click();
+        await expect(page.getByText(/Downloaded New mode/)).toBeVisible();
+        await expect(page).toHaveURL(/\/practice\?session=-1/);
+    });
 });

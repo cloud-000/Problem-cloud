@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(29);
+select extensions.plan(32);
 
 select extensions.ok(not has_table_privilege('anon', 'public.offline_checkouts', 'TRUNCATE'),
   'anonymous callers cannot mutate checkout provenance');
@@ -182,6 +182,39 @@ select extensions.is((select count(*) from public.submissions
   'retrying the whole batch never duplicates a submission');
 select extensions.is((select jsonb_array_length(value->'acknowledgedOperationIds') from retry_sync), 2,
   'retrying non-submission operations is idempotent through the operation ledger');
+
+create temporary table local_session_sync(value jsonb) on commit drop;
+insert into local_session_sync select public.offline_sync_v1(
+  '30000000-0000-0000-0000-000000094001',
+  (select (value->>'checkoutId')::uuid from package_result),
+  '10000000-0000-0000-0000-000000094001',
+  (select value->>'packageRevision' from package_result),
+  jsonb_build_array((select value->0 || jsonb_build_object(
+    'id','40000000-0000-0000-0000-000000094020',
+    'sessionId',-1,
+    'clientSessionId','70000000-0000-0000-0000-000000094001',
+    'sequence',20,
+    'dependsOn','[]'::jsonb,
+    'payload',(value->0->'payload') || jsonb_build_object(
+      'clientKey','60000000-0000-0000-0000-000000094020')) from sync_request)),
+  jsonb_build_object(
+    'clientSessionId','70000000-0000-0000-0000-000000094001',
+    'name','Local mixed practice',
+    'settings',jsonb_build_object('format','practice','mode','new'),
+    'startedAt','2026-08-14T00:00:00Z')
+);
+select extensions.is((select value->>'clientSessionId' from local_session_sync),
+  '70000000-0000-0000-0000-000000094001',
+  'sync returns the browser-owned session identity');
+select extensions.ok((select m.session_id <> c.session_id
+  from public.offline_client_sessions m cross join public.offline_checkouts c
+  where m.client_session_id = '70000000-0000-0000-0000-000000094001'),
+  'a local session maps to one server session independent of the package session');
+select extensions.is((select s.session_id from public.submissions s
+  where s.client_key = '60000000-0000-0000-0000-000000094020'),
+  (select session_id from public.offline_client_sessions
+    where client_session_id = '70000000-0000-0000-0000-000000094001'),
+  'the local submission is filed into the mapped server session');
 
 select extensions.throws_ok(
   $$select public.offline_sync_v1(

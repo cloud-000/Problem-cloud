@@ -12,11 +12,12 @@ IndexedDB, snapshot-plus-overlay state, the outbox, foreground sync, or the
 `TrainerDataSource` seam delivered in Session 3.
 
 > [!NOTE]
-> **Implementation status (2026-08-13): phases 1–5 are implemented.** Downloaded
-> New-mode packages launch only at `/practice?offlinePackage=<packageId>`. An
-> explicit package URL can reload through the prerendered, credential-free
-> `/offline-practice-shell` document, which restores local account/package/session
-> state from IndexedDB and never carries SvelteKit auth data. `/offline` is now a
+> **Implementation status (2026-08-14): implemented.** Normal local Practice
+> creates browser-owned sessions over the union of ready packages. Legacy
+> `/practice?offlinePackage=<packageId>` links can still reload through the
+> prerendered, credential-free
+> `/offline-shell` document, which restores local account/package/session state
+> from IndexedDB and never carries SvelteKit auth data. `/offline` is now a
 > manager/launcher and the standalone trainer has been removed. Phase 6 stops at
 > the existing V1 contract boundary: `PracticeQueryV1` and server-owned package
 > sessions permit New/practice only, so no later mode is advertised or partially
@@ -25,22 +26,22 @@ IndexedDB, snapshot-plus-overlay state, the outbox, foreground sync, or the
 ## 1. Target behavior
 
 1. A user downloads a package while online.
-2. `/offline` lists the package and launches `/practice` with an explicit package
-   identity, for example `?offlinePackage=<packageId>`.
+2. `/offline` lists storage downloads; `/practice` starts a normal local session
+   without asking the user to choose one of them.
 3. The Practice route selects exactly one source before mounting the trainer:
-   online Supabase/session state, or one bound offline package/session source.
+   online Supabase/session state, or the union of ready local packages.
 4. The existing Practice layout, problem renderer, answer controls, history,
    keyboard behavior, and organization controls render for both sources.
 5. An offline source never falls through to Supabase. Losing Wi-Fi during an
    ordinary online session does not silently convert that session into an
-   offline package session; the user opens a downloaded package explicitly.
+   offline source; the user starts or resumes a local Practice session explicitly.
 6. Reloading an offline Practice URL is served by a credential-free practice
    app shell. It restores local identity and package/session state from
    IndexedDB without caching or trusting personalized SvelteKit data.
 
-The route parameter is a source selector, not authorization. The repository
-still verifies the active local account, ready package revision, checkout, and
-dedicated server session before exposing records.
+The local session parameter is a browser-owned identity, not authorization. The
+repository still verifies the active local account and ready package revisions;
+each write carries the checkout that supplied its canonical.
 
 ## 2. Product boundary during the migration
 

@@ -21,6 +21,7 @@
     import { CoachContextRegister } from "$lib/components/coach";
     import { coach } from "$lib/state/coach.svelte";
     import { utilityPanel } from "$lib/state/utility-panel.svelte";
+    import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     type ResultRow = SeriesRow | TestRow | ProblemRow;
     class ProblemDraft {
@@ -45,6 +46,7 @@
         isInstantFeedback = false,
         onEndReached,
         resetKey,
+        onRetry,
     }: {
         store: LibraryStore;
         results: ResultRow[];
@@ -54,6 +56,7 @@
         isInstantFeedback?: boolean;
         onEndReached?: () => void;
         resetKey?: unknown;
+        onRetry?: () => void;
     } = $props();
 
     const level = $derived(store.current.level);
@@ -308,10 +311,15 @@
 {/if}
 
 {#if error}
-    <p class="py-8 type-secondary text-destructive">{error}</p>
+    <div class="flex flex-col items-start gap-3 py-8">
+        <p class="type-secondary text-destructive">{error}</p>
+        {#if onRetry}<Button size="sm" variant="outline" onclick={onRetry}>Retry</Button>{/if}
+    </div>
 {:else if !loading && displayedResults.length === 0}
     <p class="py-12 text-center type-secondary text-muted-foreground">
-        No results match this search and filter combination.
+        {offlineMode.lastLocalRead || offlineMode.effective === "local"
+            ? "None of your downloaded problems match this search and filter combination."
+            : "No results match this search and filter combination."}
     </p>
 {/if}
 

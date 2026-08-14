@@ -26,12 +26,12 @@ import type { PlayerRating } from "$lib/library";
 
 export const OFFLINE_DB_NAME = "problem-cloud-offline";
 /**
- * V2 is an additive repair upgrade for browsers that opened the database while
- * the pre-release v1 store list was still incomplete. `upgradeSchema` walks the
+ * V3 adds browser-owned practice-session identity while preserving every older
+ * package, session snapshot, and outbox record. `upgradeSchema` walks the
  * full declared schema, so it creates only missing stores/indexes and preserves
  * every existing package and outbox record.
  */
-export const OFFLINE_SCHEMA_VERSION = 2;
+export const OFFLINE_SCHEMA_VERSION = 3;
 
 export type IndexSchema = {
     name: string;
@@ -175,6 +175,7 @@ export const OFFLINE_STORES: StoreSchema[] = [
         indexes: [
             { name: "byUser", keyPath: ["userId"] },
             { name: "byUserStatus", keyPath: ["userId", "status"] },
+            { name: "byClientSession", keyPath: ["userId", "clientSessionId"], unique: true },
         ],
     },
     {
@@ -331,7 +332,9 @@ export type StagedPersonalStateRecord = PersonalStateRecord & {
 export type SessionRecord = {
     userId: UUID;
     sessionId: number;
-    packageId: UUID;
+    packageId: UUID | null;
+    clientSessionId?: UUID;
+    serverSessionId?: number | null;
     status: string;
     row: PracticeSessionRow;
     playerRating: PlayerRating | null;
@@ -356,6 +359,8 @@ export const META = {
     schemaVersion: "schemaVersion",
     /** Per-user monotonic outbox sequence allocator. */
     sequence: (userId: UUID) => `sequence:${userId}`,
+    /** Per-user decreasing local session id allocator (-1, -2, ...). */
+    localSessionSequence: (userId: UUID) => `localSessionSequence:${userId}`,
     /** This runtime's id, for durable ordering within a browser session. */
     runtime: "runtime",
     deviceId: "deviceId",

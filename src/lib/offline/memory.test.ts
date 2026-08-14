@@ -153,8 +153,8 @@ describe("the schema", () => {
         );
     });
 
-    test("v2 repairs an incomplete v1 database without recreating existing stores", () => {
-        expect(OFFLINE_SCHEMA_VERSION).toBe(2);
+    test("v3 repairs an incomplete v1 database without recreating existing stores", () => {
+        expect(OFFLINE_SCHEMA_VERSION).toBe(3);
         const existing = STORE.meta;
         const created: string[] = [];
         const store = {

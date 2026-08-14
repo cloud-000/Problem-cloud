@@ -18,16 +18,20 @@ import { isMultipleChoice } from "$lib/utils";
 import type { Mastery, ProblemProgress } from "$lib/progress";
 import { hasPriorActivity } from "./overlay";
 import type {
+    BrowseQueryV1,
+    OfflineBrowseProblemV1,
     OfflinePlacementV1,
     OfflinePracticeProblemV1,
     OfflineProblemRatingV1,
     OfflineProblemV1,
     PracticeQueryV1,
 } from "./types";
+import { matchesLocalProblemFilters } from "$lib/problem-filter-spec";
 
 export type QueryCandidate = {
     canonicalId: number;
     problem: OfflineProblemV1;
+    sourcePackageIds: string[];
     placements: OfflinePlacementV1[];
     rating: OfflineProblemRatingV1 | null;
     /** Effective (snapshot + overlay) progress, from `overlay.ts`. */
@@ -284,6 +288,7 @@ export function toPracticeProblem(
     return {
         canonicalId: candidate.canonicalId,
         problem: candidate.problem,
+        sourcePackageIds: candidate.sourcePackageIds,
         placements: candidate.placements,
         rating: candidate.rating,
         progress: candidate.progress,
@@ -313,5 +318,37 @@ export function runPracticeQuery(
     return {
         problems: ordered.slice(0, Math.max(0, query.limit)).map(toPracticeProblem),
         availableCount: eligible.length,
+    };
+}
+
+/** Browse is placement-oriented and intentionally does not call `newModeEligible`. */
+export function runBrowseQuery(
+    candidates: QueryCandidate[],
+    query: BrowseQueryV1,
+): { problems: OfflineBrowseProblemV1[]; availableCount: number } {
+    const seenPlacements = new Set<number>();
+    const rows = candidates.flatMap((candidate) =>
+        candidate.placements.flatMap((placement) => {
+            if (seenPlacements.has(placement.placementId)) return [];
+            seenPlacements.add(placement.placementId);
+            if (!matchesLocalProblemFilters({ ...candidate, placement }, query.filters)) return [];
+            return [{
+                canonicalId: candidate.canonicalId,
+                problem: candidate.problem,
+                placement,
+                rating: candidate.rating,
+                progress: candidate.progress,
+                progressIsProvisional: candidate.progressIsProvisional,
+            } satisfies OfflineBrowseProblemV1];
+        }),
+    );
+    rows.sort((a, b) =>
+        a.placement.problemNumber - b.placement.problemNumber ||
+        a.canonicalId - b.canonicalId ||
+        a.placement.placementId - b.placement.placementId,
+    );
+    return {
+        problems: rows.slice(Math.max(0, query.offset), Math.max(0, query.offset) + Math.max(0, query.limit)),
+        availableCount: rows.length,
     };
 }

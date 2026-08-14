@@ -9,8 +9,8 @@
  * - **cache-first** for versioned build output and the deliberately selected
  *   static assets, which is safe because the cache name carries the build
  *   version and a new deployment simply builds a new cache;
- * - **network-first** for navigations, falling back to the neutral Practice
- *   shell only for an explicit package URL and to `/offline` otherwise;
+ * - **network-first** for navigations, falling back to the one neutral,
+ *   route-aware `/offline-shell` document;
  * - **cache-only** for problem media, served out of the active package
  *   revision's cache under the image's original URL — the reason those live in
  *   CacheStorage at all;
@@ -28,6 +28,7 @@
  */
 
 import { build, files, prerendered, version } from "$service-worker";
+import { offlineNavigationAllowed } from "$lib/offline/presentations";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -36,9 +37,7 @@ const CACHE = `pc-assets-${version}`;
 const MEDIA_CACHE_PREFIX = "offline-media-";
 
 /** The credential-free document a generic failed navigation falls back to. */
-const OFFLINE_DOCUMENT = "/offline";
-/** The credential-free app shell for an explicitly package-bound Practice URL. */
-const OFFLINE_PRACTICE_DOCUMENT = "/offline-practice-shell";
+const OFFLINE_DOCUMENT = "/offline-shell";
 
 /**
  * Static files worth precaching. `static/` also holds things a cold offline
@@ -54,7 +53,7 @@ const PRECACHE = [
     ...build,
     ...files.filter(shouldPrecache),
     ...prerendered.filter(
-        (path) => path === OFFLINE_DOCUMENT || path === OFFLINE_PRACTICE_DOCUMENT,
+        (path) => path === OFFLINE_DOCUMENT,
     ),
 ];
 
@@ -110,18 +109,18 @@ async function matchMedia(url: URL): Promise<Response> {
 }
 
 /**
- * Boot a prerendered SvelteKit document under the route it was built for.
+ * Boot the prerendered SvelteKit shell under the route it was built for.
  *
- * Returning `/offline` bytes for a `/library` request is not enough: the CSR
+ * Returning `/offline-shell` bytes for a `/library` request is not enough: the CSR
  * router reads `location` and immediately tries to boot `/library`, producing
  * an offline 500. This tiny build-owned prelude selects the cached route before
- * SvelteKit starts. The Practice shell receives the original explicit URL and
- * restores it after it has bound the package; generic recovery stays at
- * `/offline` rather than pretending the failed route is usable.
+ * SvelteKit starts. The shell receives the original URL, selects only a declared
+ * presentation, and restores the address after local state has bound.
  */
 async function bootFallback(
     documentPath: string,
     requestedUrl: URL,
+    presentationAllowed: boolean,
 ): Promise<Response> {
     const cached = await caches.match(documentPath);
     if (!cached) {
@@ -134,13 +133,11 @@ async function bootFallback(
     headers.delete("content-length");
     headers.delete("content-encoding");
     headers.set("cache-control", "no-store");
-    const practiceRequest = documentPath === OFFLINE_PRACTICE_DOCUMENT
-        ? requestedUrl.pathname + requestedUrl.search + requestedUrl.hash
-        : null;
+    const requested = requestedUrl.pathname + requestedUrl.search + requestedUrl.hash;
     // Encode request-controlled URL text before placing it in an inline script;
     // the only decoded value is assigned as data, never evaluated as source.
-    const encodedRequest = practiceRequest ? encodeURIComponent(practiceRequest) : null;
-    const prelude = `<script>globalThis.__pcOfflineRequestedUrl=${encodedRequest ? `decodeURIComponent(${JSON.stringify(encodedRequest)})` : "null"};history.replaceState(history.state,"",${JSON.stringify(documentPath)});</script>`;
+    const encodedRequest = encodeURIComponent(requested);
+    const prelude = `<script>globalThis.__pcOfflineRequestedUrl=decodeURIComponent(${JSON.stringify(encodedRequest)});globalThis.__pcOfflinePresentationAllowed=${JSON.stringify(presentationAllowed)};history.replaceState(history.state,"",${JSON.stringify(documentPath)});</script>`;
     const html = (await cached.text()).replace("<body", `${prelude}<body`);
     return new Response(html, { status: 200, headers });
 }
@@ -178,17 +175,11 @@ self.addEventListener("fetch", (event) => {
                 try {
                     return await fetch(request);
                 } catch {
-                    // Only an explicit package selector may boot Practice. A
-                    // failed ordinary /practice navigation remains an online
-                    // session failure and recovers through the package manager;
-                    // connectivity never chooses or invents a local source.
-                    const fallback =
-                        isSameOrigin &&
-                        url.pathname === "/practice" &&
-                        Boolean(url.searchParams.get("offlinePackage"))
-                            ? OFFLINE_PRACTICE_DOCUMENT
-                            : OFFLINE_DOCUMENT;
-                    return bootFallback(fallback, url);
+                    // The shell owns presentation selection. The worker only
+                    // admits declared app routes; unknown paths still receive
+                    // its plain recovery presentation, never an invented page.
+                    const allowed = isSameOrigin && offlineNavigationAllowed(url.pathname);
+                    return bootFallback(OFFLINE_DOCUMENT, url, allowed);
                 }
             })(),
         );

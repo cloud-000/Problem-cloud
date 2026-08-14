@@ -26,11 +26,56 @@
         PACKAGE_MAX_CANONICALS,
     } from "$lib/offline/limits";
     import { defaultPracticeSettings } from "$lib/trainer";
-    import Track from "../(app)/practice/Track.svelte";
+    import Track from "../../routes/(app)/practice/Track.svelte";
     import {
         createTrackValue,
         type TrackValue,
-    } from "../(app)/practice/practice-settings";
+    } from "../../routes/(app)/practice/practice-settings";
+    import OfflinePracticeRoute from "../../routes/(app)/practice/OfflinePracticeRoute.svelte";
+    import DownloadedPracticeRoute from "../../routes/(app)/practice/DownloadedPracticeRoute.svelte";
+    import LibraryPage from "../../routes/(app)/library/+page.svelte";
+    import { offlinePresentation, type OfflinePresentation } from "$lib/offline/presentations";
+    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    import AppLayout from "../../routes/(app)/+layout.svelte";
+    import { beforeNavigate, pushState, replaceState } from "$app/navigation";
+    import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
+
+    let {
+        embedded = false,
+        appSupabase = null,
+    }: {
+        embedded?: boolean;
+        appSupabase?: SupabaseClient<Database> | null;
+    } = $props();
+
+    type BootWindow = Window & {
+        __pcOfflineRequestedUrl?: string | null;
+        __pcOfflinePresentationAllowed?: boolean;
+    };
+
+    let presentation = $state<OfflinePresentation | null>(null);
+    let requestedPath = $state("/offline");
+    let practicePackageId = $state<string | null>(null);
+    let practiceSessionId = $state<string | null>(null);
+
+    function selectPresentation(url: URL, history: "push" | "replace" | "none" = "none") {
+        requestedPath = url.pathname;
+        presentation = offlinePresentation(url.pathname);
+        practicePackageId = url.searchParams.get("offlinePackage");
+        practiceSessionId = url.searchParams.get("session");
+        const href = url.pathname + url.search + url.hash;
+        if (history === "push") pushState(resolve(href as "/"), {});
+        else if (history === "replace") replaceState(resolve(href as "/"), {});
+    }
+
+    beforeNavigate((navigation) => {
+        if (embedded) return;
+        const target = navigation.to?.url;
+        if (!target || target.origin !== location.origin) return;
+        if (target.pathname.startsWith("/auth/") || target.pathname.startsWith("/api/")) return;
+        navigation.cancel();
+        selectPresentation(target, navigation.type === "popstate" ? "replace" : "push");
+    });
 
     type View =
         | { kind: "loading" }
@@ -119,25 +164,41 @@
     }
 
     onMount(() => {
+        const bootWindow = window as BootWindow;
+        const isOfflineBoot = Boolean(bootWindow.__pcOfflineRequestedUrl);
+        const directHref = window.location.pathname === "/offline-shell"
+            ? "/offline"
+            : window.location.href;
+        const requestedUrl = new URL(
+            bootWindow.__pcOfflineRequestedUrl ?? directHref,
+            window.location.origin,
+        );
+        selectPresentation(requestedUrl);
+        if (bootWindow.__pcOfflinePresentationAllowed === false) presentation = null;
+        if (bootWindow.__pcOfflineRequestedUrl) {
+            selectPresentation(requestedUrl, "replace");
+            delete bootWindow.__pcOfflineRequestedUrl;
+            delete bootWindow.__pcOfflinePresentationAllowed;
+        }
+        if (isOfflineBoot || !navigator.onLine) offlineMode.noteRemoteFailure();
         online = navigator.onLine;
         const updateOnline = () => (online = navigator.onLine);
         window.addEventListener("online", updateOnline);
         window.addEventListener("offline", updateOnline);
-        supabase = createBrowserClient<Database>(
+        supabase = appSupabase ?? createBrowserClient<Database>(
             PUBLIC_SUPABASE_URL,
             PUBLIC_SUPABASE_PUBLISHABLE_KEY,
         );
-        void fetchAllSeries(supabase)
-            .then((rows) => {
-                seriesOptions = rows.map((row) => ({
-                    value: String(row.id),
-                    label: row.name,
-                }));
-            })
-            .catch((error) => {
-                scopeError = `Could not load series: ${String(error)}`;
-            });
-        void refresh();
+        if ((presentation?.kind ?? "downloads") === "downloads") {
+            void fetchAllSeries(supabase)
+                .then((rows) => {
+                    seriesOptions = rows.map((row) => ({ value: String(row.id), label: row.name }));
+                })
+                .catch((error) => {
+                    scopeError = `Could not load series: ${String(error)}`;
+                });
+            void refresh();
+        }
         if (!dev && import.meta.env.VITE_OFFLINE_E2E !== "1") {
             return () => {
                 window.removeEventListener("online", updateOnline);
@@ -389,12 +450,34 @@
 {/snippet}
 
 <svelte:head>
-    <title>Offline · ProblemCloud</title>
+    <title>{presentation?.title ?? "Offline"} · ProblemCloud</title>
     <meta name="robots" content="noindex" />
 </svelte:head>
 
+{#snippet presentationContent()}
+{#if presentation?.kind === "practice" && practicePackageId}
+    <OfflinePracticeRoute data={{} as never} packageId={practicePackageId} />
+{:else if presentation?.kind === "library" && supabase}
+    <div class="h-full overflow-y-auto bg-background text-foreground">
+        <LibraryPage data={{ supabase } as never} />
+    </div>
+{:else if presentation?.kind === "practice"}
+    <DownloadedPracticeRoute data={{} as never} requestedSessionId={practiceSessionId} />
+{:else if presentation?.kind === "unavailable" || (presentation === null && requestedPath !== "/offline")}
+    <div class="flex h-full items-center justify-center bg-background px-6 text-center text-foreground">
+        <div class="max-w-lg">
+            <p class="type-caption text-muted-foreground">{presentation?.title ?? requestedPath}</p>
+            <h1 class="mt-2 text-xl font-semibold">This page needs a connection</h1>
+            <p class="mt-2 type-secondary text-muted-foreground">The ProblemCloud frame is available, but this page’s data is held by the server. Your downloaded problems and unsynced Practice work are still safe.</p>
+            <div class="mt-4 flex justify-center gap-2">
+                <Button onclick={() => location.reload()}>Retry</Button>
+                <Button variant="outline" href="/offline">Open downloads</Button>
+            </div>
+        </div>
+    </div>
+{:else}
 <div
-    class="bg-background text-foreground fixed inset-0 flex flex-col overflow-y-auto"
+    class="bg-background text-foreground flex h-full flex-col overflow-y-auto"
 >
     <header class="border-border/60 border-b">
         <div
@@ -404,10 +487,8 @@
             <span class="text-base font-semibold tracking-[-0.01em]"
                 >ProblemCloud</span
             >
-            <span
-                class="text-muted-foreground bg-surface-container ml-auto rounded-full px-2.5 py-1 text-xs"
-            >
-                Offline
+            <span class="ml-auto">
+                <OfflineModeChip floating={false} />
             </span>
         </div>
     </header>
@@ -523,3 +604,17 @@
         {/if}
     </main>
 </div>
+{/if}
+{/snippet}
+
+{#if supabase}
+    {#if embedded}
+        {@render presentationContent()}
+    {:else}
+        <AppLayout data={{ supabase, session: null, user: null, profile: null, aiCoachEnabled: false } as never}>
+            {@render presentationContent()}
+        </AppLayout>
+    {/if}
+{:else}
+    <div class="fixed inset-0 flex items-center justify-center bg-background text-muted-foreground">Opening ProblemCloud…</div>
+{/if}

@@ -1,7 +1,5 @@
-import { browser } from "$app/environment";
-
 function persisted(key: string, initial: boolean): boolean {
-    if (!browser) return initial;
+    if (typeof window === "undefined") return initial;
     try {
         const saved = localStorage.getItem(key);
         return saved === null ? initial : saved === "true";
@@ -11,13 +9,14 @@ function persisted(key: string, initial: boolean): boolean {
 }
 
 function persist(key: string, value: boolean): void {
-    if (!browser) return;
+    if (typeof window === "undefined") return;
     try {
         localStorage.setItem(key, String(value));
     } catch (_) {}
 }
 
 class SettingsStore {
+    #downloadedOnly = $state(persisted("settings:downloadedOnly", false));
     #showBetaFeatures = $state(persisted("settings:showBetaFeatures", false));
     /**
      * The account-wide master switch, owned by the settings page. It does not *show*
@@ -40,6 +39,16 @@ class SettingsStore {
 
     get showBetaFeatures() {
         return this.#showBetaFeatures;
+    }
+
+    /** Device-only read preference; never synchronized to the account. */
+    get downloadedOnly() {
+        return this.#downloadedOnly;
+    }
+
+    set downloadedOnly(value: boolean) {
+        this.#downloadedOnly = value;
+        persist("settings:downloadedOnly", value);
     }
 
     set showBetaFeatures(value: boolean) {

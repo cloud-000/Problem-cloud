@@ -5,10 +5,15 @@ import { OfflineRepository } from "$lib/offline/repository";
 import {
     buildFixturePackage,
     GEOMETRY_SCOPE,
+    OVERLAP_SCOPE,
     geometryFixtureProblems,
+    overlappingFixtureProblems,
     installFixturePackage,
 } from "$lib/offline/fixtures";
-import { createOfflineTrainerDataSource } from "$lib/trainer-data-source";
+import {
+    createDownloadedTrainerDataSource,
+    createOfflineTrainerDataSource,
+} from "$lib/trainer-data-source";
 import { bindOfflinePracticePackage } from "$lib/offline/practice-binding";
 
 const USER = "00000000-0000-4000-8000-0000000000aa";
@@ -30,6 +35,66 @@ async function ready() {
 }
 
 describe("offline trainer data source", () => {
+    test("normal local Practice draws from the union and keeps checkout provenance", async () => {
+        const repository = new OfflineRepository({ storage: createMemoryStorage() });
+        const geometry = await buildFixturePackage({
+            userId: USER,
+            scope: GEOMETRY_SCOPE,
+            problems: geometryFixtureProblems(),
+        });
+        const overlap = await buildFixturePackage({
+            userId: USER,
+            scope: OVERLAP_SCOPE,
+            problems: overlappingFixtureProblems(),
+        });
+        await installFixturePackage(repository, geometry, USER);
+        await installFixturePackage(repository, overlap, USER);
+        const session = await repository.createLocalSession(USER, {
+            name: null,
+            settings: defaultPracticeSettings(),
+        });
+        const manifests = await repository.listPackages(USER);
+        const source = createDownloadedTrainerDataSource({
+            repository,
+            manifests,
+            sessionId: session.id,
+        });
+
+        expect(source.capabilities.settings).toBe(true);
+        const changedSettings = {
+            ...defaultPracticeSettings(),
+            topic: ["A"],
+            adaptive: false,
+        };
+        await source.updateSettings(changedSettings);
+        expect((await source.loadSession())?.row.settings).toEqual(changedSettings);
+        expect((await source.getSeriesOptions()).map((option) => option.label)).toEqual([
+            "AMC 10",
+            "AMC 8",
+        ]);
+
+        const algebra = await source.getProblem(201);
+        expect(algebra?.problem.topic).toBe("A");
+        await source.recordSubmission({
+            problemId: 201,
+            selectedChoice: null,
+            answer: "3",
+            isCorrect: true,
+            skipped: false,
+            flagged: false,
+            elapsedMs: 500,
+            source: "practice",
+            sessionId: session.id,
+            triesUsed: 1,
+        });
+        const [operation] = await repository.pendingOperations(USER, 10);
+        const overlapManifest = manifests.find((item) => item.packageId === overlap.created.packageId);
+        expect(operation.packageId).toBe(overlapManifest?.packageId);
+        expect(operation.clientSessionId).toBe(
+            (await repository.loadSession(USER, session.id))?.clientSessionId,
+        );
+    });
+
     test("characterizes the first shared-Practice capability boundary", async () => {
         const { source } = await ready();
         expect(source.capabilities).toEqual({

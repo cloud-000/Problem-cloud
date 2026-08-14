@@ -65,9 +65,22 @@ create table public.offline_applied_operations (
   primary key (checkout_id, operation_id)
 );
 
+-- Stable, browser-owned identity for sessions created while local. Packet
+-- checkouts remain the authorization/provenance boundary, but every checkout
+-- carrying the same client id resolves to this one server practice session.
+create table public.offline_client_sessions (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  client_session_id uuid not null,
+  session_id bigint not null references public.practice_sessions(id) on delete cascade,
+  created_at timestamp with time zone not null default now(),
+  primary key (user_id, client_session_id),
+  unique (user_id, session_id)
+);
+
 alter table public.offline_checkouts enable row level security;
 alter table public.offline_package_pages enable row level security;
 alter table public.offline_applied_operations enable row level security;
+alter table public.offline_client_sessions enable row level security;
 
 create policy "Users can view their own offline checkouts."
   on public.offline_checkouts for select to authenticated
@@ -81,7 +94,7 @@ create policy "Users can view pages for their own offline checkouts."
 
 grant select on public.offline_checkouts, public.offline_package_pages to authenticated;
 grant all on public.offline_checkouts, public.offline_package_pages,
-  public.offline_applied_operations to service_role;
+  public.offline_applied_operations, public.offline_client_sessions to service_role;
 
 -- Stable wire representation of the creation response. This is kept in SQL so
 -- an idempotent request returns the snapshot originally captured, never a live
@@ -449,7 +462,8 @@ create or replace function public.offline_sync_v1(
   p_checkout_id uuid,
   p_package_id uuid,
   p_package_revision text,
-  p_operations jsonb
+  p_operations jsonb,
+  p_client_session jsonb
 ) returns jsonb
 language plpgsql security definer set search_path = ''
 as $$
@@ -479,6 +493,8 @@ declare
   player_json jsonb;
   personal_json jsonb;
   ratings_json jsonb;
+  v_session_id bigint;
+  v_client_session_id uuid;
 begin
   if v_user is null then raise exception 'OFFLINE_AUTH_REQUIRED'; end if;
   select * into c from public.offline_checkouts where id = p_checkout_id for update;
@@ -488,6 +504,31 @@ begin
     raise exception 'OFFLINE_PACKAGE_REVISION_INVALID';
   end if;
   if c.status not in ('issued', 'ready') then raise exception 'OFFLINE_CHECKOUT_INVALID'; end if;
+  if p_client_session is null then
+    v_session_id := c.session_id;
+  else
+    begin v_client_session_id := (p_client_session->>'clientSessionId')::uuid;
+    exception when others then raise exception 'OFFLINE_OPERATION_INVALID:client session'; end;
+    if jsonb_typeof(p_client_session) <> 'object'
+       or jsonb_typeof(p_client_session->'settings') <> 'object'
+       or nullif(p_client_session->>'startedAt', '') is null then
+      raise exception 'OFFLINE_OPERATION_INVALID:client session';
+    end if;
+    perform pg_advisory_xact_lock(hashtextextended(v_user::text || ':' || v_client_session_id::text, 0));
+    select s.session_id into v_session_id from public.offline_client_sessions s
+      where s.user_id = v_user and s.client_session_id = v_client_session_id;
+    if not found then
+      insert into public.practice_sessions(user_id, name, settings, started_at)
+      values (
+        v_user,
+        nullif(p_client_session->>'name', ''),
+        p_client_session->'settings',
+        least((p_client_session->>'startedAt')::timestamp with time zone, v_now)
+      ) returning id into v_session_id;
+      insert into public.offline_client_sessions(user_id, client_session_id, session_id)
+      values (v_user, v_client_session_id, v_session_id);
+    end if;
+  end if;
   if jsonb_typeof(p_operations) <> 'array' or jsonb_array_length(p_operations) = 0 then
     raise exception 'OFFLINE_OPERATION_INVALID:empty batch';
   end if;
@@ -508,7 +549,8 @@ begin
        or (op->>'version')::integer <> 1
        or (op->>'checkoutId')::uuid <> c.id
        or (op->>'packageId')::uuid <> c.package_id
-       or (op->>'sessionId')::bigint <> c.session_id then
+       or (v_client_session_id is null and (op->>'sessionId')::bigint <> c.session_id)
+       or (v_client_session_id is not null and (op->>'clientSessionId')::uuid is distinct from v_client_session_id) then
       raise exception 'OFFLINE_OPERATION_INVALID:%:identity', op_id;
     end if;
     if (op->>'sequence')::bigint <= prev_sequence then
@@ -596,7 +638,7 @@ begin
         v_user, canonical, (op->'payload'->>'selectedChoice')::integer,
         op->'payload'->>'answer', (op->'payload'->>'isCorrect')::boolean,
         (op->'payload'->>'skipped')::boolean, (op->'payload'->>'flagged')::boolean,
-        (op->'payload'->>'elapsedMs')::integer, 'practice', c.session_id,
+        (op->'payload'->>'elapsedMs')::integer, 'practice', v_session_id,
         (op->'payload'->>'triesUsed')::integer,
         (op->'payload'->>'clientKey')::uuid, occurred, clock_timestamp()
       ) on conflict (user_id, client_key) where client_key is not null do nothing
@@ -604,7 +646,7 @@ begin
       if not found then
         select * into sub from public.submissions
         where user_id = v_user and client_key = (op->'payload'->>'clientKey')::uuid;
-        if sub.problem_id <> canonical or sub.session_id <> c.session_id
+        if sub.problem_id <> canonical or sub.session_id <> v_session_id
            or sub.selected_choice is distinct from (op->'payload'->>'selectedChoice')::integer
            or sub.answer is distinct from (op->'payload'->>'answer')
            or sub.is_correct is distinct from (op->'payload'->>'isCorrect')::boolean
@@ -640,7 +682,7 @@ begin
       occurred := greatest(c.downloaded_at,
         least((op->'payload'->>'endedAt')::timestamp with time zone, v_now));
       update public.practice_sessions set status = 'ended', ended_at = occurred, updated_at = clock_timestamp()
-      where id = c.session_id and user_id = v_user and not is_root;
+      where id = v_session_id and user_id = v_user and not is_root;
       if not found then raise exception 'OFFLINE_OPERATION_INVALID:%:session', op_id; end if;
     end if;
 
@@ -655,7 +697,7 @@ begin
   update public.offline_checkouts set last_synced_at = v_now where id = c.id;
   raise log 'offline sync applied checkout=% operations=% touched=%',
     c.id, jsonb_array_length(p_operations), cardinality(touched);
-  select to_jsonb(s) into session_json from public.practice_sessions s where s.id = c.session_id;
+  select to_jsonb(s) into session_json from public.practice_sessions s where s.id = v_session_id;
   select case when r.user_id is null then null else jsonb_build_object(
     'rating', r.rating, 'rd', r.rd, 'matches', r.matches,
     'last_match_at', r.last_match_at) end into player_json
@@ -687,9 +729,24 @@ begin
       'session', session_json, 'playerRating', player_json,
       'personalStates', personal_json, 'problemRatings', ratings_json),
     'syncedAt', v_now
-  );
+  ) || case when v_client_session_id is null then '{}'::jsonb else
+    jsonb_build_object('clientSessionId', v_client_session_id) end;
 end;
 $$;
+
+-- Compatibility overload for installed clients that still sync a package's
+-- dedicated server session directly.
+create or replace function public.offline_sync_v1(
+  p_device_id uuid,
+  p_checkout_id uuid,
+  p_package_id uuid,
+  p_package_revision text,
+  p_operations jsonb
+) returns jsonb
+language sql security definer set search_path = ''
+as $$ select public.offline_sync_v1(
+  p_device_id, p_checkout_id, p_package_id, p_package_revision, p_operations, null
+); $$;
 
 revoke all on function public.offline_checkout_created(uuid) from public;
 revoke all on function public.offline_begin_package(uuid, uuid, uuid, jsonb, bigint, text, jsonb) from public;
@@ -698,6 +755,7 @@ revoke all on function public.offline_mark_checkout_ready(uuid) from public;
 revoke all on function public.offline_close_checkout(uuid) from public;
 revoke all on function public.offline_abandon_checkout(uuid) from public;
 revoke all on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb) from public;
+revoke all on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb, jsonb) from public;
 revoke all on function public.offline_cleanup_checkouts() from public;
 
 grant execute on function public.offline_checkout_created(uuid) to authenticated;
@@ -707,4 +765,5 @@ grant execute on function public.offline_mark_checkout_ready(uuid) to authentica
 grant execute on function public.offline_close_checkout(uuid) to authenticated;
 grant execute on function public.offline_abandon_checkout(uuid) to authenticated;
 grant execute on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb) to authenticated;
+grant execute on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb, jsonb) to authenticated;
 grant execute on function public.offline_cleanup_checkouts() to service_role;

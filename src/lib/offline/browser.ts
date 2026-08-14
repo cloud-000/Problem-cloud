@@ -1,7 +1,7 @@
 /**
  * The browser's one offline repository.
  *
- * Opening the database is deliberately lazy and memoized: `/offline` is
+ * Opening the database is deliberately lazy and memoized: `/offline-shell` is
  * prerendered and hydrates with no server data at all, so nothing may touch
  * IndexedDB at module scope, and two surfaces asking for the repository must
  * get the same connection rather than two upgrade attempts racing each other.

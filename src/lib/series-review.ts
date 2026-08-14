@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "$lib/types/database.types";
+import { LocalCatalogUnavailable } from "$lib/library";
+import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
 import {
     reviewScheduleFor,
     statusFor,
@@ -62,13 +64,17 @@ export async function fetchSeriesReview(
     supabase: Supabase,
     seriesId: number,
 ): Promise<SeriesReviewTest[]> {
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") throw new LocalCatalogUnavailable("not-downloaded");
     const { data, error } = await supabase
         .from("tests")
         .select(
             `id,name,year,division,division_order,format,format_order,problems!inner(id,n,canonical_id,problem_progress(${PROGRESS_FIELDS}),canonical:canonical_id(problem_progress(${PROGRESS_FIELDS})))`,
         )
         .eq("series_id", seriesId);
-    if (error) throw error;
+    if (error) {
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteFailure();
+        throw typeof window !== "undefined" ? new LocalCatalogUnavailable("not-downloaded") : error;
+    }
 
     return ((data ?? []) as unknown as RawReviewTest[])
         .map((test) => ({
@@ -193,11 +199,15 @@ export async function fetchSeriesDimensions(
     supabase: Supabase,
     seriesId: number,
 ): Promise<SeriesDimensionRow[]> {
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") throw new LocalCatalogUnavailable("not-downloaded");
     const { data, error } = await supabase
         .from("tests")
         .select("division, division_order, format, format_order")
         .eq("series_id", seriesId);
-    if (error) throw error;
+    if (error) {
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteFailure();
+        throw typeof window !== "undefined" ? new LocalCatalogUnavailable("not-downloaded") : error;
+    }
     return (data ?? []) as unknown as SeriesDimensionRow[];
 }
 

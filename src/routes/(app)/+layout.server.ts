@@ -2,7 +2,7 @@
  * The authenticated shell's data. This load lives under `(app)` — **not** at the
  * route root — because its payload contains the serialized `Session` (access and
  * refresh tokens) and the user's profile. A root load would attach that payload
- * to every document in the app, including the credential-free `/offline` entry
+ * to every document in the app, including the credential-free `/offline-shell` entry
  * the service worker must be able to cache (`docs/offline.md` §3a). Keep the root
  * layout presentation-only.
  */

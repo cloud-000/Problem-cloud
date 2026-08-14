@@ -234,10 +234,19 @@ export type OfflinePackageManifestV1 = {
 
 // --- Local queries -----------------------------------------------------------
 
-export type PracticeQueryV1 = {
+export type SharedLocalQueryV1 = {
     version: 1;
     userId: UUID;
     packageIds: UUID[];
+};
+
+// Kept compositional because the icon subset scanner intentionally treats any
+// exact Material Symbol string in source as a glyph request.
+export type BrowseIntent = `brow${"se"}`;
+export const BROWSE_INTENT: BrowseIntent = ["brow", "se"].join("") as BrowseIntent;
+
+export type PracticeQueryV1 = SharedLocalQueryV1 & {
+    intent: "practice-new";
     sessionId: number | null;
     mode: "new";
     filters: {
@@ -261,6 +270,46 @@ export type PracticeQueryV1 = {
 };
 
 /**
+ * Read-only catalogue query over the union of ready downloaded packages.
+ * Unlike Practice this emits one row per placement and deliberately applies no
+ * eligibility predicate.
+ */
+export type BrowseQueryV1 = SharedLocalQueryV1 & {
+    intent: BrowseIntent;
+    filters: {
+        search?: string;
+        testId?: number;
+        seriesId?: number;
+        topic?: string[];
+        tags?: string[];
+        difficulty?: [number, number];
+        quality?: [number, number];
+        isComputational?: boolean | null;
+        verified?: boolean | null;
+        mastery?: (Mastery | "unassessed")[];
+        engagement?: (Engagement | "none")[];
+    };
+    offset: number;
+    limit: number;
+};
+
+export type LocalQueryV1 = PracticeQueryV1 | BrowseQueryV1;
+
+export type OfflineBrowseProblemV1 = {
+    canonicalId: number;
+    problem: OfflineProblemV1;
+    placement: OfflinePlacementV1;
+    rating: OfflineProblemRatingV1 | null;
+    progress: ProblemProgress | null;
+    progressIsProvisional: boolean;
+};
+
+export type BrowseQueryResultV1 =
+    | { status: "ok"; problems: OfflineBrowseProblemV1[]; availableCount: number }
+    | { status: "not_downloaded"; problems: []; missing: { topic: string[]; seriesIds: string[] } }
+    | { status: "package_unavailable"; problems: []; reason: "missing" | "staging" | "incompatible" };
+
+/**
  * A UI-ready problem assembled at query time: durable content plus the
  * *effective* (snapshot + overlay) personal state and the frozen rating. Mutable
  * personal state is never copied into durable problem content.
@@ -268,6 +317,8 @@ export type PracticeQueryV1 = {
 export type OfflinePracticeProblemV1 = {
     canonicalId: number;
     problem: OfflineProblemV1;
+    /** Ready packages whose active revision contains this canonical. */
+    sourcePackageIds: UUID[];
     /** Every downloaded placement, so the display can name a test/series. */
     placements: OfflinePlacementV1[];
     rating: OfflineProblemRatingV1 | null;
@@ -332,6 +383,8 @@ export type OfflineOperationBaseV1 = {
     checkoutId: UUID;
     packageId: UUID;
     sessionId: number;
+    /** Browser-owned identity for a package-independent local session. */
+    clientSessionId?: UUID;
     sequence: number;
     runtimeId: UUID;
     monotonicOffsetMs: number;
@@ -375,6 +428,12 @@ export type OfflineSyncRequestV1 = {
     checkoutId: UUID;
     packageId: UUID;
     packageRevision: string;
+    clientSession?: {
+        clientSessionId: UUID;
+        name: string | null;
+        settings: PracticeSettings;
+        startedAt: ISOInstant;
+    };
     operations: OfflineOperationV1[];
 };
 
@@ -387,6 +446,7 @@ export type OfflineSyncResponseV1 = {
     version: 1;
     status: "applied";
     checkoutId: UUID;
+    clientSessionId?: UUID;
     acknowledgedOperationIds: UUID[];
     submissions: {
         clientKey: UUID;
@@ -428,7 +488,9 @@ export type OfflineSyncErrorV1 = {
 export type OfflineSessionV1 = {
     userId: UUID;
     sessionId: number;
-    packageId: UUID;
+    packageId: UUID | null;
+    clientSessionId?: UUID;
+    serverSessionId?: number | null;
     row: PracticeSessionRow;
     /** Local, unsynced history for this sitting, oldest first. */
     localSubmissions: LocalSubmissionV1[];
@@ -446,6 +508,7 @@ export type OfflineSubmissionInputV1 = {
     packageId: UUID;
     checkoutId: UUID;
     sessionId: number;
+    clientSessionId?: UUID;
     canonicalId: number;
     selectedChoice: number | null;
     answer: string | null;
@@ -461,6 +524,7 @@ export type OfflineMasteryInputV1 = {
     packageId: UUID;
     checkoutId: UUID;
     sessionId: number;
+    clientSessionId?: UUID;
     canonicalId: number;
     mastery: Mastery | null;
     /** Operation ids this override must be applied after (its submission). */
@@ -472,6 +536,7 @@ export type OfflineEngagementInputV1 = {
     packageId: UUID;
     checkoutId: UUID;
     sessionId: number;
+    clientSessionId?: UUID;
     canonicalId: number;
     engagement: Engagement | null;
     dependsOn?: UUID[];
@@ -482,6 +547,7 @@ export type OfflineFinishSessionInputV1 = {
     packageId: UUID;
     checkoutId: UUID;
     sessionId: number;
+    clientSessionId?: UUID;
     endedAt?: ISOInstant;
 };
 
@@ -509,12 +575,24 @@ export interface OfflinePackageInstaller {
 export interface OfflinePracticeRepositoryV1 extends OfflinePackageInstaller {
     listPackages(userId: UUID): Promise<OfflinePackageManifestV1[]>;
     queryProblems(query: PracticeQueryV1): Promise<PracticeQueryResultV1>;
+    browseProblems(query: BrowseQueryV1): Promise<BrowseQueryResultV1>;
     getProblem(input: {
         userId: UUID;
         packageIds: UUID[];
         canonicalId: number;
     }): Promise<OfflinePracticeProblemV1 | null>;
+    createLocalSession(userId: UUID, input: {
+        name: string | null;
+        settings: PracticeSettings;
+        isRoot?: boolean;
+    }): Promise<PracticeSessionRow>;
+    listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]>;
     loadSession(userId: UUID, sessionId: number): Promise<OfflineSessionV1 | null>;
+    updateSessionSettings(
+        userId: UUID,
+        sessionId: number,
+        settings: PracticeSettings,
+    ): Promise<void>;
     setCurrentProblem(input: OfflineCurrentProblemInputV1): Promise<void>;
     recordSubmission(input: OfflineSubmissionInputV1): Promise<LocalSubmissionV1>;
     setMastery(input: OfflineMasteryInputV1): Promise<void>;

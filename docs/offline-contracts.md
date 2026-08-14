@@ -514,11 +514,14 @@ migration error by deleting the database.
 
 ## 4. Local query contract
 
-The query contract expresses trainer meaning, not IndexedDB mechanics.
+The query contract expresses read intent, not IndexedDB mechanics. Both intents
+share the package/user membership boundary. Practice adds session eligibility
+and deterministic draw ordering; browse adds placement ordering and pagination.
 
 ```ts
 type PracticeQueryV1 = {
     version: 1;
+    intent: "practice-new";
     userId: UUID;
     packageIds: UUID[];
     sessionId: number | null;
@@ -543,6 +546,28 @@ type PracticeQueryV1 = {
         seed: string;
         ratingCenter: number | null;
     };
+    limit: number;
+};
+
+type BrowseQueryV1 = {
+    version: 1;
+    intent: "browse";
+    userId: UUID;
+    packageIds: UUID[];
+    filters: {
+        search?: string;
+        testId?: number;
+        seriesId?: number;
+        topic?: string[];
+        tags?: string[];
+        difficulty?: [number, number];
+        quality?: [number, number];
+        isComputational?: boolean | null;
+        verified?: boolean | null;
+        mastery?: (Mastery | "unassessed")[];
+        engagement?: (Engagement | "none")[];
+    };
+    offset: number;
     limit: number;
 };
 
@@ -596,6 +621,12 @@ state is not copied into durable problem content.
 8. Queries may narrow downloaded membership. A requested series/topic not
    represented by the selected packages yields `not_downloaded`, not
    `exhausted` and not a network request.
+9. Browse emits one row per downloaded placement, deduplicated by `placementId`
+   across packages, ordered by `(problemNumber, canonicalId, placementId)`, and
+   never applies Practice's prior-activity or answer-availability eligibility.
+10. Exact online/local set parity is asserted only for synced packages at their
+    captured rating revision and within downloaded membership. Local overlays,
+    frozen ratings and the package boundary are intentional differences.
 
 The first implementation may retrieve candidates through coarse IndexedDB
 indexes and apply compound predicates in pure TypeScript. Contract tests must
@@ -610,11 +641,18 @@ interface OfflinePracticeRepositoryV1
     extends OfflinePackageInstaller {
     listPackages(userId: UUID): Promise<OfflinePackageManifestV1[]>;
     queryProblems(query: PracticeQueryV1): Promise<PracticeQueryResultV1>;
+    browseProblems(query: BrowseQueryV1): Promise<BrowseQueryResultV1>;
     getProblem(input: {
         userId: UUID;
         packageIds: UUID[];
         canonicalId: number;
     }): Promise<OfflinePracticeProblemV1 | null>;
+    createLocalSession(userId: UUID, input: {
+        name: string | null;
+        settings: PracticeSettings;
+        isRoot?: boolean;
+    }): Promise<PracticeSessionRow>;
+    listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]>;
     loadSession(userId: UUID, sessionId: number): Promise<OfflineSessionV1 | null>;
     setCurrentProblem(input: OfflineCurrentProblemInputV1): Promise<void>;
     recordSubmission(input: OfflineSubmissionInputV1): Promise<LocalSubmissionV1>;
@@ -637,11 +675,13 @@ server history, and online Test loading/submission. Operations that exist only t
 preserve the online presentation are still capability-gated; the offline source
 never implements them by falling through to Supabase.
 
-The selection is explicit and stable for the mount: ordinary `/practice` uses
-the online source, while `/practice?offlinePackage=<packageId>` binds the ready
-package, checkout, local account, and dedicated server session. A connectivity
-change never silently switches an online session to offline or lets an offline
-operation fall through to the network.
+The selection is explicit and stable for the mount. Ordinary `/practice` uses
+the online source in online mode and a local session over the union of all ready
+packages in local mode. Packages are content/sync provenance, not sessions and
+are never presented as the normal Practice chooser. The legacy
+`/practice?offlinePackage=<packageId>` route remains supported for already
+downloaded dedicated sessions. A connectivity change never silently switches a
+mounted session or lets an offline operation fall through to the network.
 
 As part of the route migration, the seam exposes an immutable capability
 descriptor consumed by the shared Practice controls. The first integrated
@@ -654,9 +694,11 @@ and read-only so its series controls cannot trigger a network dimension lookup.
 The UI does not infer capability from connectivity or hide a partial failure.
 
 The online implementation delegates to the existing library, progress, trainer,
-and session functions. The offline implementation binds one user/package/
-checkout/session identity and delegates every operation to `OfflineRepository`.
-No operation falls through to the network after that choice.
+and session functions. A normal offline implementation binds one user/local
+session and queries all ready package memberships. Each selected problem carries
+the package/checkout provenance used for its outbox operation; every operation
+also carries the local session UUID. No operation falls through to the network
+after that choice.
 
 Offline adaptive selection keeps a runtime-only shadow center initialized from
 the downloaded player rating. A graded answer advances it only with
@@ -712,6 +754,8 @@ type OfflineOperationV1 = {
     checkoutId: UUID;
     packageId: UUID;
     sessionId: number;
+    /** Present for a package-independent local Practice session. */
+    clientSessionId?: UUID;
     sequence: number;
     runtimeId: UUID;
     monotonicOffsetMs: number;
@@ -774,6 +818,13 @@ type OfflineSyncRequestV1 = {
     checkoutId: UUID;
     packageId: UUID;
     packageRevision: string;
+    /** Metadata used to idempotently create/resolve a local Practice session. */
+    clientSession?: {
+        clientSessionId: UUID;
+        name: string | null;
+        settings: PracticeSettings;
+        startedAt: ISOInstant;
+    };
     operations: OfflineOperationV1[];
 };
 ```
@@ -781,7 +832,9 @@ type OfflineSyncRequestV1 = {
 Rules:
 
 - Operations are strictly increasing by `sequence` and belong to one user,
-  checkout, package, and session.
+  checkout, package, and session. For a package-independent local session they
+  share one `clientSessionId`; the server resolves that UUID idempotently to one
+  `practice_sessions` row across every checkout batch.
 - The server derives the user and rejects a mismatch without applying anything.
 - The client sends at most 100 operations and 512 KiB of encoded JSON per
   request. The endpoint rejects more than 100 operations, a body over 1 MiB, an
@@ -799,6 +852,7 @@ type OfflineSyncResponseV1 = {
     version: 1;
     status: "applied";
     checkoutId: UUID;
+    clientSessionId?: UUID;
     acknowledgedOperationIds: UUID[];
     submissions: {
         clientKey: UUID;
@@ -970,14 +1024,16 @@ slices to answer differently.
   remains presentation-only. The `(splash)` group gets its own anonymous client
   for public reads such as the welcome-page count; it does not inherit app auth
   data.
-- `/offline` lives outside `(app)`, has no server or universal load, and is
-  prerendered. It renders the package-management/recovery shell directly from
-  the local repository and never consumes cached auth data.
+- `/offline` lives inside `(app)` and is the authenticated package-management
+  surface. `/offline-shell` lives outside `(app)`, has no server or universal
+  load, and is prerendered. It renders the same local recovery presentation
+  without consuming cached auth data.
 - An explicit downloaded-package launch uses the normal `/practice` URL and
   shared Practice presentation. Its offline entry is also a build-owned,
   credential-free shell: it restores local package/session state from IndexedDB
   and never consumes cached personalized SvelteKit data. A generic failed
-  navigation still returns `/offline`; it does not choose a package implicitly.
+  navigation still returns `/offline-shell`; it does not choose a package
+  implicitly.
 - Add Playwright as the production-browser harness. The release gate is
   Chromium 111+ and Safari/iOS 16.4+. Firefox 114+ is supported best-effort but
   is not a v1 release gate. Embedded Kindle/E-Ink browsers are explicitly
@@ -1048,9 +1104,13 @@ contract.
   `ready`, `stale`, `failed`, and `storage-full`. Cancel removes only staging.
 - The account may retain multiple ready packages, including overlapping ones.
   `/offline` lists them for the active local account. Opening one launches the
-  normal `/practice` surface with explicit package identity and resumes its
-  dedicated New-mode session; it does not silently combine packages.
-  A later explicit multi-package query may do so through `packageIds`.
+  normal `/practice` surface. A normal local-mode Practice launch creates or
+  resumes a browser-owned session and queries the union of every ready package.
+  The ordinary settings panel remains available for New-mode filters and session
+  mechanics, and persists its snapshot in IndexedDB.
+  Each returned canonical records its contributing package ids, so writes use a
+  valid checkout without making storage boundaries part of the Practice UI.
+  Explicit `offlinePackage` links remain supported for legacy dedicated sessions.
 - When assembling an offline problem, known media references are rewritten to
   `/_offline/media?revision=<packageRevision>&url=<encoded-original-url>`. The
   service worker opens only that revision's cache and matches the decoded

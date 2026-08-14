@@ -6,10 +6,11 @@ import {
     orderCandidates,
     placementMatchesScope,
     runPracticeQuery,
+    runBrowseQuery,
     seededRank,
     type QueryCandidate,
 } from "./query";
-import type { OfflinePlacementV1, OfflineProblemV1, PracticeQueryV1 } from "./types";
+import { BROWSE_INTENT, type OfflinePlacementV1, type OfflineProblemV1, type PracticeQueryV1 } from "./types";
 
 function placement(
     overrides: Partial<OfflinePlacementV1> & { placementId: number },
@@ -63,6 +64,7 @@ function candidate(
 ): QueryCandidate {
     return {
         canonicalId,
+        sourcePackageIds: ["package-a"],
         problem: problem({ canonicalId }),
         placements: [placement({ placementId: canonicalId, canonicalId })],
         rating: null,
@@ -87,6 +89,7 @@ const filters: PracticeQueryV1["filters"] = {
 function query(overrides: Partial<PracticeQueryV1> = {}): PracticeQueryV1 {
     return {
         version: 1,
+        intent: "practice-new",
         userId: "u",
         packageIds: [],
         sessionId: 1,
@@ -314,5 +317,34 @@ describe("the draw", () => {
             query({ filters: { ...filters, mastery: ["unassessed"] }, limit: 10 }),
         );
         expect(result.problems.map((entry) => entry.canonicalId)).toEqual([1]);
+    });
+});
+
+describe("browse intent", () => {
+    test("keeps attempted problems and emits each placement once", () => {
+        const attempted = candidate(1, {
+            placements: [
+                placement({ placementId: 12, canonicalId: 1, problemNumber: 2 }),
+                placement({ placementId: 11, canonicalId: 1, problemNumber: 1 }),
+                placement({ placementId: 11, canonicalId: 1, problemNumber: 1 }),
+            ],
+            progress: {
+                times_seen: 1, times_correct: 1, times_reviewed: 0,
+                times_skipped: 0, last_correct: true, last_reviewed_at: null,
+                last_submission_at: "2026-01-01T00:00:00.000Z", next_review_at: null,
+                solved: true, mastery: "confident", engagement: null,
+            },
+        });
+        const result = runBrowseQuery([attempted], {
+            version: 1,
+            intent: BROWSE_INTENT,
+            userId: "u",
+            packageIds: [],
+            filters: {},
+            offset: 0,
+            limit: 20,
+        });
+        expect(result.availableCount).toBe(2);
+        expect(result.problems.map((entry) => entry.placement.placementId)).toEqual([11, 12]);
     });
 });

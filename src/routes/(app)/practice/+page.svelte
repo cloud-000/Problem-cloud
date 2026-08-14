@@ -1,9 +1,8 @@
 <script lang="ts">
     import type { PageData } from "./$types";
     import { page } from "$app/state";
-    import SessionsView from "./SessionsView.svelte";
-    import OnlinePracticeRoute from "./OnlinePracticeRoute.svelte";
     import OfflinePracticeRoute from "./OfflinePracticeRoute.svelte";
+    import PracticeLaunchRoute from "./PracticeLaunchRoute.svelte";
 
     let { data }: { data: PageData } = $props();
 
@@ -19,10 +18,8 @@
     {#key offlinePackage}
         <OfflinePracticeRoute {data} packageId={offlinePackage} />
     {/key}
-{:else if sessionParam == null}
-    <SessionsView {data} />
 {:else}
     {#key sessionParam}
-        <OnlinePracticeRoute {data} {sessionParam} />
+        <PracticeLaunchRoute {data} {sessionParam} />
     {/key}
 {/if}

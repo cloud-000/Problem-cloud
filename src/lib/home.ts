@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
-import { fetchByIds, type ProblemRow } from "$lib/library";
+import { fetchByIds, fetchProblems, PAGE_SIZE, type ProblemRow } from "$lib/library";
+import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -100,6 +101,26 @@ export async function fetchFocusedSeriesWorklist(
 ): Promise<WorklistItem[]> {
     if (seriesIds.length === 0) return [];
 
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") {
+        return fetchLocalFocusedSeriesWorklist(supabase, seriesIds, limit, perSeriesCap);
+    }
+
+    try {
+        return await fetchRemoteFocusedSeriesWorklist(supabase, seriesIds, limit, perSeriesCap);
+    } catch (error) {
+        if (typeof window === "undefined") throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalFocusedSeriesWorklist(supabase, seriesIds, limit, perSeriesCap);
+    }
+}
+
+async function fetchRemoteFocusedSeriesWorklist(
+    supabase: Supabase,
+    seriesIds: number[],
+    limit: number,
+    perSeriesCap: number,
+): Promise<WorklistItem[]> {
+
     const perSeries = await Promise.all(
         seriesIds.map((id) => fetchSeriesCandidates(supabase, id, perSeriesCap)),
     );
@@ -127,4 +148,40 @@ export async function fetchFocusedSeriesWorklist(
                 : null;
         })
         .filter((item): item is WorklistItem => item != null);
+}
+
+async function fetchLocalFocusedSeriesWorklist(
+    supabase: Supabase,
+    seriesIds: number[],
+    limit: number,
+    perSeriesCap: number,
+): Promise<WorklistItem[]> {
+    const now = Date.now();
+    const groups = await Promise.all(seriesIds.map(async (seriesId) => {
+        const rows: ProblemRow[] = [];
+        for (let page = 0; ; page += 1) {
+            const batch = await fetchProblems(supabase, { seriesId }, page);
+            rows.push(...batch);
+            if (batch.length < PAGE_SIZE) break;
+        }
+        const unique = [...new Map(rows.map((row) => [row.id, row])).values()];
+        const due = unique
+            .filter((row) => row.progress?.next_review_at && new Date(row.progress.next_review_at).getTime() <= now)
+            .sort((a, b) => (a.progress?.next_review_at ?? "").localeCompare(b.progress?.next_review_at ?? ""))
+            .slice(0, perSeriesCap)
+            .map((problem) => ({ problem, reason: "due" as const, seriesId }));
+        const dueIds = new Set(due.map((item) => item.problem.id));
+        const needs = unique
+            .filter((row) => !dueIds.has(row.id) && row.progress?.mastery === "needs_work")
+            .sort((a, b) => (a.progress?.last_reviewed_at ?? "").localeCompare(b.progress?.last_reviewed_at ?? ""))
+            .slice(0, Math.max(0, perSeriesCap - due.length))
+            .map((problem) => ({ problem, reason: "needs_work" as const, seriesId }));
+        return [...due, ...needs];
+    }));
+    return groups.flat().sort((a, b) => {
+        if (a.reason !== b.reason) return a.reason === "due" ? -1 : 1;
+        const aRank = a.reason === "due" ? a.problem.progress?.next_review_at : a.problem.progress?.last_reviewed_at;
+        const bRank = b.reason === "due" ? b.problem.progress?.next_review_at : b.problem.progress?.last_reviewed_at;
+        return (aRank ?? "").localeCompare(bRank ?? "");
+    }).slice(0, limit);
 }

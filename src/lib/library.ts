@@ -3,8 +3,12 @@ import type { Database, Tables } from "$lib/types/database.types";
 import type { TriState } from "$lib/components/toggle";
 import type { Option } from "$lib/components/combobox";
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
+import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
+import { applyRemoteProblemFilters, parseProblemSearchIds } from "$lib/problem-filter-spec";
+import { BROWSE_INTENT, type BrowseQueryV1, type OfflineBrowseProblemV1 } from "$lib/offline/types";
 
 type Supabase = SupabaseClient<Database>;
+const isBrowser = () => typeof window !== "undefined";
 
 // Row shapes. Tests/problems carry their joined parent names for display.
 export type SeriesRow = Tables<"series">;
@@ -401,6 +405,7 @@ export async function fetchSeries(
     f: Filters = {},
     page = 0,
 ): Promise<SeriesRow[]> {
+    if (isBrowser() && catalogReadRuntime.effective === "local") throw new LocalCatalogUnavailable("not-downloaded");
     let q = supabase.from("series").select("*");
     const search = f.search?.trim();
     const searchIds = search ? parseLibrarySearchIds(search) : null;
@@ -421,6 +426,7 @@ export async function fetchTests(
     f: Filters = {},
     page = 0,
 ): Promise<TestRow[]> {
+    if (isBrowser() && catalogReadRuntime.effective === "local") throw new LocalCatalogUnavailable("not-downloaded");
     let q = supabase.from("tests").select("*, series(name)");
     const search = f.search?.trim();
     const searchIds = search ? parseLibrarySearchIds(search) : null;
@@ -446,33 +452,34 @@ export async function fetchProblems(
     f: Filters = {},
     page = 0,
 ): Promise<ProblemRow[]> {
+    if (isBrowser() && catalogReadRuntime.effective === "local") {
+        return fetchLocalProblems(f, page);
+    }
+    try {
+        const rows = await fetchRemoteProblems(supabase, f, page);
+        if (isBrowser()) catalogReadRuntime.noteRemoteSuccess();
+        return rows;
+    } catch (error) {
+        if (!isBrowser()) throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalProblems(f, page);
+    }
+}
+
+async function fetchRemoteProblems(
+    supabase: Supabase,
+    f: Filters = {},
+    page = 0,
+): Promise<ProblemRow[]> {
     // Page ids through the caller-scoped flat index first. Personal-state filters
     // therefore run before pagination and null means truly unassessed/no plan,
     // including problems with no problem_progress row.
     const search = f.search?.trim();
-    const searchIds = search ? parseLibrarySearchIds(search) : null;
+    const searchIds = search ? parseProblemSearchIds(search) : null;
     if (search && !searchIds) return [];
 
     let index = supabase.from("user_problem_index").select("problem_id");
-    if (searchIds?.length) index = index.in("problem_id", searchIds);
-    if (f.testId != null) index = index.eq("test_id", f.testId);
-    else if (f.seriesId != null) index = index.eq("series_id", f.seriesId);
-    if (f.topic?.length) index = index.in("topic", f.topic);
-    if (f.tags?.length) index = index.contains("tags", f.tags);
-    // Difficulty targets the live Glicko rating, not the dead authored column.
-    // Narrowing the band therefore drops still-unrated problems (NULL rating);
-    // full range applies no filter (see rangeOrUndef) so they stay visible.
-    if (f.difficulty)
-        index = index
-            .gte("rating", f.difficulty[0])
-            .lte("rating", f.difficulty[1]);
-    if (f.quality)
-        index = index.gte("quality", f.quality[0]).lte("quality", f.quality[1]);
-    if (f.isComputational != null)
-        index = index.eq("is_computational", f.isComputational);
-    if (f.verified != null) index = index.eq("verified", f.verified);
-    index = applyNullableStateFilter(index, "mastery", f.mastery, "unassessed");
-    index = applyNullableStateFilter(index, "engagement", f.engagement, "none");
+    index = applyRemoteProblemFilters(index, f);
 
     const { data: idRows, error: indexError } = await index
         .order("n")
@@ -499,28 +506,7 @@ export async function fetchProblems(
 
 /** Parse a toolbar query as a deduplicated list of positive integer ids. */
 export function parseLibrarySearchIds(input: string): number[] | null {
-    const parts = input.split(/[\s,]+/).filter(Boolean);
-    if (
-        parts.length === 0 ||
-        parts.some((part) => !/^\d+$/.test(part) || Number(part) < 1)
-    ) {
-        return null;
-    }
-    return [...new Set(parts.map(Number))];
-}
-
-function applyNullableStateFilter(
-    query: any,
-    column: "mastery" | "engagement",
-    values: string[] | undefined,
-    nullValue: "unassessed" | "none",
-) {
-    if (!values?.length) return query;
-    const includeNull = values.includes(nullValue);
-    const concrete = values.filter((value) => value !== nullValue);
-    if (includeNull && concrete.length === 0) return query.is(column, null);
-    if (!includeNull) return query.in(column, concrete);
-    return query.or(`${column}.is.null,${column}.in.(${concrete.join(",")})`);
+    return parseProblemSearchIds(input);
 }
 
 /**
@@ -534,6 +520,10 @@ export async function fetchByIds(
     ids: number[],
 ): Promise<(SeriesRow | TestRow | ProblemRow)[]> {
     if (ids.length === 0) return [];
+    if (level === "problems" && isBrowser() && catalogReadRuntime.effective === "local") {
+        const result = await localBrowse({ search: ids.join(",") }, 0, Math.max(ids.length, PAGE_SIZE));
+        return result.problems.map(localProblemRow);
+    }
     if (level === "series") {
         const { data, error } = await supabase
             .from("series")
@@ -550,16 +540,24 @@ export async function fetchByIds(
         if (error) throw error;
         return (data ?? []) as unknown as TestRow[];
     }
-    const { data, error } = await supabase
-        .from("problems")
-        .select(
-            `*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT}`,
-        )
-        .in("id", ids);
-    if (error) throw error;
-    return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>).map(
-        normalizeEmbeds,
-    );
+    try {
+        const { data, error } = await supabase
+            .from("problems")
+            .select(
+                `*, tests(name, series_id, series(name)), ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT}`,
+            )
+            .in("id", ids);
+        if (error) throw error;
+        if (isBrowser()) catalogReadRuntime.noteRemoteSuccess();
+        return ((data ?? []) as unknown as Array<ProblemRow & ProblemEmbeds>).map(
+            normalizeEmbeds,
+        );
+    } catch (error) {
+        if (!isBrowser()) throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        const result = await localBrowse({ search: ids.join(",") }, 0, Math.max(ids.length, PAGE_SIZE));
+        return result.problems.map(localProblemRow);
+    }
 }
 
 /**
@@ -620,10 +618,115 @@ export async function fetchTestsForSeries(
 export async function fetchAllSeries(
     supabase: Supabase,
 ): Promise<Pick<SeriesRow, "id" | "name">[]> {
-    const { data, error } = await supabase
-        .from("series")
-        .select("id, name")
-        .order("name");
-    if (error) throw error;
-    return data ?? [];
+    if (isBrowser() && catalogReadRuntime.effective === "local") return fetchLocalSeriesOptions();
+    try {
+        const { data, error } = await supabase
+            .from("series")
+            .select("id, name")
+            .order("name");
+        if (error) throw error;
+        if (isBrowser()) catalogReadRuntime.noteRemoteSuccess();
+        return data ?? [];
+    } catch (error) {
+        if (!isBrowser()) throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalSeriesOptions();
+    }
+}
+
+export class LocalCatalogUnavailable extends Error {
+    constructor(public readonly reason: "signed-out" | "not-downloaded" | "storage-unavailable") {
+        super(
+            reason === "signed-out"
+                ? "Open ProblemCloud online once before using downloaded content."
+                : reason === "not-downloaded"
+                  ? "This view is not present in your downloaded content."
+                  : "Downloaded content is unavailable in this browser profile.",
+        );
+        this.name = "LocalCatalogUnavailable";
+    }
+}
+
+async function localBrowse(filters: Filters, page: number, limit = PAGE_SIZE) {
+    try {
+        const { offlineRepository } = await import("$lib/offline/browser");
+        const repository = await offlineRepository();
+        const marker = await repository.getAccountMarker();
+        if (!marker) throw new LocalCatalogUnavailable("signed-out");
+        const query: BrowseQueryV1 = {
+            version: 1,
+            intent: BROWSE_INTENT,
+            userId: marker.userId,
+            packageIds: [],
+            filters,
+            offset: page * limit,
+            limit,
+        };
+        const result = await repository.browseProblems(query);
+        if (result.status === "package_unavailable") throw new LocalCatalogUnavailable("not-downloaded");
+        if (result.status === "not_downloaded") throw new LocalCatalogUnavailable("not-downloaded");
+        catalogReadRuntime.noteLocalRead();
+        return result;
+    } catch (error) {
+        if (error instanceof LocalCatalogUnavailable) throw error;
+        throw new LocalCatalogUnavailable("storage-unavailable");
+    }
+}
+
+function localProblemRow(row: OfflineBrowseProblemV1): ProblemRow {
+    const p = row.problem;
+    const placement = row.placement;
+    return {
+        id: placement.placementId,
+        canonical_id: placement.placementId === row.canonicalId ? null : row.canonicalId,
+        sync_key: null,
+        test_id: placement.testId,
+        n: placement.problemNumber,
+        statement: p.statement,
+        topic: p.topic,
+        choices: p.choices,
+        answer_index: p.answerIndex,
+        answer_status: p.answerStatus,
+        official_solutions: p.officialSolutions,
+        verified: p.verified,
+        is_computational: p.isComputational,
+        response_kind: p.responseKind,
+        aops_id: p.aopsId,
+        tags: p.tags,
+        difficulty: p.difficulty,
+        quality: p.quality,
+        notes: p.notes,
+        built_at: p.builtAt,
+        progress: row.progress,
+        rating: row.rating ? {
+            rating: row.rating.rating,
+            rd: row.rating.rd,
+            attempts: row.rating.attempts,
+        } : null,
+        tests: placement.test ? {
+            name: placement.test.name,
+            series_id: placement.test.seriesId,
+            series: placement.series ? { name: placement.series.name } : null,
+            aops_category_id: placement.test.aopsCategoryId,
+            division: placement.test.division,
+            format: placement.test.format,
+        } : null,
+    };
+}
+
+async function fetchLocalProblems(filters: Filters, page: number): Promise<ProblemRow[]> {
+    const result = await localBrowse(filters, page);
+    return result.problems.map(localProblemRow);
+}
+
+async function fetchLocalSeriesOptions(): Promise<Pick<SeriesRow, "id" | "name">[]> {
+    const rows = new Map<number, string>();
+    for (let page = 0; ; page += 1) {
+        const result = await localBrowse({}, page, 10_000);
+        for (const problem of result.problems) {
+            if (problem.placement.series) rows.set(problem.placement.series.id, problem.placement.series.name);
+        }
+        if (result.problems.length < 10_000) break;
+    }
+    return [...rows].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }

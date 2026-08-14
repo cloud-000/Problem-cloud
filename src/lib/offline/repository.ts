@@ -49,7 +49,7 @@ import {
     groupByCanonical,
     type OrganizationOverride,
 } from "./overlay";
-import { runPracticeQuery, coverageOf, missingCoverage, type QueryCandidate } from "./query";
+import { runBrowseQuery, runPracticeQuery, coverageOf, missingCoverage, type QueryCandidate } from "./query";
 import {
     META,
     OFFLINE_SCHEMA_VERSION,
@@ -71,6 +71,8 @@ import {
 import type { OfflineStorage, OfflineTx } from "./storage";
 import type {
     LocalSubmissionV1,
+    BrowseQueryResultV1,
+    BrowseQueryV1,
     OfflineCommitPackageInputV1,
     OfflineCurrentProblemInputV1,
     OfflineEngagementInputV1,
@@ -963,6 +965,23 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         return { status: "ok", problems, availableCount };
     }
 
+    async browseProblems(query: BrowseQueryV1): Promise<BrowseQueryResultV1> {
+        const loaded = await this.#loadCandidates(query.userId, query.packageIds);
+        if ("unavailable" in loaded) {
+            return { status: "package_unavailable", problems: [], reason: loaded.unavailable };
+        }
+        const requested = {
+            topic: query.filters.topic ?? [],
+            seriesIds: query.filters.seriesId == null ? [] : [String(query.filters.seriesId)],
+        };
+        const missing = missingCoverage(requested, coverageOf(loaded.candidates));
+        if (missing.topic.length > 0 || missing.seriesIds.length > 0) {
+            return { status: "not_downloaded", problems: [], missing };
+        }
+        const { problems, availableCount } = runBrowseQuery(loaded.candidates, query);
+        return { status: "ok", problems, availableCount };
+    }
+
     async getProblem(input: {
         userId: UUID;
         packageIds: UUID[];
@@ -976,6 +995,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         return candidate
             ? {
                   canonicalId: candidate.canonicalId,
+                  sourcePackageIds: candidate.sourcePackageIds,
                   problem: candidate.problem,
                   placements: candidate.placements,
                   rating: candidate.rating,
@@ -1109,6 +1129,9 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                             // Overlapping packages contribute placements to one
                             // shared candidate; personal state is shared already.
                             existing.placements = mergePlacements(existing.placements, own);
+                            if (!existing.sourcePackageIds.includes(record.packageId)) {
+                                existing.sourcePackageIds.push(record.packageId);
+                            }
                             continue;
                         }
                         const state = states.get(membership.canonicalId) ?? null;
@@ -1120,6 +1143,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                         const rating = ratings.get(membership.canonicalId);
                         candidates.set(membership.canonicalId, {
                             canonicalId: membership.canonicalId,
+                            sourcePackageIds: [record.packageId],
                                 problem: rewriteProblemMedia(
                                     problem.problem,
                                     active.packageRevision,
@@ -1149,6 +1173,77 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
     }
 
     // --- Sessions and local writes -------------------------------------------
+
+    async createLocalSession(
+        userId: UUID,
+        input: {
+            name: string | null;
+            settings: import("$lib/trainer").PracticeSettings;
+            isRoot?: boolean;
+        },
+    ): Promise<PracticeSessionRow> {
+        const clientSessionId = this.#newId();
+        const now = this.#now().toISOString();
+        return this.#storage.transaction(
+            [STORE.meta, STORE.sessions],
+            "readwrite",
+            async (tx) => {
+                await this.#requireActiveUser(tx, userId);
+                const key = META.localSessionSequence(userId);
+                const previous = await tx.get<MetaRecord>(STORE.meta, [key]);
+                const sessionId = ((previous?.value as number | undefined) ?? 0) - 1;
+                await tx.put(STORE.meta, { key, value: sessionId } satisfies MetaRecord);
+                const row: PracticeSessionRow = {
+                    id: sessionId,
+                    user_id: userId,
+                    name: input.name,
+                    is_root: input.isRoot ?? false,
+                    settings: input.settings as PracticeSessionRow["settings"],
+                    status: "active",
+                    started_at: now,
+                    created_at: now,
+                    updated_at: now,
+                    ended_at: null,
+                    current_problem_id: null,
+                    current_elapsed_ms: 0,
+                    last_submission_at: null,
+                    times_seen: 0,
+                    times_reviewed: 0,
+                    times_correct: 0,
+                    times_skipped: 0,
+                    total_time_ms: 0,
+                };
+                await tx.put(STORE.sessions, {
+                    userId,
+                    sessionId,
+                    packageId: null,
+                    clientSessionId,
+                    serverSessionId: null,
+                    status: row.status,
+                    row,
+                    playerRating: null,
+                } satisfies SessionRecord);
+                return row;
+            },
+        );
+    }
+
+    async listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]> {
+        return this.#storage.transaction(
+            [STORE.meta, STORE.sessions],
+            "readonly",
+            async (tx) => {
+                await this.#requireActiveUser(tx, userId);
+                return (await tx.getAll<SessionRecord>(STORE.sessions, {
+                    index: "byUser",
+                    only: [userId],
+                }))
+                    .filter((record) => Boolean(record.clientSessionId))
+                    .map((record) => record.row)
+                    .sort((a, b) => b.started_at.localeCompare(a.started_at));
+            },
+        );
+    }
 
     /** Store the session and player-rating snapshot a package downloaded with. */
     async putSessionSnapshot(
@@ -1194,6 +1289,8 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     userId,
                     sessionId,
                     packageId: record.packageId,
+                    clientSessionId: record.clientSessionId,
+                    serverSessionId: record.serverSessionId,
                     row: record.row,
                     localSubmissions,
                 };
@@ -1213,6 +1310,30 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     sessionId,
                 ]);
                 return record?.playerRating ?? null;
+            },
+        );
+    }
+
+    async updateSessionSettings(
+        userId: UUID,
+        sessionId: number,
+        settings: import("$lib/trainer").PracticeSettings,
+    ): Promise<void> {
+        await this.#storage.transaction(
+            [STORE.meta, STORE.sessions],
+            "readwrite",
+            async (tx) => {
+                await this.#requireActiveUser(tx, userId);
+                const record = await tx.get<SessionRecord>(STORE.sessions, [userId, sessionId]);
+                if (!record) throw new Error(`Unknown offline session ${sessionId}`);
+                await tx.put(STORE.sessions, {
+                    ...record,
+                    row: {
+                        ...record.row,
+                        settings: settings as PracticeSessionRow["settings"],
+                        updated_at: this.#now().toISOString(),
+                    },
+                });
             },
         );
     }
@@ -1288,6 +1409,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     checkoutId: input.checkoutId,
                     packageId: input.packageId,
                     sessionId: input.sessionId,
+                    clientSessionId: input.clientSessionId,
                     sequence,
                     runtimeId: stamp.runtimeId,
                     monotonicOffsetMs: stamp.monotonicOffsetMs,
@@ -1370,6 +1492,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
             packageId: UUID;
             checkoutId: UUID;
             sessionId: number;
+            clientSessionId?: UUID;
             canonicalId: number;
             dependsOn?: UUID[];
         },
@@ -1408,6 +1531,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     checkoutId: input.checkoutId,
                     packageId: input.packageId,
                     sessionId: input.sessionId,
+                    clientSessionId: input.clientSessionId,
                     sequence,
                     runtimeId: stamp.runtimeId,
                     monotonicOffsetMs: stamp.monotonicOffsetMs,
@@ -1461,6 +1585,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     checkoutId: input.checkoutId,
                     packageId: input.packageId,
                     sessionId: input.sessionId,
+                    clientSessionId: input.clientSessionId,
                     sequence,
                     runtimeId: stamp.runtimeId,
                     monotonicOffsetMs: stamp.monotonicOffsetMs,
@@ -1526,18 +1651,22 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         checkoutId: UUID;
         packageId: UUID;
         packageRevision: string;
+        clientSession?: import("./types").OfflineSyncRequestV1["clientSession"];
         operations: OfflineOperationV1[];
     }[]> {
         const operations = await this.pendingOperations(userId, limit);
-        return this.#storage.transaction([STORE.meta, STORE.packages], "readonly", async (tx) => {
-            const groups = new Map<string, OfflineOperationV1[]>();
+        return this.#storage.transaction([STORE.meta, STORE.packages, STORE.sessions], "readonly", async (tx) => {
+            const groups: OfflineOperationV1[][] = [];
             for (const operation of operations) {
-                const list = groups.get(operation.checkoutId) ?? [];
-                list.push(operation);
-                groups.set(operation.checkoutId, list);
+                const previous = groups.at(-1);
+                const sameBatch = previous?.[0].checkoutId === operation.checkoutId &&
+                    previous?.[0].clientSessionId === operation.clientSessionId;
+                if (sameBatch && previous) previous.push(operation);
+                else groups.push([operation]);
             }
             const batches = [];
-            for (const [checkoutId, batch] of groups) {
+            for (const batch of groups) {
+                const checkoutId = batch[0].checkoutId;
                 const row = await tx.get<MetaRecord>(STORE.meta, [META.checkout(checkoutId)]);
                 const value = row?.value as {
                     userId?: string;
@@ -1563,10 +1692,25 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     (value?.packageId !== undefined && value.packageId !== batch[0].packageId) ||
                     typeof revision !== "string"
                 ) continue;
+                let clientSession: import("./types").OfflineSyncRequestV1["clientSession"];
+                if (batch[0].clientSessionId) {
+                    const session = await tx.get<SessionRecord>(STORE.sessions, [
+                        userId,
+                        batch[0].sessionId,
+                    ]);
+                    if (session?.clientSessionId !== batch[0].clientSessionId) continue;
+                    clientSession = {
+                        clientSessionId: session.clientSessionId,
+                        name: session.row.name,
+                        settings: session.row.settings as import("$lib/trainer").PracticeSettings,
+                        startedAt: session.row.started_at,
+                    };
+                }
                 batches.push({
                     checkoutId,
                     packageId: batch[0].packageId,
                     packageRevision: revision,
+                    clientSession,
                     operations: batch,
                 });
             }
@@ -1649,16 +1793,59 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     } satisfies RatingRecord);
                 }
 
-                const sessionId = result.authoritative.session.id;
-                const session = await tx.get<SessionRecord>(STORE.sessions, [
-                    userId,
-                    sessionId,
-                ]);
+                const submissions = await tx.getAll<LocalSubmissionV1>(
+                    STORE.localSubmissions,
+                    { index: "byUser", only: [userId] },
+                );
+
+                const serverSessionId = result.authoritative.session.id;
+                let session: SessionRecord | undefined;
+                if (result.clientSessionId) {
+                    session = (await tx.getAll<SessionRecord>(STORE.sessions, {
+                        index: "byUser",
+                        only: [userId],
+                    })).find((record) => record.clientSessionId === result.clientSessionId);
+                } else {
+                    session = await tx.get<SessionRecord>(STORE.sessions, [
+                        userId,
+                        serverSessionId,
+                    ]);
+                }
                 if (session) {
+                    const pending = submissions.filter(
+                        (submission) =>
+                            submission.sessionId === session.sessionId &&
+                            !acknowledged.has(submission.operationId),
+                    );
+                    const authoritative = result.authoritative.session;
+                    const lastPending = pending
+                        .map((submission) => submission.occurredAt)
+                        .sort()
+                        .at(-1) ?? null;
                     await tx.put(STORE.sessions, {
                         ...session,
+                        serverSessionId,
                         status: result.authoritative.session.status,
-                        row: result.authoritative.session,
+                        row: {
+                            ...authoritative,
+                            id: session.sessionId,
+                            user_id: userId,
+                            current_problem_id: session.row.current_problem_id,
+                            current_elapsed_ms: session.row.current_elapsed_ms,
+                            times_seen: authoritative.times_seen + pending.length,
+                            times_skipped: authoritative.times_skipped +
+                                pending.filter((item) => item.skipped).length,
+                            times_reviewed: authoritative.times_reviewed +
+                                pending.filter((item) => !item.skipped && item.isCorrect !== null).length,
+                            times_correct: authoritative.times_correct +
+                                pending.filter((item) => item.isCorrect === true).length,
+                            total_time_ms: authoritative.total_time_ms +
+                                pending.reduce((sum, item) => sum + item.elapsedMs, 0),
+                            last_submission_at: [authoritative.last_submission_at, lastPending]
+                                .filter((value): value is string => value != null)
+                                .sort()
+                                .at(-1) ?? null,
+                        },
                         playerRating:
                             result.authoritative.playerRating ?? session.playerRating,
                     });
@@ -1675,10 +1862,6 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     clearedPackages.add(operation.packageId);
                 }
 
-                const submissions = await tx.getAll<LocalSubmissionV1>(
-                    STORE.localSubmissions,
-                    { index: "byUser", only: [userId] },
-                );
                 for (const submission of submissions) {
                     if (!acknowledged.has(submission.operationId)) continue;
                     await tx.delete(STORE.localSubmissions, [userId, submission.clientKey]);

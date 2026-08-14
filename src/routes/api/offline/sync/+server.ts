@@ -49,7 +49,8 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             p_package_id: body.packageId,
             p_package_revision: body.packageRevision,
             p_operations: body.operations,
-        });
+            p_client_session: body.clientSession ?? null,
+        } as never);
         if (error) throw error;
         return json(parseSyncResponse(data));
     } catch (cause) {

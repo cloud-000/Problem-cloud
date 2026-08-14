@@ -136,16 +136,15 @@ export function startForegroundOfflineSync(input: {
                         checkoutId: batch.checkoutId,
                         packageId: batch.packageId,
                         packageRevision: batch.packageRevision,
+                        clientSession: batch.clientSession,
                         operations: batch.operations,
                     });
                     await repository.acknowledgeSync(result);
                     if (result.overlaps.length) {
                         publish({ state: "overlap", pending: Math.max(0, pending - ids.length), overlaps: result.overlaps });
                     }
-                    const left = await repository.pendingSyncBatches(input.userId, 1);
-                    if (!left.some((item) => item.checkoutId === batch.checkoutId)) {
-                        await checkoutAction(batch.checkoutId, "close").catch(() => undefined);
-                    }
+                    // A ready checkout remains the durable provenance boundary
+                    // for future local sessions that draw from this package.
                 } catch (error) {
                     if (error instanceof OfflineNetworkError && (error.status === 401 || error.detail?.code === "auth_required")) {
                         await repository.markPending(input.userId, ids);

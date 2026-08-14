@@ -34,9 +34,11 @@ async function serviceWorkerReady(page: Page): Promise<boolean> {
 
 test.describe("the offline entry document", () => {
     test("renders without any server data", async ({ page }) => {
-        const response = await page.goto("/offline");
+        const response = await page.goto("/offline-shell");
         expect(response?.ok()).toBe(true);
-        await expect(page.getByText("Offline", { exact: true })).toBeVisible();
+        await expect(
+            page.getByRole("heading", { name: /No account is open|Nothing is downloaded/ }),
+        ).toBeVisible();
 
         const html = await page.content();
         // A prerendered, ssr:false document has no `__data` payload to leak.
@@ -45,7 +47,7 @@ test.describe("the offline entry document", () => {
     });
 
     test("says what it knows rather than imitating the signed-in app", async ({ page }) => {
-        await page.goto("/offline");
+        await page.goto("/offline-shell");
         // With no local account marker there is nothing to open, and a cached
         // response is never used to decide otherwise.
         await expect(
@@ -55,7 +57,7 @@ test.describe("the offline entry document", () => {
 
     test("caches no personalized or credentialed response", async ({ page }) => {
         await page.goto("/");
-        await page.goto("/offline");
+        await page.goto("/offline-shell");
         await page.waitForTimeout(500);
 
         for (const url of await cacheContents(page)) {
@@ -71,23 +73,24 @@ test.describe("the service worker", () => {
     test("precaches the offline document and the vendored render assets", async ({
         page,
     }) => {
-        await page.goto("/offline");
+        await page.goto("/offline-shell");
         // The worker is only registered in a production build; skip rather than
         // pretend when running against the dev server.
         test.skip(!(await serviceWorkerReady(page)), "no service worker (dev server)");
 
         const urls = await cacheContents(page);
-        expect(urls.some((url) => url.endsWith("/offline"))).toBe(true);
-        expect(urls.some((url) => url.endsWith("/offline-practice-shell"))).toBe(true);
+        expect(urls.some((url) => url.endsWith("/offline-shell"))).toBe(true);
+        expect(urls.some((url) => url.endsWith("/offline"))).toBe(false);
+        expect(urls.some((url) => url.endsWith("/offline-practice-shell"))).toBe(false);
         expect(urls.some((url) => url.includes("/vendor/katex/katex.min.css"))).toBe(true);
         expect(urls.some((url) => url.includes("/fonts/"))).toBe(true);
     });
 
-    test("uses the Practice shell only for an explicit package selector", async ({
+    test("uses the unified shell for downloaded Practice", async ({
         page,
         context,
     }) => {
-        await page.goto("/offline");
+        await page.goto("/offline-shell");
         test.skip(!(await serviceWorkerReady(page)), "no service worker (dev server)");
 
         await context.setOffline(true);
@@ -99,7 +102,9 @@ test.describe("the service worker", () => {
             ).toBeVisible();
 
             await page.goto("/practice");
-            await expect(page.getByText("Offline", { exact: true })).toBeVisible();
+            await expect(
+                page.getByRole("heading", { name: "No downloaded practice is ready" }),
+            ).toBeVisible();
         } finally {
             await context.setOffline(false);
         }
@@ -109,19 +114,19 @@ test.describe("the service worker", () => {
         page,
         context,
     }) => {
-        await page.goto("/offline");
+        await page.goto("/offline-shell");
         test.skip(!(await serviceWorkerReady(page)), "no service worker (dev server)");
 
         await context.setOffline(true);
         try {
             await page.goto("/library");
             await expect(
-                page.getByText("Offline", { exact: true }),
+                page.getByRole("heading", { name: "Library" }),
             ).toBeVisible();
 
             // And a reload while still offline stays on that document.
             await page.reload();
-            await expect(page.getByText("Offline", { exact: true })).toBeVisible();
+            await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
         } finally {
             await context.setOffline(false);
         }

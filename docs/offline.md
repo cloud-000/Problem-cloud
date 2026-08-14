@@ -3,7 +3,8 @@
 > [!IMPORTANT]
 > **Status: Session 3 data-source implementation and Practice-route migration
 > phases 1–5 complete as of 2026-08-13; browser release proof in progress.** The offline *core and shell* have
-> landed: self-hosted rendering assets, the credential-free `/offline` route with
+> landed: self-hosted rendering assets, the credential-free `/offline-shell`
+> route plus authenticated `/offline` manager with
 > the authenticated load relocated into `(app)`, a minimal service worker, the
 > versioned IndexedDB repository with staged package installation, the local
 > New-mode query engine, the snapshot-plus-overlay state, and the typed outbox —
@@ -80,12 +81,12 @@ The foundation supports:
 
 The first integrated shipping slice exposes:
 
-- multiple retained downloads for one account, with exactly one package opened
-  by an offline practice client at a time;
-- one dedicated practice session with a real server id per package, launched
-  into the normal `/practice` route and Practice presentation;
+- multiple retained downloads for one account, queried as one local catalog;
+- browser-owned local practice sessions, mapped idempotently to one real server
+  session when writes from any contributing checkout synchronize;
 - **New** mode as the first enabled offline consumer of the general local query
-  repository; unsupported modes are disabled with an explanation;
+  repository; its normal filters and mechanics persist in the browser-owned
+  local session, while unsupported modes are individually disabled;
 - offline reload/resume, grading, local history, and synchronization.
 
 The first integrated shipping slice does **not** expose:
@@ -170,8 +171,9 @@ navigation cannot reach the server. The clean route is:
 
 1. Move the authenticated root server/universal loads from `src/routes/` into
    the `(app)` route group, leaving the root layout presentation-only.
-2. Add a neutral `/offline` route outside `(app)` that has no server data and is
-   safe to prerender/cache.
+2. Add a neutral `/offline-shell` route outside `(app)` that has no server data
+   and is safe to prerender/cache. Keep the user-facing `/offline` manager in
+   `(app)` so it receives the real shared layout and identity.
 3. Precache that document plus `build` and the deliberately selected files from
    `static` using `$service-worker`.
 4. Use cache-first only for versioned build/static assets. Use network-first for
@@ -518,10 +520,12 @@ placement sets and atomic batch sync; neither requires a new local database.
 | `endSession` | append a session-finish operation after prior session operations |
 | Coach work thread | disabled with an explicit offline explanation in v1 |
 
-`/offline` manages and launches packages; it is not the long-term trainer
-surface. An explicit package launch opens `/practice` with package identity in
-the route. That route must have a credential-free offline boot path and restore
-the bound package/session from IndexedDB without caching personalized SSR data.
+`/offline` manages packages; it is not the long-term trainer surface. An
+explicit package launch opens `/practice` with package identity in the route.
+A normal local-mode Practice launch resolves a lone compatible package
+automatically and shows an in-Practice chooser only when several are available.
+The route must have a credential-free offline boot path and restore the bound
+package/session from IndexedDB without caching personalized SSR data.
 
 The overloaded `choices` rule does not change offline. Every rendering/context
 path gates options through `isMultipleChoice()`. A free-response answer key is
@@ -726,8 +730,8 @@ finished transcript is lost on reload.
 ### Before shell work
 
 - Move the authenticated root server/universal load behavior into `(app)`, keep
-  the root layout presentation-only, and prerender `/offline` outside `(app)` as
-  specified in the contracts document. Give `(splash)` its own anonymous
+  the root layout presentation-only, and prerender `/offline-shell` outside
+  `(app)` as specified in the contracts document. Give `(splash)` its own anonymous
   Supabase client for the public welcome count; it must not inherit app auth
   data merely because the old root client did both jobs.
 - Add Playwright with Chromium and WebKit projects. The v1 release gate is
@@ -785,7 +789,7 @@ browser suite is an additional gate, not a replacement.
 |---|---|---|---|
 | 0 | Revise design and settle v1 boundary | **complete** | this document reflects code-path review |
 | 1 | Self-host KaTeX and Material Symbols; update subset script/tests | **complete** | no critical CDN request; subset test passes |
-| 2 | Production browser harness + credential-free `/offline` route/load relocation | **complete** | offline reload/account tests pass |
+| 2 | Production browser harness + credential-free `/offline-shell` route/load relocation | **complete** | offline reload/account tests pass |
 | 3 | Minimal service worker for versioned assets and navigation fallback | **complete** | no personalized response enters CacheStorage |
 | 4 | Versioned normalized IndexedDB repository, package membership, shared personal state, and connectivity state | **complete** | migration/quota/atomicity/overlap tests pass |
 | 5 | Complete paginated scope materialization, staged package install/refresh, dedicated first-slice session, and download UI | **complete** | resolver-contract, completeness, revision, limit, and payload tests pass |
@@ -796,7 +800,7 @@ browser suite is an additional gate, not a replacement.
 | 9 | Advisory checkout and conflict reporting | **folded into 5, 7, and 8; no independent slice** | checkout provenance, overlap response, and UI disclosure ship with their owning paths |
 | 10 | List/skipped/mixed/test/review consumers or local Coach expansion | deferred | each requires its remaining mode-specific policy and tests, not a new package store |
 
-A failed navigation to any other app route recovers through `/offline`, and no
+A failed navigation to any other app route recovers through `/offline-shell`, and no
 slice above changes that. Making those routes boot their own frame offline,
 serving catalog reads from the downloaded package, and giving the user a visible
 offline mode are proposed separately in
@@ -829,8 +833,9 @@ halves of slices 5 and 8:
   eligibility, seeded and nearest-rating ordering, `not_downloaded` vs.
   `exhausted`) and the snapshot-plus-overlay state are implemented and contract
   tested. `TrainerDataSource` now supplies the single online/offline domain seam.
-  `/practice?offlinePackage=...` opens the dedicated session in the shared
-  Practice presentation, resumes its current problem, grades
+  `/practice?offlinePackage=...` remains a compatibility route for a package's
+  dedicated session. Normal local `/practice` creates or resumes a browser-owned
+  session across all ready packages, grades
   and records New-mode answers/skips, shares mastery/engagement overrides, limits
   Back to the local run, and disables Coach/network links with an explanation.
   Adaptive selection uses a seeded tie-break and a runtime-only shadow advanced
@@ -850,7 +855,8 @@ halves of slices 5 and 8:
 
 Where things live: `src/lib/offline/` (contracts, parsers, checksums, schema,
 storage backends, repository, query engine, overlay, media, fixtures),
-`src/service-worker.ts`, `src/routes/offline/`, `scripts/vendor-assets.ts`, and
+`src/service-worker.ts`, `src/routes/(app)/offline/`,
+`src/routes/offline-shell/`, `scripts/vendor-assets.ts`, and
 the Playwright harness in `playwright.config.ts` / `e2e/`.
 
 No UI for a later slice should ship ahead of its persistence and recovery path.

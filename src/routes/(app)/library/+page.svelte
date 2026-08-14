@@ -13,6 +13,7 @@
         fetchTests,
         fetchProblems,
         fetchAllSeries,
+        LocalCatalogUnavailable,
         topicLabel,
         PAGE_SIZE,
         type Filters as FilterValues,
@@ -24,6 +25,7 @@
     import { LibraryStore } from "$lib/state/library.svelte";
     import Filters from "./Filters.svelte";
     import ResultList from "./ResultList.svelte";
+    import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase } = $derived(data);
@@ -149,7 +151,9 @@
     let loadingMore = $state(false);
     let hasMore = $state(false);
     let errorMsg = $state<string | null>(null);
+    let errorRetryable = $state(true);
     let queryKey = $state(0);
+    let retryKey = $state(0);
 
     // Latest-loaded page index and a token that discards stale responses.
     let page = 0;
@@ -224,6 +228,8 @@
 
     $effect(() => {
         const frame = store.current;
+        const readMode = offlineMode.effective;
+        retryKey;
         const level = frame.level;
         const snapshot = $state.snapshot(frame.filters);
 
@@ -244,9 +250,14 @@
                     page = 0;
                     hasMore = data.length === PAGE_SIZE;
                     errorMsg = null;
+                    errorRetryable = true;
                 }
             } catch (error) {
-                if (myToken === token) errorMsg = (error as Error).message;
+                if (myToken === token) {
+                    if (readMode === "online") offlineMode.noteRemoteFailure();
+                    errorMsg = (error as Error).message;
+                    errorRetryable = !(error instanceof LocalCatalogUnavailable);
+                }
             } finally {
                 if (myToken === token) loading = false;
             }
@@ -335,6 +346,13 @@
         description="Search the collection, explore competition archives, and choose what to practice next."
         class="mb-8"
     />
+
+    {#if offlineMode.lastLocalRead || offlineMode.effective === "local"}
+        <div class="mb-4 rounded-lg border border-border bg-surface-container-low px-4 py-3 type-secondary" role="status">
+            <span class="font-medium">Showing downloaded content.</span>
+            Results, counts, rating filters, and empty states describe this device’s downloaded subset; ratings are frozen at download time.
+        </div>
+    {/if}
 
     <Page.Toolbar
         sticky
@@ -500,6 +518,7 @@
                         isInstantFeedback
                         onEndReached={!loading && hasMore ? loadMore : undefined}
                         resetKey={queryKey}
+                        onRetry={errorRetryable ? () => (retryKey += 1) : undefined}
                     />
                 {/key}
 

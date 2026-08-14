@@ -1,7 +1,7 @@
 <!--
   The root layout is presentation-only, and must stay that way. Its data would
   be attached to every document in the app — including the credential-free
-  `/offline` entry the service worker caches — so the authenticated session /
+  `/offline-shell` entry the service worker caches — so the authenticated session /
   profile load lives under `(app)` instead (`docs/offline.md` §3a).
 -->
 <script lang="ts">

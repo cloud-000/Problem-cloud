@@ -18,6 +18,7 @@ import {
 } from "./fixtures";
 import { STORE } from "./schema";
 import type { PracticeQueryV1, OfflineSyncResponseV1 } from "./types";
+import { defaultPracticeSettings } from "$lib/trainer";
 
 const USER = fixtureUuid("user-a");
 const OTHER_USER = fixtureUuid("user-b");
@@ -50,6 +51,7 @@ async function geometryPackage(overrides = {}): Promise<FixturePackage> {
 function newQuery(overrides: Partial<PracticeQueryV1> = {}): PracticeQueryV1 {
     return {
         version: 1,
+        intent: "practice-new",
         userId: USER,
         packageIds: [],
         sessionId: 1,
@@ -74,6 +76,28 @@ function newQuery(overrides: Partial<PracticeQueryV1> = {}): PracticeQueryV1 {
 
 beforeEach(() => {
     repository = makeRepository();
+});
+
+describe("package-independent local sessions", () => {
+    test("allocates durable route ids without borrowing a package session", async () => {
+        await repository.setActiveUser(USER);
+        const first = await repository.createLocalSession(USER, {
+            name: "Mixed download practice",
+            settings: defaultPracticeSettings(),
+        });
+        const second = await repository.createLocalSession(USER, {
+            name: null,
+            settings: defaultPracticeSettings(),
+            isRoot: true,
+        });
+
+        expect([first.id, second.id]).toEqual([-1, -2]);
+        expect((await repository.loadSession(USER, first.id))?.packageId).toBeNull();
+        expect((await repository.loadSession(USER, first.id))?.clientSessionId).toBeDefined();
+        expect(new Set((await repository.listLocalSessions(USER)).map((row) => row.id))).toEqual(
+            new Set([first.id, second.id]),
+        );
+    });
 });
 
 describe("claiming the local account", () => {

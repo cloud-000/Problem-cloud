@@ -52,6 +52,7 @@ import type {
     OfflinePracticeProblemV1,
     PracticeQueryV1,
 } from "$lib/offline/types";
+import { BROWSE_INTENT } from "$lib/offline/types";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -342,25 +343,74 @@ export function createOfflineTrainerDataSource(input: {
     repository: OfflineRepository;
     manifest: OfflinePackageManifestV1;
 }): TrainerDataSource {
-    const { repository, manifest } = input;
-    const identity = {
-        userId: manifest.userId,
-        packageId: manifest.packageId,
-        checkoutId: manifest.checkoutId,
-        sessionId: manifest.sessionId,
-    };
+    return createDownloadedTrainerDataSource({
+        repository: input.repository,
+        manifests: [input.manifest],
+        sessionId: input.manifest.sessionId,
+    });
+}
+
+/** Normal local Practice: packets are storage provenance, not a user-facing catalog. */
+export function createDownloadedTrainerDataSource(input: {
+    repository: OfflineRepository;
+    manifests: OfflinePackageManifestV1[];
+    sessionId: number;
+}): TrainerDataSource {
+    const { repository, manifests, sessionId } = input;
+    const editableSettings = sessionId < 0;
+    const manifest = manifests[0];
+    if (!manifest) throw new Error("No downloaded practice is ready.");
+    const manifestsById = new Map(manifests.map((item) => [item.packageId, item]));
+    let catalogPlacements: OfflinePracticeProblemV1["placements"] | null = null;
+
+    async function placements() {
+        if (catalogPlacements) return catalogPlacements;
+        const result = await repository.browseProblems({
+            version: 1,
+            intent: BROWSE_INTENT,
+            userId: manifest.userId,
+            packageIds: manifests.map((item) => item.packageId),
+            filters: {},
+            offset: 0,
+            limit: Number.MAX_SAFE_INTEGER,
+        });
+        catalogPlacements = result.status === "ok"
+            ? result.problems.map((item) => item.placement)
+            : [];
+        return catalogPlacements;
+    }
+
+    async function identity(problemId?: number) {
+        const loaded = await repository.loadSession(manifest.userId, sessionId);
+        if (!loaded) throw new Error("Downloaded practice session not found.");
+        let source = manifest;
+        if (problemId != null) {
+            const found = await entry(problemId);
+            const sourceId = found?.sourcePackageIds[0];
+            if (sourceId) source = manifestsById.get(sourceId) ?? source;
+        }
+        return {
+            userId: manifest.userId,
+            packageId: source.packageId,
+            checkoutId: source.checkoutId,
+            sessionId,
+            clientSessionId: loaded.clientSessionId,
+        };
+    }
 
     async function entry(problemId: number): Promise<OfflinePracticeProblemV1 | null> {
         return repository.getProblem({
             userId: manifest.userId,
-            packageIds: [manifest.packageId],
+            packageIds: manifests.map((item) => item.packageId),
             canonicalId: problemId,
         });
     }
 
     return {
         kind: "offline",
-        capabilities: OFFLINE_TRAINER_CAPABILITIES,
+        capabilities: editableSettings
+            ? Object.freeze({ ...OFFLINE_TRAINER_CAPABILITIES, settings: true })
+            : OFFLINE_TRAINER_CAPABILITIES,
         async queryProblems({ settings, session, ratingCenter }) {
             if (settings.mode !== "new" || settings.format !== "practice") {
                 throw new Error("Downloaded practice currently supports New mode only.");
@@ -369,9 +419,10 @@ export function createOfflineTrainerDataSource(input: {
             const range = settings.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT;
             const query = {
                 version: 1,
+                intent: "practice-new",
                 userId: manifest.userId,
-                packageIds: [manifest.packageId],
-                sessionId: manifest.sessionId,
+                packageIds: manifests.map((item) => item.packageId),
+                sessionId,
                 mode: "new",
                 filters: {
                     topic: [...settings.topic],
@@ -397,12 +448,12 @@ export function createOfflineTrainerDataSource(input: {
                 order: adaptive
                     ? {
                           kind: "nearest-rating",
-                          seed: `${manifest.packageRevision}:${manifest.sessionId}`,
+                          seed: `${manifests.map((item) => item.packageRevision).join(":")}:${sessionId}`,
                           ratingCenter,
                       }
                     : {
                           kind: "seeded-random",
-                          seed: `${manifest.packageRevision}:${manifest.sessionId}`,
+                          seed: `${manifests.map((item) => item.packageRevision).join(":")}:${sessionId}`,
                           ratingCenter: null,
                       },
                 limit: 1,
@@ -443,18 +494,32 @@ export function createOfflineTrainerDataSource(input: {
         async getEffectiveProgress(problemId) {
             return (await entry(problemId))?.progress ?? null;
         },
-        getPlayerRating: () => repository.getPlayerRating(manifest.userId, manifest.sessionId),
+        getPlayerRating: () => repository.getPlayerRating(manifest.userId, sessionId),
         async loadSession() {
-            return repository.loadSession(manifest.userId, manifest.sessionId);
+            return repository.loadSession(manifest.userId, sessionId);
         },
         async getSeriesOptions() {
-            return [];
+            const found = new Map<string, string>();
+            for (const placement of await placements()) {
+                if (placement.series) {
+                    found.set(String(placement.series.id), placement.series.name);
+                }
+            }
+            return [...found].map(([value, label]) => ({ value, label }))
+                .sort((a, b) => a.label.localeCompare(b.label));
         },
-        async getSeriesDimensions() {
-            return [];
+        async getSeriesDimensions(seriesId) {
+            return (await placements())
+                .filter((placement) => placement.series?.id === seriesId)
+                .map((placement) => ({
+                    division: placement.test?.division ?? null,
+                    division_order: null,
+                    format: placement.test?.format ?? null,
+                    format_order: null,
+                }));
         },
         async getSessionProblemIds() {
-            const loaded = await repository.loadSession(manifest.userId, manifest.sessionId);
+            const loaded = await repository.loadSession(manifest.userId, sessionId);
             return loaded?.localSubmissions.map((submission) => submission.canonicalId) ?? [];
         },
         async getOlderSubmission() {
@@ -469,12 +534,15 @@ export function createOfflineTrainerDataSource(input: {
         async recordTestSubmissions() {
             throw new Error("Tests are unavailable in downloaded practice.");
         },
-        async updateSettings() {
-            throw new Error("Offline practice settings are fixed to the downloaded session.");
+        async updateSettings(settings) {
+            if (!editableSettings) {
+                throw new Error("Legacy downloaded-session settings are fixed.");
+            }
+            await repository.updateSessionSettings(manifest.userId, sessionId, settings);
         },
         async recordSubmission(submission) {
             const local = await repository.recordSubmission({
-                ...identity,
+                ...(await identity(submission.problemId)),
                 canonicalId: submission.problemId,
                 selectedChoice: submission.selectedChoice,
                 answer: submission.answer ?? null,
@@ -488,7 +556,7 @@ export function createOfflineTrainerDataSource(input: {
         },
         async setMastery(problemId, mastery, dependsOn) {
             await repository.setMastery({
-                ...identity,
+                ...(await identity(problemId)),
                 canonicalId: problemId,
                 mastery,
                 dependsOn,
@@ -496,7 +564,7 @@ export function createOfflineTrainerDataSource(input: {
         },
         async setEngagement(problemId, engagement, dependsOn) {
             await repository.setEngagement({
-                ...identity,
+                ...(await identity(problemId)),
                 canonicalId: problemId,
                 engagement,
                 dependsOn,
@@ -505,19 +573,20 @@ export function createOfflineTrainerDataSource(input: {
         async setCurrentProblem(problemId, elapsedMs) {
             await repository.setCurrentProblem({
                 userId: manifest.userId,
-                sessionId: manifest.sessionId,
+                sessionId,
                 canonicalId: problemId,
                 elapsedMs,
             });
         },
         async finishSession() {
-            await repository.finishSession(identity);
+            await repository.finishSession(await identity());
         },
         async syncVersion() {
-            const current = (await repository.listPackages(manifest.userId)).find(
-                (item) => item.packageId === manifest.packageId,
-            );
-            return current?.lastSyncedAt ?? null;
+            return (await repository.listPackages(manifest.userId))
+                .map((item) => item.lastSyncedAt)
+                .filter((value): value is string => value != null)
+                .sort()
+                .at(-1) ?? null;
         },
     };
 }

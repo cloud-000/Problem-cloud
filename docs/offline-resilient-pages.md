@@ -1,14 +1,16 @@
 # Offline-Resilient Pages
 
 > [!NOTE]
-> This document is a proposal and is not scheduled. Three things are proposed and
+> This document describes the implemented offline-resilient direction. Three
+> pieces have different costs:
 > they have very different costs: **offline-resilient presentation** (§3–§5, §8),
 > which shows a real page frame instead of the browser's error page; **local
 > reads** (§6), which serve catalog queries from the problems already downloaded
 > into IndexedDB; and an **explicit offline mode** (§7) the user can see and set.
 > Only §6 extends the shipped data contract, and only in the part §6c names; §12
 > is how its filters are kept honest.
-> Downloaded Practice remains explicitly package-bound and is untouched. The
+> Normal local Practice treats all ready downloaded packages as one catalog;
+> package identity remains hidden checkout provenance for writes and sync. The
 > contracts themselves stay in [`offline.md`](./offline.md) and
 > [`offline-contracts.md`](./offline-contracts.md); where this document restates
 > one, those files win.
@@ -31,10 +33,12 @@ honesty budget of this feature.
 
 ## 2. Product boundary
 
-- `/offline` remains the credential-free package manager and recovery entry.
-- `/practice?offlinePackage=<packageId>` remains the only offline-capable
-  Practice source. It must verify and bind one local account, ready package,
-  checkout, and dedicated package session.
+- `/offline` is the authenticated package manager in `(app)`. The internal
+  `/offline-shell` route is the credential-free recovery document cached by the
+  service worker; both render the same local presentation.
+- Downloaded Practice verifies one local account and at least one ready package.
+  A normal local-mode `/practice` session draws from their union. An explicit
+  `/practice?offlinePackage=<packageId>` remains a legacy compatibility route.
 - An ordinary online Practice session that loses connectivity reports an
   offline/retry state. It never changes to a downloaded source implicitly.
 - **Catalog reads may be served from the local package** under §6, labeled as the
@@ -93,7 +97,7 @@ fails in the loads, producing an error page instead of a frame.
 
 So a fallback document can carry the requested URL only once that route can
 actually boot without its server data. Until then the honest options are the
-current rewrite, or the pattern `/offline-practice-shell` already uses: boot at
+current rewrite, or the pattern `/offline-shell` uses: boot at
 the cached document's path, then `history.replaceState` the requested URL back
 after the page has bound its local state. The worker already passes the original
 URL to the document as `__pcOfflineRequestedUrl`, so the second option needs no
@@ -448,7 +452,7 @@ That leaves two options, and this proposal takes the second:
 2. **Put the neutral frame outside `(app)`** — a prerendered, `ssr = false` route
    that imports the shared layout *components* and picks a presentation. Online
    SSR, `safeGetSession`, and `authGuard` are untouched. This is not a new idea:
-   `/offline` and `/offline-practice-shell` are both already exactly this. See
+   `/offline-shell` is already exactly this. See
    §8c — the right move is to have **one** of them, not a third.
 
 Option 2 is what makes §8 and §10 consistent, and it is why the fallback renders
@@ -531,17 +535,16 @@ worker is a list that drifts the first time a route is added.
 
 A "shell" here is **a blank HTML file**. It holds no trainer, no Library, no
 duplicate UI — it is a prerendered document with no server data, whose only job
-is to be cacheable and then start the app. `/offline-practice-shell` is not a
-second trainer; the duplicate trainer was deleted in the practice migration. It
-is an empty page that boots the *normal* trainer.
+is to be cacheable and then start the app. `/offline-shell` is not a second app;
+it boots the shared local presentation without authenticated server data.
 
 Two of these files exist today, and they differ only in what they show after
 booting:
 
 | Document | Shows after boot |
 |---|---|
-| `/offline` | the package manager |
-| `/offline-practice-shell` | the normal trainer, bound to a package |
+| `/offline` | the authenticated package manager |
+| `/offline-shell` | the credential-free recovery document |
 
 Adding a third for Library would be the mistake. **The correct end state is one
 document.** It reads `__pcOfflineRequestedUrl`, decides which presentation the
@@ -559,8 +562,9 @@ allowlisted navigation and stops needing to know what Practice is. The same
 mapping that drives the allowlist (§8b) drives the presentation switch — one
 declaration, two consumers.
 
-The migration is ordinary: build the presentation switch inside `/offline`, move
-the practice boot into it, then delete `/offline-practice-shell` and the worker's
+The migration is ordinary: build the presentation switch in the shared offline
+component, render it from `/offline` and `/offline-shell`, then delete
+`/offline-practice-shell` and the worker's
 branch. Do it **before** Library becomes a presentation, so the third document
 never exists.
 
@@ -595,8 +599,8 @@ A production-browser suite should prove, at minimum:
 - normal online behavior and authenticated SSR remain unchanged;
 - ordinary online Practice never falls through to downloaded Practice, **and
   toggling the §7 switch mid-session does not change a mounted session's source**;
-- explicit downloaded Practice remains package-bound and works through its
-  existing repository contract;
+- normal downloaded Practice draws across ready packages while each write keeps
+  the checkout provenance of the package that supplied its problem;
 - the `downloaded-only` preference survives a reload while offline and is never
   written to the server;
 - unsupported actions cannot be entered accidentally;
@@ -633,7 +637,7 @@ Step 1 stands alone because it delivers most of the presentation value at a
 fraction of the cost. Steps 2–3 are cheap and independently useful. Steps 4–7 are
 the real work, and they are contract work with a UI at the end.
 
-1. **Route-aware recovery copy, no new shell.** Keep `/offline` as the returned
+1. **Route-aware recovery copy, one internal shell.** Keep `/offline-shell` as the returned
    document. Read the requested URL the worker already passes as
    `__pcOfflineRequestedUrl`, name the unreachable area in the copy, keep the
    Downloaded Practice launcher in view, and restore the requested URL per §3a.

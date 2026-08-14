@@ -141,7 +141,7 @@ export const parsePracticeSessionRow: p.Parser<PracticeSessionRow> = ((
 
 // --- Package creation --------------------------------------------------------
 
-const parsePracticeSettings = ((value: unknown, path = "") => {
+export const parsePracticeSettings = ((value: unknown, path = "") => {
     const settings = p.objectOf<{ mode: string; format: string }>({
         mode: p.string,
         format: p.string,
@@ -363,6 +363,7 @@ export function countsAgree(page: OfflinePackagePageV1): boolean {
 export const parsePracticeQuery: p.Parser<PracticeQueryV1> =
     p.objectOf<PracticeQueryV1>({
         version: p.literal(1),
+        intent: p.literal("practice-new"),
         userId: p.uuid,
         packageIds: p.arrayOf(p.uuid),
         sessionId: p.nullable(p.integer),
@@ -406,6 +407,7 @@ const operationBase = {
     checkoutId: p.uuid,
     packageId: p.uuid,
     sessionId: p.integer,
+    clientSessionId: p.optional(p.uuid),
     sequence: p.nonNegativeInteger,
     runtimeId: p.uuid,
     monotonicOffsetMs: p.finiteNumber,
@@ -466,6 +468,14 @@ export const parseSyncRequest: p.Parser<OfflineSyncRequestV1> =
         checkoutId: p.uuid,
         packageId: p.uuid,
         packageRevision: p.nonEmptyString,
+        clientSession: p.optional(
+            p.objectOf<NonNullable<OfflineSyncRequestV1["clientSession"]>>({
+                clientSessionId: p.uuid,
+                name: p.nullable(p.string),
+                settings: parsePracticeSettings,
+                startedAt: p.isoInstant,
+            }),
+        ),
         operations: p.arrayOf(parseOperation, { max: SYNC_MAX_OPERATIONS }),
     });
 
@@ -474,6 +484,7 @@ export const parseSyncResponse: p.Parser<OfflineSyncResponseV1> =
         version: p.literal(1),
         status: p.literal("applied"),
         checkoutId: p.uuid,
+        clientSessionId: p.optional(p.uuid),
         acknowledgedOperationIds: p.arrayOf(p.uuid),
         submissions: p.arrayOf(
             p.objectOf<OfflineSyncResponseV1["submissions"][number]>({
