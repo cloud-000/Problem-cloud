@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(32);
+select extensions.plan(35);
 
 select extensions.ok(not has_table_privilege('anon', 'public.offline_checkouts', 'TRUNCATE'),
   'anonymous callers cannot mutate checkout provenance');
@@ -56,8 +56,13 @@ select extensions.is((select value->>'problemCount' from package_result), '1',
   'materialization resolves a duplicated problem through its alias placement');
 select extensions.is((select value->>'placementCount' from package_result), '2',
   'the package preserves every placement for its resolved canonical');
-select extensions.is((select value->'baseState'->'session'->'settings'->>'mode' from package_result), 'new',
-  'creation captures the dedicated New/practice session snapshot');
+select extensions.ok((select value->'baseState'->'session' from package_result) = 'null'::jsonb,
+  'new packages do not mint a hub-visible practice session');
+select extensions.ok((select value->>'sessionId' from package_result) is null,
+  'new packages have no dedicated session id');
+select extensions.is((select count(*) from public.practice_sessions
+  where user_id = '00000000-0000-0000-0000-000000094001' and not is_root), 0::bigint,
+  'package creation does not insert a practice session');
 select extensions.is((select count(*) from public.offline_package_pages), 1::bigint,
   'phase one stores immutable logical page records');
 
@@ -206,7 +211,8 @@ insert into local_session_sync select public.offline_sync_v1(
 select extensions.is((select value->>'clientSessionId' from local_session_sync),
   '70000000-0000-0000-0000-000000094001',
   'sync returns the browser-owned session identity');
-select extensions.ok((select m.session_id <> c.session_id
+select extensions.ok((select m.session_id is not null
+    and c.session_id is distinct from m.session_id
   from public.offline_client_sessions m cross join public.offline_checkouts c
   where m.client_session_id = '70000000-0000-0000-0000-000000094001'),
   'a local session maps to one server session independent of the package session');
@@ -215,6 +221,11 @@ select extensions.is((select s.session_id from public.submissions s
   (select session_id from public.offline_client_sessions
     where client_session_id = '70000000-0000-0000-0000-000000094001'),
   'the local submission is filed into the mapped server session');
+select extensions.lives_ok(
+  $$delete from public.practice_sessions
+    where id = (select session_id from public.offline_client_sessions
+      where client_session_id = '70000000-0000-0000-0000-000000094001')$$,
+  'a synced local session can be deleted by its owner');
 
 select extensions.throws_ok(
   $$select public.offline_sync_v1(

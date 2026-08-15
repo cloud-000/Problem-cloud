@@ -60,7 +60,8 @@ export type OfflinePackageCreateRequestV1 = {
 
 export type OfflinePackageBaseStateV1 = {
     playerRating: PlayerRating | null;
-    session: PracticeSessionRow;
+    /** Null for new packages; present only when refreshing a leftover dedicated session. */
+    session: PracticeSessionRow | null;
 };
 
 export type OfflinePackageCreatedV1 = {
@@ -68,7 +69,8 @@ export type OfflinePackageCreatedV1 = {
     packageId: UUID;
     requestId: UUID;
     checkoutId: UUID;
-    sessionId: number;
+    /** Null for new packages; a leftover dedicated session id on refresh. */
+    sessionId: number | null;
     normalizedScope: OfflineScope;
     contentRevision: string;
     packageRevision: string;
@@ -218,7 +220,7 @@ export type OfflinePackageManifestV1 = {
     packageRevision: string;
     requestId: UUID;
     checkoutId: UUID;
-    sessionId: number;
+    sessionId: number | null;
     personalStateAt: ISOInstant;
     downloadedAt: ISOInstant;
     /** Schema version the records were written under; see `schema.ts`. */
@@ -586,7 +588,16 @@ export interface OfflinePracticeRepositoryV1 extends OfflinePackageInstaller {
         settings: PracticeSettings;
         isRoot?: boolean;
     }): Promise<PracticeSessionRow>;
+    getOrCreateLocalRootSession(
+        userId: UUID,
+        settings?: PracticeSettings,
+    ): Promise<PracticeSessionRow>;
     listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]>;
+    deleteLocalSession(
+        userId: UUID,
+        sessionId: number,
+        options?: { discardPending?: boolean },
+    ): Promise<{ serverSessionId: number | null }>;
     loadSession(userId: UUID, sessionId: number): Promise<OfflineSessionV1 | null>;
     updateSessionSettings(
         userId: UUID,

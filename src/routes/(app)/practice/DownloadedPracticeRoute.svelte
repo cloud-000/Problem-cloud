@@ -6,8 +6,7 @@
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
     import { offlineRepository } from "$lib/offline/browser";
-    import type { OfflinePackageManifestV1 } from "$lib/offline/types";
-    import type { PracticeSessionRow } from "$lib/sessions";
+    import { deleteSession, type PracticeSessionRow } from "$lib/sessions";
     import { createDownloadedTrainerDataSource } from "$lib/trainer-data-source";
     import { defaultPracticeSettings } from "$lib/trainer";
     import type { PageData } from "./$types";
@@ -53,6 +52,50 @@
         }
     }
 
+    async function practiceFreely() {
+        if (view.kind !== "landing" || starting) return;
+        starting = true;
+        try {
+            const repository = await offlineRepository();
+            await repository.getOrCreateLocalRootSession(
+                view.userId,
+                defaultPracticeSettings(),
+            );
+            await goto(resolve("/practice?session=root" as "/practice"));
+        } finally {
+            starting = false;
+        }
+    }
+
+    async function removeSession(session: PracticeSessionRow) {
+        if (view.kind !== "landing" || starting) return;
+        if (
+            !window.confirm(
+                "Delete this session? Synced answers stay in your history.",
+            )
+        ) {
+            return;
+        }
+        starting = true;
+        try {
+            const repository = await offlineRepository();
+            const { serverSessionId } = await repository.deleteLocalSession(
+                view.userId,
+                session.id,
+                { discardPending: true },
+            );
+            if (serverSessionId != null && data.supabase) {
+                await deleteSession(data.supabase, serverSessionId).catch(() => undefined);
+            }
+            view = {
+                ...view,
+                sessions: await repository.listLocalSessions(view.userId),
+            };
+        } finally {
+            starting = false;
+        }
+    }
+
     onMount(async () => {
         try {
             const repository = await offlineRepository();
@@ -75,7 +118,12 @@
             }
 
             if (requestedSessionId != null) {
-                const sessionId = Number(requestedSessionId);
+                const sessionId = requestedSessionId === "root"
+                    ? (await repository.getOrCreateLocalRootSession(
+                        marker.userId,
+                        defaultPracticeSettings(),
+                    )).id
+                    : Number(requestedSessionId);
                 const session = Number.isInteger(sessionId)
                     ? await repository.loadSession(marker.userId, sessionId)
                     : null;
@@ -157,7 +205,7 @@
             <Button disabled={starting} onclick={() => start(name)}>
                 {starting ? "Starting…" : "Start session"}
             </Button>
-            <Button variant="outline" disabled={starting} onclick={() => start("Practice freely")}>
+            <Button variant="outline" disabled={starting} onclick={practiceFreely}>
                 Practice freely
             </Button>
         </div>
@@ -167,10 +215,20 @@
                 {#each view.sessions as session (session.id)}
                     <li class="flex items-center justify-between gap-md rounded-lg border border-border bg-surface-container-lowest p-md">
                         <div>
-                            <p class="font-medium">{session.name || (session.is_root ? "Practice freely" : "Practice session")}</p>
+                            <p class="font-medium">{session.name || "Practice session"}</p>
                             <p class="mt-1 type-caption text-muted-foreground">{session.times_seen} problems seen</p>
                         </div>
-                        <Button size="sm" href={`/practice?session=${session.id}`}>Continue</Button>
+                        <div class="flex shrink-0 gap-2">
+                            <Button size="sm" href={`/practice?session=${session.id}`}>Continue</Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={starting}
+                                onclick={() => removeSession(session)}
+                            >
+                                Delete
+                            </Button>
+                        </div>
                     </li>
                 {/each}
             </ul>

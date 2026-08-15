@@ -126,7 +126,7 @@ describe("offline trainer data source", () => {
     test("runs New mode and resumes the dedicated local session", async () => {
         const { source, manifest } = await ready();
         const loaded = await source.loadSession();
-        expect(loaded?.row.id).toBe(manifest.sessionId);
+        expect(loaded?.row.id).toBe(manifest.sessionId!);
 
         const result = await source.queryProblems({
             settings: defaultPracticeSettings(),
@@ -155,7 +155,7 @@ describe("offline trainer data source", () => {
             flagged: false,
             elapsedMs: 900,
             source: "practice",
-            sessionId: manifest.sessionId,
+            sessionId: manifest.sessionId!,
             triesUsed: 0,
         });
         expect(recorded.submissionId).toBeNull();
@@ -203,7 +203,7 @@ describe("offline trainer data source", () => {
             flagged: false,
             elapsedMs: 1500,
             source: "practice",
-            sessionId: manifest.sessionId,
+            sessionId: manifest.sessionId!,
             triesUsed: 0,
         });
         await rebound.source.setEngagement(

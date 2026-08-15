@@ -222,7 +222,7 @@ export type PackageRevisionRecord = {
     packageRevision: string;
     contentRevision: string;
     scope: OfflineScope;
-    sessionId: number;
+    sessionId: number | null;
     personalStateAt: string;
     downloadedAt: string;
     problemCount: number;
@@ -361,6 +361,8 @@ export const META = {
     sequence: (userId: UUID) => `sequence:${userId}`,
     /** Per-user decreasing local session id allocator (-1, -2, ...). */
     localSessionSequence: (userId: UUID) => `localSessionSequence:${userId}`,
+    /** Frozen player rating from the latest committed package snapshot. */
+    playerRating: (userId: UUID) => `playerRating:${userId}`,
     /** This runtime's id, for durable ordering within a browser session. */
     runtime: "runtime",
     deviceId: "deviceId",

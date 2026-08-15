@@ -94,9 +94,48 @@ describe("package-independent local sessions", () => {
         expect([first.id, second.id]).toEqual([-1, -2]);
         expect((await repository.loadSession(USER, first.id))?.packageId).toBeNull();
         expect((await repository.loadSession(USER, first.id))?.clientSessionId).toBeDefined();
-        expect(new Set((await repository.listLocalSessions(USER)).map((row) => row.id))).toEqual(
-            new Set([first.id, second.id]),
-        );
+        expect((await repository.listLocalSessions(USER)).map((row) => row.id)).toEqual([first.id]);
+        expect((await repository.getOrCreateLocalRootSession(USER)).id).toBe(second.id);
+    });
+
+    test("deletes a local session and discards its pending work", async () => {
+        await repository.setActiveUser(USER);
+        const fixture = await buildFixturePackage({
+            userId: USER,
+            scope: GEOMETRY_SCOPE,
+            problems: geometryFixtureProblems(),
+            sessionId: null,
+        });
+        await installFixturePackage(repository, fixture, USER);
+        expect((await repository.listPackages(USER))[0].sessionId).toBeNull();
+        const session = await repository.createLocalSession(USER, {
+            name: "Throwaway",
+            settings: defaultPracticeSettings(),
+        });
+        await repository.recordSubmission({
+            userId: USER,
+            packageId: fixture.created.packageId,
+            checkoutId: fixture.created.checkoutId,
+            sessionId: session.id,
+            clientSessionId: (await repository.loadSession(USER, session.id))!.clientSessionId,
+            canonicalId: fixture.pages[0].records.problems[0].canonicalId,
+            selectedChoice: 0,
+            answer: null,
+            isCorrect: true,
+            skipped: false,
+            flagged: false,
+            elapsedMs: 10,
+            triesUsed: 1,
+        });
+        expect((await repository.getPlayerRating(USER, session.id))?.rating).toBe(1200);
+
+        await expect(repository.deleteLocalSession(USER, session.id)).rejects.toThrow(/unsynced/);
+        await expect(
+            repository.deleteLocalSession(USER, session.id, { discardPending: true }),
+        ).resolves.toEqual({ serverSessionId: null });
+        expect(await repository.loadSession(USER, session.id)).toBeNull();
+        expect(await repository.listLocalSessions(USER)).toEqual([]);
+        expect(await repository.pendingOperations(USER, 10)).toEqual([]);
     });
 });
 
@@ -149,7 +188,7 @@ describe("staged installation", () => {
         );
         expect(result.status).toBe("package_unavailable");
         if (result.status === "package_unavailable") expect(result.reason).toBe("staging");
-        expect(await repository.loadSession(USER, fixture.created.sessionId)).toBeNull();
+        expect(await repository.loadSession(USER, fixture.created.sessionId!)).toBeNull();
     });
 
     test("re-staging the identical page is a no-op, not a duplicate", async () => {
@@ -250,7 +289,7 @@ describe("staged installation", () => {
         const [manifest] = await repository.listPackages(USER);
         expect(manifest.packageRevision).toBe(fixture.created.packageRevision);
         expect(manifest.problemCount).toBe(4);
-        expect((await repository.getPlayerRating(USER, manifest.sessionId))?.rating).toBe(1200);
+        expect((await repository.getPlayerRating(USER, manifest.sessionId!))?.rating).toBe(1200);
         const result = await repository.queryProblems(newQuery());
         expect(result.status).toBe("ok");
     });
@@ -596,7 +635,7 @@ describe("the outbox", () => {
             ],
             overlaps: [],
             authoritative: {
-                session: { ...fixture.base.session, times_seen: 1, times_correct: 1 },
+                session: { ...fixture.base.session!, times_seen: 1, times_correct: 1 },
                 playerRating: fixture.base.playerRating,
                 personalStates: [
                     {

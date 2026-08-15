@@ -85,7 +85,7 @@ export type FixtureSpec = {
     requestId?: string;
     packageRevision?: string;
     contentRevision?: string;
-    sessionId?: number;
+    sessionId?: number | null;
     scope: OfflineScope;
     problems: FixtureProblem[];
     /** Problems per page; small values exercise the multi-page install path. */
@@ -189,7 +189,7 @@ export async function buildFixturePackage(
     const requestId = spec.requestId ?? fixtureUuid("request");
     const packageRevision = spec.packageRevision ?? fixtureUuid("revision");
     const contentRevision = spec.contentRevision ?? fixtureUuid("content");
-    const sessionId = spec.sessionId ?? 1;
+    const sessionId = spec.sessionId === undefined ? 1 : spec.sessionId;
     const pageSize = spec.pageSize ?? 250;
     const downloadedAt = spec.downloadedAt ?? "2026-08-13T00:00:00.000Z";
 
@@ -287,7 +287,7 @@ export async function buildFixturePackage(
             matches: 12,
             last_match_at: downloadedAt,
         },
-        session: fixtureSession(spec.userId, sessionId),
+        session: sessionId == null ? null : fixtureSession(spec.userId, sessionId),
     };
     const created: OfflinePackageCreatedV1 = {
         version: 1,

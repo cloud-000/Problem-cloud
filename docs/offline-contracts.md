@@ -121,7 +121,8 @@ Validation rules:
 ```ts
 type OfflinePackageBaseStateV1 = {
     playerRating: PlayerRating | null;
-    session: PracticeSessionRow;
+    /** Null for new packages; present only when refreshing a leftover dedicated session. */
+    session: PracticeSessionRow | null;
 };
 ```
 
@@ -133,7 +134,8 @@ type OfflinePackageCreatedV1 = {
     packageId: UUID;
     requestId: UUID;
     checkoutId: UUID;
-    sessionId: number;
+    /** Null for new packages; a leftover dedicated session id on refresh. */
+    sessionId: number | null;
     normalizedScope: OfflineScope;
     contentRevision: string;
     packageRevision: string;
@@ -155,14 +157,16 @@ type OfflinePackageCreatedV1 = {
 ```
 
 The creation transaction creates or reselects the same package checkout for a
-retried `requestId`. Initial creation also creates the dedicated
-`practice_sessions` row; refresh validates and reuses the supplied owned
-session. It captures a stable package revision. Every subsequent page belongs
-to that exact revision; content changing during the download must not mix
-revisions.
+retried `requestId`. New packages do **not** mint a hub-visible
+`practice_sessions` row — Practice creates a browser-owned local session and
+sync maps it through `offline_client_sessions`. A non-null `session.sessionId`
+is reused only when refreshing a leftover dedicated session. It captures a
+stable package revision. Every subsequent page belongs to that exact revision;
+content changing during the download must not mix revisions.
 
-`baseState.session.id` must equal `sessionId`, belong to the authenticated user,
-and carry the accepted New/practice settings. The base state is stored with the
+When `sessionId` is present, `baseState.session.id` must equal it, belong to
+the authenticated user, and carry the accepted New/practice settings. When it
+is null, `baseState.session` is null. The base state is stored with the
 checkout so a retried creation response returns the identical snapshot.
 
 To make this promise real across separate HTTP requests, creation is a retryable
@@ -351,10 +355,11 @@ placement through which it can match.
 
 ### 2e. Player and session snapshot
 
-`OfflinePackageCreatedV1.baseState` is the frozen player rating and dedicated
-session captured by `packageRevision`. There is no separate metadata endpoint in
-v1. Keeping it in the creation response makes a retry self-contained and avoids
-a second wire shape.
+`OfflinePackageCreatedV1.baseState` is the frozen player rating and, when a
+leftover dedicated session is being refreshed, that session snapshot. New
+packages carry a rating and `session: null`. There is no separate metadata
+endpoint in v1. Keeping it in the creation response makes a retry self-contained
+and avoids a second wire shape.
 
 ---
 
@@ -652,7 +657,16 @@ interface OfflinePracticeRepositoryV1
         settings: PracticeSettings;
         isRoot?: boolean;
     }): Promise<PracticeSessionRow>;
+    getOrCreateLocalRootSession(
+        userId: UUID,
+        settings?: PracticeSettings,
+    ): Promise<PracticeSessionRow>;
     listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]>;
+    deleteLocalSession(
+        userId: UUID,
+        sessionId: number,
+        options?: { discardPending?: boolean },
+    ): Promise<{ serverSessionId: number | null }>;
     loadSession(userId: UUID, sessionId: number): Promise<OfflineSessionV1 | null>;
     setCurrentProblem(input: OfflineCurrentProblemInputV1): Promise<void>;
     recordSubmission(input: OfflineSubmissionInputV1): Promise<LocalSubmissionV1>;
@@ -1134,8 +1148,7 @@ contract.
 - Five-day staleness shows a warning and an online-only Refresh action but never
   blocks practice. Refresh retains the old ready revision until commit.
 - Delete is immediate only when the package has no pending operations. Otherwise
-  the user must sync first or explicitly discard the named session and pending
-  operation count.
+  the user must sync first or explicitly discard the pending operation count.
 - Coach, Discuss links, and other network-only actions are disabled with an
   offline explanation. Missing media is treated as package corruption, not as a
   silently incomplete problem.
@@ -1179,7 +1192,6 @@ service worker, real IndexedDB lifecycle, restart, auth recovery, and retry.
 ## 11. Deferred contract extensions
 
 - `yearRange` in the shared scope/editor contract;
-- offline-created practice sessions and local-to-server session identity;
 - List, Skipped, and Mixed query members;
 - Review scheduling and provisional SM-2 policy;
 - Test-mode ordered placements and atomic final submission;

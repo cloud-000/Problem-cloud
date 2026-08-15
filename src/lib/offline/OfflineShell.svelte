@@ -323,13 +323,22 @@
 
     async function refreshPackage(manifest: OfflinePackageManifestV1) {
         const repository = await offlineRepository();
-        const session = await repository.loadSession(manifest.userId, manifest.sessionId);
-        if (!session) return;
+        const session = manifest.sessionId != null
+            ? await repository.loadSession(manifest.userId, manifest.sessionId)
+            : null;
         try {
             await downloadOfflinePackage({
                 repository,
                 userId: manifest.userId,
-                session: session.row,
+                session: session?.row ?? {
+                    name: null,
+                    settings: {
+                        ...defaultPracticeSettings(),
+                        topic: [...manifest.scope.topic],
+                        seriesIds: [...manifest.scope.seriesIds],
+                        seriesScopes: manifest.scope.seriesScopes,
+                    },
+                },
                 packageId: manifest.packageId,
                 onProgress: (progress) => (action = { packageId: manifest.packageId, progress }),
                 confirm: async (created, bytes, persistent) => confirm(
@@ -343,7 +352,7 @@
 
     async function deletePackage(manifest: OfflinePackageManifestV1) {
         const warning = manifest.pendingOperations
-            ? `Discard session ${manifest.sessionId} and its ${manifest.pendingOperations} pending change(s)? This cannot be undone.`
+            ? `Discard this download and its ${manifest.pendingOperations} pending change(s)? This cannot be undone.`
             : `Delete this ${manifest.problemCount}-problem download?`;
         if (!confirm(warning)) return;
         const repository = await offlineRepository();
@@ -361,9 +370,12 @@
         // A document navigation lets the service worker choose the neutral
         // Practice shell when this package is launched without networking.
         // Client routing would ask for credentialed `__data.json` instead.
-        window.location.assign(
-            resolve(`/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}`),
-        );
+        // Packages that still have a leftover dedicated session keep the
+        // explicit selector; new downloads open ordinary local Practice.
+        const href = manifest.sessionId != null
+            ? (`/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}` as const)
+            : "/practice";
+        window.location.assign(resolve(href));
     }
 </script>
 

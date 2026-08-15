@@ -536,7 +536,7 @@ export type Database = {
           ready_at: string | null
           request_id: string
           scope: Json
-          session_id: number
+          session_id: number | null
           status: string
           user_id: string
         }
@@ -565,7 +565,7 @@ export type Database = {
           ready_at?: string | null
           request_id: string
           scope: Json
-          session_id: number
+          session_id?: number | null
           status: string
           user_id: string
         }
@@ -594,7 +594,7 @@ export type Database = {
           ready_at?: string | null
           request_id?: string
           scope?: Json
-          session_id?: number
+          session_id?: number | null
           status?: string
           user_id?: string
         }
@@ -608,6 +608,42 @@ export type Database = {
           },
           {
             foreignKeyName: "offline_checkouts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offline_client_sessions: {
+        Row: {
+          client_session_id: string
+          created_at: string
+          session_id: number
+          user_id: string
+        }
+        Insert: {
+          client_session_id: string
+          created_at?: string
+          session_id: number
+          user_id: string
+        }
+        Update: {
+          client_session_id?: string
+          created_at?: string
+          session_id?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offline_client_sessions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "practice_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offline_client_sessions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1930,16 +1966,28 @@ export type Database = {
         Args: { p_checkout_id: string }
         Returns: undefined
       }
-      offline_sync_v1: {
-        Args: {
-          p_checkout_id: string
-          p_device_id: string
-          p_operations: Json
-          p_package_id: string
-          p_package_revision: string
-        }
-        Returns: Json
-      }
+      offline_sync_v1:
+        | {
+            Args: {
+              p_checkout_id: string
+              p_device_id: string
+              p_operations: Json
+              p_package_id: string
+              p_package_revision: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_checkout_id: string
+              p_client_session: Json
+              p_device_id: string
+              p_operations: Json
+              p_package_id: string
+              p_package_revision: string
+            }
+            Returns: Json
+          }
       problem_state_summary: {
         Args: { p_series_id?: number }
         Returns: {

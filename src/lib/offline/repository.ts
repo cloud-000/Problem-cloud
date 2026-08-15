@@ -27,6 +27,7 @@
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
 import type { PlayerRating } from "$lib/library";
 import type { PracticeSessionRow } from "$lib/sessions";
+import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
 import { canonicalByteLength, pageChecksum } from "./checksum";
 import { newUUID, OfflineClock, offlineClock } from "./clock";
 import { countsAgree, parsePackageCreated, parsePackagePage } from "./contracts";
@@ -697,31 +698,40 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     only: [userId, input.packageRevision],
                 });
 
-                const existingSession = await tx.get<SessionRecord>(STORE.sessions, [
-                    userId,
-                    staging.baseState.session.id,
-                ]);
-                const localSessionWork = await tx.getAll<LocalSubmissionV1>(
-                    STORE.localSubmissions,
-                    {
-                        index: "byUserSession",
-                        only: [userId, staging.baseState.session.id],
-                    },
-                );
-                await tx.put(STORE.sessions, {
-                    userId,
-                    sessionId: staging.baseState.session.id,
-                    packageId: input.packageId,
-                    status:
-                        localSessionWork.length && existingSession
-                            ? existingSession.status
-                            : staging.baseState.session.status,
-                    row:
-                        localSessionWork.length && existingSession
-                            ? existingSession.row
-                            : staging.baseState.session,
-                    playerRating: staging.baseState.playerRating,
-                } satisfies SessionRecord);
+                const snapshot = staging.baseState.session;
+                if (snapshot) {
+                    const existingSession = await tx.get<SessionRecord>(STORE.sessions, [
+                        userId,
+                        snapshot.id,
+                    ]);
+                    const localSessionWork = await tx.getAll<LocalSubmissionV1>(
+                        STORE.localSubmissions,
+                        {
+                            index: "byUserSession",
+                            only: [userId, snapshot.id],
+                        },
+                    );
+                    await tx.put(STORE.sessions, {
+                        userId,
+                        sessionId: snapshot.id,
+                        packageId: input.packageId,
+                        status:
+                            localSessionWork.length && existingSession
+                                ? existingSession.status
+                                : snapshot.status,
+                        row:
+                            localSessionWork.length && existingSession
+                                ? existingSession.row
+                                : snapshot,
+                        playerRating: staging.baseState.playerRating,
+                    } satisfies SessionRecord);
+                }
+                if (staging.baseState.playerRating) {
+                    await tx.put(STORE.meta, {
+                        key: META.playerRating(userId),
+                        value: staging.baseState.playerRating,
+                    } satisfies MetaRecord);
+                }
                 await tx.put(STORE.meta, {
                     key: META.checkout(staging.checkoutId),
                     value: {
@@ -860,7 +870,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     dropped.push(revision);
                 }
                 await tx.delete(STORE.packages, [userId, packageId]);
-                if (record.active) {
+                if (record.active?.sessionId != null) {
                     await tx.delete(STORE.sessions, [userId, record.active.sessionId]);
                 }
                 return dropped;
@@ -1178,7 +1188,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
         userId: UUID,
         input: {
             name: string | null;
-            settings: import("$lib/trainer").PracticeSettings;
+            settings: PracticeSettings;
             isRoot?: boolean;
         },
     ): Promise<PracticeSessionRow> {
@@ -1193,6 +1203,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                 const previous = await tx.get<MetaRecord>(STORE.meta, [key]);
                 const sessionId = ((previous?.value as number | undefined) ?? 0) - 1;
                 await tx.put(STORE.meta, { key, value: sessionId } satisfies MetaRecord);
+                const rating = await tx.get<MetaRecord>(STORE.meta, [META.playerRating(userId)]);
                 const row: PracticeSessionRow = {
                     id: sessionId,
                     user_id: userId,
@@ -1221,11 +1232,31 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     serverSessionId: null,
                     status: row.status,
                     row,
-                    playerRating: null,
+                    playerRating: (rating?.value as PlayerRating | null) ?? null,
                 } satisfies SessionRecord);
                 return row;
             },
         );
+    }
+
+    async getOrCreateLocalRootSession(
+        userId: UUID,
+        settings: PracticeSettings = defaultPracticeSettings(),
+    ): Promise<PracticeSessionRow> {
+        const existing = await this.#storage.transaction(
+            [STORE.meta, STORE.sessions],
+            "readonly",
+            async (tx) => {
+                await this.#requireActiveUser(tx, userId);
+                return (await tx.getAll<SessionRecord>(STORE.sessions, {
+                    index: "byUser",
+                    only: [userId],
+                })).find((record) => Boolean(record.clientSessionId) && record.row.is_root)?.row
+                    ?? null;
+            },
+        );
+        if (existing) return existing;
+        return this.createLocalSession(userId, { name: null, settings, isRoot: true });
     }
 
     async listLocalSessions(userId: UUID): Promise<PracticeSessionRow[]> {
@@ -1238,9 +1269,50 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     index: "byUser",
                     only: [userId],
                 }))
-                    .filter((record) => Boolean(record.clientSessionId))
+                    .filter((record) => Boolean(record.clientSessionId) && !record.row.is_root)
                     .map((record) => record.row)
                     .sort((a, b) => b.started_at.localeCompare(a.started_at));
+            },
+        );
+    }
+
+    async deleteLocalSession(
+        userId: UUID,
+        sessionId: number,
+        options: { discardPending?: boolean } = {},
+    ): Promise<{ serverSessionId: number | null }> {
+        return this.#storage.transaction(
+            [STORE.meta, STORE.sessions, STORE.localSubmissions, STORE.outbox],
+            "readwrite",
+            async (tx) => {
+                await this.#requireActiveUser(tx, userId);
+                const session = await tx.get<SessionRecord>(STORE.sessions, [userId, sessionId]);
+                if (!session) throw new Error(`Unknown offline session ${sessionId}`);
+                if (session.row.is_root) {
+                    throw new Error("The practice-freely session cannot be deleted");
+                }
+                const pending = (
+                    await tx.getAll<OfflineOperationV1>(STORE.outbox, {
+                        index: "byUser",
+                        only: [userId],
+                    })
+                ).filter((operation) => operation.sessionId === sessionId);
+                if (pending.length > 0 && !options.discardPending) {
+                    throw new Error(
+                        `${pending.length} unsynced operation(s) belong to this session; sync or explicitly discard them first`,
+                    );
+                }
+                for (const operation of pending) {
+                    await tx.delete(STORE.outbox, [userId, operation.sequence]);
+                }
+                for (const submission of await tx.getAll<LocalSubmissionV1>(
+                    STORE.localSubmissions,
+                    { index: "byUserSession", only: [userId, sessionId] },
+                )) {
+                    await tx.delete(STORE.localSubmissions, [userId, submission.clientKey]);
+                }
+                await tx.delete(STORE.sessions, [userId, sessionId]);
+                return { serverSessionId: session.serverSessionId ?? null };
             },
         );
     }
@@ -1256,6 +1328,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
             "readwrite",
             async (tx) => {
                 await this.#requireActiveUser(tx, userId);
+                if (!base.session) return;
                 await tx.put(STORE.sessions, {
                     userId,
                     sessionId: base.session.id,
@@ -1309,7 +1382,11 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     userId,
                     sessionId,
                 ]);
-                return record?.playerRating ?? null;
+                if (record?.playerRating) return record.playerRating;
+                const fallback = await tx.get<MetaRecord>(STORE.meta, [
+                    META.playerRating(userId),
+                ]);
+                return (fallback?.value as PlayerRating | null) ?? null;
             },
         );
     }
@@ -1317,7 +1394,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
     async updateSessionSettings(
         userId: UUID,
         sessionId: number,
-        settings: import("$lib/trainer").PracticeSettings,
+        settings: PracticeSettings,
     ): Promise<void> {
         await this.#storage.transaction(
             [STORE.meta, STORE.sessions],

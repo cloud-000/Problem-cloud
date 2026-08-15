@@ -209,6 +209,6 @@ test.describe("a downloaded package in a real browser", () => {
         await expect(page.getByRole("heading", { name: "Practice" })).toBeVisible();
         await page.getByRole("button", { name: "Practice freely" }).click();
         await expect(page.getByText(/Downloaded New mode/)).toBeVisible();
-        await expect(page).toHaveURL(/\/practice\?session=-1/);
+        await expect(page).toHaveURL(/\/practice\?session=root/);
     });
 });

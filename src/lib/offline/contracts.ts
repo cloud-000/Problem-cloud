@@ -187,7 +187,7 @@ export const parsePackageCreated: p.Parser<OfflinePackageCreatedV1> =
         packageId: p.uuid,
         requestId: p.uuid,
         checkoutId: p.uuid,
-        sessionId: p.integer,
+        sessionId: p.nullable(p.integer),
         normalizedScope: parseScope,
         contentRevision: p.nonEmptyString,
         packageRevision: p.nonEmptyString,
@@ -205,7 +205,7 @@ export const parsePackageCreated: p.Parser<OfflinePackageCreatedV1> =
         firstCursor: p.nullable(p.nonEmptyString),
         baseState: p.objectOf({
             playerRating: p.nullable(parsePlayerRating),
-            session: parsePracticeSessionRow,
+            session: p.nullable(parsePracticeSessionRow),
         }),
     });
 

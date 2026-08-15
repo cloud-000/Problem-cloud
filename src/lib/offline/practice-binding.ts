@@ -35,6 +35,9 @@ export async function bindOfflinePracticePackage(
         throw new Error("This downloaded package is not ready on this device.");
     }
 
+    if (manifest.sessionId == null) {
+        throw new Error("This download has no dedicated session. Open Practice to start a local one.");
+    }
     const session = await repository.loadSession(manifest.userId, manifest.sessionId);
     if (!session) {
         throw new Error("The downloaded practice session is unavailable.");

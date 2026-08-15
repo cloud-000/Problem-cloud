@@ -92,7 +92,6 @@ The first integrated shipping slice exposes:
 The first integrated shipping slice does **not** expose:
 
 - arbitrary offline navigation through the authenticated app;
-- root/free practice;
 - Review, Skipped, Mixed, List, or Test modes;
 - offline library, goals, history, progress, or analytics;
 - offline Coach persistence or work-thread anchors;
@@ -101,10 +100,11 @@ The first integrated shipping slice does **not** expose:
 
 Those modes must not be designed out of the repository. New mode simply removes
 the hardest encounter-reconstruction case from the first release: it never
-intentionally repeats a previously seen problem. A dedicated, pre-created
-session also avoids local-to-server session-id rewriting until offline-created
-sessions are designed. Reusing the normal Practice UI does not broaden these
-data semantics.
+intentionally repeats a previously seen problem. Packages are content and sync
+provenance only: they do not mint a hub-visible practice session. Local Practice
+creates a browser-owned session (including a local root for Practice freely)
+and sync maps that UUID to one server row. Reusing the normal Practice UI does
+not broaden these data semantics.
 
 ---
 
@@ -382,13 +382,12 @@ The package manifest also includes:
 - problem/placement counts, byte count, and page/checksum metadata;
 - last successful sync time and outbox count.
 
-Package creation also returns the frozen player rating and dedicated session as
-`baseState`. `beginPackage` stages that snapshot with the revision, and
-`commitPackage` promotes the package, personal state, rating state, and session
-snapshot in one IndexedDB transaction. The already-landed fixture helper writes
-the session snapshot immediately after commit; folding that write into the
-staged commit is a small slice-5 integration change required before real network
-downloads, not a redesign of the repository.
+Package creation also returns the frozen player rating and, when refreshing a
+leftover dedicated session, that session as `baseState`. New packages carry
+`session: null`. `beginPackage` stages that snapshot with the revision, and
+`commitPackage` promotes the package, personal state, and rating state in one
+IndexedDB transaction. The already-landed fixture helper writes a leftover
+session snapshot immediately after commit when one exists.
 
 Cache freshness is five days. Staleness warns and prevents automatic refresh; it
 never blocks opening an existing package and never deletes pending work.

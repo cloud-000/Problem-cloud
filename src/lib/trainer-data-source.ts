@@ -343,6 +343,9 @@ export function createOfflineTrainerDataSource(input: {
     repository: OfflineRepository;
     manifest: OfflinePackageManifestV1;
 }): TrainerDataSource {
+    if (input.manifest.sessionId == null) {
+        throw new Error("This download has no dedicated session. Open Practice to start a local one.");
+    }
     return createDownloadedTrainerDataSource({
         repository: input.repository,
         manifests: [input.manifest],

@@ -8,7 +8,11 @@ create table public.offline_checkouts (
   request_id uuid not null,
   user_id uuid not null references public.profiles(id) on delete cascade,
   device_id uuid not null,
-  session_id bigint not null references public.practice_sessions(id) on delete restrict,
+  -- Optional leftover from the dedicated-session-per-package era. New packages
+  -- do not mint a hub-visible practice session; local Practice creates its own
+  -- browser-owned session and maps it through offline_client_sessions on sync.
+  -- SET NULL (plus the definer trigger below) so a user can delete that session.
+  session_id bigint references public.practice_sessions(id) on delete set null,
   scope jsonb not null,
   content_revision text not null,
   package_revision text not null,
@@ -92,9 +96,41 @@ create policy "Users can view pages for their own offline checkouts."
     where c.id = checkout_id and c.user_id = auth.uid()
   ));
 
+create policy "Users can view their own offline client session maps."
+  on public.offline_client_sessions for select to authenticated
+  using (auth.uid() = user_id);
+create policy "Users can delete their own offline client session maps."
+  on public.offline_client_sessions for delete to authenticated
+  using (auth.uid() = user_id);
+
 grant select on public.offline_checkouts, public.offline_package_pages to authenticated;
+grant select, delete on public.offline_client_sessions to authenticated;
 grant all on public.offline_checkouts, public.offline_package_pages,
   public.offline_applied_operations, public.offline_client_sessions to service_role;
+
+-- FK SET NULL / CASCADE from practice_sessions is not enough on its own: those
+-- child tables are RLS-locked to service_role for writes, so a user delete of
+-- their own session would otherwise fail. Detach as the table owner first.
+create or replace function public.detach_offline_session_refs()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  update public.offline_checkouts
+    set session_id = null
+    where session_id = old.id;
+  delete from public.offline_client_sessions
+    where session_id = old.id;
+  return old;
+end;
+$$;
+
+create trigger detach_offline_session_refs
+  before delete on public.practice_sessions
+  for each row
+  execute function public.detach_offline_session_refs();
+
+revoke all on function public.detach_offline_session_refs() from public;
 
 -- Stable wire representation of the creation response. This is kept in SQL so
 -- an idempotent request returns the snapshot originally captured, never a live
@@ -133,9 +169,11 @@ begin
 end;
 $$;
 
--- Phase one: capture membership, catalog facts, personal state, and a dedicated
--- New/practice session in one transaction. Asset discovery and RFC 8785 page
--- checksums are deliberately left to the shared TypeScript implementation.
+-- Phase one: capture membership, catalog facts, and personal state in one
+-- transaction. A supplied session id is reused for a legacy dedicated-session
+-- refresh; a null id does not mint a hub-visible practice session. Asset
+-- discovery and RFC 8785 page checksums stay in the shared TypeScript
+-- implementation.
 create or replace function public.offline_begin_package(
   p_package_id uuid,
   p_request_id uuid,
@@ -154,6 +192,7 @@ declare
   v_package_revision uuid := gen_random_uuid();
   v_content_revision uuid;
   v_session public.practice_sessions;
+  v_session_id bigint;
   v_now timestamp with time zone := clock_timestamp();
   v_problem_count integer;
   v_placement_count integer;
@@ -207,11 +246,7 @@ begin
     raise exception 'OFFLINE_CONFLICT:too many materializations';
   end if;
 
-  if p_session_id is null then
-    insert into public.practice_sessions (user_id, name, settings)
-    values (v_user, nullif(left(p_session_name, 200), ''), p_session_settings)
-    returning * into v_session;
-  else
+  if p_session_id is not null then
     select * into v_session from public.practice_sessions
     where id = p_session_id and user_id = v_user and not is_root
     for update;
@@ -220,6 +255,7 @@ begin
        or v_session.settings->>'mode' <> 'new' then
       raise exception 'OFFLINE_OPERATION_INVALID:refresh session is not New/practice';
     end if;
+    v_session_id := v_session.id;
   end if;
 
   select revision into v_content_revision
@@ -279,9 +315,11 @@ begin
     problem_count, placement_count, downloaded_at, personal_state_at,
     expires_at, status
   ) values (
-    v_checkout, p_package_id, p_request_id, v_user, p_device_id, v_session.id,
+    v_checkout, p_package_id, p_request_id, v_user, p_device_id, v_session_id,
     p_scope, v_content_revision::text, v_package_revision::text,
-    jsonb_build_object('playerRating', v_player, 'session', to_jsonb(v_session)),
+    jsonb_build_object(
+      'playerRating', v_player,
+      'session', case when v_session_id is null then null else to_jsonb(v_session) end),
     v_baseline, v_problem_count, v_placement_count, v_now, v_now,
     v_now + interval '7 days', 'materializing'
   );
