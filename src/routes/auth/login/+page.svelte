@@ -5,11 +5,6 @@
     import type { ActionData } from "./$types";
 
     let { form }: { form: ActionData } = $props();
-
-    const items = [
-        { name: "email", type: "email", label: "Email address", placeholder: "you@example.com", autocomplete: "email" },
-        { name: "password", type: "password", label: "Password", placeholder: "Enter your password", autocomplete: "current-password" },
-    ] as const;
 </script>
 
 <svelte:head><title>Log in — ProblemCloud</title></svelte:head>
@@ -20,12 +15,29 @@
 </header>
 
 <div class="space-y-4">
-    {#each items as item (item.name)}
-        <label class="flex flex-col gap-1.5 type-secondary font-medium text-foreground">
-            <span>{item.label}</span>
-            <Input name={item.name} type={item.type} required placeholder={item.placeholder} autocomplete={item.autocomplete} class="h-11 bg-background" />
-        </label>
-    {/each}
+    <label class="flex flex-col gap-1.5 type-secondary font-medium text-foreground">
+        <span>Email address</span>
+        <Input
+            name="email"
+            type="email"
+            required
+            value={form?.email ?? ""}
+            placeholder="you@example.com"
+            autocomplete="email"
+            class="h-11 bg-background"
+        />
+    </label>
+    <label class="flex flex-col gap-1.5 type-secondary font-medium text-foreground">
+        <span>Password</span>
+        <Input
+            name="password"
+            type="password"
+            required
+            placeholder="Enter your password"
+            autocomplete="current-password"
+            class="h-11 bg-background"
+        />
+    </label>
 </div>
 
 {#if form?.message}

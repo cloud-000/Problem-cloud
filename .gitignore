@@ -51,6 +51,7 @@ src/lib/components/DOCS.md
 .claude
 .vscode
 .zed
+.cursor
 
 # Cloudflare
 wrangler.jsonc
