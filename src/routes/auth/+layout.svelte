@@ -3,6 +3,7 @@
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { children } = $props();
 </script>
@@ -16,7 +17,11 @@
     <header class="border-b border-border">
         <div class="mx-auto flex h-16 max-w-[760px] items-center justify-between px-4 sm:px-6">
             <a href={resolve("/welcome")} class="flex items-center gap-2 font-semibold">
-                <Icon name="cloud" class="text-primary-foreground" aria-hidden="true" />
+                <Icon
+                    name="cloud"
+                    class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
+                    aria-hidden="true"
+                />
                 <span>ProblemCloud</span>
             </a>
             <Button href="/about" variant="ghost" size="sm">About</Button>

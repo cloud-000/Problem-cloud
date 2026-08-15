@@ -3,6 +3,7 @@
     import { Icon } from "$lib/components/icon";
     import { ToastContainer } from "$lib/components/toast";
     import { Theme } from "$lib/utils/Theme.svelte";
+    import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { data, children } = $props();
     // The public shell is told only whether someone is signed in — never the
@@ -33,7 +34,7 @@
                 <Icon
                     name="cloud"
                     fontsize="22px"
-                    class="text-primary-foreground"
+                    class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
                 />
                 <span class="text-base font-semibold tracking-[-0.01em]"
                     >ProblemCloud</span

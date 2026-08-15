@@ -483,7 +483,11 @@
         <div
             class="mx-auto flex h-16 w-full max-w-[720px] items-center gap-2 px-md"
         >
-            <Icon name="cloud" fontsize="22px" class="text-primary-foreground" />
+            <Icon
+                name="cloud"
+                fontsize="22px"
+                class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
+            />
             <span class="text-base font-semibold tracking-[-0.01em]"
                 >ProblemCloud</span
             >

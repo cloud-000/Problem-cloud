@@ -41,6 +41,7 @@
    import FeedbackModal from "./settings/FeedbackModal.svelte";
    import { offlineSyncStatus, startForegroundOfflineSync } from "$lib/offline/sync";
    import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
+   import { offlineMode } from "$lib/state/offline-mode.svelte";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -274,8 +275,6 @@
 
 <svelte:window onkeydown={handleCoachShortcut} />
 
-<OfflineModeChip showControl={false} />
-
 {#if $syncStatus.state === "auth-required" || $syncStatus.state === "owner-mismatch" || $syncStatus.state === "overlap" || $syncStatus.state === "failed"}
    <div class="pointer-events-none fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-xl rounded-lg bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
       {#if $syncStatus.state === "auth-required"}
@@ -340,7 +339,7 @@
          <Sidebar.Header
             class={cn(
                "border-b-0 px-3 py-3",
-               expanded ? "justify-between" : "justify-center",
+               expanded ? "justify-between" : "justify-center gap-1",
             )}
          >
             {#if expanded}
@@ -349,10 +348,29 @@
                   class="type-secondary flex min-h-10 items-center gap-2 rounded-md px-1 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="ProblemCloud home"
                >
-                  <Icon class="text-primary-foreground" fontsize="24px"
-                     >cloud</Icon
-                  >
+                  <Icon
+                     name="cloud"
+                     class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
+                     fontsize="24px"
+                  />
                   <span class="font-semibold">ProblemCloud</span>
+                  {#if offlineMode.isLocal}
+                     <span class="rounded-full bg-surface-container-high px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        Offline
+                     </span>
+                  {/if}
+               </a>
+            {:else}
+               <a
+                  href={resolve("/")}
+                  class="type-secondary flex h-8 w-8 items-center justify-center rounded-md text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="ProblemCloud home"
+               >
+                  <Icon
+                     name="cloud"
+                     class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
+                     fontsize="20px"
+                  />
                </a>
             {/if}
             <Sidebar.Trigger />
