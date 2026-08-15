@@ -51,7 +51,7 @@ export type OfflinePackageCreateRequestV1 = {
     /** Explicit maximum membership selected from the matching scope. */
     problemLimit: number;
     session: {
-        /** Null initially; the owned dedicated session id on refresh. */
+        /** Null initially; a leftover dedicated session id only if it still exists. */
         sessionId: number | null;
         name: string | null;
         settings: PracticeSettings;
@@ -60,7 +60,7 @@ export type OfflinePackageCreateRequestV1 = {
 
 export type OfflinePackageBaseStateV1 = {
     playerRating: PlayerRating | null;
-    /** Null for new packages; present only when refreshing a leftover dedicated session. */
+    /** Null for new packages; a leftover dedicated session only if it still exists. */
     session: PracticeSessionRow | null;
 };
 
@@ -69,7 +69,7 @@ export type OfflinePackageCreatedV1 = {
     packageId: UUID;
     requestId: UUID;
     checkoutId: UUID;
-    /** Null for new packages; a leftover dedicated session id on refresh. */
+    /** Null for new packages; a leftover dedicated session id only if it still exists. */
     sessionId: number | null;
     normalizedScope: OfflineScope;
     contentRevision: string;

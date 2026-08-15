@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(35);
+select extensions.plan(42);
 
 select extensions.ok(not has_table_privilege('anon', 'public.offline_checkouts', 'TRUNCATE'),
   'anonymous callers cannot mutate checkout provenance');
@@ -9,6 +9,8 @@ select extensions.ok(not has_table_privilege('authenticated', 'public.offline_ch
   'authenticated callers can only read owner-scoped checkout rows');
 select extensions.ok(not has_function_privilege('anon', 'public.offline_cleanup_checkouts()', 'EXECUTE'),
   'retention cleanup is not public');
+select extensions.ok(not has_function_privilege('anon', 'public.offline_discard_empty_package_sessions()', 'EXECUTE'),
+  'empty leftover session discard is not public');
 select extensions.ok(has_function_privilege('authenticated',
   'public.offline_begin_package(uuid,uuid,uuid,jsonb,bigint,text,jsonb)', 'EXECUTE'),
   'authenticated callers can use the narrow package materializer');
@@ -295,10 +297,70 @@ select public.offline_begin_package(
 select extensions.is((select value->>'problemCount' from bounded_result), '1',
   'the explicit download amount bounds a scope with more matching canonicals');
 
+create temporary table stale_session_result(value jsonb) on commit drop;
+insert into stale_session_result
+select public.offline_begin_package(
+  '10000000-0000-0000-0000-000000094030',
+  '20000000-0000-0000-0000-000000094030',
+  '30000000-0000-0000-0000-000000094001',
+  '{"topic":[],"seriesIds":["-940001"],"seriesScopes":{},"problemLimit":1}'::jsonb,
+  999999999, 'Stale leftover', '{"format":"practice","mode":"new"}'::jsonb
+);
+select extensions.ok((select value->>'sessionId' from stale_session_result) is null,
+  'a discarded leftover session id is treated as a new package');
+
 create temporary table live_rating as
 select rating, rd, matches from public.player_ratings
 where user_id = '00000000-0000-0000-0000-000000094001' and scope = 'overall';
 reset role;
+
+create temporary table leftover_ids(kind text primary key, id bigint) on commit drop;
+with inserted as (
+  insert into public.practice_sessions(user_id, name, settings)
+  values ('00000000-0000-0000-0000-000000094001', 'Leftover download',
+    '{"format":"practice","mode":"new"}'::jsonb)
+  returning id
+)
+insert into leftover_ids(kind, id) select 'empty', id from inserted;
+with inserted as (
+  insert into public.practice_sessions(user_id, name, settings)
+  values ('00000000-0000-0000-0000-000000094001', 'Unused online session',
+    '{"format":"practice","mode":"new"}'::jsonb)
+  returning id
+)
+insert into leftover_ids(kind, id) select 'unused', id from inserted;
+with inserted as (
+  insert into public.practice_sessions(user_id, name, settings, times_seen)
+  values ('00000000-0000-0000-0000-000000094001', 'Worked leftover',
+    '{"format":"practice","mode":"new"}'::jsonb, 1)
+  returning id
+)
+insert into leftover_ids(kind, id) select 'worked', id from inserted;
+update public.offline_checkouts
+  set session_id = (select id from leftover_ids where kind = 'empty')
+  where id = (select (value->>'checkoutId')::uuid from package_result);
+update public.offline_checkouts
+  set session_id = (select id from leftover_ids where kind = 'worked')
+  where id = (select (value->>'checkoutId')::uuid from bounded_result);
+
+select extensions.is(public.offline_discard_empty_package_sessions(), 1,
+  'discard removes one empty checkout-owned leftover session');
+select extensions.ok(not exists (
+    select 1 from public.practice_sessions
+    where id = (select id from leftover_ids where kind = 'empty')),
+  'the empty leftover dedicated session is deleted');
+select extensions.ok(exists (
+    select 1 from public.practice_sessions
+    where id = (select id from leftover_ids where kind = 'unused')),
+  'an empty session that is not package-owned is kept');
+select extensions.ok(exists (
+    select 1 from public.practice_sessions
+    where id = (select id from leftover_ids where kind = 'worked')),
+  'a leftover dedicated session that received work is kept');
+select extensions.ok((select session_id is null from public.offline_checkouts
+    where id = (select (value->>'checkoutId')::uuid from package_result)),
+  'deleting the leftover nulls the checkout session pointer');
+
 select public.recompute_ratings();
 select extensions.ok((select l.rating = r.rating and l.rd = r.rd and l.matches = r.matches
   from live_rating l join public.player_ratings r

@@ -383,7 +383,9 @@ The package manifest also includes:
 - last successful sync time and outbox count.
 
 Package creation also returns the frozen player rating and, when refreshing a
-leftover dedicated session, that session as `baseState`. New packages carry
+leftover dedicated session that still exists, that session as `baseState`. New
+packages carry `session: null`. A refresh that names a leftover session the
+server has discarded (empty download rows, never practiced) also returns
 `session: null`. `beginPackage` stages that snapshot with the revision, and
 `commitPackage` promotes the package, personal state, and rating state in one
 IndexedDB transaction. The already-landed fixture helper writes a leftover
@@ -695,7 +697,10 @@ outbox became empty. After a refresh or deletion, the client may close the old
 checkout only when that revision is no longer active and no local operation
 references it. Closed rows are retained for 30 days. Explicit discard marks a
 checkout abandoned and retains it for audit for 90 days. Only unfinished
-materializations expire automatically (after seven days). This matches the
+materializations expire automatically (after seven days). Retention cleanup also
+deletes empty leftover dedicated-download sessions (no submissions, `times_seen
+= 0`, not a mapped local sitting) so they cannot reappear in the Practice hub
+after the checkout row is gone. This matches the
 stronger rule that stale packages remain usable and pending work is never made
 unsyncable by retention cleanup.
 

@@ -350,18 +350,5 @@ export async function fetchSessions(
     if (options.status) query = query.eq("status", options.status);
     const { data, error } = await query;
     if (error) throw error;
-    const rows = (data ?? []) as PracticeSessionRow[];
-    // Empty leftover package-owned sessions are not user-created practice.
-    // Sessions that actually received work stay listed and are now deletable.
-    const checkouts = await supabase
-        .from("offline_checkouts")
-        .select("session_id")
-        .not("session_id", "is", null);
-    if (checkouts.error) throw checkouts.error;
-    const packageOwned = new Set(
-        (checkouts.data ?? [])
-            .map((row) => row.session_id)
-            .filter((id): id is number => id != null),
-    );
-    return rows.filter((row) => !packageOwned.has(row.id) || row.times_seen > 0);
+    return (data ?? []) as PracticeSessionRow[];
 }

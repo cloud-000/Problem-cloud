@@ -1958,6 +1958,7 @@ export type Database = {
         Args: { p_checkout_id: string }
         Returns: undefined
       }
+      offline_discard_empty_package_sessions: { Args: never; Returns: number }
       offline_finalize_package: {
         Args: { p_checkout_id: string; p_pages: Json }
         Returns: Json

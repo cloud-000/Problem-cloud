@@ -121,7 +121,7 @@ Validation rules:
 ```ts
 type OfflinePackageBaseStateV1 = {
     playerRating: PlayerRating | null;
-    /** Null for new packages; present only when refreshing a leftover dedicated session. */
+    /** Null for new packages; a leftover dedicated session only if it still exists. */
     session: PracticeSessionRow | null;
 };
 ```
@@ -134,7 +134,7 @@ type OfflinePackageCreatedV1 = {
     packageId: UUID;
     requestId: UUID;
     checkoutId: UUID;
-    /** Null for new packages; a leftover dedicated session id on refresh. */
+    /** Null for new packages; a leftover dedicated session id only if it still exists. */
     sessionId: number | null;
     normalizedScope: OfflineScope;
     contentRevision: string;
@@ -160,7 +160,9 @@ The creation transaction creates or reselects the same package checkout for a
 retried `requestId`. New packages do **not** mint a hub-visible
 `practice_sessions` row — Practice creates a browser-owned local session and
 sync maps it through `offline_client_sessions`. A non-null `session.sessionId`
-is reused only when refreshing a leftover dedicated session. It captures a
+is reused only when refreshing a leftover dedicated session that still exists.
+A discarded leftover (empty, never practiced) is treated as `sessionId: null`.
+It captures a
 stable package revision. Every subsequent page belongs to that exact revision;
 content changing during the download must not mix revisions.
 
@@ -356,8 +358,9 @@ placement through which it can match.
 ### 2e. Player and session snapshot
 
 `OfflinePackageCreatedV1.baseState` is the frozen player rating and, when a
-leftover dedicated session is being refreshed, that session snapshot. New
-packages carry a rating and `session: null`. There is no separate metadata
+leftover dedicated session that still exists is being refreshed, that session
+snapshot. New packages — and a refresh of a discarded empty leftover — carry a
+rating and `session: null`. There is no separate metadata
 endpoint in v1. Keeping it in the creation response makes a retry self-contained
 and avoids a second wire shape.
 

@@ -250,12 +250,14 @@ begin
     select * into v_session from public.practice_sessions
     where id = p_session_id and user_id = v_user and not is_root
     for update;
-    if not found then raise exception 'OFFLINE_CHECKOUT_INVALID:session'; end if;
-    if v_session.settings->>'format' <> 'practice'
-       or v_session.settings->>'mode' <> 'new' then
-      raise exception 'OFFLINE_OPERATION_INVALID:refresh session is not New/practice';
+    if found then
+      if v_session.settings->>'format' <> 'practice'
+         or v_session.settings->>'mode' <> 'new' then
+        raise exception 'OFFLINE_OPERATION_INVALID:refresh session is not New/practice';
+      end if;
+      v_session_id := v_session.id;
     end if;
-    v_session_id := v_session.id;
+    -- A discarded leftover dedicated session is treated as a new package.
   end if;
 
   select revision into v_content_revision
@@ -479,6 +481,39 @@ begin
   delete from public.offline_package_pages where checkout_id = p_checkout_id;
 end; $$;
 
+-- Empty leftover dedicated-download sessions are hub clutter: they were minted
+-- onto offline_checkouts.session_id and never received work. Delete those rows
+-- (the detach trigger nulls the checkout pointer). Do not touch root, mapped
+-- local sittings, or any session that has submissions / times_seen.
+create or replace function public.offline_discard_empty_package_sessions()
+returns integer
+language plpgsql security definer set search_path = ''
+as $$
+declare n integer;
+begin
+  delete from public.practice_sessions s
+  where s.id in (
+    select c.session_id
+    from public.offline_checkouts c
+    join public.practice_sessions ps on ps.id = c.session_id
+    where c.session_id is not null
+      and not ps.is_root
+      and ps.times_seen = 0
+      and ps.times_correct = 0
+      and ps.times_reviewed = 0
+      and ps.times_skipped = 0
+      and not exists (
+        select 1 from public.submissions sub where sub.session_id = ps.id
+      )
+      and not exists (
+        select 1 from public.offline_client_sessions m where m.session_id = ps.id
+      )
+  );
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
 create or replace function public.offline_cleanup_checkouts()
 returns integer language plpgsql security definer set search_path = '' as $$
 declare n integer;
@@ -487,6 +522,7 @@ begin
   where status = 'materializing' and expires_at <= clock_timestamp();
   delete from public.offline_package_pages p using public.offline_checkouts c
   where p.checkout_id = c.id and c.status = 'expired';
+  perform public.offline_discard_empty_package_sessions();
   delete from public.offline_checkouts
   where status in ('closed', 'abandoned', 'expired') and expires_at <= clock_timestamp();
   get diagnostics n = row_count;
@@ -795,6 +831,7 @@ revoke all on function public.offline_abandon_checkout(uuid) from public;
 revoke all on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb) from public;
 revoke all on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb, jsonb) from public;
 revoke all on function public.offline_cleanup_checkouts() from public;
+revoke all on function public.offline_discard_empty_package_sessions() from public;
 
 grant execute on function public.offline_checkout_created(uuid) to authenticated;
 grant execute on function public.offline_begin_package(uuid, uuid, uuid, jsonb, bigint, text, jsonb) to authenticated;
@@ -805,3 +842,4 @@ grant execute on function public.offline_abandon_checkout(uuid) to authenticated
 grant execute on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb) to authenticated;
 grant execute on function public.offline_sync_v1(uuid, uuid, uuid, text, jsonb, jsonb) to authenticated;
 grant execute on function public.offline_cleanup_checkouts() to service_role;
+grant execute on function public.offline_discard_empty_package_sessions() to service_role;
