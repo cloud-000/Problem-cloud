@@ -21,4 +21,7 @@ export default defineConfig({
             adapter: adapter(),
         }),
     ],
+    server: {
+        allowedHosts: ["clouds-macbook-air.local"]
+    }
 });

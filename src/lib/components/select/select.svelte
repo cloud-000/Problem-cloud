@@ -44,6 +44,7 @@
 
 <script lang="ts">
     import { coerceOptions, filterOptions, groupOptions } from "./select.js";
+    import { shouldCloseOnFocusOut } from "../combobox/combobox.js";
     import { Icon } from "$lib/components/icon/index.js";
 
     let {
@@ -75,6 +76,8 @@
     let containerEl = $state<HTMLDivElement | null>(null);
     let query = $state("");
     let searchEl = $state<HTMLInputElement | null>(null);
+    // Pointer is down on the listbox. Not reactive — only event handlers read it.
+    let listPointer = false;
 
     function handleWindowClick(e: MouseEvent) {
         if (!open) return;
@@ -219,20 +222,30 @@
     }
 
     function handleFocusOut(e: FocusEvent) {
-        const next = e.relatedTarget;
-        // If focus moves to something outside our dropdown wrapper, close the dropdown
-        if (next instanceof Node && containerEl && containerEl.contains(next)) {
+        if (!shouldCloseOnFocusOut(e.relatedTarget, containerEl, listPointer)) {
             return;
         }
-        setTimeout(() => {
-            if (containerEl && !containerEl.contains(document.activeElement)) {
-                open = false;
-            }
-        }, 50);
+        open = false;
+    }
+
+    function beginListPointer() {
+        listPointer = true;
+    }
+
+    function endListPointer() {
+        // pointerup runs before click (and sometimes before a delayed blur).
+        // Drop the flag on the next frame so the in-flight tap can still commit.
+        requestAnimationFrame(() => {
+            listPointer = false;
+        });
     }
 </script>
 
-<svelte:window onclick={handleWindowClick} />
+<svelte:window
+    onclick={handleWindowClick}
+    onpointerup={endListPointer}
+    onpointercancel={endListPointer}
+/>
 
 <!-- Outer container that captures focusout to close the dropdown -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -312,7 +325,8 @@
                 id={listboxId}
                 role="listbox"
                 tabindex={-1}
-                class="max-h-60 overflow-y-auto py-1 outline-none"
+                class="max-h-60 overflow-y-auto py-1 outline-none touch-manipulation"
+                onpointerdown={beginListPointer}
             >
                 {#each sections as section (section.label ?? "")}
                     {#if section.label}
@@ -342,6 +356,9 @@
                                     : "cursor-pointer hover:bg-muted/50 data-active:bg-primary data-active:text-primary-foreground data-selected:bg-primary/20 dark:data-selected:bg-primary/30",
                             )}
                             onpointerdown={(e) => {
+                                // Mouse: keep the trigger/search focused so
+                                // focusout doesn't close the list. Touch: must
+                                // not preventDefault — that suppresses click.
                                 if (e.pointerType === "mouse") {
                                     e.preventDefault();
                                 }

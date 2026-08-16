@@ -35,3 +35,26 @@ export const defaultMatcher: ComboboxMatcher = (option, query) =>
 
 /** Default duplicate-detection key: trimmed + lowercased. */
 export const defaultDupKey = (s: string): string => s.trim().toLowerCase();
+
+/**
+ * Whether focus leaving the control should close the dropdown.
+ *
+ * Touch taps on a non-focusable option blur the input with `relatedTarget
+ * === null`. Closing then unmounts the list before `click` can commit, so
+ * callers pass `listPointer` for the duration of a listbox gesture.
+ */
+export function shouldCloseOnFocusOut(
+    relatedTarget: EventTarget | null,
+    container: { contains(node: Node): boolean } | null,
+    listPointer: boolean,
+): boolean {
+    if (listPointer) return false;
+    if (isNode(relatedTarget) && container?.contains(relatedTarget)) {
+        return false;
+    }
+    return true;
+}
+
+function isNode(value: EventTarget | null): value is Node {
+    return value != null && typeof (value as Node).nodeType === "number";
+}

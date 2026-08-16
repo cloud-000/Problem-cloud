@@ -68,6 +68,7 @@
         coerceOptions,
         defaultMatcher,
         defaultDupKey,
+        shouldCloseOnFocusOut,
     } from "./combobox.js";
     import { Button } from "$lib/components/button/index.js";
     import { Icon } from "$lib/components/icon/index.js";
@@ -111,8 +112,9 @@
     let inputEl = $state<HTMLInputElement | null>(null);
     let rowEls: HTMLLIElement[] = $state([]);
     let flashTimer: ReturnType<typeof setTimeout> | undefined;
-    /** Skip the synthetic click after a touch/pen commit in pointerdown. */
-    let suppressOptionClick = false;
+    // Pointer is down on the listbox. Not reactive — only event handlers read it.
+    let listPointer = false;
+    let suppressOpenOnFocus = false;
 
     // --- mode derivation ---
     const hasList = $derived(options.length > 0);
@@ -232,7 +234,7 @@
         query = "";
         if (single) open = false; // single-select: close after picking
         onchange?.(value);
-        inputEl?.focus();
+        restoreInputFocus();
     }
 
     function commitFreeText(raw: string) {
@@ -259,7 +261,7 @@
         if (single) open = false; // single-select: close after picking
         oncreate?.(text);
         onchange?.(value);
-        inputEl?.focus();
+        restoreInputFocus();
     }
 
     function commitRow(row: Row) {
@@ -413,58 +415,61 @@
     }
 
     function handleFocus() {
+        if (suppressOpenOnFocus) return;
         if (hasList && !atMax) open = true;
     }
 
     function handleFocusOut(e: FocusEvent) {
-        const next = e.relatedTarget;
-        if (next instanceof Node && ref?.contains(next)) return;
-        // Defer close so a touch on a non-focusable option can commit before the
-        // list unmounts. Mobile (esp. iOS) often reports relatedTarget as null
-        // when tapping options, which used to close the dropdown before click.
-        setTimeout(() => {
-            if (ref && !ref.contains(document.activeElement)) {
-                open = false;
-                highlightedPillIndex = -1;
-            }
-        }, 50);
+        if (!shouldCloseOnFocusOut(e.relatedTarget, ref, listPointer)) return;
+        open = false;
+        highlightedPillIndex = -1;
     }
 
     function handlePointerDown(e: PointerEvent) {
         const target = e.target as HTMLElement;
         if (target === inputEl) return;
         if (target.closest("button")) return; // let pill remove buttons work
-        // Option rows manage their own pointerdown (commit / keep-focus).
-        if (target.closest('[role="option"]')) return;
+        // Do not preventDefault on the list: that suppresses the subsequent
+        // click on touch (so taps never commit) and blocks scrolling.
+        if (target.closest(`#${listboxId}`)) return;
         e.preventDefault(); // keep focus on the input
         inputEl?.focus();
     }
 
-    function handleOptionPointerDown(e: PointerEvent, row: Row) {
-        if (!row.selectable) return;
-        // Keep the input focused so focusout does not tear down the list.
-        e.preventDefault();
-        // Touch/pen: commit immediately. Waiting for click is racy on mobile
-        // because blur can unmount the row before the click event fires.
-        if (e.pointerType !== "mouse") {
-            suppressOptionClick = true;
-            commitRow(row);
-            // Some browsers suppress the synthetic click after preventDefault;
-            // clear the guard so a later mouse click is not skipped.
-            setTimeout(() => {
-                suppressOptionClick = false;
-            }, 300);
-        }
+    function handleWindowPointerDown(e: PointerEvent) {
+        if (!open) return;
+        const target = e.target;
+        if (target instanceof Node && ref?.contains(target)) return;
+        open = false;
+        highlightedPillIndex = -1;
     }
 
-    function handleOptionClick(row: Row) {
-        if (suppressOptionClick) {
-            suppressOptionClick = false;
-            return;
-        }
-        commitRow(row);
+    function beginListPointer() {
+        listPointer = true;
+    }
+
+    function endListPointer() {
+        // pointerup runs before click (and sometimes before a delayed blur).
+        // Drop the flag on the next frame so the in-flight tap can still commit.
+        requestAnimationFrame(() => {
+            listPointer = false;
+        });
+    }
+
+    function restoreInputFocus() {
+        // Touch blurs the input before click. Refocusing after a single-select
+        // close would fire handleFocus and reopen the list, so suppress that.
+        suppressOpenOnFocus = true;
+        inputEl?.focus();
+        suppressOpenOnFocus = false;
     }
 </script>
+
+<svelte:window
+    onpointerdown={handleWindowPointerDown}
+    onpointerup={endListPointer}
+    onpointercancel={endListPointer}
+/>
 
 <div
     bind:this={ref}
@@ -551,7 +556,8 @@
             id={listboxId}
             role="listbox"
             aria-multiselectable="true"
-            class="absolute top-full right-0 left-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-surface-container-low py-1 shadow-md"
+            class="absolute top-full right-0 left-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-surface-container-low py-1 shadow-md touch-manipulation"
+            onpointerdown={beginListPointer}
         >
             {#each rows as row, i (row.kind + i + (row.kind !== "message" ? (row.kind === "option" ? row.option.value : row.text) : ""))}
                 <!-- Keyboard handling lives on the combobox input via
@@ -570,13 +576,20 @@
                             ? "cursor-pointer data-active:bg-primary"
                             : "text-muted-foreground",
                     )}
-                    onpointerdown={(e) => handleOptionPointerDown(e, row)}
+                    onpointerdown={(e) => {
+                        // Mouse: keep the input focused so focusout doesn't
+                        // close the list. Touch: must not preventDefault —
+                        // that suppresses click (and blocks scrolling).
+                        if (e.pointerType === "mouse") {
+                            e.preventDefault();
+                        }
+                    }}
                     onmousedown={(e) => {
                         if (typeof PointerEvent === "undefined") {
                             e.preventDefault();
                         }
                     }}
-                    onclick={() => handleOptionClick(row)}
+                    onclick={() => commitRow(row)}
                 >
                     {#if row.kind === "option"}
                         {#if optionItem}
