@@ -271,16 +271,29 @@
       event.preventDefault();
       coach.toggleQuickAsk(document.activeElement as HTMLElement | null);
    }
+
+   // Owner-mismatch is re-published on every focus/visibility sync, so toast
+   // once per episode rather than leaving a sticky banner on screen.
+   let toastedOwnerMismatch = false;
+   $effect(() => {
+      if ($syncStatus.state === "owner-mismatch") {
+         if (toastedOwnerMismatch) return;
+         toastedOwnerMismatch = true;
+         toasts.warning(
+            "Offline data belongs to another account on this device. Switch back to sync or open it.",
+         );
+         return;
+      }
+      toastedOwnerMismatch = false;
+   });
 </script>
 
 <svelte:window onkeydown={handleCoachShortcut} />
 
-{#if $syncStatus.state === "auth-required" || $syncStatus.state === "owner-mismatch" || $syncStatus.state === "overlap" || $syncStatus.state === "failed"}
+{#if $syncStatus.state === "auth-required" || $syncStatus.state === "overlap" || $syncStatus.state === "failed"}
    <div class="pointer-events-none fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-xl rounded-lg bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
       {#if $syncStatus.state === "auth-required"}
          {$syncStatus.pending} offline change{$syncStatus.pending === 1 ? "" : "s"} remain on this device. Sign in again to sync.
-      {:else if $syncStatus.state === "owner-mismatch"}
-         Offline data belongs to another account on this device. Switch back to sync or open it.
       {:else if $syncStatus.state === "overlap"}
          Offline work synced. {$syncStatus.overlaps.length} item{$syncStatus.overlaps.length === 1 ? "" : "s"} also changed online; the server applied offline answers in receipt order.
       {:else}
