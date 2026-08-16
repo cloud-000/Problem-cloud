@@ -12,14 +12,13 @@
     // session itself (see `(splash)/+layout.server.ts`).
     let signedIn = $derived(data.signedIn);
 
-    /** One source of truth: the tab strip, the try-it panel, and the
-     *  disciplines section all read from this list. */
+    /** One source of truth: the tab strip and the try-it panel both read
+     *  from this list. */
     const disciplines = [
         {
             id: "algebra",
             label: "Algebra",
             color: "var(--algebra)",
-            topics: "Polynomials · Inequalities · Sequences · Functions",
             statement:
                 "Find the sum of all real solutions to the equation $$x^2 - 5x + 6 = 0.$$",
             answer: "5",
@@ -29,7 +28,6 @@
             id: "combinatorics",
             label: "Combinatorics",
             color: "var(--combinatorics)",
-            topics: "Counting · Probability · Graphs · Bijections",
             statement:
                 "A committee of $3$ people is chosen from a group of $5$. How many different committees are possible?",
             answer: "10",
@@ -39,7 +37,6 @@
             id: "geometry",
             label: "Geometry",
             color: "var(--geometry)",
-            topics: "Triangles · Circles · Coordinates · Trigonometry",
             statement:
                 "A right triangle has legs of length $5$ and $12$. What is the length of its hypotenuse?",
             answer: "13",
@@ -49,7 +46,6 @@
             id: "number-theory",
             label: "Number theory",
             color: "var(--number-theory)",
-            topics: "Divisibility · Modular arithmetic · Primes · Diophantine equations",
             statement:
                 "What is the remainder when $2^{100}$ is divided by $3$?",
             answer: "1",
@@ -211,11 +207,9 @@
             <h1 class="type-hero text-foreground text-balance">
                 Every problem in one place.
             </h1>
-            <p class="type-lead text-muted-foreground mt-md max-w-[46ch]">
-                Algebra, combinatorics, geometry, and number theory in one
-                searchable library — every attempt recorded, your skill rated
-                against each problem, and the next thing to review already
-                picked out.
+            <p class="type-lead text-muted-foreground mt-md max-w-[40ch]">
+                Complete contest papers in one searchable library. Attempts
+                recorded, skill rated, the next review already queued.
             </p>
 
             <div class="mt-lg flex flex-wrap items-center gap-sm">
@@ -239,17 +233,34 @@
                 </Button>
             </div>
 
-            <p class="type-code text-muted-foreground mt-lg tabular-nums">
-                {#if problemLabel}
-                    {problemLabel} problems
-                    <span class="text-outline-variant mx-2">/</span>
-                {/if}
-                {#if testLabel}
-                    {testLabel} complete tests
-                    <span class="text-outline-variant mx-2">/</span>
-                {/if}
-                free to practice
-            </p>
+            {#if problemLabel}
+                <p class="mt-lg flex flex-wrap items-baseline gap-x-sm gap-y-1">
+                    <span
+                        class="type-display text-foreground font-mono tabular-nums"
+                        >{problemLabel}</span
+                    >
+                    <span class="type-secondary text-muted-foreground"
+                        >problems</span
+                    >
+                </p>
+                <p
+                    class="type-secondary text-muted-foreground mt-1.5 tabular-nums"
+                >
+                    {#if testLabel}
+                        {testLabel} complete tests
+                        <span class="text-outline-variant mx-2">·</span>
+                    {/if}
+                    {#if yearSpan}
+                        {yearSpan}
+                        <span class="text-outline-variant mx-2">·</span>
+                    {/if}
+                    free to practice
+                </p>
+            {:else}
+                <p class="type-caption text-muted-foreground mt-lg">
+                    Free to practice
+                </p>
+            {/if}
         </div>
 
         <!-- Try it: the product itself, not a picture of it -->
@@ -384,20 +395,36 @@
         <h2 class="type-display text-foreground max-w-[22ch] text-balance">
             Complete contests, not a selection.
         </h2>
-        <p class="type-secondary text-muted-foreground mt-md max-w-[62ch]">
-            {#if testLabel}{testLabel} full papers{:else}Every paper{/if}
-            across {data.seriesNames.length} series{#if yearSpan}, {yearSpan}{/if}
-            — including invitationals that usually exist only as a scanned PDF.
-            Sit a whole test, or pull one problem out of it.
+        <p class="type-secondary text-muted-foreground mt-md max-w-[54ch]">
+            Sit a whole paper, or pull one problem out of it — including
+            invitationals that usually exist only as a scanned PDF.
         </p>
 
-        <ul
-            class="type-secondary text-muted-foreground mt-lg grid grid-cols-2 gap-x-lg gap-y-1.5 sm:grid-cols-3 lg:grid-cols-4"
-        >
-            {#each data.seriesNames as name (name)}
-                <li class="truncate" title={name}>{name}</li>
-            {/each}
-        </ul>
+        {#if data.series.length}
+            <ul
+                class="mt-xl grid grid-cols-2 gap-sm sm:grid-cols-3 sm:gap-md lg:grid-cols-4"
+            >
+                {#each data.series as series (series.id)}
+                    <li
+                        class="border-border bg-surface-container-lowest flex h-full min-w-0 flex-col justify-between gap-1 rounded-lg border px-md py-md"
+                    >
+                        <p
+                            class="type-body text-foreground font-semibold text-pretty"
+                        >
+                            {series.name}
+                        </p>
+                        {#if series.testCount > 0}
+                            <p
+                                class="type-secondary text-muted-foreground mt-1 tabular-nums"
+                            >
+                                {number.format(series.testCount)}
+                                {series.testCount === 1 ? "paper" : "papers"}
+                            </p>
+                        {/if}
+                    </li>
+                {/each}
+            </ul>
+        {/if}
     </section>
 
     <!-- What you get -->
@@ -500,23 +527,6 @@
                 >
             </figcaption>
         </figure>
-    </section>
-
-    <!-- Disciplines -->
-    <section class="border-border/60 border-t py-xl">
-        <h2 class="type-section-title text-foreground">Four disciplines</h2>
-        <div class="mt-md grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
-            {#each disciplines as d (d.id)}
-                <div class="pt-md" style="border-top: 2px solid {d.color}">
-                    <h3 class="type-section-title text-foreground">
-                        {d.label}
-                    </h3>
-                    <p class="type-secondary text-muted-foreground mt-1">
-                        {d.topics}
-                    </p>
-                </div>
-            {/each}
-        </div>
     </section>
 
     <!-- Questions -->

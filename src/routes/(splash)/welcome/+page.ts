@@ -1,5 +1,11 @@
 import type { PageLoad } from "./$types";
 
+type SeriesEmbed = {
+    id: number;
+    name: string;
+    tests: { count: number }[] | null;
+};
+
 /** The corpus is the page's strongest claim, so it is measured rather than
  *  asserted: these figures come from the database on every render and stay
  *  true as content syncs land. All four tables are world-readable (see the
@@ -12,7 +18,10 @@ export const load: PageLoad = async ({ parent }) => {
     const [problems, tests, series, oldest, newest] = await Promise.all([
         supabase.from("problems").select("id", { count: "exact", head: true }),
         supabase.from("tests").select("id", { count: "exact", head: true }),
-        supabase.from("series").select("name").order("name"),
+        supabase
+            .from("series")
+            .select("id, name, tests(count)")
+            .order("name"),
         supabase
             .from("tests")
             .select("year")
@@ -32,7 +41,13 @@ export const load: PageLoad = async ({ parent }) => {
     return {
         problemCount: problems.error ? null : (problems.count ?? null),
         testCount: tests.error ? null : (tests.count ?? null),
-        seriesNames: series.error ? [] : series.data.map((s) => s.name),
+        series: series.error
+            ? []
+            : (series.data as unknown as SeriesEmbed[]).map((row) => ({
+                  id: row.id,
+                  name: row.name,
+                  testCount: row.tests?.[0]?.count ?? 0,
+              })),
         earliestYear: oldest.data?.year ?? null,
         latestYear: newest.data?.year ?? null,
     };
