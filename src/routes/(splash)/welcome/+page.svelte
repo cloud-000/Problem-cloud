@@ -202,12 +202,12 @@
     />
 </svelte:head>
 
-<div class="mx-auto w-full max-w-[1040px] px-md pb-xl md:px-xl">
+<div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm pb-xl sm:px-md md:px-xl">
     <!-- Hero -->
     <section
-        class="grid items-center gap-xl pt-xl pb-xl lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:pt-[4.5rem] lg:pb-[4.5rem]"
+        class="grid min-w-0 items-center gap-lg pt-lg pb-lg sm:gap-xl sm:pt-xl sm:pb-xl lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:pt-[4.5rem] lg:pb-[4.5rem]"
     >
-        <div class="rise">
+        <div class="rise min-w-0">
             <h1 class="type-hero text-foreground text-balance">
                 Every problem in one place.
             </h1>
@@ -253,12 +253,12 @@
         </div>
 
         <!-- Try it: the product itself, not a picture of it -->
-        <div class="rise rise-late">
+        <div class="rise rise-late min-w-0 w-full">
             <div
-                class="border-border bg-surface-container-lowest rounded-xl border"
+                class="border-border bg-surface-container-lowest min-w-0 overflow-hidden rounded-xl border"
             >
                 <div
-                    class="scrollbar-none border-border/70 flex gap-lg overflow-x-auto border-b px-lg"
+                    class="scrollbar-none border-border/70 flex gap-md overflow-x-auto border-b px-md sm:gap-lg sm:px-lg"
                     role="group"
                     aria-label="Sample problem by discipline"
                 >
@@ -267,7 +267,7 @@
                             type="button"
                             aria-pressed={selected === d.id}
                             onclick={() => (selected = d.id)}
-                            class="tab type-secondary shrink-0 py-3 whitespace-nowrap"
+                            class="tab type-secondary shrink-0 py-2.5 whitespace-nowrap sm:py-3"
                             class:tab-active={selected === d.id}
                             style:--tab-color={d.color}
                             id="sandbox-tab-{d.id}"
@@ -277,7 +277,7 @@
                     {/each}
                 </div>
 
-                <div class="p-lg" class:animate-answer-shake={shaking}>
+                <div class="p-md sm:p-lg" class:animate-answer-shake={shaking}>
                     <p class="type-caption text-muted-foreground">
                         Sample problem
                     </p>
@@ -285,16 +285,20 @@
                     {#key selected}
                         <div
                             in:fade={{ duration: 140 * motion }}
-                            class="mt-sm flex min-h-[7.5rem] items-center"
+                            class="sample-statement mt-sm flex min-h-[5rem] min-w-0 items-center sm:min-h-[7.5rem]"
                         >
-                            <LaTeX class="type-problem text-foreground w-full">
+                            <LaTeX
+                                class="type-problem text-foreground w-full min-w-0 max-w-full"
+                            >
                                 {current.statement}
                             </LaTeX>
                         </div>
                     {/key}
 
-                    <div class="mt-md flex items-end gap-sm">
-                        <div class="flex-1">
+                    <div
+                        class="mt-md flex min-w-0 flex-col gap-sm sm:flex-row sm:items-end"
+                    >
+                        <div class="min-w-0 flex-1">
                             <label
                                 for="sandbox-answer-input"
                                 class="type-caption text-muted-foreground mb-1.5 block"
@@ -312,12 +316,16 @@
                                     e.key === "Enter" && check()}
                             />
                         </div>
-                        <Button onclick={check} id="sandbox-submit-btn"
-                            >Check</Button
+                        <Button
+                            onclick={check}
+                            class="w-full shrink-0 sm:w-auto"
+                            id="sandbox-submit-btn">Check</Button
                         >
                     </div>
 
-                    <div class="mt-md flex min-h-8 items-center justify-between gap-md">
+                    <div
+                        class="mt-md flex min-h-8 flex-wrap items-center justify-between gap-x-md gap-y-1"
+                    >
                         <button
                             type="button"
                             onclick={() =>
@@ -620,5 +628,14 @@
         .faq :global(.chevron) {
             transition: none;
         }
+    }
+
+    /* Display math can exceed a phone width; scroll instead of widening the card. */
+    .sample-statement :global(.katex-display) {
+        margin: 0;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
     }
 </style>

@@ -25,23 +25,24 @@
         class="bg-background/85 border-border/60 sticky top-0 z-45 w-full border-b backdrop-blur-md"
     >
         <div
-            class="mx-auto flex h-16 w-full max-w-[1040px] items-center justify-between gap-md px-md md:px-xl"
+            class="mx-auto flex h-16 w-full max-w-[1040px] items-center justify-between gap-sm px-sm sm:gap-md sm:px-md md:px-xl"
         >
             <a
                 href="/welcome"
-                class="text-foreground hover:text-primary-foreground flex items-center gap-2 transition-colors"
+                class="text-foreground hover:text-primary-foreground flex min-w-0 items-center gap-2 transition-colors"
             >
                 <Icon
                     name="cloud"
                     fontsize="22px"
                     class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
                 />
-                <span class="text-base font-semibold tracking-[-0.01em]"
+                <span
+                    class="truncate text-base font-semibold tracking-[-0.01em] max-sm:sr-only"
                     >ProblemCloud</span
                 >
             </a>
 
-            <div class="flex items-center gap-1 sm:gap-2">
+            <div class="flex shrink-0 items-center gap-0.5 sm:gap-2">
                 <a
                     href="/about"
                     class="type-secondary text-muted-foreground hover:text-foreground hidden rounded-md px-2.5 py-1.5 transition-colors sm:block"
@@ -64,14 +65,21 @@
                 </button>
 
                 {#if signedIn}
-                    <Button href="/" id="nav-dashboard-btn">Dashboard</Button>
+                    <Button href="/" size="sm" id="nav-dashboard-btn"
+                        >Dashboard</Button
+                    >
                 {:else}
-                    <Button href="/auth/login" variant="ghost" id="nav-login-btn"
-                        >Log in</Button
+                    <Button
+                        href="/auth/login"
+                        variant="ghost"
+                        size="sm"
+                        class="hidden sm:inline-flex"
+                        id="nav-login-btn">Log in</Button
                     >
-                    <Button href="/auth/signup" id="nav-signup-btn"
-                        >Create account</Button
-                    >
+                    <Button href="/auth/signup" size="sm" id="nav-signup-btn">
+                        <span class="sm:hidden">Sign up</span>
+                        <span class="hidden sm:inline">Create account</span>
+                    </Button>
                 {/if}
             </div>
         </div>
