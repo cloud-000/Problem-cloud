@@ -25,6 +25,7 @@
     import { fetchAllSeries } from "$lib/library";
     import { startSession } from "$lib/sessions";
     import { toasts } from "$lib/state/toast.svelte";
+    import { modal } from "$lib/state/modal.svelte";
     import GoalCard from "./GoalCard.svelte";
     import GoalDetail from "./GoalDetail.svelte";
     import GoalForm from "./GoalForm.svelte";
@@ -227,9 +228,12 @@
     async function removeGoal(goal: Goal) {
         if (busy) return;
         if (
-            !window.confirm(
-                `Delete "${goal.title}"? This is permanent — archiving keeps it readable instead.`,
-            )
+            !(await modal.confirm({
+                title: "Delete goal",
+                message: `Delete "${goal.title}"? This is permanent — archiving keeps it readable instead.`,
+                confirmLabel: "Delete",
+                confirmVariant: "destructive",
+            }))
         )
             return;
         busy = true;

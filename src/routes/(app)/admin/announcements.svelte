@@ -6,6 +6,7 @@
     import { Input } from "$lib/components/input";
     import { Combobox } from "$lib/components/combobox";
     import { toasts } from "$lib/state/toast.svelte";
+    import { modal } from "$lib/state/modal.svelte";
     import { fetchProfiles } from "$lib/admin";
     import { onMount } from "svelte";
 
@@ -107,9 +108,13 @@
 
     async function handleDelete(id: number) {
         if (
-            !confirm(
-                "Are you sure you want to delete this announcement? It will be removed for all users.",
-            )
+            !(await modal.confirm({
+                title: "Delete announcement",
+                message:
+                    "Are you sure you want to delete this announcement? It will be removed for all users.",
+                confirmLabel: "Delete",
+                confirmVariant: "destructive",
+            }))
         ) {
             return;
         }

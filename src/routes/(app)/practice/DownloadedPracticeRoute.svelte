@@ -5,6 +5,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
+    import { modal } from "$lib/state/modal.svelte";
     import { offlineRepository } from "$lib/offline/browser";
     import { deleteSession, type PracticeSessionRow } from "$lib/sessions";
     import { createDownloadedTrainerDataSource } from "$lib/trainer-data-source";
@@ -70,9 +71,13 @@
     async function removeSession(session: PracticeSessionRow) {
         if (view.kind !== "landing" || starting) return;
         if (
-            !window.confirm(
-                "Delete this session? Synced answers stay in your history.",
-            )
+            !(await modal.confirm({
+                title: "Delete session",
+                message:
+                    "Delete this session? Synced answers stay in your history.",
+                confirmLabel: "Delete",
+                confirmVariant: "destructive",
+            }))
         ) {
             return;
         }

@@ -5,6 +5,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
+    import { modal } from "$lib/state/modal.svelte";
     import { createBrowserClient } from "@supabase/ssr";
     import {
         PUBLIC_SUPABASE_PUBLISHABLE_KEY,
@@ -281,9 +282,11 @@
                     }
                 },
                 confirm: async (created, bytes, persistent) => {
-                    confirmed = confirm(
-                        `Download ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? Answer keys are stored on this device.${persistent === false ? " This browser did not grant persistent storage." : ""}`,
-                    );
+                    confirmed = await modal.confirm({
+                        title: "Download problems",
+                        message: `Download ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? Answer keys are stored on this device.${persistent === false ? " This browser did not grant persistent storage." : ""}`,
+                        confirmLabel: "Download",
+                    });
                     return confirmed;
                 },
             });
@@ -341,9 +344,12 @@
                 },
                 packageId: manifest.packageId,
                 onProgress: (progress) => (action = { packageId: manifest.packageId, progress }),
-                confirm: async (created, bytes, persistent) => confirm(
-                    `Refresh ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? The current ready copy remains usable until the refresh commits.`,
-                ),
+                confirm: async (created, bytes, persistent) =>
+                    modal.confirm({
+                        title: "Refresh download",
+                        message: `Refresh ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? The current ready copy remains usable until the refresh commits.`,
+                        confirmLabel: "Refresh",
+                    }),
             });
         } finally {
             await refresh();
@@ -354,7 +360,15 @@
         const warning = manifest.pendingOperations
             ? `Discard this download and its ${manifest.pendingOperations} pending change(s)? This cannot be undone.`
             : `Delete this ${manifest.problemCount}-problem download?`;
-        if (!confirm(warning)) return;
+        if (
+            !(await modal.confirm({
+                title: "Delete download",
+                message: warning,
+                confirmLabel: "Delete",
+                confirmVariant: "destructive",
+            }))
+        )
+            return;
         const repository = await offlineRepository();
         await repository.deletePackage(manifest.packageId, {
             discardPending: manifest.pendingOperations > 0,
