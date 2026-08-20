@@ -10,7 +10,8 @@
     } from "./combobox.js";
 
     export const comboboxVariants = tv({
-        base: "border-input focus-within:border-ring focus-within:ring-ring/50 aria-invalid:ring-destructive/20 aria-invalid:border-destructive relative w-full min-w-0 rounded-md border bg-transparent px-2.5 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-within:ring-3 aria-invalid:ring-3 has-disabled:pointer-events-none has-disabled:opacity-50 cursor-text",
+        // text-base on small viewports avoids iOS Safari auto-zoom on focus (<16px).
+        base: "border-input focus-within:border-ring focus-within:ring-ring/50 aria-invalid:ring-destructive/20 aria-invalid:border-destructive relative w-full min-w-0 rounded-md border bg-transparent px-2.5 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none focus-within:ring-3 aria-invalid:ring-3 has-disabled:pointer-events-none has-disabled:opacity-50 cursor-text md:text-sm",
     });
 
     export type ComboboxProps = WithElementRef<
@@ -110,6 +111,8 @@
     let inputEl = $state<HTMLInputElement | null>(null);
     let rowEls: HTMLLIElement[] = $state([]);
     let flashTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Skip the synthetic click after a touch/pen commit in pointerdown. */
+    let suppressOptionClick = false;
 
     // --- mode derivation ---
     const hasList = $derived(options.length > 0);
@@ -416,16 +419,50 @@
     function handleFocusOut(e: FocusEvent) {
         const next = e.relatedTarget;
         if (next instanceof Node && ref?.contains(next)) return;
-        open = false;
-        highlightedPillIndex = -1;
+        // Defer close so a touch on a non-focusable option can commit before the
+        // list unmounts. Mobile (esp. iOS) often reports relatedTarget as null
+        // when tapping options, which used to close the dropdown before click.
+        setTimeout(() => {
+            if (ref && !ref.contains(document.activeElement)) {
+                open = false;
+                highlightedPillIndex = -1;
+            }
+        }, 50);
     }
 
     function handlePointerDown(e: PointerEvent) {
         const target = e.target as HTMLElement;
         if (target === inputEl) return;
         if (target.closest("button")) return; // let pill remove buttons work
+        // Option rows manage their own pointerdown (commit / keep-focus).
+        if (target.closest('[role="option"]')) return;
         e.preventDefault(); // keep focus on the input
         inputEl?.focus();
+    }
+
+    function handleOptionPointerDown(e: PointerEvent, row: Row) {
+        if (!row.selectable) return;
+        // Keep the input focused so focusout does not tear down the list.
+        e.preventDefault();
+        // Touch/pen: commit immediately. Waiting for click is racy on mobile
+        // because blur can unmount the row before the click event fires.
+        if (e.pointerType !== "mouse") {
+            suppressOptionClick = true;
+            commitRow(row);
+            // Some browsers suppress the synthetic click after preventDefault;
+            // clear the guard so a later mouse click is not skipped.
+            setTimeout(() => {
+                suppressOptionClick = false;
+            }, 300);
+        }
+    }
+
+    function handleOptionClick(row: Row) {
+        if (suppressOptionClick) {
+            suppressOptionClick = false;
+            return;
+        }
+        commitRow(row);
     }
 </script>
 
@@ -499,7 +536,7 @@
             {disabled}
             value={query}
             placeholder={value.length === 0 ? placeholder : inputPlaceholder}
-            class="min-w-[6ch] flex-1 self-stretch border-0 bg-transparent p-0 text-sm shadow-none outline-none focus:border-0 focus:shadow-none focus:ring-0 focus:outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+            class="min-w-[6ch] flex-1 self-stretch border-0 bg-transparent p-0 text-base shadow-none outline-none focus:border-0 focus:shadow-none focus:ring-0 focus:outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:text-sm"
             oninput={handleInput}
             onkeydown={handleKeydown}
             onfocus={handleFocus}
@@ -528,22 +565,18 @@
                     aria-disabled={!row.selectable ? true : undefined}
                     data-active={activeIndex === i ? "" : undefined}
                     class={cn(
-                        "flex items-center px-2.5 py-1.5 text-sm",
+                        "flex items-center px-2.5 py-2 text-base md:py-1.5 md:text-sm",
                         row.selectable
                             ? "cursor-pointer data-active:bg-primary"
                             : "text-muted-foreground",
                     )}
-                    onpointerdown={(e) => {
-                        if (e.pointerType === "mouse") {
-                            e.preventDefault();
-                        }
-                    }}
+                    onpointerdown={(e) => handleOptionPointerDown(e, row)}
                     onmousedown={(e) => {
                         if (typeof PointerEvent === "undefined") {
                             e.preventDefault();
                         }
                     }}
-                    onclick={() => commitRow(row)}
+                    onclick={() => handleOptionClick(row)}
                 >
                     {#if row.kind === "option"}
                         {#if optionItem}
