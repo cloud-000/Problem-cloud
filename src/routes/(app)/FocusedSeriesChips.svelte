@@ -122,7 +122,14 @@
     function handleFocusOut(event: FocusEvent) {
         const next = event.relatedTarget as Node | null;
         if (container && next && container.contains(next)) return;
-        stopEditing();
+        // Defer so a mobile tap on a combobox option can commit before we tear
+        // down edit mode. Touch often reports relatedTarget as null when the
+        // option is not focusable, which previously exited edit mid-tap.
+        setTimeout(() => {
+            if (container && !container.contains(document.activeElement)) {
+                stopEditing();
+            }
+        }, 50);
     }
 </script>
 
