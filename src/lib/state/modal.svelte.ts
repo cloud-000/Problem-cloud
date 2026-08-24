@@ -1,4 +1,6 @@
 import type { Component } from "svelte";
+import type { ButtonVariant } from "$lib/components/button";
+import ConfirmModal from "$lib/components/modal/ConfirmModal.svelte";
 
 export type ModalSize = "sm" | "md" | "lg" | "xl" | "full";
 
@@ -11,6 +13,15 @@ export interface ModalOptions {
     overflowVisible?: boolean;
     class?: string;
     onClose?: () => void;
+}
+
+export interface ConfirmModalOptions {
+    title?: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    confirmVariant?: ButtonVariant;
+    size?: ModalSize;
 }
 
 export interface ActiveModal {
@@ -37,6 +48,42 @@ class ModalStore {
             options
         };
         return id;
+    }
+
+    /**
+     * Ask the user to confirm an action using the in-app modal.
+     * Prefer this over `window.confirm` — browsers suppress or auto-cancel
+     * native dialogs on mobile (especially inside async handlers).
+     */
+    confirm(options: ConfirmModalOptions): Promise<boolean> {
+        return new Promise((resolve) => {
+            let accepted = false;
+            let settled = false;
+            const finish = (value: boolean) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+
+            this.show(
+                ConfirmModal,
+                {
+                    message: options.message,
+                    confirmLabel: options.confirmLabel,
+                    cancelLabel: options.cancelLabel,
+                    confirmVariant: options.confirmVariant,
+                    onDecide: (value: boolean) => {
+                        accepted = value;
+                        this.close();
+                    },
+                },
+                {
+                    title: options.title ?? "Confirm",
+                    size: options.size ?? "sm",
+                    onClose: () => finish(accepted),
+                },
+            );
+        });
     }
 
     /** Close the current active modal. */

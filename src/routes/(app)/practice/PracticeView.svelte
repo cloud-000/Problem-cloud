@@ -1765,8 +1765,14 @@
       }
    }
 
-   function handleSkip() {
-      if (window.confirm("Are you sure you want to skip this problem?")) {
+   async function handleSkip() {
+      if (
+         await modal.confirm({
+            title: "Skip problem",
+            message: "Are you sure you want to skip this problem?",
+            confirmLabel: "Skip",
+         })
+      ) {
          goForward();
       }
    }

@@ -7,6 +7,7 @@
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
     import { Modal } from "$lib/components/modal";
+    import { modal } from "$lib/state/modal.svelte";
     import * as Page from "$lib/components/page";
     import { RangeSlider } from "$lib/components/range-slider";
     import { Select, type SelectOption } from "$lib/components/select";
@@ -336,9 +337,13 @@
 
     async function removeSession(s: PracticeSessionRow) {
         if (
-            !window.confirm(
-                "Delete this session? Its problems stay in your history (they return to ungrouped).",
-            )
+            !(await modal.confirm({
+                title: "Delete session",
+                message:
+                    "Delete this session? Its problems stay in your history (they return to ungrouped).",
+                confirmLabel: "Delete",
+                confirmVariant: "destructive",
+            }))
         )
             return;
         try {

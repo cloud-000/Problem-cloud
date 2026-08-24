@@ -5,6 +5,7 @@
     import { DatePicker } from "$lib/components/date-picker";
     import { Input } from "$lib/components/input";
     import { Modal } from "$lib/components/modal";
+    import { modal } from "$lib/state/modal.svelte";
     import { Select, type SelectOption } from "$lib/components/select";
     import {
         createGoal,
@@ -353,9 +354,12 @@
             if (goal) {
                 let reopen = false;
                 if (material && goal.achievedAt) {
-                    reopen = window.confirm(
-                        "This goal is already achieved. Changing its scope or finish line reopens it and clears the achievement date. Continue?",
-                    );
+                    reopen = await modal.confirm({
+                        title: "Reopen goal",
+                        message:
+                            "This goal is already achieved. Changing its scope or finish line reopens it and clears the achievement date. Continue?",
+                        confirmLabel: "Continue",
+                    });
                     if (!reopen) {
                         busy = false;
                         return;
