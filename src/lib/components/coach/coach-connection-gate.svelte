@@ -2,6 +2,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { coach } from "$lib/state/coach.svelte";
+    import { resolve } from "$app/paths";
 </script>
 
 <div class="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
@@ -16,6 +17,6 @@
     </p>
     <div class="mt-4 flex items-center gap-2">
         <Button size="sm" class="text-xs" onclick={() => coach.initialize(true)}>Retry connection</Button>
-        <Button size="sm" variant="outline" class="text-xs" href="/settings">AI settings</Button>
+        <Button size="sm" variant="outline" class="text-xs" href={resolve("/settings#ai")}>AI settings</Button>
     </div>
 </div>

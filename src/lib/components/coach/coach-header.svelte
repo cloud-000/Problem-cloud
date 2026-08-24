@@ -128,7 +128,7 @@
             <div class="mt-3 border-t border-border/40 pt-2 text-right">
                 <a
                     class="inline-flex text-xs font-medium text-primary hover:underline"
-                    href={resolve("/settings")}
+                    href={resolve("/settings#ai")}
                 >
                     AI settings →
                 </a>

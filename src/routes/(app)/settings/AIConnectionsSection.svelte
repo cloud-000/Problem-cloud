@@ -37,6 +37,7 @@
 </script>
 
 <Page.Section
+    id="ai"
     title="AI connections"
     description="Bring your own provider key to use Coach. Requests go directly from this browser to the provider; your key never reaches our servers or your ProblemCloud account. Keys are stored in this browser and can be read by anyone with access to it."
 >

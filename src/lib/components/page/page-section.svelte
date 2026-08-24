@@ -17,6 +17,7 @@
         actions,
         children,
         class: className,
+        id,
         ...restProps
     }: Props = $props();
 
@@ -27,8 +28,9 @@
 <section
     bind:this={ref}
     data-slot="page-section"
+    {id}
     aria-labelledby={title ? titleId : undefined}
-    class={cn("flex flex-col gap-4", className)}
+    class={cn("flex flex-col gap-4", id && "scroll-mt-6", className)}
     {...restProps}
 >
     {#if title || description || actions}
@@ -39,7 +41,16 @@
             <div class="min-w-0">
                 {#if title}
                     <h2 id={titleId} class="type-section-title text-foreground">
-                        {title}
+                        {#if id}
+                            <a
+                                href="#{id}"
+                                class="text-inherit no-underline hover:underline decoration-border/80 underline-offset-4"
+                            >
+                                {title}
+                            </a>
+                        {:else}
+                            {title}
+                        {/if}
                     </h2>
                 {/if}
                 {#if description}

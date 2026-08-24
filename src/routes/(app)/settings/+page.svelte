@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { afterNavigate } from "$app/navigation";
+    import { tick } from "svelte";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
@@ -14,6 +16,9 @@
     let { data }: { data: PageData } = $props();
     let { profile, session, user, supabase } = $derived(data);
 
+    const sectionLinkClass =
+        "type-secondary text-muted-foreground transition-colors hover:text-foreground hover:underline";
+
     function openFeedback() {
         if (!user) return;
         modal.show(
@@ -22,19 +27,47 @@
             { title: "Send feedback", size: "md" },
         );
     }
+
+    function scrollToHash(hash: string) {
+        const id = decodeURIComponent(hash.replace(/^#/, ""));
+        if (!id) return;
+        document.getElementById(id)?.scrollIntoView({ block: "start" });
+    }
+
+    afterNavigate(async (navigation) => {
+        const hash = navigation.to?.url.hash;
+        if (!hash) return;
+        await tick();
+        scrollToHash(hash);
+    });
 </script>
+
+<svelte:window onhashchange={() => scrollToHash(window.location.hash)} />
 
 <svelte:head>
     <title>Settings · ProblemCloud</title>
 </svelte:head>
 
 <Page.Root width="narrow" class="gap-10">
-    <Page.Header
-        title="Settings"
-        description="Manage your interface, account, and connected services."
-    />
+    <div class="flex flex-col gap-4">
+        <Page.Header
+            title="Settings"
+            description="Manage your interface, account, and connected services."
+        />
+        <nav aria-label="Settings sections" class="flex flex-wrap gap-x-4 gap-y-1">
+            <a href="#appearance" class={sectionLinkClass}>Appearance</a>
+            <a href="#experimental" class={sectionLinkClass}>Experimental</a>
+            <a href="#developer" class={sectionLinkClass}>Developer</a>
+            <a href="#account" class={sectionLinkClass}>Account</a>
+            {#if session && user}
+                <a href="#ai" class={sectionLinkClass}>AI</a>
+                <a href="#feedback" class={sectionLinkClass}>Feedback</a>
+            {/if}
+        </nav>
+    </div>
 
     <Page.Section
+        id="appearance"
         title="Appearance"
         description="Choose how ProblemCloud looks on this device. Asymptote diagrams adjust their contrast automatically."
     >
@@ -60,6 +93,7 @@
     </Page.Section>
 
     <Page.Section
+        id="experimental"
         title="Experimental features"
         description="Control access to unfinished tools on this device."
     >
@@ -86,6 +120,7 @@
     </Page.Section>
 
     <Page.Section
+        id="developer"
         title="Developer"
         description="Inspect what ProblemCloud is doing under the hood on this device."
     >
@@ -111,6 +146,7 @@
     </Page.Section>
 
     <Page.Section
+        id="account"
         title="Account"
         description="Details associated with your current ProblemCloud account."
     >
@@ -162,6 +198,7 @@
         <AIConnectionsSection />
 
         <Page.Section
+            id="feedback"
             title="Feedback"
             description="Report a bug, suggest a feature, or share an idea with the team."
         >

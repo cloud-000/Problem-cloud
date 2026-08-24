@@ -21,7 +21,7 @@
     data-expanded={sidebar.expanded}
     class={cn(
         "flex items-center gap-2 px-4 py-2 border-b border-border min-h-[48px] transition-all duration-300",
-        !sidebar.expanded && "justify-center px-2",
+        !sidebar.expanded && "justify-center overflow-hidden px-2",
         className
     )}
     {...restProps}

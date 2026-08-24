@@ -347,12 +347,12 @@
    {#if showNav}
       <Sidebar.Root
          bind:expanded={() => expanded, setSidebarExpanded}
-         class={expanded ? "w-60" : "w-16"}
+         class={expanded ? "w-60" : "w-16 overflow-hidden"}
       >
          <Sidebar.Header
             class={cn(
                "border-b-0 px-3 py-3",
-               expanded ? "justify-between" : "justify-center gap-1",
+               expanded ? "justify-between" : "justify-center",
             )}
          >
             {#if expanded}
@@ -372,18 +372,6 @@
                         Offline
                      </span>
                   {/if}
-               </a>
-            {:else}
-               <a
-                  href={resolve("/")}
-                  class="type-secondary flex h-8 w-8 items-center justify-center rounded-md text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="ProblemCloud home"
-               >
-                  <Icon
-                     name="cloud"
-                     class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
-                     fontsize="20px"
-                  />
                </a>
             {/if}
             <Sidebar.Trigger />
