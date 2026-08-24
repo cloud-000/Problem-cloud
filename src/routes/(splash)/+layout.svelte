@@ -43,11 +43,6 @@
             </a>
 
             <div class="flex shrink-0 items-center gap-0.5 sm:gap-2">
-                <a
-                    href="/about"
-                    class="type-secondary text-muted-foreground hover:text-foreground hidden rounded-md px-2.5 py-1.5 transition-colors sm:block"
-                    >About</a
-                >
                 <button
                     onclick={toggleTheme}
                     class="text-muted-foreground hover:text-foreground hover:bg-muted flex size-9 items-center justify-center rounded-md transition-colors"
@@ -95,13 +90,12 @@
         >
             <span class="type-caption">© 2026 ProblemCloud</span>
             <nav class="type-caption flex items-center gap-lg">
-                <a href="/about" class="hover:text-foreground transition-colors"
-                    >About</a
-                >
-                <a
-                    href="/library"
-                    class="hover:text-foreground transition-colors">Library</a
-                >
+                {#if signedIn}
+                    <a
+                        href="/library"
+                        class="hover:text-foreground transition-colors">Library</a
+                    >
+                {/if}
                 <a
                     href="/auth/login"
                     class="hover:text-foreground transition-colors">Log in</a

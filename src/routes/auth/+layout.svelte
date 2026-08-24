@@ -1,7 +1,6 @@
 <script lang="ts">
     import { enhance } from "$app/forms";
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { offlineMode } from "$lib/state/offline-mode.svelte";
 
@@ -24,7 +23,6 @@
                 />
                 <span>ProblemCloud</span>
             </a>
-            <Button href="/about" variant="ghost" size="sm">About</Button>
         </div>
     </header>
 
