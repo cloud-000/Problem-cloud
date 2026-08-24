@@ -337,9 +337,10 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                                 return;
                             }
                             case "raw":
-                                // OpenRouter puts reasoning in `delta.reasoning`, which
-                                // any-model does not map; the raw chunk is the only way
-                                // to reach it. Any other shape reads as no reasoning.
+                                // any-model 0.1.3 maps both DeepSeek's
+                                // `reasoning_content` and OpenRouter's `reasoning`
+                                // onto `reasoning-delta`. The helper skips those
+                                // so a raw passthrough cannot double the trace.
                                 emit(demux.reasoning(reasoningFromRawChunk(part.value)));
                                 break;
                             // Phase 1 sends no tools.

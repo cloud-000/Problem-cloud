@@ -266,7 +266,7 @@ describe("any-model provider adapter", () => {
         ).toBe("working");
     });
 
-    test("reads OpenRouter's delta.reasoning off the raw chunk", async () => {
+    test("maps OpenRouter's delta.reasoning once, not via the raw chunk as well", async () => {
         const adapter = new OpenAICompatAdapter({
             credential,
             fetchImpl: fakeFetch({

@@ -10,8 +10,9 @@
  *     how R1-family weights behave when served by Ollama, vLLM, llama.cpp, or
  *     any endpoint that does not special-case them. Feed content to `answer()`
  *     and this splits it.
- *  3. `delta.reasoning` — OpenRouter's field, which any-model does not map;
- *     the adapter digs it out of the `raw` chunk and feeds `reasoning()`.
+ *  3. `delta.reasoning` — OpenRouter's field. any-model 0.1.3 maps this (and
+ *     `reasoning_content`) to `reasoning-delta`; the raw-chunk fallback must
+ *     not read either field or the trace is counted twice.
  *
  * Case 2 is why this is a state machine rather than a `replace()`. Deltas split
  * anywhere, so `<th` and `ink>` routinely arrive in different chunks: a
@@ -143,30 +144,13 @@ export function createReasoningDemux(): ReasoningDemux {
 }
 
 /**
- * OpenRouter's `delta.reasoning`, read off the raw chunk any-model passes through
- * untouched — it maps `reasoning_content` and nothing else, so this field is
- * otherwise unreachable. Shape-checked rather than typed: `raw` is
- * provider-defined, and a missing or renamed field must degrade to "no
- * reasoning", never throw.
+ * Residual reasoning on a raw chunk that any-model did not already map.
  *
- * A delta carrying `reasoning_content` is skipped: any-model already emits that
- * as a `reasoning-delta`, and an endpoint that sets both fields would otherwise
- * have its trace counted twice.
+ * any-model 0.1.3 yields `reasoning-delta` for both `delta.reasoning_content`
+ * (DeepSeek) and `delta.reasoning` (OpenRouter). Reading either off `raw` is
+ * what doubled OpenRouter traces after the bump. Until a provider ships a
+ * third convention, raw chunks have nothing left to contribute.
  */
-export function reasoningFromRawChunk(value: unknown): string {
-    if (typeof value !== "object" || value === null) return "";
-    const choices = (value as { choices?: unknown }).choices;
-    if (!Array.isArray(choices)) return "";
-    let text = "";
-    for (const choice of choices) {
-        if (typeof choice !== "object" || choice === null) continue;
-        const delta = (choice as { delta?: unknown }).delta;
-        if (typeof delta !== "object" || delta === null) continue;
-        if (typeof (delta as { reasoning_content?: unknown }).reasoning_content === "string") {
-            continue;
-        }
-        const reasoning = (delta as { reasoning?: unknown }).reasoning;
-        if (typeof reasoning === "string") text += reasoning;
-    }
-    return text;
+export function reasoningFromRawChunk(_value: unknown): string {
+    return "";
 }

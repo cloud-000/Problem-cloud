@@ -90,11 +90,8 @@ describe("createReasoningDemux", () => {
 });
 
 describe("reasoningFromRawChunk", () => {
-    test("reads OpenRouter's delta.reasoning", () => {
-        expect(reasoningFromRawChunk({ choices: [{ delta: { reasoning: "hmm" } }] })).toBe("hmm");
-    });
-
-    test("skips a delta any-model already maps, so a trace is not doubled", () => {
+    test("skips fields any-model already maps, so a trace is not doubled", () => {
+        expect(reasoningFromRawChunk({ choices: [{ delta: { reasoning: "hmm" } }] })).toBe("");
         expect(
             reasoningFromRawChunk({
                 choices: [{ delta: { reasoning: "hmm", reasoning_content: "hmm" } }],
