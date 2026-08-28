@@ -79,4 +79,4 @@
 <div
     bind:this={renderEl}
     class="font-serif leading-relaxed select-text {className}"
-></div>
+>{@render children?.()}</div>

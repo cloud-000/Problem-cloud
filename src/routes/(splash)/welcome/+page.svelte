@@ -245,7 +245,7 @@
                             <span class="w-28 shrink-0"></span>
                             {#each matrixColumns as column (column)}
                                 <span
-                                    class="type-caption text-outline-variant w-5 shrink-0 text-center font-mono text-[10px]"
+                                    class="type-caption text-muted-foreground w-5 shrink-0 text-center font-mono text-[10px]"
                                     >{column}</span
                                 >
                             {/each}
@@ -444,11 +444,9 @@
 
     @keyframes rise {
         from {
-            opacity: 0;
-            transform: translateY(10px);
+            transform: translateY(8px);
         }
         to {
-            opacity: 1;
             transform: none;
         }
     }

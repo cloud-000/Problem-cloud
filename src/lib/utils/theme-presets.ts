@@ -12,7 +12,7 @@ export const lightThemeConfig: ThemeConfig = {
         foreground: "#191c1e",
         "background-foreground": "#191c1e",
         primary: "rgb(219, 233, 254)",
-        "primary-foreground": "rgb(50, 108, 236)",
+        "primary-foreground": "rgb(29, 78, 216)",
         "primary-container": "#131b2e",
         "on-primary-container": "#7c839b",
         "inverse-primary": "#bec6e0",

@@ -167,7 +167,7 @@
                         >
                             {sample.source}
                         </p>
-                        <span class="type-caption text-outline-variant tabular-nums">
+                        <span class="type-caption text-muted-foreground tabular-nums">
                             {index + 1}/{samples.length}
                         </span>
                     </div>
@@ -248,7 +248,6 @@
             <Button
                 variant="outline"
                 aria-pressed={coachMode}
-                aria-label={coachMode ? "Switch to answer mode" : "Switch to Coach mode"}
                 onclick={() => (coachMode = !coachMode)}
                 class="h-9 justify-self-center gap-0.5 rounded-lg p-1 text-[11px] font-semibold"
             >
