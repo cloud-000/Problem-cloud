@@ -59,6 +59,9 @@ wrangler.jsonc
 # static
 static/fonts/
 static/vendor/
+static/icons/
+static/*.png
+static/*.svg
 
 # External DOCS
 library-docs/
