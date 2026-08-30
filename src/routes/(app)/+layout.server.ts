@@ -6,6 +6,7 @@
  * the service worker must be able to cache (`docs/offline.md` §3a). Keep the root
  * layout presentation-only.
  */
+import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 
@@ -23,6 +24,10 @@ export const load: LayoutServerLoad = async ({
             .eq("id", user.id)
             .single();
         profile = profileData;
+
+        if (!profile?.username) {
+            redirect(303, "/auth/complete-profile");
+        }
 
         if (profile) {
             const lastActive = new Date(profile.last_active_at).getTime();

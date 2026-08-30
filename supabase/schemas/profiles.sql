@@ -41,7 +41,8 @@ as $$
 begin
   -- Enforce restrictions only for requests coming from the client API (authenticated role)
   if auth.role() = 'authenticated' then
-    if new.username is distinct from old.username then
+    if new.username is distinct from old.username
+       and pg_catalog.current_setting('app.claiming_profile_username', true) is distinct from 'true' then
       raise exception 'Updating username is not allowed via client API.';
     end if;
 
@@ -73,10 +74,7 @@ begin
   insert into public.profiles (id, username, admin_rank, status)
   values (
     new.id,
-    coalesce(
-      new.raw_user_meta_data->>'username',
-      'user_' || pg_catalog.substr(new.id::text, 1, 8)
-    ),
+    new.raw_user_meta_data->>'username',
     coalesce(
       (new.raw_user_meta_data->>'admin_rank')::integer,
       0
@@ -96,7 +94,47 @@ $$;
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row
-  execute function public.handle_new_user();
+execute function public.handle_new_user();
+
+-- OAuth creates auth.users before the browser returns from the provider. The
+-- callback therefore claims a username afterwards through this narrow RPC,
+-- rather than exposing general username updates through the profiles table.
+create or replace function public.claim_profile_username(p_username text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_username text := pg_catalog.btrim(p_username);
+  v_claimed text;
+begin
+  if auth.uid() is null then
+    raise exception 'USERNAME_AUTH_REQUIRED';
+  end if;
+
+  if v_username is null or pg_catalog.char_length(v_username) < 3 then
+    raise exception 'USERNAME_INVALID';
+  end if;
+
+  perform pg_catalog.set_config('app.claiming_profile_username', 'true', true);
+
+  begin
+    update public.profiles
+      set username = v_username
+      where id = auth.uid() and username is null
+      returning username into v_claimed;
+  exception when unique_violation then
+    raise exception 'USERNAME_TAKEN';
+  end;
+
+  if v_claimed is null then
+    raise exception 'USERNAME_ALREADY_SET';
+  end if;
+
+  return v_claimed;
+end;
+$$;
 
 -- Function to handle cleaning up a profile when a user is deleted
 create or replace function public.handle_deleted_user()
@@ -120,4 +158,5 @@ create or replace trigger on_auth_user_deleted
 -- Grant permissions for roles
 grant select on public.profiles to anon;
 grant select, update on public.profiles to authenticated;
+grant execute on function public.claim_profile_username(text) to authenticated;
 grant all on public.profiles to service_role;

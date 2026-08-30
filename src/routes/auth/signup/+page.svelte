@@ -125,6 +125,10 @@
 
     <Button type="submit" size="lg" class="w-full">Create account</Button>
 
+    <Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" data-sveltekit-reload>
+        Sign up with Google
+    </Button>
+
     <p class="type-secondary text-muted-foreground">
         Already have an account? <a href={resolve("/auth/login")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Log in</a>
     </p>

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
     AUTH_MAIL_FROM,
     authFailureMessage,
+    validateUsername,
     validateSignupFields,
 } from "./auth";
 
@@ -32,6 +33,13 @@ describe("validateSignupFields", () => {
         expect(validateSignupFields({ ...ok, passwordConfirm: "secret2" })).toBe(
             "Passwords do not match.",
         );
+    });
+});
+
+describe("validateUsername", () => {
+    test("trims before applying the shared minimum", () => {
+        expect(validateUsername("  ab ")).toBe("Username must be at least 3 characters.");
+        expect(validateUsername("  ada ")).toBeNull();
     });
 });
 

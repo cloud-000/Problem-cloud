@@ -4,6 +4,13 @@ export const AUTH_MAIL_FROM = "cloud.hermes.bot@gmail.com";
 const USERNAME_MIN = 3;
 const PASSWORD_MIN = 6;
 
+export function validateUsername(usernameInput: string): string | null {
+    if (usernameInput.trim().length < USERNAME_MIN) {
+        return `Username must be at least ${USERNAME_MIN} characters.`;
+    }
+    return null;
+}
+
 export function validateSignupFields(input: {
     email: string;
     username: string;
@@ -13,9 +20,8 @@ export function validateSignupFields(input: {
     const email = input.email.trim();
     const username = input.username.trim();
     if (!email) return "Enter an email address.";
-    if (username.length < USERNAME_MIN) {
-        return `Username must be at least ${USERNAME_MIN} characters.`;
-    }
+    const usernameError = validateUsername(username);
+    if (usernameError) return usernameError;
     if (input.password.length < PASSWORD_MIN) {
         return `Password must be at least ${PASSWORD_MIN} characters.`;
     }
@@ -54,6 +60,8 @@ export function authFailureMessage(error: {
         case "signup_disabled":
         case "email_provider_disabled":
             return "New accounts are turned off right now.";
+        case "identity_already_exists":
+            return "This Google account is already connected to another account. Log in with that account first.";
         case "user_banned":
             return "This account is suspended.";
         case "unexpected_failure":

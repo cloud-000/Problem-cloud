@@ -1,10 +1,17 @@
 <script lang="ts">
     import { enhance } from "$app/forms";
     import { resolve } from "$app/paths";
+    import { page } from "$app/state";
     import { Icon } from "$lib/components/icon";
     import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { children } = $props();
+
+    let action = $derived(
+        page.url.pathname === "/auth/login" || page.url.pathname === "/auth/signup"
+            ? "?/password"
+            : undefined,
+    );
 </script>
 
 <svelte:head>
@@ -27,7 +34,7 @@
     </header>
 
     <main class="mx-auto flex w-full max-w-[760px] flex-1 items-start justify-center px-4 py-10 sm:px-6 sm:py-16">
-        <form method="POST" use:enhance class="w-full max-w-[560px] space-y-6">
+        <form method="POST" {action} use:enhance class="w-full max-w-[560px] space-y-6">
             {@render children()}
         </form>
     </main>

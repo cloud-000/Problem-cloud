@@ -4,7 +4,7 @@
     import { Input } from "$lib/components/input";
     import type { ActionData } from "./$types";
 
-    let { form }: { form: ActionData } = $props();
+    let { data, form }: { data: { oauthMessage: string | null }; form: ActionData } = $props();
 </script>
 
 <svelte:head><title>Log in — ProblemCloud</title></svelte:head>
@@ -40,11 +40,15 @@
     </label>
 </div>
 
-{#if form?.message}
-    <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form.message}</p>
+{#if form?.message || data.oauthMessage}
+    <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form?.message ?? data.oauthMessage}</p>
 {/if}
 
 <Button type="submit" size="lg" class="w-full">Log in</Button>
+
+<Button type="submit" formaction="?/google" variant="outline" size="lg" class="w-full" data-sveltekit-reload>
+    Continue with Google
+</Button>
 
 <p class="type-secondary text-muted-foreground">
     Don’t have an account? <a href={resolve("/auth/signup")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Create account</a>

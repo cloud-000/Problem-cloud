@@ -1856,6 +1856,7 @@ export type Database = {
           submissions_moved: number
         }[]
       }
+      claim_profile_username: { Args: { p_username: string }; Returns: string }
       glicko_e: {
         Args: { r: number; r_j: number; rd_j: number }
         Returns: number
