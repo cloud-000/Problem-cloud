@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { Goal, GoalProgressResult } from "./types";
 import {
     achievementNote,
+    consequentialStatus,
     daysUntil,
     deadlineLabel,
     describeScope,
     formatMetric,
+    goalProgressView,
     goalSentence,
     isMaterialEdit,
     progressSummary,
@@ -13,6 +15,8 @@ import {
     sortGoals,
     statusChip,
     unitNoun,
+    volumePeriodLabel,
+    volumePeriodNote,
     type SeriesNames,
 } from "./presentation";
 
@@ -108,6 +112,94 @@ describe("progress summary", () => {
         expect(summary).not.toContain("%");
         expect(sampleNote({ ...ok(), status: "insufficient_data", requiredSample: 30 }))
             .toBe("Not enough data yet — measured once 30 attempts are in.");
+    });
+});
+
+describe("family-specific progress", () => {
+    test("set goals show the finish line and live catalog coverage separately", () => {
+        const view = goalProgressView(
+            goal({ target: { type: "solved_percent", percentage: 80 } }),
+            ok({ currentValue: 50, targetValue: 80, unit: "percent", percentToTarget: 62.5 }),
+            { set: { attempted: 70, solved: 50, eligibleTotal: 100 } },
+        );
+        expect(view).toEqual({
+            family: "set",
+            primary: "50% toward 80% target",
+            coverage: "50 of 100 eligible problems solved",
+            showBar: true,
+        });
+    });
+
+    test("volume goals make the period and its reset behavior visible", () => {
+        const target = {
+            type: "volume" as const,
+            count: 100,
+            period: { kind: "calendar" as const, unit: "month" as const, timeZone: "UTC" },
+        };
+        const view = goalProgressView(
+            goal({ target }),
+            ok({ currentValue: 63, targetValue: 100, unit: "submissions", percentToTarget: 63 }),
+            {},
+            new Date("2026-08-10T12:00:00.000Z"),
+        );
+        expect(view?.family).toBe("volume");
+        expect(view && "primary" in view ? view.primary : "").toBe(
+            "63 of 100 attempts this month",
+        );
+        expect(volumePeriodLabel(target.period)).toBe("this month");
+        expect(volumePeriodNote(target.period, new Date("2026-08-10T12:00:00.000Z"))).toContain(
+            "Resets",
+        );
+    });
+
+    test("accuracy never turns an incomplete sample into a percentage", () => {
+        const view = goalProgressView(
+            goal({ target: { type: "accuracy", percentage: 85, sampleSize: 30 } }),
+            ok({
+                status: "insufficient_data",
+                unit: "percent",
+                sampleSize: 18,
+                requiredSample: 30,
+            }),
+            { window: { freshSample: 18, freshCorrect: 15, gradedSample: 18, gradedCorrect: 15, timedSample: 0, timedTotalMs: 0 } },
+        );
+        expect(view).toMatchObject({
+            family: "accuracy",
+            performance: "Accuracy not measured",
+            target: "Target 85%",
+            measured: "18 of 30 fresh problems measured",
+        });
+        expect(view && "next" in view ? view.next : null).toContain("12 more");
+    });
+
+    test("speed keeps its accuracy floor beside the time average", () => {
+        const view = goalProgressView(
+            goal({ target: { type: "speed", maxSeconds: 120, sampleSize: 30, minAccuracy: 70 } }),
+            ok({ direction: "at_most", currentValue: 103, targetValue: 120, unit: "seconds" }),
+            { window: { freshSample: 0, freshCorrect: 0, gradedSample: 30, gradedCorrect: 23, timedSample: 30, timedTotalMs: 3_090_000 } },
+        );
+        expect(view).toMatchObject({
+            family: "speed",
+            average: "103-second average",
+            target: "Target ≤120s",
+            accuracy: "77% accuracy · minimum 70%",
+            measured: "30 of 30 problems measured",
+        });
+    });
+
+    test("streaks show days and today's quota instead of a percent bar", () => {
+        const view = goalProgressView(
+            goal({ target: { type: "streak", days: 14, perDay: 5, timeZone: "UTC" } }),
+            ok({ currentValue: 9, targetValue: 14, unit: "days" }),
+            { period: { streakDays: 9, todayCount: 2 } },
+        );
+        expect(view).toEqual({
+            family: "streak",
+            day: "Day 9 of 14",
+            today: "2 of 5 problems today",
+            filledDays: 9,
+            displayDays: 14,
+        });
     });
 });
 
@@ -230,6 +322,40 @@ describe("dates and status", () => {
             ),
         ).not.toContain("currently");
         expect(achievementNote(goal(), ok())).toBeNull();
+    });
+
+    test("active goals use consequential status instead of Active", () => {
+        const status = consequentialStatus(
+            goal({ target: { type: "solved_count", count: 20 } }),
+            ok({ currentValue: 14, targetValue: 20 }),
+            {},
+            now,
+        );
+        expect(status).toEqual({
+            label: "6 more problems to reach the finish line",
+            tone: "muted",
+        });
+        expect(status.label).not.toBe("Active");
+    });
+
+    test("a passed deadline says past planning date, not failed", () => {
+        const status = consequentialStatus(
+            goal({ deadline: "2026-08-06" }),
+            ok(),
+            {},
+            now,
+        );
+        expect(status).toEqual({ label: "Past planning date", tone: "attention" });
+    });
+
+    test("an unfed streak status names today's shortfall", () => {
+        const status = consequentialStatus(
+            goal({ target: { type: "streak", days: 14, perDay: 5, timeZone: "UTC" } }),
+            ok({ currentValue: 9, targetValue: 14, unit: "days" }),
+            { period: { streakDays: 9, todayCount: 2 } },
+            now,
+        );
+        expect(status.label).toBe("3 more problems today");
     });
 });
 

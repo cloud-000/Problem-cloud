@@ -17,6 +17,7 @@ import type {
     Goal,
     GoalFamily,
     GoalProgressResult,
+    GoalProgressData,
     GoalScope,
     RequestContext,
     SeriesScope,
@@ -156,6 +157,32 @@ export function evaluateGoals(
     }
 
     return out;
+}
+
+/**
+ * Return the raw family row behind one evaluated goal. Presentation needs a
+ * little more than `GoalProgressResult` for honest family-specific displays:
+ * set coverage, speed accuracy, and today's streak count all live in the
+ * family response by design.
+ */
+export function dataForGoal(
+    goal: Goal,
+    plan: GoalRequestPlan,
+    results: GoalFamilyResults,
+): GoalProgressData {
+    const slot = plan.slots.get(goal.id);
+    if (!slot) return {};
+
+    switch (slot.family) {
+        case "set":
+            return { set: results.set?.[slot.index] };
+        case "window":
+            return { window: results.window?.[slot.index] };
+        case "accumulation":
+            return { accumulation: results.accumulation?.[slot.index] };
+        case "period":
+            return { period: results.period?.[slot.index] };
+    }
 }
 
 /**

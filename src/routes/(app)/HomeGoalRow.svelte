@@ -1,13 +1,12 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
-    import { GoalProgressBar } from "$lib/components/goal-progress-bar";
+    import { GoalProgress } from "$lib/components/goal-progress";
     import { Icon } from "$lib/components/icon";
-    import { describeTarget, type Goal } from "$lib/goals";
-    import { hasRemainingSet } from "$lib/goals/practice";
+    import { type Goal } from "$lib/goals";
+    import { practiceActionLabel } from "$lib/goals/practice";
     import {
         describeScope,
-        progressSummary,
         promotionLine,
         type SeriesNames,
     } from "$lib/goals/presentation";
@@ -17,12 +16,14 @@
     let {
         entry,
         seriesNames,
+        now,
         busy = false,
         onpractice,
         class: className,
     }: {
         entry: PromotedGoal;
         seriesNames: SeriesNames;
+        now: Date;
         busy?: boolean;
         onpractice: (goal: Goal) => void;
         class?: string;
@@ -59,14 +60,14 @@
             {goal.title}
         </p>
         {#if entry.result}
-            <GoalProgressBar
+            <GoalProgress
+                {goal}
                 result={entry.result}
-                met={entry.result.isTargetMet}
+                data={entry.familyData}
+                {now}
+                compact
                 class="mt-2 max-w-sm"
             />
-            <p class="mt-1 type-caption text-muted-foreground">
-                {progressSummary(entry.result)} · {describeTarget(goal.target)}
-            </p>
         {/if}
     </a>
 
@@ -84,7 +85,7 @@
                 disabled={busy}
             >
                 <Icon name="sprint" class="size-[1em]" />
-                {hasRemainingSet(goal) ? "Practise what's left" : "Practise"}
+                {practiceActionLabel(goal)}
             </Button>
         {/if}
     </div>

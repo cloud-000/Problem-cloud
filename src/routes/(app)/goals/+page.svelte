@@ -9,6 +9,7 @@
     import { Switch } from "$lib/components/toggle";
     import {
         archiveGoal,
+        dataForGoal,
         deleteGoal,
         evaluateGoals,
         fetchGoalProgress,
@@ -18,9 +19,9 @@
         stampAchievedGoals,
         type Goal,
         type GoalFamilyResults,
-        type GoalRequestPlan,
         type GoalProgressResult,
-        type SetData,
+        type GoalRequestPlan,
+        type GoalProgressData,
     } from "$lib/goals";
     import { fetchAllSeries } from "$lib/library";
     import { startSession } from "$lib/sessions";
@@ -70,12 +71,11 @@
             : new Map(),
     );
 
-    /** The raw family row behind a goal, for the surfaces that need more than
-     * `GoalProgressResult` (the set family's remaining count). */
-    function setDataFor(goal: Goal): SetData | null {
-        const slot = evaluation?.plan.slots.get(goal.id);
-        if (!evaluation || !slot || slot.family !== "set") return null;
-        return evaluation.results.set?.[slot.index] ?? null;
+    /** Raw family data is passed alongside the normalized result so each
+     * family-specific progress treatment can show the dimensions that matter. */
+    function familyDataFor(goal: Goal): GoalProgressData {
+        if (!evaluation) return {};
+        return dataForGoal(goal, evaluation.plan, evaluation.results);
     }
 
     let visible = $derived(
@@ -268,7 +268,7 @@
     <GoalDetail
         goal={selected}
         result={progress.get(selected.id) ?? null}
-        setData={setDataFor(selected)}
+        data={familyDataFor(selected)}
         {seriesNames}
         {now}
         {busy}
@@ -340,6 +340,7 @@
                     <GoalCard
                         {goal}
                         result={progress.get(goal.id) ?? null}
+                        data={familyDataFor(goal)}
                         {seriesNames}
                         {now}
                         {busy}

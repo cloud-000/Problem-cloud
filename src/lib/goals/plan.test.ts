@@ -5,6 +5,7 @@ import {
 } from "../../routes/(app)/practice/practice-settings";
 import {
     evaluateGoals,
+    dataForGoal,
     newlyAchieved,
     planGoalRequests,
     requestedFamilies,
@@ -238,6 +239,25 @@ describe("planning", () => {
 });
 
 describe("evaluation", () => {
+    test("returns the raw family row for the shared progress view", () => {
+        const sampleGoal = goal({
+            type: "speed",
+            maxSeconds: 90,
+            sampleSize: 30,
+            minAccuracy: 70,
+        });
+        const plan = planGoalRequests([sampleGoal], { now: NOW });
+        const window = {
+            freshSample: 0,
+            freshCorrect: 0,
+            gradedSample: 30,
+            gradedCorrect: 24,
+            timedSample: 30,
+            timedTotalMs: 3_000_000,
+        };
+        expect(dataForGoal(sampleGoal, plan, { window: [window] })).toEqual({ window });
+    });
+
     test("goals read their own slot's data", () => {
         const a = goal({ type: "solved_count", count: 10 }, scope({ seriesIds: ["3"] }));
         const b = goal({ type: "solved_count", count: 10 }, scope({ seriesIds: ["4"] }));

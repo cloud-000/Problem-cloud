@@ -15,7 +15,13 @@
 
 import { targetOf } from "./registry";
 import { daysUntil } from "./presentation";
-import { goalStatus, type Goal, type GoalProgressResult, type PeriodData } from "./types";
+import {
+    goalStatus,
+    type Goal,
+    type GoalProgressData,
+    type GoalProgressResult,
+    type PeriodData,
+} from "./types";
 
 /** A deadline further out than this is not yet news. */
 export const DEADLINE_HORIZON_DAYS = 14;
@@ -33,6 +39,7 @@ export const HOME_GOAL_LIMIT = 3;
 export type GoalSnapshot = {
     goal: Goal;
     result: GoalProgressResult | null;
+    familyData?: GoalProgressData;
     period?: PeriodData | null;
 };
 

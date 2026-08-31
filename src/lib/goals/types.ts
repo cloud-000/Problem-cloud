@@ -193,6 +193,13 @@ export type FamilyData = {
     period: PeriodData;
 };
 
+/**
+ * The family row used by a goal surface. A goal has data for one family, but
+ * keeping the shape keyed like `FamilyData` lets cards and detail views share
+ * one prop without casting a raw RPC row at every call site.
+ */
+export type GoalProgressData = Partial<FamilyData>;
+
 /* -------------------------------------------------------------------------- */
 /* Result — phase three                                                       */
 /* -------------------------------------------------------------------------- */

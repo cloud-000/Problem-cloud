@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Goal, GoalScope, GoalTargetData } from "./types";
 import {
     hasRemainingSet,
+    practiceActionLabel,
     practiceSessionName,
     practiceSettingsForGoal,
 } from "./practice";
@@ -18,6 +19,30 @@ function goal(target: GoalTargetData): Pick<Goal, "scope" | "target"> {
 }
 
 describe("practice handoff", () => {
+    test("names the work each handoff starts", () => {
+        expect(
+            practiceActionLabel({ target: { type: "attempted_count", count: 5 } }),
+        ).toBe("Practice what's left");
+        expect(
+            practiceActionLabel({ target: { type: "solved_count", count: 5 } }),
+        ).toBe("Practice unsolved problems");
+        expect(
+            practiceActionLabel({
+                target: { type: "volume", count: 20, period: { kind: "since_creation" } },
+            }),
+        ).toBe("Complete more attempts");
+        expect(
+            practiceActionLabel({
+                target: { type: "accuracy", percentage: 85, sampleSize: 30 },
+            }),
+        ).toBe("Practice in this material");
+        expect(
+            practiceActionLabel({
+                target: { type: "streak", days: 14, perDay: 5, timeZone: "UTC" },
+            }),
+        ).toBe("Practice today");
+    });
+
     test("hands the goal's scope to the trainer unchanged", () => {
         const settings = practiceSettingsForGoal(
             goal({ type: "attempted_count", count: 40 }),

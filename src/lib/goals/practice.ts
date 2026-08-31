@@ -90,3 +90,29 @@ export function hasRemainingSet(goal: Pick<Goal, "target">): boolean {
         type === "solved_percent"
     );
 }
+
+/**
+ * The result of the handoff, not the evaluator's implementation name. Every
+ * label describes the work the existing settings actually start.
+ */
+export function practiceActionLabel(goal: Pick<Goal, "target">): string {
+    const type = targetOf(goal.target)?.type;
+    switch (type) {
+        case "attempted_count":
+        case "attempted_percent":
+            return "Practice what's left";
+        case "solved_count":
+        case "solved_percent":
+            return "Practice unsolved problems";
+        case "volume":
+            return "Complete more attempts";
+        case "accuracy":
+            return "Practice in this material";
+        case "speed":
+            return "Practice in this material";
+        case "streak":
+            return "Practice today";
+        default:
+            return "Practice this material";
+    }
+}

@@ -14,7 +14,7 @@
  * Import it as `$lib/goals/presentation`.
  */
 
-import { describeTarget } from "./registry";
+import { describeTarget, targetOf } from "./registry";
 import { scopeKey } from "./plan";
 // Type-only, and deliberately so: `promote.ts` imports `daysUntil` from here at
 // runtime, and a value import back would close the cycle.
@@ -22,11 +22,14 @@ import type { PromotedGoal } from "./promote";
 import {
     goalStatus,
     type Goal,
+    type GoalProgressData,
     type GoalProgressResult,
     type GoalProgressUnit,
     type GoalScope,
     type GoalStatus,
+    type GoalTargetData,
 } from "./types";
+import { calendarPeriodStart, isPeriodFinishable } from "./period";
 import { topicLabel } from "$lib/library";
 
 /** Series id (string, as the Track stores it) → display name. */
@@ -114,6 +117,360 @@ export function sampleNote(result: GoalProgressResult): string | null {
         return `Measured over ${result.sampleSize}.`;
     }
     return `Measured over ${result.sampleSize} attempts.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Family-specific progress                                                  */
+/* -------------------------------------------------------------------------- */
+
+export type GoalProgressView =
+    | {
+          family: "set";
+          primary: string;
+          coverage: string | null;
+          showBar: boolean;
+      }
+    | {
+          family: "volume";
+          primary: string;
+          note: string;
+          showBar: true;
+      }
+    | {
+          family: "accuracy";
+          performance: string;
+          target: string;
+          measured: string;
+          next: string | null;
+      }
+    | {
+          family: "speed";
+          average: string;
+          target: string;
+          accuracy: string;
+          measured: string;
+          next: string | null;
+      }
+    | {
+          family: "streak";
+          day: string;
+          today: string;
+          filledDays: number;
+          displayDays: number;
+      };
+
+function rounded(value: number): number {
+    return Math.max(0, Math.round(Number.isFinite(value) ? value : 0));
+}
+
+function problemVerb(target: GoalTargetData): "attempted" | "solved" {
+    return target.type.startsWith("solved") ? "solved" : "attempted";
+}
+
+function countGap(current: number, target: number): number {
+    return Math.max(0, Math.ceil(target - current));
+}
+
+function calendarDate(value: Date, timeZone: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+        timeZone,
+        month: "short",
+        day: "numeric",
+    }).format(value);
+}
+
+/** The student-facing period phrase used by volume commitments. */
+export function volumePeriodLabel(
+    period: Extract<GoalTargetData, { type: "volume" }>['period'],
+): string {
+    switch (period.kind) {
+        case "calendar":
+            return `this ${period.unit}`;
+        case "rolling":
+            return `in the last ${period.days} days`;
+        case "since_creation":
+            return "since you set it";
+    }
+}
+
+/** The reset/completion note that makes a volume period's lifecycle visible. */
+export function volumePeriodNote(
+    period: Extract<GoalTargetData, { type: "volume" }>['period'],
+    now: Date,
+): string {
+    if (period.kind === "calendar") {
+        const current = calendarPeriodStart(period.unit, now, period.timeZone);
+        // Move safely beyond the current period, then ask the timezone-aware
+        // calendar helper for the next period's actual start. Adding one fixed
+        // number of milliseconds directly would be wrong across DST changes.
+        const beyond = new Date(
+            current.getTime() + (period.unit === "week" ? 8 : 32) * MS_PER_DAY,
+        );
+        const next = calendarPeriodStart(period.unit, beyond, period.timeZone);
+        return `Resets ${calendarDate(next, period.timeZone)}`;
+    }
+    if (isPeriodFinishable(period)) return "Reaching the target completes this goal.";
+    return "";
+}
+
+/**
+ * The one progress treatment shared by cards and detail. The shape deliberately
+ * follows the four evaluator families: accuracy and speed show their sample
+ * and performance separately, while streaks never pretend a percentage bar is
+ * a sequence of days.
+ */
+export function goalProgressView(
+    goal: Pick<Goal, "target">,
+    result: GoalProgressResult,
+    data: GoalProgressData = {},
+    now: Date = new Date(),
+): GoalProgressView | null {
+    const target = targetOf(goal.target);
+    if (!target) return null;
+    switch (target.type) {
+        case "attempted_count":
+        case "solved_count": {
+            const verb = problemVerb(target);
+            const current = rounded(result.currentValue);
+            const targetCount = rounded(target.count);
+            const coverage = data.set
+                ? `${rounded(target.type.startsWith("solved") ? data.set.solved : data.set.attempted)} of ${rounded(data.set.eligibleTotal)} eligible problems ${verb}`
+                : null;
+            return {
+                family: "set",
+                primary: `${current} of ${targetCount} ${targetCount === 1 ? "problem" : "problems"} ${verb}`,
+                coverage,
+                showBar: result.status === "ok",
+            };
+        }
+        case "attempted_percent":
+        case "solved_percent": {
+            const verb = problemVerb(target);
+            const current = formatMetric(result.currentValue, "percent");
+            const targetPercent = formatMetric(target.percentage, "percent");
+            const coverage = data.set
+                ? `${rounded(target.type.startsWith("solved") ? data.set.solved : data.set.attempted)} of ${rounded(data.set.eligibleTotal)} eligible problems ${verb}`
+                : null;
+            return {
+                family: "set",
+                primary:
+                    result.status === "insufficient_data"
+                        ? "No eligible problems to measure"
+                        : `${current} toward ${targetPercent} target`,
+                coverage,
+                showBar: result.status === "ok",
+            };
+        }
+        case "volume":
+            return {
+                family: "volume",
+                primary: `${rounded(result.currentValue)} of ${rounded(target.count)} attempts ${volumePeriodLabel(target.period)}`,
+                note: volumePeriodNote(target.period, now),
+                showBar: true,
+            };
+        case "accuracy": {
+            const measured = rounded(
+                data.window?.freshSample ?? result.sampleSize ?? 0,
+            );
+            const needed = target.sampleSize;
+            return {
+                family: "accuracy",
+                performance:
+                    result.status === "insufficient_data"
+                        ? "Accuracy not measured"
+                        : `${formatMetric(result.currentValue, "percent")} accuracy`,
+                target: `Target ${formatMetric(target.percentage, "percent")}`,
+                measured: `${measured} of ${needed} fresh problems measured`,
+                next:
+                    result.status === "insufficient_data"
+                        ? `Complete ${Math.max(0, needed - measured)} more fresh ${Math.max(0, needed - measured) === 1 ? "problem" : "problems"} to evaluate this goal.`
+                        : null,
+            };
+        }
+        case "speed": {
+            const measured = rounded(
+                data.window?.timedSample ?? result.sampleSize ?? 0,
+            );
+            const accuracy = data.window
+                ? data.window.gradedSample > 0
+                    ? `${formatMetric(
+                          (data.window.gradedCorrect / data.window.gradedSample) * 100,
+                          "percent",
+                      )} accuracy · minimum ${formatMetric(target.minAccuracy, "percent")}`
+                    : `Accuracy not measured · minimum ${formatMetric(target.minAccuracy, "percent")}`
+                : `Accuracy floor ${formatMetric(target.minAccuracy, "percent")}`;
+            return {
+                family: "speed",
+                average:
+                    result.status === "insufficient_data"
+                        ? "Average time not measured"
+                        : `${rounded(result.currentValue)}-second average`,
+                target: `Target ≤${rounded(target.maxSeconds)}s`,
+                accuracy,
+                measured: `${measured} of ${target.sampleSize} problems measured`,
+                next:
+                    result.status === "insufficient_data"
+                        ? `Complete ${Math.max(0, target.sampleSize - measured)} more ${Math.max(0, target.sampleSize - measured) === 1 ? "problem" : "problems"} to evaluate this goal.`
+                        : null,
+            };
+        }
+        case "streak": {
+            const current = rounded(result.currentValue);
+            const displayDays = Math.min(Math.max(1, target.days), 14);
+            const today = data.period?.todayCount;
+            return {
+                family: "streak",
+                day: `Day ${current} of ${target.days}`,
+                today:
+                    today === undefined
+                        ? "Today's practice is not measured yet"
+                        : `${rounded(today)} of ${target.perDay} problems today`,
+                filledDays: Math.min(displayDays, current),
+                displayDays,
+            };
+        }
+    }
+}
+
+export type ConsequentialStatusTone = "attention" | "success" | "muted" | "archived";
+
+export type ConsequentialStatus = {
+    label: string;
+    tone: ConsequentialStatusTone;
+};
+
+/**
+ * A useful status line, rather than a lifecycle badge. It names the next
+ * consequence a student can act on and never treats a passed deadline as a
+ * failed goal.
+ */
+export function consequentialStatus(
+    goal: Pick<Goal, "target" | "achievedAt" | "archivedAt" | "deadline">,
+    result: GoalProgressResult | null,
+    data: GoalProgressData = {},
+    now: Date,
+): ConsequentialStatus {
+    if (goal.archivedAt) return { label: "Archived", tone: "archived" };
+    if (goal.achievedAt) {
+        const date = formatDate(goal.achievedAt);
+        return { label: date ? `Achieved ${date}` : "Achieved", tone: "success" };
+    }
+    if (!result) return { label: "Progress unavailable", tone: "muted" };
+
+    const days = daysUntil(goal.deadline, now);
+    if (days !== null && days < 0) {
+        return { label: "Past planning date", tone: "attention" };
+    }
+
+    const target = targetOf(goal.target);
+    if (!target) return { label: "Target needs attention", tone: "attention" };
+    if (target.type === "streak" && data.period) {
+        const shortfall = target.perDay - data.period.todayCount;
+        if (shortfall > 0) {
+            return {
+                label: `${shortfall} more ${shortfall === 1 ? "problem" : "problems"} today`,
+                tone: "attention",
+            };
+        }
+    }
+
+    if (result.status === "ok" && result.isTargetMet) {
+        return { label: "Finish line reached", tone: "success" };
+    }
+
+    if (days !== null && days <= 14) {
+        if (days === 0) return { label: "Due today", tone: "attention" };
+        if (days === 1) return { label: "Due tomorrow", tone: "attention" };
+        return { label: `${days} days left`, tone: "attention" };
+    }
+
+    switch (target.type) {
+        case "attempted_count":
+        case "solved_count": {
+            const gap = countGap(result.currentValue, target.count);
+            return {
+                label: `${gap} more ${gap === 1 ? "problem" : "problems"} to reach the finish line`,
+                tone: "muted",
+            };
+        }
+        case "attempted_percent":
+        case "solved_percent": {
+            if (data.set) {
+                const done = target.type.startsWith("solved")
+                    ? data.set.solved
+                    : data.set.attempted;
+                const needed = Math.ceil((target.percentage / 100) * data.set.eligibleTotal);
+                const gap = Math.max(0, needed - done);
+                return {
+                    label: `${gap} more ${gap === 1 ? "problem" : "problems"} to reach the finish line`,
+                    tone: "muted",
+                };
+            }
+            const gap = Math.max(0, Math.ceil(target.percentage - result.currentValue));
+            return {
+                label: `${gap} percentage ${gap === 1 ? "point" : "points"} to target`,
+                tone: "muted",
+            };
+        }
+        case "volume": {
+            const gap = countGap(result.currentValue, target.count);
+            return {
+                label: `${gap} more ${gap === 1 ? "attempt" : "attempts"} ${volumePeriodLabel(target.period)}`,
+                tone: "muted",
+            };
+        }
+        case "accuracy":
+            if (result.status === "insufficient_data") {
+                const measured = rounded(
+                    data.window?.freshSample ?? result.sampleSize ?? 0,
+                );
+                const gap = Math.max(0, target.sampleSize - measured);
+                return {
+                    label: `${gap} more fresh ${gap === 1 ? "problem" : "problems"} needed`,
+                    tone: "muted",
+                };
+            }
+            return {
+                label: `${Math.max(0, Math.ceil(target.percentage - result.currentValue))} percentage points to target`,
+                tone: "muted",
+            };
+        case "speed":
+            if (result.status === "insufficient_data") {
+                const measured = rounded(
+                    data.window?.timedSample ?? result.sampleSize ?? 0,
+                );
+                const gap = Math.max(0, target.sampleSize - measured);
+                return {
+                    label: `${gap} more ${gap === 1 ? "problem" : "problems"} needed`,
+                    tone: "muted",
+                };
+            }
+            if (
+                data.window &&
+                data.window.gradedSample > 0 &&
+                (data.window.gradedCorrect / data.window.gradedSample) * 100 <
+                    target.minAccuracy
+            ) {
+                return {
+                    label: `Accuracy below ${formatMetric(target.minAccuracy, "percent")}`,
+                    tone: "attention",
+                };
+            }
+            if (result.currentValue > target.maxSeconds) {
+                return {
+                    label: `Need ${formatMetric(result.currentValue - target.maxSeconds, "seconds")} faster`,
+                    tone: "muted",
+                };
+            }
+            return { label: "Keep building speed", tone: "muted" };
+        case "streak": {
+            const gap = Math.max(0, target.days - Math.round(result.currentValue));
+            return {
+                label: `${gap} more ${gap === 1 ? "day" : "days"} to finish`,
+                tone: "muted",
+            };
+        }
+    }
 }
 
 /* -------------------------------------------------------------------------- */

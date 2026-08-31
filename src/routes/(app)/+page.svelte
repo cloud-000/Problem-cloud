@@ -27,6 +27,7 @@
     } from "$lib/sessions";
     import {
         evaluateGoals,
+        dataForGoal,
         fetchGoalProgress,
         fetchGoals,
         planGoalRequests,
@@ -101,6 +102,7 @@
             return {
                 goal,
                 result: progress.get(goal.id) ?? null,
+                familyData: dataForGoal(goal, evaluation.plan, evaluation.results),
                 period:
                     slot?.family === "period"
                         ? (evaluation.results.period?.[slot.index] ?? null)
@@ -165,7 +167,7 @@
                 name: practiceSessionName(goal),
                 settings: practiceSettingsForGoal(goal),
             });
-            await goto(`${resolve("/practice")}?session=${session.id}`);
+            await goto(resolve(`/practice?session=${session.id}`));
         } catch (e) {
             toasts.error((e as Error).message || "Failed to start practice.");
             startingGoal = false;
@@ -387,6 +389,7 @@
                     <HomeGoalRow
                         entry={heroGoal}
                         {seriesNames}
+                        now={goalsNow}
                         busy={startingGoal}
                         onpractice={practiceGoal}
                         class="border-t border-border/60 pt-5"
@@ -436,6 +439,7 @@
                             <HomeGoalRow
                                 {entry}
                                 {seriesNames}
+                                now={goalsNow}
                                 busy={startingGoal}
                                 onpractice={practiceGoal}
                                 class="py-4"

@@ -1,34 +1,29 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
+    import { GoalProgress } from "$lib/components/goal-progress";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import {
         describeTarget,
         goalStatus,
-        targetOf,
         type Goal,
+        type GoalProgressData,
         type GoalProgressResult,
-        type SetData,
     } from "$lib/goals";
     import { cn } from "$lib/utils";
-    import { GoalProgressBar } from "$lib/components/goal-progress-bar";
-    import { hasRemainingSet } from "$lib/goals/practice";
+    import { practiceActionLabel } from "$lib/goals/practice";
     import {
         achievementNote,
-        deadlineLabel,
+        consequentialStatus,
         describeScope,
         formatDate,
-        formatMetric,
-        progressSummary,
-        sampleNote,
-        statusChip,
         type SeriesNames,
     } from "$lib/goals/presentation";
 
     let {
         goal,
         result,
-        setData = null,
+        data = {},
         seriesNames,
         now,
         busy = false,
@@ -40,10 +35,8 @@
     }: {
         goal: Goal;
         result: GoalProgressResult | null;
-        /** The set family's raw row, when this goal is in it: the drill-down
-         * numbers (§4) come from the same request the card was evaluated from,
-         * never from a second count. */
-        setData?: SetData | null;
+        /** The raw family row used by the shared family-specific progress view. */
+        data?: GoalProgressData;
         seriesNames: SeriesNames;
         now: Date;
         busy?: boolean;
@@ -54,33 +47,9 @@
         ondelete: (goal: Goal) => void;
     } = $props();
 
-    let chip = $derived(statusChip(goal, now));
-    let due = $derived(deadlineLabel(goal, now));
+    let statusLine = $derived(consequentialStatus(goal, result, data, now));
     let achieved = $derived(achievementNote(goal, result));
-    let note = $derived(result ? sampleNote(result) : null);
-    let status = $derived(goalStatus(goal));
-    let target = $derived(targetOf(goal.target));
-
-    // Remaining, for the one family that has a remaining set. Attempted and
-    // solved are both counted over the eligible denominator, so neither can
-    // exceed it and this subtraction is always the real number of problems the
-    // handoff below will draw from.
-    let remaining = $derived.by(() => {
-        if (!setData || !target) return null;
-        if (target.type === "attempted_count" || target.type === "attempted_percent") {
-            return {
-                count: Math.max(0, setData.eligibleTotal - setData.attempted),
-                verb: "no graded attempt yet",
-            };
-        }
-        if (target.type === "solved_count" || target.type === "solved_percent") {
-            return {
-                count: Math.max(0, setData.eligibleTotal - setData.solved),
-                verb: "not solved yet",
-            };
-        }
-        return null;
-    });
+    let lifecycle = $derived(goalStatus(goal));
 </script>
 
 <!-- Same width as the goal list: the detail is a drill-down of that page, and a
@@ -88,7 +57,6 @@
 <Page.Root width="standard">
     <Page.Header
         title={goal.title}
-        description={`${describeTarget(goal.target)} in ${describeScope(goal.scope, seriesNames)}.`}
     >
         {#snippet eyebrow()}
             <span class="flex items-center gap-3">
@@ -102,85 +70,38 @@
                 </button>
                 <span
                     class={cn(
-                        "rounded-full px-2 py-0.5 text-xxs font-medium",
-                        chip.tone === "achieved" && "bg-correct/10 text-correct",
-                        chip.tone === "overdue" && "bg-unsure/10 text-unsure",
-                        chip.tone === "archived" &&
-                            "bg-surface-container-high text-muted-foreground",
-                        chip.tone === "active" && "bg-primary/10 text-primary",
+                        "text-xxs font-medium",
+                        statusLine.tone === "success" && "text-correct",
+                        statusLine.tone === "attention" && "text-unsure",
+                        statusLine.tone === "archived" && "text-muted-foreground",
+                        statusLine.tone === "muted" && "text-muted-foreground",
                     )}
                 >
-                    {chip.label}
+                    {statusLine.label}
                 </span>
             </span>
         {/snippet}
         {#snippet actions()}
             <Button onclick={() => onpractice(goal)} disabled={busy}>
                 <Icon name="sprint" class="size-[1em]" />
-                {hasRemainingSet(goal) ? "Practise what's left" : "Practice"}
+                {practiceActionLabel(goal)}
             </Button>
         {/snippet}
     </Page.Header>
 
-    <Page.Section title="Where you are">
+    <Page.Section title="Progress">
         {#if result}
-            <div class="flex flex-col gap-3">
-                <div class="flex items-end justify-between gap-3">
-                    <span class="type-page-title text-foreground">
-                        {result.status === "insufficient_data"
-                            ? "—"
-                            : formatMetric(result.currentValue, result.unit)}
-                    </span>
-                    <span class="type-secondary text-muted-foreground">
-                        {progressSummary(result)}
-                    </span>
-                </div>
-                <GoalProgressBar {result} met={result.isTargetMet} />
-                <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <span class="text-xxs text-muted-foreground">{note ?? ""}</span>
-                    {#if due}
-                        <span
-                            class={cn(
-                                "text-xxs",
-                                due.overdue ? "text-unsure" : "text-muted-foreground",
-                            )}
-                        >
-                            {due.text}
-                        </span>
-                    {/if}
-                </div>
-                {#if achieved}
-                    <p class="type-secondary text-correct">{achieved}</p>
-                {/if}
-            </div>
+            <GoalProgress {goal} {result} {data} {now} />
+            {#if achieved}
+                <p class="mt-3 type-secondary text-correct">{achieved}</p>
+            {/if}
         {:else}
             <p class="type-secondary text-muted-foreground">
-                {target
-                    ? "This goal could not be measured just now. Reload to try again."
-                    : "This goal's target could not be read — edit it to choose a finish line again, or delete it."}
+                This goal could not be measured just now. Reload to try again, or
+                edit it to choose a finish line again.
             </p>
         {/if}
     </Page.Section>
-
-    {#if remaining}
-        <Page.Section
-            title="What's left"
-            description="Counted over the same eligible scope the goal is measured on."
-        >
-            <div
-                class="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4"
-            >
-                <p class="type-secondary text-foreground">
-                    <span class="font-semibold">{remaining.count}</span>
-                    of {setData?.eligibleTotal} problems in scope have {remaining.verb}.
-                </p>
-                <Button variant="outline" onclick={() => onpractice(goal)} disabled={busy}>
-                    <Icon name="sprint" class="size-[1em]" />
-                    Practise these
-                </Button>
-            </div>
-        </Page.Section>
-    {/if}
 
     <Page.Section title="The commitment">
         <dl class="flex flex-col gap-2 border-t border-border/60 pt-4">
@@ -218,10 +139,10 @@
             </Button>
             <Button
                 variant="ghost"
-                onclick={() => onarchive(goal, status !== "archived")}
+                onclick={() => onarchive(goal, lifecycle !== "archived")}
                 disabled={busy}
             >
-                {status === "archived" ? "Restore" : "Archive"}
+                {lifecycle === "archived" ? "Restore" : "Archive"}
             </Button>
             <Button variant="ghost" onclick={() => ondelete(goal)} disabled={busy}>
                 <span class="text-destructive">Delete</span>
