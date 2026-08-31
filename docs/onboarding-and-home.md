@@ -1,7 +1,7 @@
 # Onboarding and Home — product design
 
-> **Status:** Phases 1 and 2 implemented. Getting started and contextual
-> tips remain proposed.
+> **Status:** Phases 1 and 2 implemented. Getting started checklist decided
+> (§3.2); implementation and contextual tips remain Phase 3.
 >
 > This document defines the first-run welcome experience, the way Home changes
 > as a student begins using ProblemCloud, and the permanent Help entry point.
@@ -156,8 +156,8 @@ It uses the permanent post-Welcome Home structure:
 
 1. A primary card containing the student's current work, goal or goal
    invitation, and one next action.
-2. An optional, dismissible **Getting started** card once it can teach a
-   meaningful next concept.
+2. An optional, dismissible **Getting started** card after Welcome, until
+   its five items are done or the student dismisses it.
 3. A compact Progress region after the first graded submission, containing only
    values that exist.
 4. A contextual explanation only when a newly relevant feature appears.
@@ -181,9 +181,12 @@ Continue "Mixed practice"
 No goal yet - Set a direction when you are ready
 [Continue]
 
-Getting started - 1 of 2
-[x] Complete your first problem
-[ ] Explore a competition
+Getting started - 1 of 5
+[x] Solve 5 problems
+[ ] Try practice settings
+[ ] Use the whiteboard
+[ ] Ask Coach
+[ ] Set a goal
 ```
 
 Example with a goal uses the same card rather than adding a Goals section:
@@ -199,19 +202,71 @@ Solve 20 AMC 10 Geometry problems
 [Continue toward goal]
 ```
 
-The checklist is a set of learning milestones, not required account setup. It
-must not require creating a goal, selecting focused series, enabling Coach, or
-visiting every page. It may be dismissed independently of the Welcome tour.
+The checklist is a set of learning milestones, not required account setup.
+Practice, navigation, and account access stay available with every item
+unchecked. It may be dismissed independently of the Welcome tour. Completing
+an item is inferred from product records or a one-time acknowledgement of
+the gesture; onboarding must not store a second boolean that can disagree
+with goals, submissions, or Coach history.
 
-Candidate milestones are:
+#### Getting started items
 
-- complete a first graded problem;
-- explore a competition or test in Library; and
-- optionally open a short explanation of how goals guide Home, without requiring
-  goal creation for completion.
+Five items, completable in any order. Home displays them in this sequence so
+the card leads with practice (§2.1) and treats a goal as a destination, not a
+gate:
 
-Milestones should be inferred from authoritative product records where
-possible, rather than copied into onboarding state.
+1. **Solve 5 problems.** Five distinct problems with at least one graded
+   attempt (`problem_state_summary.attempted >= 5`). Skips and extra tries on
+   one problem do not count. Authority is the existing Progress summary Home
+   already loads.
+2. **Try practice settings.** Open Settings from inside a practice sitting
+   (the trainer utility panel, not the account Settings page). Opening is
+   enough; the student does not have to change a value. This gesture is not
+   otherwise recorded, so the first open writes one acknowledgement.
+3. **Use the whiteboard.** Draw on the trainer scratch board (or the
+   standalone whiteboard page). Opening an empty board is not enough: the
+   panel persists an empty document after a short debounce. Content
+   (`items.length > 0`) or a one-time acknowledgement of the first stroke
+   is the signal.
+4. **Ask Coach.** Send at least one message from the trainer Coach, the
+   Coach panel, or `/coach`. A persisted `ai_conversations` row is the
+   product record. A quick-ask one-shot never writes a row, so the first
+   send of any kind also writes an acknowledgement; either proof completes
+   the item. History-disabled accounts still complete via the
+   acknowledgement.
+5. **Set a goal.** Any `goals` row for the student, including archived.
+   Creating it is the lesson; Home's lead-goal slot is the lasting effect.
+
+Each row is a link to the place the student does that thing: Practice for
+problems, settings, whiteboard, and Coach; `/goals?new=1` for a goal. The
+card disappears when every item is done, or when the student dismisses it
+(`getting_started_dismissed_at`). Dismissal does not reset Welcome or tips.
+
+Do not add Library, focused series, Review, or the Series matrix to this
+card. Those belong in contextual tips (§5.2) at the moment they become
+useful.
+
+##### How to implement (Phase 3)
+
+No new table. `user_onboarding` already stores dismissal and
+`acknowledged_tips`. Put ranking in a pure module such as
+`src/lib/onboarding/getting-started.ts` so Home and tests share one
+definition of done.
+
+| Item | Done when | Home already has it? | Write path if missing |
+| --- | --- | --- | --- |
+| Solve 5 problems | `summary.attempted >= 5` from `fetchProblemStateSummary` | Yes | None |
+| Set a goal | `fetchGoals({ includeArchived: true })` is non-empty | Partial: Home fetches active goals only; include archived for this check | None |
+| Ask Coach | `acknowledged_tips` contains `getting-started:coach`, or `ai_conversations` has a row (`select id limit 1`; SELECT is already granted) | No conversations fetch today | On first `coach.send()`, append the tip id via `saveOnboarding` |
+| Try practice settings | `acknowledged_tips` contains `getting-started:practice-settings` | Yes (onboarding row) | When the trainer opens `practice-settings` in the utility panel |
+| Use the whiteboard | `acknowledged_tips` contains `getting-started:whiteboard`, or `restoreDocument("whiteboard:scratch")` / `"whiteboard:page"` has `items.length > 0` | No | On first non-empty persist of those keys, append the tip id so other devices can see it |
+
+Show the card when Welcome is over, the card is not dismissed, and at least
+one item is incomplete. A failed onboarding or Coach lookup must omit or
+soft-fail the card, never block Practice.
+
+Keep first-review and first-matrix guidance as separate contextual tips
+(§5.2), not extra checklist rows.
 
 ### 3.3 Established mode
 
@@ -455,16 +510,25 @@ enough to show.
 
 Where available, derive milestones from authoritative data:
 
+- five distinct graded problems (`problem_state_summary.attempted`);
+- goal existence, including archived;
+- a persisted Coach thread (`ai_conversations`);
 - active or completed practice session;
-- first graded submission;
-- review items due;
-- goal existence and status;
-- rating history; and
-- meaningful Library or feature usage only if the product truly needs that
-  distinction.
+- review items due; and
+- rating history.
 
-A submission is the authority for "completed a problem." Onboarding must not
-maintain a second boolean that can disagree with it.
+A submission is the authority for "completed a problem." A `goals` row is
+the authority for "set a goal." A Coach conversation row is the authority
+for a remembered Coach thread. Onboarding must not maintain a second
+boolean that can disagree with those.
+
+Two Getting started items have no product table today: opening practice
+Settings, and using the whiteboard (device-local `localStorage` only).
+Those may use a one-time id in `acknowledged_tips`. That is acknowledgement
+of a gesture, not a copy of submissions or goals. Do not infer "tried
+settings" from `practice_sessions.settings` — goal handoffs and custom
+starts already write non-default snapshots without the student opening
+Settings, and opening the panel currently writes nothing.
 
 ### 6.3 Privacy and storage boundary
 
@@ -589,7 +653,7 @@ Welcome has already finished.
 
 ### Phase 3 — progressive guidance
 
-- Add Getting started for early-use accounts.
+- Add Getting started for early-use accounts (five items in §3.2).
 - Add first-review and first-matrix contextual guidance.
 - Refine Established Home thresholds and Next up priority using observed use.
 
@@ -599,10 +663,13 @@ access.
 
 ## 11. Decisions still open
 
-The following need product or implementation validation before building:
+Getting started item count and content are settled in §3.2 (five learning
+milestones). Remaining implementation choices that do not change the
+product:
 
-1. Whether Getting started contains two or three milestones after usability
-   testing.
+- Tip id strings for settings, whiteboard, and Coach (`getting-started:…`).
+- Whether the whiteboard localStorage fallback is worth reading on Home
+  when the acknowledgement write already covers cross-device.
 
 Followed series and similar preference-driven signals are optional, default
 hidden enhancements. They are not a prerequisite for Home and render only when
