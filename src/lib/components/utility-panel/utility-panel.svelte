@@ -154,7 +154,7 @@
             border-left: 0;
             border-top: 1px solid var(--color-border);
             border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-            padding-bottom: env(safe-area-inset-bottom);
+            padding-bottom: var(--safe-area-bottom);
         }
     }
 

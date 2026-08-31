@@ -48,7 +48,7 @@
     /* Clear the mobile bottom bar (56px + the home-indicator inset). */
     @media (max-width: 767px) and (orientation: portrait) {
         :global(.coach-fab) {
-            bottom: calc(56px + env(safe-area-inset-bottom) + 1rem);
+            bottom: calc(56px + var(--safe-area-bottom) + 1rem);
         }
     }
 </style>

@@ -17,8 +17,6 @@
     $inspect(deviceDetails.isMobile);
 </script>
 
-<div
-    class={`w-full h-full overflow-clip ${deviceDetails.isMobile ? "is-mobile" : ""}`}
->
+<div class={`w-full min-h-full ${deviceDetails.isMobile ? "is-mobile" : ""}`}>
     {@render children()}
 </div>

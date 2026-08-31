@@ -135,6 +135,6 @@
 
 <style>
     .floating-sheet {
-        padding-bottom: env(safe-area-inset-bottom);
+        padding-bottom: var(--safe-area-bottom);
     }
 </style>

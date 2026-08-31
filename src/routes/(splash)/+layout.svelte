@@ -15,11 +15,11 @@
     }
 </script>
 
-<!-- The root layout clips its wrapper (`overflow-clip`), so the splash shell
-     owns its own scroll container rather than relying on the document. The
-     sticky header below sticks against this element. -->
+<!-- Let the document own vertical scrolling. A fixed, nested scroll viewport is
+     measured too short by iOS when this site runs as a Home Screen web app,
+     leaving an unpainted band below the shell. -->
 <div
-    class="bg-background text-foreground fixed inset-0 flex flex-col overflow-x-hidden overflow-y-auto"
+    class="splash-shell bg-background text-foreground relative flex min-h-dvh flex-col overflow-x-clip"
 >
     <header
         class="bg-background/85 border-border/60 sticky top-0 z-45 w-full border-b backdrop-blur-md"
@@ -106,3 +106,11 @@
 </div>
 
 <ToastContainer />
+
+<style>
+    @media (pointer: coarse) {
+        .splash-shell {
+            padding-top: var(--safe-area-top);
+        }
+    }
+</style>

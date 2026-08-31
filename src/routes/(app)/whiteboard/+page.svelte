@@ -68,7 +68,7 @@
         <Whiteboard {store} shortcutsAlwaysActive bind:surface />
         <WhiteboardCompactControls
             {store}
-            class="absolute left-2 right-2 top-[max(0.5rem,env(safe-area-inset-top))] z-20 md:hidden"
+            class="absolute left-2 right-2 top-[max(0.5rem,var(--safe-area-top))] z-20 md:hidden"
         />
         <WhiteboardToolbar
             {store}

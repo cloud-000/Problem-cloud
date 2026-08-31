@@ -617,7 +617,7 @@
       }
 
       :global(.coach-fab-toast-offset) {
-         bottom: calc(56px + env(safe-area-inset-bottom) + 4.5rem);
+         bottom: 10rem;
       }
    }
 
@@ -625,20 +625,23 @@
       @scope (.is-mobile) {
          .app-container {
             flex-direction: column-reverse !important;
+            /* `viewport-fit=cover` deliberately extends a Home Screen app
+               behind the translucent iOS status bar. Reserve that inset in
+               the shell so the page header and content start below it. The
+               bottom navigation already owns the matching bottom inset. */
+            padding-top: var(--safe-area-top);
          }
 
          :global([data-slot="sidebar-root"]) {
             flex-direction: row !important;
             align-items: center !important;
             width: 100% !important;
-            /* Grow the bar by the bottom safe-area inset (home indicator /
-                   Safari toolbar) so the 56px of interactive content sits above it. */
-            height: calc(56px + env(safe-area-inset-bottom)) !important;
+            height: 56px !important;
             border-right-width: 0px !important;
             border-top: 1px solid var(--color-border) !important;
             overflow-x: auto !important;
             scrollbar-width: none !important;
-            padding: 0 8px env(safe-area-inset-bottom) 8px !important;
+            padding: 0 8px !important;
             background-color: var(--color-surface-container-low) !important;
          }
 

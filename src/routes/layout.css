@@ -7,6 +7,12 @@
 @plugin '@tailwindcss/forms';
 
 :root {
+    /* The status inset is needed with `viewport-fit=cover`. Do not reserve the
+       bottom inset globally: iOS standalone apps can report a stale browser
+       toolbar height there, which turns into a large phantom bottom band. */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: 0px;
+
     /* ==========================================================================
        1. COLOR SYSTEM (Semantic & DESIGN.md Mapping)
        ========================================================================== */

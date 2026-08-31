@@ -19,9 +19,9 @@
     <meta name="description" content="Sign in to ProblemCloud to practice competition math." />
 </svelte:head>
 
-<!-- The root shell clips overflow, so auth owns a fixed scroll container. This keeps
-     long forms reachable on short mobile viewports. -->
-<div class="fixed inset-0 flex min-h-dvh flex-col overflow-x-hidden overflow-y-auto bg-background text-foreground">
+<!-- Use document scrolling for long forms. iOS standalone web apps can size a
+     fixed scroll container to a shorter viewport and leave a gap below it. -->
+<div class="auth-shell flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
     <header class="border-b border-border">
         <div class="mx-auto flex h-16 max-w-[760px] items-center justify-between px-4 sm:px-6">
             <a href={resolve("/welcome")} class="flex items-center gap-2 font-semibold">
@@ -41,3 +41,11 @@
         </form>
     </main>
 </div>
+
+<style>
+    @media (pointer: coarse) {
+        .auth-shell {
+            padding-top: var(--safe-area-top);
+        }
+    }
+</style>

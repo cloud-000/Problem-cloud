@@ -397,7 +397,7 @@
                     role="dialog"
                     aria-labelledby="library-filters-title"
                     tabindex="-1"
-                    class="fixed right-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 z-50 flex max-h-[min(78vh,46rem)] flex-col rounded-t-xl border border-border bg-surface-container-lowest shadow-xl outline-none sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:bottom-auto sm:left-auto sm:w-[min(26rem,calc(100vw-3rem))] sm:rounded-xl"
+                    class="fixed right-0 bottom-[calc(3.5rem+var(--safe-area-bottom))] left-0 z-50 flex max-h-[min(78vh,46rem)] flex-col rounded-t-xl border border-border bg-surface-container-lowest shadow-xl outline-none sm:absolute sm:top-[calc(100%+0.5rem)] sm:right-0 sm:bottom-auto sm:left-auto sm:w-[min(26rem,calc(100vw-3rem))] sm:rounded-xl"
                 >
                     {@render filterContents(true)}
                 </div>

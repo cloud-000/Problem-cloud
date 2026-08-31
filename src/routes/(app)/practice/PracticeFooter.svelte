@@ -109,7 +109,7 @@
         "sticky bottom-0 z-30 grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-border/60 bg-background px-3 py-2",
         // Standing in for the nav bar means owning its safe-area inset (home
         // indicator / Safari toolbar).
-        isMobilePortrait && "pb-[calc(0.25rem+env(safe-area-inset-bottom))]",
+        isMobilePortrait && "pb-[calc(0.25rem+var(--safe-area-bottom))]",
     )}
 >
     <div class="flex min-w-0 items-center gap-1 justify-self-start">
