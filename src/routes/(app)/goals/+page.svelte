@@ -16,6 +16,7 @@
         fetchGoals,
         goalStatus,
         planGoalRequests,
+        setPrimaryGoal,
         stampAchievedGoals,
         type Goal,
         type GoalFamilyResults,
@@ -32,6 +33,7 @@
     import GoalForm from "./GoalForm.svelte";
     import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
     import { sortGoals, type SeriesNames } from "$lib/goals/presentation";
+    import { attentionGoal, primaryGoal, type GoalSnapshot } from "$lib/goals/promote";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -85,6 +87,28 @@
     );
     let archivedCount = $derived(
         goals.filter((goal) => goalStatus(goal) === "archived").length,
+    );
+    let mainGoal = $derived(primaryGoal(goals));
+    let goalSnapshots = $derived.by<GoalSnapshot[]>(() =>
+        goals.map((goal) => {
+            const slot = evaluation?.plan.slots.get(goal.id);
+            return {
+                goal,
+                result: progress.get(goal.id) ?? null,
+                familyData: familyDataFor(goal),
+                period:
+                    slot?.family === "period"
+                        ? (evaluation?.results.period?.[slot.index] ?? null)
+                        : null,
+            };
+        }),
+    );
+    let attention = $derived(attentionGoal(goalSnapshots, now));
+    let attentionGoalId = $derived(
+        attention?.goal.id !== mainGoal?.id ? (attention?.goal.id ?? null) : null,
+    );
+    let otherVisible = $derived(
+        visible.filter((goal) => goal.id !== mainGoal?.id && goal.id !== attentionGoalId),
     );
 
     async function load() {
@@ -225,6 +249,19 @@
         }
     }
 
+    async function makePrimary(goal: Goal) {
+        if (busy || goalStatus(goal) !== "active") return;
+        busy = true;
+        try {
+            await setPrimaryGoal(supabase, goal.id);
+            await load();
+        } catch (error) {
+            errorMsg = (error as Error).message || "Failed to set your main goal";
+        } finally {
+            busy = false;
+        }
+    }
+
     async function removeGoal(goal: Goal) {
         if (busy) return;
         if (
@@ -275,6 +312,7 @@
         onback={closeGoal}
         onpractice={practiceGoal}
         onedit={openEdit}
+        onmakeprimary={makePrimary}
         onarchive={setArchived}
         ondelete={removeGoal}
     />
@@ -336,18 +374,53 @@
             </div>
         {:else}
             <div class="border-t border-border/60">
-                {#each visible as goal (goal.id)}
-                    <GoalCard
-                        {goal}
-                        result={progress.get(goal.id) ?? null}
-                        data={familyDataFor(goal)}
-                        {seriesNames}
-                        {now}
-                        {busy}
-                        onopen={openGoal}
-                        onpractice={practiceGoal}
-                    />
-                {/each}
+                {#if mainGoal}
+                    <section class="border-b border-border/60 py-5">
+                        <h2 class="type-section-title text-foreground">Your main goal</h2>
+                        <GoalCard
+                            goal={mainGoal}
+                            result={progress.get(mainGoal.id) ?? null}
+                            data={familyDataFor(mainGoal)}
+                            {seriesNames}
+                            {now}
+                            {busy}
+                            onopen={openGoal}
+                            onpractice={practiceGoal}
+                        />
+                    </section>
+                {/if}
+                {#if attention && attentionGoalId !== null}
+                    <section class="border-b border-border/60 py-5">
+                        <h2 class="type-section-title text-foreground">Needs attention</h2>
+                        <GoalCard
+                            goal={attention.goal}
+                            result={attention.result}
+                            data={attention.familyData}
+                            {seriesNames}
+                            {now}
+                            {busy}
+                            onopen={openGoal}
+                            onpractice={practiceGoal}
+                        />
+                    </section>
+                {/if}
+                {#if otherVisible.length > 0}
+                    {#if mainGoal || attentionGoalId !== null}
+                        <h2 class="pt-5 type-section-title text-foreground">Other goals</h2>
+                    {/if}
+                    {#each otherVisible as goal (goal.id)}
+                        <GoalCard
+                            {goal}
+                            result={progress.get(goal.id) ?? null}
+                            data={familyDataFor(goal)}
+                            {seriesNames}
+                            {now}
+                            {busy}
+                            onopen={openGoal}
+                            onpractice={practiceGoal}
+                        />
+                    {/each}
+                {/if}
             </div>
         {/if}
 

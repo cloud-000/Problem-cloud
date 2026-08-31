@@ -554,7 +554,7 @@ vocabulary that the creation review can produce and verify.
 the product can assign presentation hierarchy without making students learn a
 new kind of goal.
 
-### Phase 3 — stable primary goal
+### Phase 3 — stable primary goal (done)
 
 - Add or derive a stable primary-goal selection.
 - Separate primary-goal selection from urgency promotion.
@@ -565,6 +565,13 @@ new kind of goal.
 selected, inferred until selected, or represented through a lightweight grouping
 object. Record the chosen rule before implementation; the current urgency-only
 promotion rule cannot coexist ambiguously with a stable primary destination.
+
+**Resolved 2026-08-31:** primary selection is an explicit, per-student choice
+stored on an active goal. It is presentation state only, with a database-backed
+single-selection invariant. Before a student explicitly chooses one, the oldest
+active goal is the deterministic inferred primary; adding a newer commitment
+cannot displace it. Achieving or archiving the primary makes it ineligible and
+falls back by the same rule. Urgency continues to be computed separately.
 
 **Exit criteria**
 

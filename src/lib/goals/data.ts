@@ -63,6 +63,7 @@ export function mapGoalRow(row: GoalRow): Goal {
         // unreadable goal, so the narrowing happens at render (`targetOf`) and
         // not by silently dropping the row here.
         target: row.target as GoalTargetData,
+        isPrimary: row.is_primary,
         deadline: row.deadline,
         achievedAt: row.achieved_at,
         archivedAt: row.archived_at,
@@ -311,9 +312,23 @@ export async function archiveGoal(
 ): Promise<void> {
     const { error } = await supabase
         .from("goals")
+        // The update trigger clears primary selection when archiving. Restoring
+        // deliberately leaves the student in control of a new selection.
         .update({ archived_at: archived ? new Date().toISOString() : null })
         .eq("id", goalId);
     if (error) throw error;
+}
+
+/** Select one active goal as the student's explicit main destination. */
+export async function setPrimaryGoal(
+    supabase: Supabase,
+    goalId: number,
+): Promise<Goal> {
+    const { data, error } = await supabase.rpc("set_primary_goal", {
+        p_goal_id: goalId,
+    });
+    if (error) throw error;
+    return mapGoalRow(data);
 }
 
 export async function deleteGoal(

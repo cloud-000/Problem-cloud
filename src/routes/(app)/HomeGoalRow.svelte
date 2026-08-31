@@ -20,6 +20,7 @@
         busy = false,
         onpractice,
         class: className,
+        label,
     }: {
         entry: PromotedGoal;
         seriesNames: SeriesNames;
@@ -27,6 +28,9 @@
         busy?: boolean;
         onpractice: (goal: Goal) => void;
         class?: string;
+        /** Stable presentation labels (such as the main destination) must not
+         * be re-derived from urgency. */
+        label?: string;
     } = $props();
 
     let goal = $derived(entry.goal);
@@ -54,7 +58,7 @@
                       : "text-muted-foreground",
             )}
         >
-            {lead ?? describeScope(goal.scope, seriesNames)}
+            {label ?? lead ?? describeScope(goal.scope, seriesNames)}
         </p>
         <p class="mt-0.5 type-secondary font-medium text-foreground">
             {goal.title}

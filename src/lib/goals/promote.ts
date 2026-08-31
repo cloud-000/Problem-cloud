@@ -62,6 +62,24 @@ export type PromotedGoal = GoalSnapshot & {
     daysLeft?: number;
 };
 
+/**
+ * The stable destination: an explicit active choice wins. Before a student
+ * makes that choice, use the oldest active goal so adding a newer commitment
+ * cannot make Home's identity jump around. Achievement and archiving make a
+ * goal ineligible and move the fallback forward deterministically.
+ */
+export function primaryGoal(goals: Goal[]): Goal | null {
+    const active = goals.filter((goal) => goalStatus(goal) === "active");
+    if (active.length === 0) return null;
+
+    const explicit = active.filter((goal) => goal.isPrimary);
+    const candidates = explicit.length > 0 ? explicit : active;
+    return [...candidates].sort((a, b) => {
+        const byCreated = a.createdAt.localeCompare(b.createdAt);
+        return byCreated !== 0 ? byCreated : a.id - b.id;
+    })[0];
+}
+
 const RANK: Record<PromotionReason, number> = {
     streak_today: 0,
     deadline: 1,
@@ -162,4 +180,16 @@ export function promoteGoals(
     });
 
     return promoted.slice(0, Math.max(0, limit));
+}
+
+/** The one commitment with the strongest reason to act today, if any. */
+export function attentionGoal(
+    snapshots: GoalSnapshot[],
+    now: Date,
+): PromotedGoal | null {
+    return (
+        promoteGoals(snapshots, now, snapshots.length).find(
+            (entry) => goalStatus(entry.goal) === "active",
+        ) ?? null
+    );
 }

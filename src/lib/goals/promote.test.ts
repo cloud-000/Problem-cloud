@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { promoteGoals, type GoalSnapshot } from "./promote";
+import {
+    attentionGoal,
+    primaryGoal,
+    promoteGoals,
+    type GoalSnapshot,
+} from "./promote";
 import type { Goal, GoalProgressResult, GoalTargetData } from "./types";
 
 const NOW = new Date("2026-08-10T18:00:00.000Z");
@@ -93,6 +98,42 @@ describe("what gets promoted", () => {
         const promoted = promoteGoals([late], NOW)[0];
         expect(promoted.reason).toBe("deadline");
         expect(promoted.daysLeft).toBe(-4);
+    });
+});
+
+describe("stable destination and today's attention", () => {
+    test("an explicit active primary stays ahead of a more urgent commitment", () => {
+        const destination = goal({ isPrimary: true, createdAt: "2026-08-05T00:00:00.000Z" });
+        const routine = streak(14, 5, 2);
+        routine.goal.createdAt = "2026-08-01T00:00:00.000Z";
+
+        expect(primaryGoal([routine.goal, destination])?.id).toBe(destination.id);
+        expect(attentionGoal([{ goal: destination, result: result() }, routine], NOW)?.goal.id).toBe(
+            routine.goal.id,
+        );
+    });
+
+    test("the oldest active goal is the deterministic fallback until selected", () => {
+        const older = goal({ createdAt: "2026-08-01T00:00:00.000Z" });
+        const newer = goal({ createdAt: "2026-08-05T00:00:00.000Z" });
+        const archived = goal({
+            isPrimary: true,
+            createdAt: "2026-07-01T00:00:00.000Z",
+            archivedAt: "2026-08-09T00:00:00.000Z",
+        });
+
+        expect(primaryGoal([newer, archived, older])?.id).toBe(older.id);
+    });
+
+    test("an achieved primary becomes ineligible and falls forward", () => {
+        const achieved = goal({
+            isPrimary: true,
+            createdAt: "2026-08-01T00:00:00.000Z",
+            achievedAt: "2026-08-10T00:00:00.000Z",
+        });
+        const active = goal({ createdAt: "2026-08-02T00:00:00.000Z" });
+
+        expect(primaryGoal([achieved, active])?.id).toBe(active.id);
     });
 });
 

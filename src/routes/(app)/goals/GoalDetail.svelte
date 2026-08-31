@@ -30,6 +30,7 @@
         onback,
         onpractice,
         onedit,
+        onmakeprimary,
         onarchive,
         ondelete,
     }: {
@@ -43,6 +44,7 @@
         onback: () => void;
         onpractice: (goal: Goal) => void;
         onedit: (goal: Goal) => void;
+        onmakeprimary: (goal: Goal) => void;
         onarchive: (goal: Goal, archived: boolean) => void;
         ondelete: (goal: Goal) => void;
     } = $props();
@@ -137,6 +139,15 @@
             <Button variant="outline" onclick={() => onedit(goal)} disabled={busy}>
                 Edit
             </Button>
+            {#if lifecycle === "active"}
+                <Button
+                    variant="ghost"
+                    onclick={() => onmakeprimary(goal)}
+                    disabled={busy || goal.isPrimary}
+                >
+                    {goal.isPrimary ? "Your main goal" : "Make this my main goal"}
+                </Button>
+            {/if}
             <Button
                 variant="ghost"
                 onclick={() => onarchive(goal, lifecycle !== "archived")}

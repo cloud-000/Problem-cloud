@@ -38,7 +38,13 @@
     } from "$lib/goals";
     import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
     import type { SeriesNames } from "$lib/goals/presentation";
-    import { promoteGoals, type GoalSnapshot } from "$lib/goals/promote";
+    import {
+        attentionGoal,
+        primaryGoal,
+        promoteGoals,
+        type GoalSnapshot,
+        type PromotedGoal,
+    } from "$lib/goals/promote";
     import { startSession } from "$lib/sessions";
     import { goto } from "$app/navigation";
     import { fetchFocusedSeriesWorklist, type WorklistItem } from "$lib/home";
@@ -111,11 +117,26 @@
         });
     });
 
-    let promoted = $derived(promoteGoals(goalSnapshots, goalsNow));
-    // The hero carries the single most urgent one (it owns the action); the
-    // section below lists the rest, so nothing is shown twice.
-    let heroGoal = $derived(promoted[0] ?? null);
-    let otherGoals = $derived(promoted.slice(1));
+    // Destination and urgency deliberately answer different questions. The
+    // primary remains stable while `attention` identifies the commitment with
+    // the strongest reason to act today.
+    let mainGoal = $derived(primaryGoal(goals));
+    let attention = $derived(attentionGoal(goalSnapshots, goalsNow));
+    let mainEntry = $derived.by<PromotedGoal | null>(() => {
+        if (!mainGoal) return null;
+        return (
+            goalSnapshots
+                .map((snapshot) => promoteGoals([snapshot], goalsNow, 1)[0] ?? null)
+                .find((entry) => entry?.goal.id === mainGoal.id) ?? {
+                goal: mainGoal,
+                result: goalSnapshots.find((snapshot) => snapshot.goal.id === mainGoal.id)?.result ?? null,
+                reason: "remaining",
+            }
+        );
+    });
+    let attentionEntry = $derived(
+        attention?.goal.id !== mainGoal?.id ? attention : null,
+    );
 
     async function loadGoals() {
         if (!user) {
@@ -385,13 +406,14 @@
                      I doing"; a goal answers "why", and owns the action that
                      moves it — so it belongs in the same card, not in a widget
                      further down the page. -->
-                {#if heroGoal}
+                {#if mainEntry}
                     <HomeGoalRow
-                        entry={heroGoal}
+                        entry={mainEntry}
                         {seriesNames}
                         now={goalsNow}
                         busy={startingGoal}
                         onpractice={practiceGoal}
+                        label="Your main goal"
                         class="border-t border-border/60 pt-5"
                     />
                 {/if}
@@ -422,10 +444,10 @@
                         Set a goal
                     </Button>
                 </section>
-            {:else if otherGoals.length > 0}
+            {:else if attentionEntry}
                 <Page.Section
-                    title="Your goals"
-                    description="What you committed to, and what can move today."
+                    title="Needs attention"
+                    description="A commitment with a reason to act today."
                 >
                     {#snippet actions()}
                         <Button href={resolve("/goals")} variant="ghost" size="sm">
@@ -435,16 +457,14 @@
                     {/snippet}
 
                     <div class="divide-y divide-border border-y border-border">
-                        {#each otherGoals as entry (entry.goal.id)}
-                            <HomeGoalRow
-                                {entry}
-                                {seriesNames}
-                                now={goalsNow}
-                                busy={startingGoal}
-                                onpractice={practiceGoal}
-                                class="py-4"
-                            />
-                        {/each}
+                        <HomeGoalRow
+                            entry={attentionEntry}
+                            {seriesNames}
+                            now={goalsNow}
+                            busy={startingGoal}
+                            onpractice={practiceGoal}
+                            class="py-4"
+                        />
                     </div>
                 </Page.Section>
             {/if}

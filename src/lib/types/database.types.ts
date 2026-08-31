@@ -367,6 +367,7 @@ export type Database = {
           created_at: string
           deadline: string | null
           id: number
+          is_primary: boolean
           scope: Json
           target: Json
           title: string
@@ -379,6 +380,7 @@ export type Database = {
           created_at?: string
           deadline?: string | null
           id?: number
+          is_primary?: boolean
           scope?: Json
           target: Json
           title: string
@@ -391,6 +393,7 @@ export type Database = {
           created_at?: string
           deadline?: string | null
           id?: number
+          is_primary?: boolean
           scope?: Json
           target?: Json
           title?: string
@@ -1898,6 +1901,10 @@ export type Database = {
           solved: number
         }[]
       }
+      set_primary_goal: {
+        Args: { p_goal_id: number }
+        Returns: Database["public"]["Tables"]["goals"]["Row"]
+      }
       goal_streak_progress: {
         Args: { p_requests: Json }
         Returns: {
@@ -2286,4 +2293,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

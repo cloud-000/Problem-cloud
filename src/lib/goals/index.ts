@@ -12,3 +12,4 @@ export * from "./period";
 export * from "./registry";
 export * from "./plan";
 export * from "./data";
+export * from "./promote";

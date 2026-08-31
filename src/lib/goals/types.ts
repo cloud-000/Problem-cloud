@@ -96,6 +96,8 @@ export type Goal = {
     title: string;
     scope: GoalScope;
     target: GoalTargetData;
+    /** Explicit student selection. Absence is resolved by `primaryGoal`. */
+    isPrimary?: boolean;
     deadline: string | null;
     achievedAt: string | null;
     archivedAt: string | null;

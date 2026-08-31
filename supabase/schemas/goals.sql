@@ -27,6 +27,9 @@ create table public.goals (
   scope       jsonb  not null default '{}'::jsonb,
   -- A GoalTargetData discriminated union (architecture doc §4).
   target      jsonb  not null,
+  -- An explicit presentation choice, not another target or lifecycle. When it
+  -- is absent the client derives a stable fallback from active goals.
+  is_primary  boolean not null default false,
   -- A horizon, never a second completion condition (§7). Passing it does not
   -- fail the goal, erase progress, or block later achievement.
   deadline    date,
@@ -59,6 +62,11 @@ create table public.goals (
 -- readable but are no longer promoted (§7), so they are excluded here rather
 -- than deleted.
 create index goals_user_idx on public.goals(user_id, archived_at, created_at desc);
+-- One explicit main destination per student. Achieved and archived goals are
+-- no longer eligible, so their historical flag cannot block a new selection.
+create unique index goals_one_active_primary_per_user_idx
+  on public.goals (user_id)
+  where is_primary and achieved_at is null and archived_at is null;
 
 alter table public.goals enable row level security;
 
@@ -98,6 +106,42 @@ grant update (title, scope, target, deadline, achieved_at, archived_at, updated_
   on public.goals to authenticated;
 grant all on public.goals to service_role;
 
+-- Selecting a main goal is one operation, rather than two client PATCHes that
+-- could race across tabs. The function is deliberately narrow: a student can
+-- only select one of their own active goals.
+create or replace function public.set_primary_goal(p_goal_id bigint)
+returns public.goals
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  selected public.goals;
+begin
+  update public.goals
+     set is_primary = false
+   where user_id = auth.uid()
+     and is_primary
+     and id <> p_goal_id;
+
+  update public.goals
+     set is_primary = true
+   where id = p_goal_id
+     and user_id = auth.uid()
+     and achieved_at is null
+     and archived_at is null
+  returning * into selected;
+
+  if not found then
+    raise exception 'An active goal is required to become your main goal.';
+  end if;
+
+  return selected;
+end;
+$$;
+
+grant execute on function public.set_primary_goal(bigint) to authenticated;
+
 create or replace function public.handle_goal_update()
 returns trigger
 language plpgsql
@@ -105,6 +149,12 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- A completed or archived commitment cannot retain the main-goal choice.
+  -- This lives in the trigger so ordinary lifecycle updates do not need a
+  -- client grant on the presentation-state column.
+  if new.achieved_at is not null or new.archived_at is not null then
+    new.is_primary = false;
+  end if;
   new.updated_at = now();
   return new;
 end;
