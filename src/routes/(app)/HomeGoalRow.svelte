@@ -21,6 +21,8 @@
         onpractice,
         class: className,
         label,
+        showAction = true,
+        hideFallbackCaption = false,
     }: {
         entry: PromotedGoal;
         seriesNames: SeriesNames;
@@ -31,36 +33,56 @@
         /** Stable presentation labels (such as the main destination) must not
          * be re-derived from urgency. */
         label?: string;
+        /** The primary card owns the next action; Needs attention still has one. */
+        showAction?: boolean;
+        /** Urgency is worth a caption; a scope restatement is not. */
+        hideFallbackCaption?: boolean;
     } = $props();
 
     let goal = $derived(entry.goal);
     // The reason it was promoted, in words — never re-derived here, so the hero
-    // and the list below it cannot disagree about what is urgent.
+    // and the list below it cannot disagree about what is urgent about it.
     let lead = $derived(promotionLine(entry));
+    let caption = $derived(
+        label ?? lead ?? (hideFallbackCaption ? null : describeScope(goal.scope, seriesNames)),
+    );
     let urgent = $derived(
         entry.reason === "streak_today" ||
             (entry.reason === "deadline" && (entry.daysLeft ?? 0) <= 1),
     );
 </script>
 
-<div class={cn("flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5", className)}>
+<div
+    class={cn(
+        "flex flex-col gap-3",
+        showAction && "sm:flex-row sm:items-center sm:gap-5",
+        className,
+    )}
+>
     <a
         href={resolve(`/goals?goal=${goal.id}`)}
         class="group min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
+        {#if caption}
+            <p
+                class={cn(
+                    "type-caption",
+                    entry.reason === "achieved"
+                        ? "text-correct"
+                        : urgent
+                          ? "text-unsure"
+                          : "text-muted-foreground",
+                )}
+            >
+                {caption}
+            </p>
+        {/if}
         <p
             class={cn(
-                "type-caption",
-                entry.reason === "achieved"
-                    ? "text-correct"
-                    : urgent
-                      ? "text-unsure"
-                      : "text-muted-foreground",
+                "type-secondary font-medium text-foreground",
+                caption && "mt-0.5",
             )}
         >
-            {label ?? lead ?? describeScope(goal.scope, seriesNames)}
-        </p>
-        <p class="mt-0.5 type-secondary font-medium text-foreground">
             {goal.title}
         </p>
         {#if entry.result}
@@ -75,22 +97,24 @@
         {/if}
     </a>
 
-    <div class="shrink-0">
-        {#if entry.reason === "achieved"}
-            <Button href={resolve(`/goals?goal=${goal.id}`)} variant="ghost" size="sm">
-                See it
-                <Icon name="arrow_forward" />
-            </Button>
-        {:else}
-            <Button
-                variant="outline"
-                size="sm"
-                onclick={() => onpractice(goal)}
-                disabled={busy}
-            >
-                <Icon name="sprint" class="size-[1em]" />
-                {practiceActionLabel(goal)}
-            </Button>
-        {/if}
-    </div>
+    {#if showAction}
+        <div class="shrink-0">
+            {#if entry.reason === "achieved"}
+                <Button href={resolve(`/goals?goal=${goal.id}`)} variant="ghost" size="sm">
+                    See it
+                    <Icon name="arrow_forward" />
+                </Button>
+            {:else}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={() => onpractice(goal)}
+                    disabled={busy}
+                >
+                    <Icon name="sprint" class="size-[1em]" />
+                    {practiceActionLabel(goal)}
+                </Button>
+            {/if}
+        </div>
+    {/if}
 </div>

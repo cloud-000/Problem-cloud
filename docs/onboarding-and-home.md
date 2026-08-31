@@ -1,6 +1,7 @@
 # Onboarding and Home — product design
 
-> **Status:** proposed — not implemented.
+> **Status:** Phase 1 implemented. Welcome, the tour, private onboarding
+> state, `/help`, and Getting started remain proposed.
 >
 > This document defines the first-run welcome experience, the way Home changes
 > as a student begins using ProblemCloud, and the permanent Help entry point.
@@ -568,7 +569,7 @@ Qualitative checks matter as much as conversion:
 
 ## 10. Rollout sequence
 
-### Phase 1 — remove redundancy
+### Phase 1 — remove redundancy ✅
 
 - Replace the header/session/Recommended next competition with one Next up
   decision for students without goals and one goal-led decision for students
@@ -582,6 +583,8 @@ Qualitative checks matter as much as conversion:
   primary action.
 
 This phase improves every account without requiring onboarding persistence.
+The decision lives in `src/lib/home-next.ts` so the heading and the button
+cannot disagree.
 
 ### Phase 2 — Welcome and private state
 

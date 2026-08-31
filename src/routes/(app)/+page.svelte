@@ -1,28 +1,19 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { onMount, untrack } from "svelte";
+    import { onMount } from "svelte";
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import { toasts } from "$lib/state/toast.svelte";
-    import {
-        fetchAllSeries,
-        fetchByIds,
-        fetchPlayerRating,
-        playerRatingIsProvisional,
-        topicLabel,
-        type PlayerRating,
-        type SeriesRow,
-    } from "$lib/library";
+    import { fetchAllSeries, fetchPlayerRating, type PlayerRating } from "$lib/library";
     import {
         fetchProblemStateSummary,
-        fetchRecentSubmissions,
         type ProblemStateSummary,
-        type RecentSubmissionRow,
     } from "$lib/progress";
     import {
         fetchSessions,
+        startSession,
         type PracticeSessionRow,
     } from "$lib/sessions";
     import {
@@ -45,12 +36,13 @@
         type GoalSnapshot,
         type PromotedGoal,
     } from "$lib/goals/promote";
-    import { startSession } from "$lib/sessions";
     import { goto } from "$app/navigation";
-    import { fetchFocusedSeriesWorklist, type WorklistItem } from "$lib/home";
-    import FocusedSeriesChips from "./FocusedSeriesChips.svelte";
-    import FocusedSeriesStats from "./FocusedSeriesStats.svelte";
-    import FocusedWorklist from "./FocusedWorklist.svelte";
+    import {
+        decideNextUp,
+        homeProgressMetrics,
+        type NextUpAction,
+    } from "$lib/home-next";
+    import { cn } from "$lib/utils";
     import HomeGoalRow from "./HomeGoalRow.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -59,20 +51,7 @@
     let rating = $state<PlayerRating | null>(null);
     let summary = $state<ProblemStateSummary | null>(null);
     let activeSession = $state<PracticeSessionRow | null>(null);
-    let recentSubmissions = $state<RecentSubmissionRow[]>([]);
     let loading = $state(true);
-
-    // Source of truth for the "Focused series" section — locally mutable so
-    // FocusedSeriesChips's optimistic edits are reflected immediately, distinct
-    // from `profile.focused_series` which only updates on the next page load.
-    let focusedSeriesIds = $state<number[]>(
-        untrack(() => profile?.focused_series ?? []),
-    );
-    let focusedSeriesNames = $state<Map<number, string>>(new Map());
-    let focusedStats = $state<
-        { seriesId: number; name: string; summary: ProblemStateSummary }[]
-    >([]);
-    let focusedWorklist = $state<WorklistItem[]>([]);
 
     // Goals are loaded on their own, not inside `loadHome`: they are the one
     // section that can fail without costing the student anything else on the
@@ -138,6 +117,25 @@
         attention?.goal.id !== mainGoal?.id ? attention : null,
     );
 
+    let next = $derived(
+        decideNextUp({
+            session: activeSession,
+            reviewDue: summary?.review_due ?? 0,
+            leadGoal: mainEntry,
+            goalsReady: goalsLoaded,
+        }),
+    );
+    let progressMetrics = $derived(
+        homeProgressMetrics({
+            summary,
+            rating,
+            nextUpKind: next.action.kind,
+        }),
+    );
+    let goalAction = $derived(
+        next.action.kind === "goal_practice" ? next.action : null,
+    );
+
     async function loadGoals() {
         if (!user) {
             goalsLoaded = true;
@@ -195,49 +193,6 @@
         }
     }
 
-    // Refetches the focused-series names/stats/worklist whenever the set of
-    // focused series changes — on first load (seeded from the profile) and
-    // again whenever FocusedSeriesChips adds/removes one. Kept separate from
-    // loadHome() so editing focus doesn't re-fetch the rest of the page.
-    $effect(() => {
-        const ids = focusedSeriesIds;
-        if (!user || ids.length === 0) {
-            focusedSeriesNames = new Map();
-            focusedStats = [];
-            focusedWorklist = [];
-            return;
-        }
-
-        let cancelled = false;
-        (async () => {
-            try {
-                const [seriesRows, summaries, worklist] = await Promise.all([
-                    fetchByIds(supabase, "series", ids) as Promise<SeriesRow[]>,
-                    Promise.all(ids.map((id) => fetchProblemStateSummary(supabase, id))),
-                    fetchFocusedSeriesWorklist(supabase, ids),
-                ]);
-                if (cancelled) return;
-                const names = new Map(seriesRows.map((row) => [row.id, row.name]));
-                focusedSeriesNames = names;
-                focusedStats = ids.map((id, index) => ({
-                    seriesId: id,
-                    name: names.get(id) ?? `Series ${id}`,
-                    summary: summaries[index],
-                }));
-                focusedWorklist = worklist;
-            } catch (e) {
-                if (!cancelled)
-                    toasts.error(
-                        (e as Error).message || "Failed to load your focused series.",
-                    );
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    });
-
     async function loadHome() {
         if (!user) {
             loading = false;
@@ -246,18 +201,15 @@
 
         loading = true;
         try {
-            const [nextRating, nextSummary, activeSessions, recent] =
-                await Promise.all([
-                    fetchPlayerRating(supabase, user.id),
-                    fetchProblemStateSummary(supabase),
-                    fetchSessions(supabase, { status: "active" }),
-                    fetchRecentSubmissions(supabase, 3),
-                ]);
+            const [nextRating, nextSummary, activeSessions] = await Promise.all([
+                fetchPlayerRating(supabase, user.id),
+                fetchProblemStateSummary(supabase),
+                fetchSessions(supabase, { status: "active" }),
+            ]);
 
             rating = nextRating;
             summary = nextSummary;
             activeSession = activeSessions[0] ?? null;
-            recentSubmissions = recent;
         } catch (e) {
             toasts.error((e as Error).message || "Failed to load your home page.");
         } finally {
@@ -270,47 +222,17 @@
         void loadGoals();
     });
 
-    let provisional = $derived(playerRatingIsProvisional(rating));
-    let practiceHref = $derived(
-        activeSession
-            ? `${resolve("/practice")}?session=${activeSession.id}`
-            : resolve("/practice"),
-    );
-
-    function plural(value: number, singular: string, pluralForm = `${singular}s`) {
-        return value === 1 ? singular : pluralForm;
-    }
-
-    function problemTitle(submission: RecentSubmissionRow) {
-        const problem = submission.problems;
-        if (!problem) return "Practice problem";
-        return `${problem.tests?.name ?? "Practice problem"} · Problem ${problem.n + 1}`;
-    }
-
-    function outcomeLabel(submission: RecentSubmissionRow) {
-        if (submission.skipped) return "Skipped";
-        if (submission.is_correct === true) return "Solved";
-        if (submission.is_correct === false) return "Needs review";
-        return "Submitted";
-    }
-
-    function outcomeIcon(submission: RecentSubmissionRow) {
-        if (submission.skipped) return "arrow_forward";
-        if (submission.is_correct === null) return "pending";
-        return submission.is_correct ? "check_circle" : "cancel";
-    }
-
-    function outcomeClass(submission: RecentSubmissionRow) {
-        if (submission.skipped) return "text-muted-foreground";
-        if (submission.is_correct === null) return "text-muted-foreground";
-        return submission.is_correct ? "text-correct" : "text-destructive";
-    }
-
-    function activityDescription(submission: RecentSubmissionRow) {
-        const topic = topicLabel(submission.problems?.topic);
-        return topic
-            ? `${topic} · ${outcomeLabel(submission)}`
-            : outcomeLabel(submission);
+    function nextHref(action: NextUpAction): string | undefined {
+        switch (action.kind) {
+            case "continue_session":
+                return resolve(`/practice?session=${action.sessionId}`);
+            case "review_due":
+                return resolve("/progress?view=review");
+            case "start_practice":
+                return resolve("/practice");
+            default:
+                return undefined;
+        }
     }
 
     function relativeDate(value: string) {
@@ -342,14 +264,7 @@
 <Page.Root width="standard">
     <Page.Header
         title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
-        description="Pick up where you left off or work on what needs attention."
-    >
-        {#snippet actions()}
-            <Button href={resolve("/practice")} class="max-sm:w-full">
-                Start practice
-            </Button>
-        {/snippet}
-    </Page.Header>
+    />
 
     {#if loading}
         <div
@@ -362,93 +277,79 @@
     {:else}
         <div class="flex flex-col gap-10">
             <section
-                aria-labelledby="continue-title"
+                aria-labelledby="next-up-title"
                 class="flex flex-col gap-5 rounded-xl border border-border bg-surface-container-lowest p-5 sm:p-6"
             >
                 <div
                     class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
                 >
                     <div>
-                        <p class="type-caption text-muted-foreground">
-                            {activeSession
-                                ? "Continue where you left off"
-                                : "Your next session"}
-                        </p>
-                        <h2 id="continue-title" class="mt-1 type-section-title">
-                            {activeSession?.name || "Ready to practice?"}
+                        <h2 id="next-up-title" class="type-section-title">
+                            {next.work.title}
                         </h2>
-                        <p class="mt-1 type-secondary text-muted-foreground">
-                            {#if activeSession}
-                                {activeSession.times_seen}
-                                {plural(activeSession.times_seen, "problem")} attempted ·
-                                {activeSession.times_correct} correct
-                            {:else}
-                                Start a focused session or practice freely.
-                            {/if}
-                        </p>
+                        {#if next.work.detail}
+                            <p class="mt-1 type-secondary text-muted-foreground">
+                                {next.work.detail}
+                            </p>
+                        {/if}
                     </div>
 
-                    {#if activeSession?.last_submission_at}
+                    {#if next.work.lastActiveAt}
                         <span class="type-caption text-muted-foreground">
-                            Active {relativeDate(activeSession.last_submission_at)}
+                            Active {relativeDate(next.work.lastActiveAt)}
                         </span>
                     {/if}
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <Button href={practiceHref} variant="outline">
-                        {activeSession ? "Continue session" : "Choose a session"}
-                        <Icon name="arrow_forward" />
-                    </Button>
-                </div>
-
-                <!-- The commitment behind the session. The hero answers "what was
-                     I doing"; a goal answers "why", and owns the action that
-                     moves it — so it belongs in the same card, not in a widget
-                     further down the page. -->
-                {#if mainEntry}
+                {#if next.commitment.kind === "goal"}
                     <HomeGoalRow
-                        entry={mainEntry}
+                        entry={next.commitment.entry}
                         {seriesNames}
                         now={goalsNow}
                         busy={startingGoal}
                         onpractice={practiceGoal}
-                        label="Your main goal"
+                        showAction={false}
+                        hideFallbackCaption
                         class="border-t border-border/60 pt-5"
                     />
+                {:else if next.commitment.kind === "invitation"}
+                    <p
+                        class="border-t border-border/60 pt-5 type-secondary text-muted-foreground"
+                    >
+                        No goal yet —
+                        <a
+                            href={resolve("/goals?new=1")}
+                            class="text-foreground underline decoration-border underline-offset-4 hover:text-foreground"
+                        >
+                            Set a direction
+                        </a>
+                        when you are ready
+                    </p>
                 {/if}
+
+                <div>
+                    {#if goalAction}
+                        <Button
+                            class="max-sm:w-full"
+                            onclick={() => {
+                                if (goalAction) void practiceGoal(goalAction.goal);
+                            }}
+                            disabled={startingGoal}
+                        >
+                            {goalAction.label}
+                            <Icon name="arrow_forward" />
+                        </Button>
+                    {:else}
+                        <Button href={nextHref(next.action)} class="max-sm:w-full">
+                            {next.action.label}
+                            <Icon name="arrow_forward" />
+                        </Button>
+                    {/if}
+                </div>
             </section>
 
-            {#if user && goalsLoaded && goals.length === 0}
-                <!-- The empty state is the point: goals are invisible to exactly
-                     the students who have none, which on day one is everyone. -->
-                <section
-                    class="flex flex-col items-start gap-4 rounded-xl border border-dashed border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
-                >
-                    <!-- 3xl is the app's prose measure (Page.Header's own title
-                         block). The "Set a goal" button is `shrink-0` beside it,
-                         so the cap only has to stay clear of that. -->
-                    <div class="max-w-3xl">
-                        <h2 class="type-section-title text-foreground">
-                            Set a finish line
-                        </h2>
-                        <p class="mt-1 type-secondary text-muted-foreground">
-                            Commit to something you can finish — 80% of AMC 10
-                            geometry, 100 problems this month, a two-week streak.
-                            Everything you have already done counts toward it from
-                            the moment you set it.
-                        </p>
-                    </div>
-                    <Button href={`${resolve("/goals")}?new=1`} class="shrink-0">
-                        <Icon name="flag" class="size-[1em]" />
-                        Set a goal
-                    </Button>
-                </section>
-            {:else if attentionEntry}
-                <Page.Section
-                    title="Needs attention"
-                    description="A commitment with a reason to act today."
-                >
+            {#if attentionEntry}
+                <Page.Section title="Needs attention">
                     {#snippet actions()}
                         <Button href={resolve("/goals")} variant="ghost" size="sm">
                             All goals
@@ -469,189 +370,53 @@
                 </Page.Section>
             {/if}
 
-            {#if user}
-                <Page.Section
-                    title="Focused series"
-                    description="Pick up to 3 series to track closely on this page."
-                >
-                    <div class="flex flex-col gap-5">
-                        <FocusedSeriesChips
-                            {supabase}
-                            userId={user.id}
-                            bind:focusedSeriesIds
-                            seriesNames={focusedSeriesNames}
-                        />
-
-                        {#if focusedSeriesIds.length > 0}
-                            <FocusedSeriesStats entries={focusedStats} />
-                            <FocusedWorklist
-                                items={focusedWorklist}
-                                seriesNames={focusedSeriesNames}
-                            />
-                        {/if}
-                    </div>
-                </Page.Section>
-            {/if}
-
-            <Page.Section
-                title="Recommended next"
-                description="Use your review schedule or choose what you want to explore."
-            >
-                <div class="grid gap-3 md:grid-cols-2">
-                    <a
-                        href={resolve("/practice")}
-                        class="group flex min-h-40 flex-col justify-between gap-6 rounded-xl border border-border bg-surface-container-lowest p-5 transition-colors hover:bg-surface-container-low focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                        <div>
-                            <p class="type-caption text-muted-foreground">
-                                {summary?.review_due
-                                    ? `${summary.review_due} due now`
-                                    : "Review queue"}
-                            </p>
-                            <h3 class="mt-1 type-section-title">
-                                {summary?.review_due
-                                    ? `Review ${summary.review_due} ${plural(summary.review_due, "problem")}`
-                                    : "Build your review queue"}
-                            </h3>
-                            <p class="mt-1 type-secondary text-muted-foreground">
-                                {summary?.review_due
-                                    ? "Refresh problems that are ready for another attempt."
-                                    : "Practiced problems will return when they need attention."}
-                            </p>
-                        </div>
-                        <span
-                            class="flex items-center gap-1 type-secondary font-medium group-hover:text-primary-foreground"
-                        >
-                            {summary?.review_due ? "Open practice" : "Start practicing"}
+            {#if progressMetrics.length > 0}
+                <Page.Section title="Progress">
+                    {#snippet actions()}
+                        <Button href={resolve("/progress")} variant="ghost" size="sm">
+                            View progress
                             <Icon name="arrow_forward" />
-                        </span>
-                    </a>
+                        </Button>
+                    {/snippet}
 
-                    <a
-                        href={resolve("/library")}
-                        class="group flex min-h-40 flex-col justify-between gap-6 rounded-xl border border-border bg-surface-container-lowest p-5 transition-colors hover:bg-surface-container-low focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    <dl
+                        class={cn(
+                            "grid border-y border-border",
+                            progressMetrics.length > 1 &&
+                                "sm:divide-x sm:divide-border",
+                            progressMetrics.length === 2 && "sm:grid-cols-2",
+                            progressMetrics.length >= 3 && "sm:grid-cols-3",
+                        )}
                     >
-                        <div>
-                            <p class="type-caption text-muted-foreground">
-                                Choose your own direction
-                            </p>
-                            <h3 class="mt-1 type-section-title">
-                                Explore the library
-                            </h3>
-                            <p class="mt-1 type-secondary text-muted-foreground">
-                                Find a problem, test, or series for your next session.
-                            </p>
-                        </div>
-                        <span
-                            class="flex items-center gap-1 type-secondary font-medium group-hover:text-primary-foreground"
-                        >
-                            Open library
-                            <Icon name="arrow_forward" />
-                        </span>
-                    </a>
-                </div>
-            </Page.Section>
-
-            <Page.Section
-                title="Your progress"
-                description="A compact snapshot of your recent work."
-            >
-                {#snippet actions()}
-                    <Button href={resolve("/progress")} variant="ghost" size="sm">
-                        View progress
-                        <Icon name="arrow_forward" />
-                    </Button>
-                {/snippet}
-
-                <dl
-                    class="grid border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-border"
-                >
-                    <div class="py-4 sm:pr-5">
-                        <dt class="type-caption text-muted-foreground">
-                            Skill rating
-                        </dt>
-                        <dd class="mt-1 type-display text-foreground">
-                            {rating ? Math.round(rating.rating) : "—"}
-                        </dd>
-                        <p class="mt-1 type-caption text-muted-foreground">
-                            {#if provisional}
-                                Provisional
-                            {:else if rating}
-                                ±{Math.round(rating.rd)} uncertainty
-                            {:else}
-                                Complete a rated problem
-                            {/if}
-                        </p>
-                    </div>
-                    <div class="border-t border-border py-4 sm:border-t-0 sm:px-5">
-                        <dt class="type-caption text-muted-foreground">
-                            Review due
-                        </dt>
-                        <dd class="mt-1 type-display text-foreground">
-                            {summary?.review_due ?? 0}
-                        </dd>
-                        <p class="mt-1 type-caption text-muted-foreground">
-                            Ready for another attempt
-                        </p>
-                    </div>
-                    <div class="border-t border-border py-4 sm:border-t-0 sm:pl-5">
-                        <dt class="type-caption text-muted-foreground">
-                            Problems seen
-                        </dt>
-                        <dd class="mt-1 type-display text-foreground">
-                            {summary?.seen ?? 0}
-                        </dd>
-                        <p class="mt-1 type-caption text-muted-foreground">
-                            {rating?.matches ?? 0} rated
-                            {plural(rating?.matches ?? 0, "match", "matches")}
-                        </p>
-                    </div>
-                </dl>
-            </Page.Section>
-
-            <Page.Section title="Recent activity">
-                {#snippet actions()}
-                    <Button href={resolve("/history")} variant="ghost" size="sm">
-                        View history
-                        <Icon name="arrow_forward" />
-                    </Button>
-                {/snippet}
-
-                {#if recentSubmissions.length > 0}
-                    <div class="divide-y divide-border border-y border-border">
-                        {#each recentSubmissions as submission (submission.id)}
+                        {#each progressMetrics as metric, index (metric.key)}
                             <div
-                                class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+                                class={[
+                                    "py-4",
+                                    index > 0 && "border-t border-border sm:border-t-0",
+                                    progressMetrics.length > 1 &&
+                                        (index === 0
+                                            ? "sm:pr-5"
+                                            : index === progressMetrics.length - 1
+                                              ? "sm:pl-5"
+                                              : "sm:px-5"),
+                                ]}
                             >
-                                <Icon
-                                    name={outcomeIcon(submission)}
-                                    class={outcomeClass(submission)}
-                                />
-                                <div class="min-w-0">
-                                    <p class="truncate type-secondary font-medium text-foreground">
-                                        {problemTitle(submission)}
+                                <dt class="type-caption text-muted-foreground">
+                                    {metric.label}
+                                </dt>
+                                <dd class="mt-1 type-display text-foreground">
+                                    {metric.value}
+                                </dd>
+                                {#if metric.caption}
+                                    <p class="mt-1 type-caption text-muted-foreground">
+                                        {metric.caption}
                                     </p>
-                                    <p class="mt-0.5 type-caption text-muted-foreground">
-                                        {activityDescription(submission)}
-                                    </p>
-                                </div>
-                                <time
-                                    class="col-start-2 type-caption text-muted-foreground sm:col-start-3 sm:row-start-1"
-                                    datetime={submission.created_at}
-                                >
-                                    {relativeDate(submission.created_at)}
-                                </time>
+                                {/if}
                             </div>
                         {/each}
-                    </div>
-                {:else}
-                    <div class="py-6">
-                        <p class="type-secondary text-muted-foreground">
-                            Your recent problem activity will appear here.
-                        </p>
-                    </div>
-                {/if}
-            </Page.Section>
+                    </dl>
+                </Page.Section>
+            {/if}
         </div>
     {/if}
 </Page.Root>
