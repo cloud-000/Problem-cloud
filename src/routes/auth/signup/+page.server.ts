@@ -1,10 +1,9 @@
 import { fail, redirect } from "@sveltejs/kit";
-import { authFailureMessage, validateSignupFields, validateUsername } from "$lib/auth";
+import { authFailureMessage, validateSignupFields } from "$lib/auth";
 import {
     OAUTH_PROVIDER,
     oauthCallbackURL,
     redirectToOAuth,
-    setOAuthSignupIntent,
 } from "$lib/server/oauth";
 import type { Actions } from "./$types";
 
@@ -53,30 +52,12 @@ export const actions: Actions = {
 
         redirect(303, "/");
     },
-    google: async ({ request, locals: { supabase }, cookies, url }) => {
-        const formData = await request.formData();
-        const username = String(formData.get("username") ?? "").trim();
-        const invalid = validateUsername(username);
-        if (invalid) return fail(400, { message: invalid, username });
-
-        const { data: existing, error: lookupError } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("username", username)
-            .maybeSingle();
-        if (lookupError) {
-            return fail(500, { message: "We couldn't check that username. Try again.", username });
-        }
-        if (existing) {
-            return fail(400, { message: "That username is taken. Pick another.", username });
-        }
-
-        setOAuthSignupIntent(cookies, { provider: OAUTH_PROVIDER, username }, url.protocol === "https:");
+    google: async ({ locals: { supabase }, url }) => {
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: OAUTH_PROVIDER,
             options: { redirectTo: oauthCallbackURL(url) },
         });
         const message = redirectToOAuth(data, error);
-        return fail(400, { message, username });
+        return fail(400, { message });
     },
 };

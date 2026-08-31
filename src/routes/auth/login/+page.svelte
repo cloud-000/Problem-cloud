@@ -46,7 +46,7 @@
 
 <Button type="submit" size="lg" class="w-full">Log in</Button>
 
-<Button type="submit" formaction="?/google" variant="outline" size="lg" class="w-full" data-sveltekit-reload>
+<Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" data-sveltekit-reload>
     Continue with Google
 </Button>
 
