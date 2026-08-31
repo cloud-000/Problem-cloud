@@ -108,10 +108,12 @@ Supporting copy belongs only when it:
 Text that merely restates a heading, describes the layout, or announces that a
 summary is a summary is removed.
 
-### 2.7 Onboarding is optional and recoverable
+### 2.7 Onboarding is tour-first, optional, and recoverable
 
-The welcome can be skipped. Skipping never limits product access. The short
-introduction remains available from Help and can be replayed at any time.
+On a first login, Welcome leads to the short tour before the student sees Home.
+The tour can always be skipped. Skipping never limits product access; it simply
+opens the minimal post-Welcome Home. The introduction remains available from
+Help and can be replayed at any time.
 
 ## 3. Home has three presentation modes
 
@@ -128,40 +130,38 @@ sections are still omitted.
 
 ### 3.1 Welcome mode
 
-Welcome mode is the first version of Home. It replaces the dashboard in the
-normal page flow; it is not a modal displayed over dashboard content.
+Welcome mode is the first screen after a student's first successful login. It
+replaces the dashboard in the normal page flow; it is not a modal displayed
+over dashboard content. Its job is to begin the short tour, not to present the
+student with several product actions before they understand the core loop.
 
 The page contains:
 
 1. A personal welcome.
-2. One recommended action: start a short practice.
-3. Two quieter alternatives: browse a competition and take the quick tour.
-4. A compact explanation of the core loop.
-5. A visible but low-emphasis Skip action.
+2. One primary action: take the 60-second tour.
+3. A visible Skip action.
 
 Proposed content shape:
 
 ```text
 Welcome to ProblemCloud, Alex
 
-Let's start with one useful problem. As you practice, ProblemCloud will learn
-what you have worked on and bring problems back when they need review.
+Learn the simple loop that makes practice useful here.
 
-[Start a short practice]
+[Take the 60-second tour]
 
-Browse a competition                 Take the 60-second tour
-
-Practice problems -> See what needs work -> Review at the right time
+Skip for now
 ```
 
 The exact copy may change, but these constraints do not:
 
 - The first screen does not mention Goals, Focused series, rating, Series
   matrix, Coach configuration, or offline downloads.
-- The primary action creates and opens a short default session directly.
-- Browse a competition opens Library in its normal entry state.
+- Welcome does not offer practice or Library before the tour. The tour's final
+  step offers those two destinations.
 - The tour teaches relationships between features, not a list of controls.
-- Navigation remains available; the welcome is guidance, not a gate.
+- Skip immediately opens early-use Home and leaves all product access
+  available. Welcome is deliberate first-run guidance, not account setup.
 
 ### 3.2 Early-use mode
 
@@ -172,13 +172,15 @@ It uses the permanent post-Welcome Home structure:
 
 1. A primary card containing the student's current work, goal or goal
    invitation, and one next action.
-2. An optional, dismissible **Getting started** card.
-3. A compact Progress region only when at least one value is meaningful.
+2. An optional, dismissible **Getting started** card once it can teach a
+   meaningful next concept.
+3. A compact Progress region after the first graded submission, containing only
+   values that exist.
 4. A contextual explanation only when a newly relevant feature appears.
 
 The primary card has stable semantic slots even when some are sparse:
 
-- **What:** continue an active session or begin a short practice.
+- **What:** continue an active session or begin normal practice.
 - **Why:** show the lead goal when one exists. Without a goal, use at most one
   quiet invitation to choose a direction; do not restore a separate setup card.
 - **Next:** one button owned by the goal when one exists, otherwise by the
@@ -251,19 +253,25 @@ Solve 80% of AMC 10 Geometry
 [Practice what's left]
 ```
 
-The action is selected within the lead goal's scope. An initial priority is:
+The action is selected within the lead goal's scope. For this rollout, taking a
+goal action always creates a fresh named practice session from the goal's
+current scope and target-aware practice settings. Home does not try to identify
+or resume a prior goal session: sessions do not yet record goal provenance, and
+the new session makes the action's scope truthful without that relationship.
+An initial priority is:
 
 ```text
-active goal-scoped session
-    -> otherwise goal-scoped review due
+goal-scoped review due
     -> otherwise unfinished work required by the goal
     -> otherwise goal-scoped recommended practice
 ```
 
-The lead goal itself is promoted by what can move today, consistent with
-`promote.ts`: an unfed streak outranks a near deadline, which outranks a fresh
-achievement, which outranks ordinary progress. It is not selected merely by
-percentage complete.
+The lead goal is the student's stable primary goal: an explicit selection when
+one exists, otherwise the oldest active goal as a deterministic fallback.
+Urgency is computed separately, consistent with `promote.ts`: an unfed streak
+outranks a near deadline, which outranks a fresh achievement, which outranks
+ordinary progress. An urgent secondary commitment can appear under **Needs
+attention**, but it does not replace the lead goal.
 
 Below the primary card, established Home may fill the same secondary regions
 that were sparse or absent during early use:
@@ -361,10 +369,10 @@ change.
 ### 4.3 Progress and activity
 
 Progress values should not appear as zeros or placeholders for a new student.
-The first useful Progress appearance may include only values the student can
-interpret from recent activity, such as problems seen and review due. Rating and
-uncertainty can appear later when the rating is sufficiently grounded and the
-copy explains a real state rather than filling a metric slot.
+The first compact Progress appearance is after the first graded submission and
+includes only values the student can interpret from recent activity, such as
+problems seen and review due. Rating and uncertainty appear only after the
+rating is no longer provisional; neither is a slot that must be filled.
 
 History owns chronological activity. A small Home activity item is justified
 only when it supplies a continuation, correction, or review action not already
@@ -384,8 +392,11 @@ The quick tour has at most four short steps:
 4. A destination-specific action: start practice or browse Library.
 
 It should use stable illustrations or simplified navigation previews, not a
-fragile sequence of spotlights attached to live controls. A student can exit at
-any step without losing access or being returned to the beginning later.
+fragile sequence of spotlights attached to live controls. The tour's final step
+offers **Start practicing** (normal unlimited default practice) and **Browse a
+competition**. A student can skip at any step to reach minimal Home, or exit an
+in-progress tour and resume later without losing access or being returned to
+the beginning.
 
 ### 5.2 Contextual introductions
 
@@ -404,8 +415,8 @@ have been acknowledged.
 
 ### 5.3 Help
 
-Help is a permanent app destination available from both the desktop account or
-sidebar area and the mobile More menu. It includes:
+Help is a permanent, directly addressable `/help` route available from both the
+desktop account or sidebar area and the mobile More menu. It includes:
 
 1. Quick start and the core loop.
 2. Practice and sessions.
@@ -421,8 +432,8 @@ Every Help section answers:
 - What is a concrete example?
 - What direct action opens it?
 
-Help includes **Replay introduction**. The replay does not reset milestones or
-change the student's Home mode.
+Help includes **Replay introduction**, which opens the tour as a dialog or
+sheet. The replay does not reset milestones or change the student's Home mode.
 
 ## 6. Onboarding state
 
@@ -447,9 +458,9 @@ unseen -> in_progress -> completed
    \------------------> dismissed
 ```
 
-Both `completed` and `dismissed` leave Welcome mode. Completed means the short
-introduction was finished; it does not mean every feature was configured or
-visited.
+Both `completed` and `dismissed` leave Welcome mode. Completing the tour marks
+`completed`; skipping it marks `dismissed`. Neither means every feature was
+configured or visited.
 
 The version allows a future release to add a small, deliberate introduction
 without replaying obsolete steps. A version change must not automatically reset
@@ -575,9 +586,11 @@ This phase improves every account without requiring onboarding persistence.
 ### Phase 2 — Welcome and private state
 
 - Add Welcome mode.
-- Add the direct short-practice action.
+- Make the short tour the primary first-run action, with Skip available at
+  every step.
 - Persist versioned Welcome state in a private table.
-- Add the short tour and permanent Help entry point.
+- Add the tour's final Start practicing / Browse a competition destinations and
+  the permanent `/help` route.
 
 ### Phase 3 — progressive guidance
 
@@ -593,17 +606,16 @@ access.
 
 The following need product or implementation validation before building:
 
-1. The exact size and settings of the default short practice session.
-2. The activity threshold for showing the compact Progress snapshot.
-3. Whether Getting started contains two or three milestones after usability
+1. Whether Getting started contains two or three milestones after usability
    testing.
-4. Whether Help is a dedicated route, a responsive panel, or a route with
-   contextual deep links. It must remain directly addressable either way.
-5. Whether following a series remains a named preference or becomes an implicit
-   input derived from Library and practice behavior.
-6. How a lead goal is selected when several goals exist: explicit student
-   choice, a stable product default, or a combination that never causes the
-   hero to change unexpectedly.
+
+Followed series and similar preference-driven signals are optional, default
+hidden enhancements. They are not a prerequisite for Home and render only when
+they create an actionable decision.
+The lead-goal selection is settled by Goal experience Phase 3: an explicit
+student choice wins; otherwise Home uses the oldest active goal as a stable
+fallback. A goal action always starts a new goal-configured session for this
+rollout; session reuse and explicit goal-session provenance are deferred.
 
 These questions do not change the central decision: first-run Home is a calm
 welcome; once a goal exists, established Home is organized around reaching it;
