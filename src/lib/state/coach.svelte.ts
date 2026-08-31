@@ -43,6 +43,7 @@ import { compileContextFrames, scopeKey } from "$lib/ai/context/resolve";
 import { buildProviderMessages } from "$lib/ai/providers/messages";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
+import { acknowledgeCoachSend } from "$lib/onboarding/acknowledge";
 import { aiCredentials } from "./ai-credentials.svelte";
 import { settings } from "./settings.svelte";
 import { utilityPanel } from "./utility-panel.svelte";
@@ -477,6 +478,7 @@ class CoachStore {
         this.error = null;
         this.streaming = true;
         this.liveAnnouncement = "Coach started responding";
+        acknowledgeCoachSend();
 
         // Built before the new prompt joins the transcript so it carries prior turns only.
         const ephemeralHistory = this.ephemeralHistory();

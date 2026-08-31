@@ -23,8 +23,22 @@
     import { problemLabel } from "$lib/utils";
     import SeriesProblemModal from "./SeriesProblemModal.svelte";
     import SeriesReviewGrid from "./SeriesReviewGrid.svelte";
+    import {
+        CONTEXTUAL_TIP,
+        acknowledgeTip,
+        acknowledgeTipInState,
+        contextualTipCopy,
+        emptyOnboarding,
+        fetchOnboarding,
+        shouldShowTip,
+        type OnboardingState,
+    } from "$lib/onboarding";
+    import ContextualTip from "../ContextualTip.svelte";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
+    let userId = $derived(page.data.user?.id as string | undefined);
+
+    let onboarding = $state<OnboardingState>(emptyOnboarding());
 
     // Read once at mount: a caller (e.g. the home page's focused-series links)
     // can request an initial series via `?series=<id>`. Once mounted, the sync
@@ -41,6 +55,13 @@
     let openingProblemId = $state<number | null>(null);
     let errorMsg = $state<string | null>(null);
     let loadToken = 0;
+    let showMatrixTip = $derived(
+        shouldShowTip(
+            onboarding.acknowledgedTips,
+            CONTEXTUAL_TIP.firstMatrix,
+            !loadingGrid && tests.length > 0,
+        ),
+    );
 
     const NO_DIVISION = "__no_division__";
     const NO_FORMAT = "__no_format__";
@@ -118,6 +139,20 @@
         };
     });
 
+    $effect(() => {
+        const id = userId;
+        if (!id) return;
+        let cancelled = false;
+        fetchOnboarding(supabase, id)
+            .then((state) => {
+                if (!cancelled) onboarding = state;
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    });
+
     // Keeps `?series=` following the Select. Guarded on a non-empty seriesId
     // so it doesn't fire (and strip a URL-provided series) before the mount
     // fetch above has resolved. Uses replaceState, not goto — this mirrors
@@ -184,6 +219,11 @@
     function clearFilters() {
         selectedDivisions = [];
         selectedFormats = [];
+    }
+
+    function dismissMatrixTip() {
+        onboarding = acknowledgeTipInState(onboarding, CONTEXTUAL_TIP.firstMatrix);
+        acknowledgeTip(CONTEXTUAL_TIP.firstMatrix);
     }
 
     function updateProblemState(state: PersonalProblemState) {
@@ -285,6 +325,12 @@
         </div>
 
         {#if !loadingSeries && !loadingGrid && seriesId && tests.length > 0 && filteredTests.length > 0}
+            {#if showMatrixTip}
+                <ContextualTip
+                    body={contextualTipCopy(CONTEXTUAL_TIP.firstMatrix).body}
+                    ondismiss={dismissMatrixTip}
+                />
+            {/if}
             {#key matrixKey}
                 <SeriesReviewGrid
                     tests={filteredTests}

@@ -34,9 +34,22 @@
     import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
     import { sortGoals, type SeriesNames } from "$lib/goals/presentation";
     import { attentionGoal, primaryGoal, type GoalSnapshot } from "$lib/goals/promote";
+    import {
+        CONTEXTUAL_TIP,
+        acknowledgeTip,
+        acknowledgeTipInState,
+        contextualTipCopy,
+        emptyOnboarding,
+        fetchOnboarding,
+        shouldShowTip,
+        type OnboardingState,
+    } from "$lib/onboarding";
+    import ContextualTip from "../ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
+
+    let onboarding = $state<OnboardingState>(emptyOnboarding());
 
     let goals = $state<Goal[]>([]);
     // The plan and its results move together: a plan whose results have not
@@ -110,6 +123,13 @@
     let otherVisible = $derived(
         visible.filter((goal) => goal.id !== mainGoal?.id && goal.id !== attentionGoalId),
     );
+    let showGoalTip = $derived(
+        shouldShowTip(
+            onboarding.acknowledgedTips,
+            CONTEXTUAL_TIP.firstGoal,
+            !loading && goals.length > 0,
+        ),
+    );
 
     async function load() {
         if (!user) {
@@ -151,6 +171,21 @@
 
     $effect(() => {
         void load();
+    });
+
+    $effect(() => {
+        if (!user) return;
+        const client = supabase;
+        const userId = user.id;
+        let cancelled = false;
+        fetchOnboarding(client, userId)
+            .then((state) => {
+                if (!cancelled) onboarding = state;
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
     });
 
     $effect(() => {
@@ -199,6 +234,11 @@
     function openCreate() {
         editing = null;
         formOpen = true;
+    }
+
+    function dismissGoalTip() {
+        onboarding = acknowledgeTipInState(onboarding, CONTEXTUAL_TIP.firstGoal);
+        acknowledgeTip(CONTEXTUAL_TIP.firstGoal);
     }
 
     function openEdit(goal: Goal) {
@@ -373,6 +413,12 @@
                 <Button onclick={openCreate}>Set your first goal</Button>
             </div>
         {:else}
+            {#if showGoalTip}
+                <ContextualTip
+                    body={contextualTipCopy(CONTEXTUAL_TIP.firstGoal).body}
+                    ondismiss={dismissGoalTip}
+                />
+            {/if}
             <div class="border-t border-border/60">
                 {#if mainGoal}
                     <section class="border-b border-border/60 py-5">

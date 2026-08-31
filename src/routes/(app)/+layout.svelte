@@ -28,6 +28,7 @@
       UtilityPanelRegister,
    } from "$lib/components/utility-panel";
    import { coach } from "$lib/state/coach.svelte";
+   import { configureOnboardingAck } from "$lib/onboarding";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
    import { resolve } from "$app/paths";
    import { MediaQuery } from "svelte/reactivity";
@@ -59,6 +60,7 @@
    $effect(() => {
       coach.configure(aiCoachEnabled);
       coach.configureContextResolver(supabase);
+      configureOnboardingAck(supabase, user?.id ?? null);
    });
 
    // Surface notifications as toasts for authenticated users: replay unread ones on

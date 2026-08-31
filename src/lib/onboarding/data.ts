@@ -55,6 +55,22 @@ export async function fetchOnboarding(
     return mapOnboardingRow(data);
 }
 
+/**
+ * Whether the student has any persisted Coach thread. A failed lookup is
+ * the caller's to soft-fail — never block Home.
+ */
+export async function fetchHasCoachConversation(
+    supabase: Supabase,
+): Promise<boolean> {
+    const { data, error } = await supabase
+        .from("ai_conversations")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    return data != null;
+}
+
 function onboardingPatch(state: OnboardingState) {
     return {
         content_version: state.contentVersion,

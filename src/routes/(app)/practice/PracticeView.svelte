@@ -52,6 +52,7 @@
    import { modal } from "$lib/state/modal.svelte";
    import { toasts } from "$lib/state/toast.svelte";
    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+   import { acknowledgePracticeSettingsOpen } from "$lib/onboarding";
    import { settings } from "$lib/state/settings.svelte";
    import { coach } from "$lib/state/coach.svelte";
    import { anchorFor } from "$lib/ai/session/anchor";
@@ -780,7 +781,12 @@
       {
          label: "Settings",
          icon: "tune",
-         onclick: () => utilityPanel.toggle("practice-settings"),
+         onclick: () => {
+            if (utilityPanel.activeView !== "practice-settings") {
+               acknowledgePracticeSettingsOpen();
+            }
+            utilityPanel.toggle("practice-settings");
+         },
       },
       {
          type: "divider",
@@ -2438,7 +2444,10 @@
                         canEndSession={!!activeSession && !isRoot}
                         endingSession={sessionBusy}
                         onResume={togglePause}
-                        onOpenSettings={() => utilityPanel.open("practice-settings")}
+                        onOpenSettings={() => {
+                           acknowledgePracticeSettingsOpen();
+                           utilityPanel.open("practice-settings");
+                        }}
                         onEndSession={finishSession}
                      />
                   {/if}

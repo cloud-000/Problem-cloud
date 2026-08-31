@@ -34,9 +34,22 @@
         fetchProblemStateSummary,
         type ProblemStateSummary,
     } from "$lib/progress";
+    import {
+        CONTEXTUAL_TIP,
+        acknowledgeTip,
+        acknowledgeTipInState,
+        contextualTipCopy,
+        emptyOnboarding,
+        fetchOnboarding,
+        shouldShowTip,
+        type OnboardingState,
+    } from "$lib/onboarding";
+    import ContextualTip from "../ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
+
+    let onboarding = $state<OnboardingState>(emptyOnboarding());
 
     let rows = $state<TopicStat[]>([]);
     // Full rating climb (all-time); sliced to the selected range for display.
@@ -45,6 +58,13 @@
     let dueReviews = $state<ProblemRow[]>([]);
     let dueLoading = $state(true);
     let dueError = $state<string | null>(null);
+    let showReviewTip = $derived(
+        shouldShowTip(
+            onboarding.acknowledgedTips,
+            CONTEXTUAL_TIP.firstReview,
+            !dueLoading && dueReviews.length > 0,
+        ),
+    );
     let loading = $state(true);
     let errorMsg = $state<string | null>(null);
     // Topic currently spinning up a drill session (disables its button).
@@ -133,6 +153,21 @@
     // (Re)load on mount and whenever the range or series lens changes.
     $effect(() => {
         void load(rangeFrom(range), selectedSeriesIds.map(Number));
+    });
+
+    $effect(() => {
+        if (!user) return;
+        const client = supabase;
+        const userId = user.id;
+        let cancelled = false;
+        fetchOnboarding(client, userId)
+            .then((state) => {
+                if (!cancelled) onboarding = state;
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
     });
 
     $effect(() => {
@@ -256,6 +291,11 @@
         }
     }
 
+    function dismissReviewTip() {
+        onboarding = acknowledgeTipInState(onboarding, CONTEXTUAL_TIP.firstReview);
+        acknowledgeTip(CONTEXTUAL_TIP.firstReview);
+    }
+
     async function startReview() {
         if (!user || startingReview) return;
         startingReview = true;
@@ -317,6 +357,13 @@
                     {startingReview ? "Starting…" : "Start review"}
                 </Button>
             {/snippet}
+
+            {#if showReviewTip}
+                <ContextualTip
+                    body={contextualTipCopy(CONTEXTUAL_TIP.firstReview).body}
+                    ondismiss={dismissReviewTip}
+                />
+            {/if}
 
             {#if dueLoading}
                 <div class="flex items-center justify-center gap-2 py-12 type-secondary text-muted-foreground">

@@ -13,6 +13,7 @@
     } from "$lib/components/whiteboard";
     import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { hasWhiteboardInspector } from "$lib/components/whiteboard/control-policy";
+    import { acknowledgeWhiteboardPersist } from "$lib/onboarding";
 
     const PERSIST_KEY = "whiteboard:page";
 
@@ -40,8 +41,15 @@
     $effect(() => {
         void store.document;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => store.persist(PERSIST_KEY), 400);
-        return () => clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            store.persist(PERSIST_KEY);
+            acknowledgeWhiteboardPersist(PERSIST_KEY, store.document.items.length);
+        }, 400);
+        return () => {
+            clearTimeout(saveTimer);
+            store.persist(PERSIST_KEY);
+            acknowledgeWhiteboardPersist(PERSIST_KEY, store.document.items.length);
+        };
     });
 
     function downloadSvg() {

@@ -46,18 +46,29 @@
         completeTourStep,
         completeWelcome,
         decideHomePresentation,
+        dismissGettingStarted,
         emptyOnboarding,
+        fetchHasCoachConversation,
         fetchOnboarding,
         hasProductHistory,
+        homeContextualTip,
+        rankGettingStarted,
         resumeTourStep,
         saveOnboarding,
+        showGettingStarted,
         skipWelcome,
         startTour,
+        acknowledgeTipInState,
+        contextualTipCopy,
+        type ContextualTipId,
         type OnboardingState,
     } from "$lib/onboarding";
+    import { restoreDocument } from "$lib/whiteboard/persistence";
     import { cn } from "$lib/utils";
     import HomeGoalRow from "./HomeGoalRow.svelte";
     import TourView from "./TourView.svelte";
+    import GettingStartedCard from "./GettingStartedCard.svelte";
+    import ContextualTip from "./ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user, profile } = $derived(data);
@@ -69,6 +80,9 @@
     let onboarding = $state<OnboardingState>(emptyOnboarding());
     let onboardingFailed = $state(false);
     let tourExitedThisVisit = $state(false);
+    let hasAnyGoal = $state(false);
+    let hasCoachConversation = $state(false);
+    let whiteboardHasContent = $state(false);
 
     // Goals are loaded on their own, not inside `loadHome`: they are the one
     // section that can fail without costing the student anything else on the
@@ -166,6 +180,33 @@
         if (decided === "introduction" && tourExitedThisVisit) return "home";
         return decided;
     });
+    let gettingStarted = $derived.by(() =>
+        rankGettingStarted({
+            attempted: summary?.attempted ?? 0,
+            hasGoal: hasAnyGoal,
+            hasCoachConversation,
+            whiteboardHasContent,
+            acknowledgedTips: onboarding.acknowledgedTips,
+        }),
+    );
+    let gettingStartedVisible = $derived(
+        !onboardingFailed &&
+            presentation === "home" &&
+            showGettingStarted({
+                welcomeOver: true,
+                dismissed: onboarding.gettingStartedDismissedAt != null,
+                card: gettingStarted,
+            }),
+    );
+    let homeTip = $derived.by((): ContextualTipId | null => {
+        if (onboardingFailed || presentation !== "home") return null;
+        return homeContextualTip({
+            acknowledgedTips: onboarding.acknowledgedTips,
+            attempted: summary?.attempted ?? 0,
+            reviewDue: summary?.review_due ?? 0,
+            hasGoal: Boolean(mainGoal),
+        });
+    });
 
     async function loadGoals() {
         if (!user) {
@@ -173,9 +214,11 @@
             return;
         }
         try {
-            const rows = await fetchGoals(supabase);
+            const rows = await fetchGoals(supabase, { includeArchived: true });
+            hasAnyGoal = rows.length > 0;
+            const active = rows.filter((goal) => !goal.archivedAt);
             goalsNow = new Date();
-            const plan = planGoalRequests(rows, { now: goalsNow });
+            const plan = planGoalRequests(active, { now: goalsNow });
             const results = await fetchGoalProgress(supabase, plan);
             // Home stamps achievements too, through the same helper the goals
             // page uses: the student should see "Achieved" on the screen they
@@ -183,8 +226,8 @@
             // a non-event.
             const outcome = await stampAchievedGoals(
                 supabase,
-                rows,
-                evaluateGoals(rows, plan, results),
+                active,
+                evaluateGoals(active, plan, results),
             );
             goals = outcome.goals;
             goalEvaluation = { plan, results };
@@ -202,6 +245,7 @@
             // missing section, not a broken home page.
             goals = [];
             goalEvaluation = null;
+            hasAnyGoal = false;
         } finally {
             goalsLoaded = true;
         }
@@ -242,6 +286,14 @@
         void persistOnboarding(skipWelcome(onboarding, nowIso()));
     }
 
+    function dismissStarted() {
+        void persistOnboarding(dismissGettingStarted(onboarding, nowIso()));
+    }
+
+    function dismissTip(id: ContextualTipId) {
+        void persistOnboarding(acknowledgeTipInState(onboarding, id));
+    }
+
     function closeTour() {
         tourExitedThisVisit = true;
     }
@@ -264,7 +316,7 @@
         loading = true;
         onboardingFailed = false;
         try {
-            const [nextRating, nextSummary, activeSessions, nextOnboarding] =
+            const [nextRating, nextSummary, activeSessions, nextOnboarding, coachExists] =
                 await Promise.all([
                     fetchPlayerRating(supabase, user.id),
                     fetchProblemStateSummary(supabase),
@@ -273,11 +325,18 @@
                         onboardingFailed = true;
                         return emptyOnboarding();
                     }),
+                    fetchHasCoachConversation(supabase).catch(() => false),
                 ]);
 
             rating = nextRating;
             summary = nextSummary;
             activeSession = activeSessions[0] ?? null;
+            hasCoachConversation = coachExists;
+            const scratch = restoreDocument("whiteboard:scratch");
+            const pageBoard = restoreDocument("whiteboard:page");
+            whiteboardHasContent =
+                (scratch?.items.length ?? 0) > 0 ||
+                (pageBoard?.items.length ?? 0) > 0;
             if (!onboardingFailed) {
                 onboarding = nextOnboarding;
                 if (nextOnboarding.welcomeStatus === "unseen") {
@@ -440,6 +499,23 @@
                     {/if}
                 </div>
             </section>
+
+            {#if gettingStartedVisible}
+                <GettingStartedCard
+                    items={gettingStarted.items}
+                    completedCount={gettingStarted.completedCount}
+                    total={gettingStarted.total}
+                    ondismiss={dismissStarted}
+                />
+            {/if}
+
+            {#if homeTip}
+                {@const tipId = homeTip}
+                <ContextualTip
+                    body={contextualTipCopy(tipId).body}
+                    ondismiss={() => dismissTip(tipId)}
+                />
+            {/if}
 
             {#if attentionEntry}
                 <Page.Section title="Needs attention">

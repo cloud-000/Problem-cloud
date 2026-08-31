@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { acknowledgeWhiteboardPersist } from "$lib/onboarding";
     import CompactControls from "./compact-controls.svelte";
     import Whiteboard from "./whiteboard.svelte";
 
@@ -11,15 +12,21 @@
         persistKey?: string;
     } = $props();
 
+    function persist() {
+        if (!persistKey) return;
+        store.persist(persistKey);
+        acknowledgeWhiteboardPersist(persistKey, store.document.items.length);
+    }
+
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     $effect(() => {
         if (!persistKey) return;
         void store.document;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => store.persist(persistKey), 400);
+        saveTimer = setTimeout(persist, 400);
         return () => {
             clearTimeout(saveTimer);
-            store.persist(persistKey);
+            persist();
         };
     });
 </script>

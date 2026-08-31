@@ -1,7 +1,8 @@
 # Onboarding and Home — product design
 
-> **Status:** Phases 1 and 2 implemented. Getting started checklist decided
-> (§3.2); implementation and contextual tips remain Phase 3.
+> **Status:** Phases 1–3 implemented. Getting started ranking lives in
+> `src/lib/onboarding/getting-started.ts`; contextual tip ids in
+> `src/lib/onboarding/tips.ts`.
 >
 > This document defines the first-run welcome experience, the way Home changes
 > as a student begins using ProblemCloud, and the permanent Help entry point.
@@ -651,11 +652,16 @@ than blocking Practice. Help is `/help`, linked from the account menu, and
 **Replay introduction** opens the same tour without changing Home mode once
 Welcome has already finished.
 
-### Phase 3 — progressive guidance
+### Phase 3 — progressive guidance ✅
 
 - Add Getting started for early-use accounts (five items in §3.2).
 - Add first-review and first-matrix contextual guidance.
 - Refine Established Home thresholds and Next up priority using observed use.
+
+Getting started is the remaining early-use surface: it hides when every item
+is done or dismissed, and Home's primary-card ranking from Phase 1 is
+unchanged. First-progress, first-review, first-matrix, and first-goal tips
+share `acknowledged_tips` so they do not reappear across devices.
 
 Each phase must work independently. Failure to load onboarding state must fall
 back to a usable Home and must never block Practice, navigation, or account
@@ -663,13 +669,11 @@ access.
 
 ## 11. Decisions still open
 
-Getting started item count and content are settled in §3.2 (five learning
-milestones). Remaining implementation choices that do not change the
-product:
-
-- Tip id strings for settings, whiteboard, and Coach (`getting-started:…`).
-- Whether the whiteboard localStorage fallback is worth reading on Home
-  when the acknowledgement write already covers cross-device.
+Getting started item count, content, and tip ids are settled in §3.2
+(`getting-started:practice-settings`, `getting-started:whiteboard`,
+`getting-started:coach`). Home also reads the whiteboard localStorage
+fallback so a same-device stroke still completes the item if the
+acknowledgement write failed.
 
 Followed series and similar preference-driven signals are optional, default
 hidden enhancements. They are not a prerequisite for Home and render only when
