@@ -190,6 +190,11 @@
          onclick: () => goto(resolve("/settings")),
       });
       list.push({
+         label: "Help",
+         icon: "help",
+         onclick: () => goto(resolve("/help")),
+      });
+      list.push({
          label: "Downloaded content",
          icon: "download",
          onclick: () => goto(resolve("/offline")),
@@ -249,6 +254,7 @@
    );
    let isProfileActive = $derived(
       routeMatches(page.url.pathname, "/settings") ||
+         routeMatches(page.url.pathname, "/help") ||
          routeMatches(page.url.pathname, "/offline") ||
          routeMatches(page.url.pathname, "/admin") ||
          routeMatches(page.url.pathname, "/testing-features"),

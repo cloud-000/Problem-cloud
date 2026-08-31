@@ -42,8 +42,22 @@
         homeProgressMetrics,
         type NextUpAction,
     } from "$lib/home-next";
+    import {
+        completeTourStep,
+        completeWelcome,
+        decideHomePresentation,
+        emptyOnboarding,
+        fetchOnboarding,
+        hasProductHistory,
+        resumeTourStep,
+        saveOnboarding,
+        skipWelcome,
+        startTour,
+        type OnboardingState,
+    } from "$lib/onboarding";
     import { cn } from "$lib/utils";
     import HomeGoalRow from "./HomeGoalRow.svelte";
+    import TourView from "./TourView.svelte";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user, profile } = $derived(data);
@@ -52,6 +66,9 @@
     let summary = $state<ProblemStateSummary | null>(null);
     let activeSession = $state<PracticeSessionRow | null>(null);
     let loading = $state(true);
+    let onboarding = $state<OnboardingState>(emptyOnboarding());
+    let onboardingFailed = $state(false);
+    let tourExitedThisVisit = $state(false);
 
     // Goals are loaded on their own, not inside `loadHome`: they are the one
     // section that can fail without costing the student anything else on the
@@ -135,6 +152,20 @@
     let goalAction = $derived(
         next.action.kind === "goal_practice" ? next.action : null,
     );
+    let presentation = $derived.by(() => {
+        if (onboardingFailed) return "home" as const;
+        if (loading) return null;
+        const decided = decideHomePresentation({
+            status: onboarding.welcomeStatus,
+            hasProductHistory: hasProductHistory({
+                attempted: summary?.attempted ?? 0,
+                seen: summary?.seen ?? 0,
+                sessionTimesSeen: activeSession?.times_seen ?? 0,
+            }),
+        });
+        if (decided === "introduction" && tourExitedThisVisit) return "home";
+        return decided;
+    });
 
     async function loadGoals() {
         if (!user) {
@@ -193,23 +224,75 @@
         }
     }
 
+    async function persistOnboarding(state: OnboardingState) {
+        onboarding = state;
+        if (!user) return;
+        try {
+            await saveOnboarding(supabase, user.id, state);
+        } catch {
+            // Acknowledgement is best-effort: a failed write must never block Home.
+        }
+    }
+
+    function nowIso() {
+        return new Date().toISOString();
+    }
+
+    function skipOnboarding() {
+        void persistOnboarding(skipWelcome(onboarding, nowIso()));
+    }
+
+    function closeTour() {
+        tourExitedThisVisit = true;
+    }
+
+    function advanceTour(completedIndex: number) {
+        void persistOnboarding(completeTourStep(onboarding, completedIndex));
+    }
+
+    function finishTour() {
+        void persistOnboarding(completeWelcome(onboarding, nowIso()));
+    }
+
     async function loadHome() {
         if (!user) {
             loading = false;
+            onboardingFailed = true;
             return;
         }
 
         loading = true;
+        onboardingFailed = false;
         try {
-            const [nextRating, nextSummary, activeSessions] = await Promise.all([
-                fetchPlayerRating(supabase, user.id),
-                fetchProblemStateSummary(supabase),
-                fetchSessions(supabase, { status: "active" }),
-            ]);
+            const [nextRating, nextSummary, activeSessions, nextOnboarding] =
+                await Promise.all([
+                    fetchPlayerRating(supabase, user.id),
+                    fetchProblemStateSummary(supabase),
+                    fetchSessions(supabase, { status: "active" }),
+                    fetchOnboarding(supabase, user.id).catch(() => {
+                        onboardingFailed = true;
+                        return emptyOnboarding();
+                    }),
+                ]);
 
             rating = nextRating;
             summary = nextSummary;
             activeSession = activeSessions[0] ?? null;
+            if (!onboardingFailed) {
+                onboarding = nextOnboarding;
+                if (nextOnboarding.welcomeStatus === "unseen") {
+                    const history = hasProductHistory({
+                        attempted: nextSummary?.attempted ?? 0,
+                        seen: nextSummary?.seen ?? 0,
+                        sessionTimesSeen: activeSession?.times_seen ?? 0,
+                    });
+                    void persistOnboarding(
+                        history
+                            ? skipWelcome(nextOnboarding, nowIso())
+                            : startTour(nextOnboarding, nowIso()),
+                    );
+                }
+            }
         } catch (e) {
             toasts.error((e as Error).message || "Failed to load your home page.");
         } finally {
@@ -261,12 +344,8 @@
     }
 </script>
 
-<Page.Root width="standard">
-    <Page.Header
-        title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
-    />
-
-    {#if loading}
+{#if loading}
+    <Page.Root width="standard">
         <div
             class="flex min-h-40 items-center justify-center gap-2 type-secondary text-muted-foreground"
             aria-live="polite"
@@ -274,7 +353,21 @@
             <Icon name="progress_activity" class="animate-spin" />
             Loading your next step…
         </div>
-    {:else}
+    </Page.Root>
+{:else if presentation === "introduction"}
+    <TourView
+        initialStep={resumeTourStep(onboarding.lastCompletedTourStep)}
+        username={profile?.username ?? null}
+        onskip={skipOnboarding}
+        onclose={closeTour}
+        onadvance={advanceTour}
+        onfinish={finishTour}
+    />
+{:else}
+    <Page.Root width="standard">
+        <Page.Header
+            title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
+        />
         <div class="flex flex-col gap-10">
             <section
                 aria-labelledby="next-up-title"
@@ -418,5 +511,5 @@
                 </Page.Section>
             {/if}
         </div>
-    {/if}
-</Page.Root>
+    </Page.Root>
+{/if}

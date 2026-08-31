@@ -1,7 +1,7 @@
 # Onboarding and Home — product design
 
-> **Status:** Phase 1 implemented. Welcome, the tour, private onboarding
-> state, `/help`, and Getting started remain proposed.
+> **Status:** Phases 1 and 2 implemented. Getting started and contextual
+> tips remain proposed.
 >
 > This document defines the first-run welcome experience, the way Home changes
 > as a student begins using ProblemCloud, and the permanent Help entry point.
@@ -111,10 +111,10 @@ summary is a summary is removed.
 
 ### 2.7 Onboarding is tour-first, optional, and recoverable
 
-On a first login, Welcome leads to the short tour before the student sees Home.
-The tour can always be skipped. Skipping never limits product access; it simply
-opens the minimal post-Welcome Home. The introduction remains available from
-Help and can be replayed at any time.
+On a first login, Home opens the short tour before the student sees the
+dashboard. The tour can always be skipped. Skipping never limits product
+access; it simply opens the minimal post-Welcome Home. The introduction
+remains available from Help and can be replayed at any time.
 
 ## 3. Home has three presentation modes
 
@@ -133,36 +133,19 @@ sections are still omitted.
 
 Welcome mode is the first screen after a student's first successful login. It
 replaces the dashboard in the normal page flow; it is not a modal displayed
-over dashboard content. Its job is to begin the short tour, not to present the
-student with several product actions before they understand the core loop.
-
-The page contains:
-
-1. A personal welcome.
-2. One primary action: take the 60-second tour.
-3. A visible Skip action.
-
-Proposed content shape:
-
-```text
-Welcome to ProblemCloud, Alex
-
-Learn the simple loop that makes practice useful here.
-
-[Take the 60-second tour]
-
-Skip for now
-```
+over dashboard content. Unseen accounts with no product history open the
+short tour immediately. There is no interstitial "take the tour" screen: Skip
+on every tour step is the way out.
 
 The exact copy may change, but these constraints do not:
 
-- The first screen does not mention Goals, Focused series, rating, Series
-  matrix, Coach configuration, or offline downloads.
-- Welcome does not offer practice or Library before the tour. The tour's final
-  step offers those two destinations.
-- The tour teaches relationships between features, not a list of controls.
-- Skip immediately opens early-use Home and leaves all product access
-  available. Welcome is deliberate first-run guidance, not account setup.
+- The first screen is a personal greeting. It does not mention Goals, rating,
+  the Series matrix, Coach configuration, or offline downloads.
+- The tour uses interactive product mocks (Library tabs, Goals, rating plus
+  Series matrix, trainer chrome) rather than a list of live controls.
+- Completing the last step opens early-use Home. Skip at any step does the
+  same and leaves all product access available. Welcome is deliberate
+  first-run guidance, not account setup.
 
 ### 3.2 Early-use mode
 
@@ -385,19 +368,19 @@ The quick tour and Help use the same content model at different depths.
 
 ### 5.1 Quick tour
 
-The quick tour has at most four short steps:
+The quick tour has five short steps:
 
-1. The practice-review loop.
-2. Practice and Library: receive problems versus choose them deliberately.
-3. Progress: Overview, Review, Series matrix, and History live together.
-4. A destination-specific action: start practice or browse Library.
+1. A personal greeting (`Hi, {username}.`).
+2. Library: Problems, Tests, and Series, with a clickable mock of the three tabs.
+3. Goals: a destination Home can follow, with a clickable mock of lead-goal cards.
+4. Progress: rating climb and Series matrix on one slide, both interactive mocks.
+5. Practice: the core loop, with a mock of the trainer chrome (whiteboard, Coach,
+   settings). Completing this step opens Home.
 
-It should use stable illustrations or simplified navigation previews, not a
-fragile sequence of spotlights attached to live controls. The tour's final step
-offers **Start practicing** (normal unlimited default practice) and **Browse a
-competition**. A student can skip at any step to reach minimal Home, or exit an
-in-progress tour and resume later without losing access or being returned to
-the beginning.
+It should use interactive product mocks, not a fragile sequence of spotlights
+attached to live controls. A student can skip at any step to reach minimal Home,
+or exit an in-progress tour and resume later without losing access or being
+returned to the beginning.
 
 ### 5.2 Contextual introductions
 
@@ -584,16 +567,25 @@ Qualitative checks matter as much as conversion:
 
 This phase improves every account without requiring onboarding persistence.
 The decision lives in `src/lib/home-next.ts` so the heading and the button
-cannot disagree.
+cannot disagree. After Phase 2, first-run accounts see Welcome from
+`src/lib/onboarding/` instead of that card.
 
-### Phase 2 — Welcome and private state
+### Phase 2 — Welcome and private state ✅
 
 - Add Welcome mode.
-- Make the short tour the primary first-run action, with Skip available at
-  every step.
+- Open the short tour immediately for unseen first-run accounts, with Skip
+  available at every step.
 - Persist versioned Welcome state in a private table.
-- Add the tour's final Start practicing / Browse a competition destinations and
-  the permanent `/help` route.
+- End the tour on the trainer mock, then open Home.
+- Add the permanent `/help` route.
+
+The tour replaces Home until it is completed or skipped. There is no separate
+"take the tour" screen; Skip on every tour step is the way out. State lives
+in `public.user_onboarding` (self-only RLS) and the decision in
+`src/lib/onboarding/welcome.ts`, so a failed load falls back to Home rather
+than blocking Practice. Help is `/help`, linked from the account menu, and
+**Replay introduction** opens the same tour without changing Home mode once
+Welcome has already finished.
 
 ### Phase 3 — progressive guidance
 

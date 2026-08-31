@@ -63,6 +63,9 @@ enabled = true
 # Supports glob patterns relative to supabase directory: "./schemas/*.sql"
 schema_paths = [
     "./schemas/profiles.sql",
+    # Private first-run acknowledgement. References profiles(id); must not live
+    # on that world-readable table (`docs/onboarding-and-home.md` §6.3).
+    "./schemas/user_onboarding.sql",
     "./schemas/notifications.sql",
     "./schemas/problems.sql",
     "./schemas/practice_sessions.sql",

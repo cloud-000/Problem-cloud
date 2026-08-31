@@ -1573,6 +1573,56 @@ export type Database = {
           },
         ]
       }
+      user_onboarding: {
+        Row: {
+          acknowledged_tips: string[]
+          content_version: number
+          created_at: string
+          getting_started_dismissed_at: string | null
+          last_completed_tour_step: number | null
+          updated_at: string
+          user_id: string
+          welcome_completed_at: string | null
+          welcome_dismissed_at: string | null
+          welcome_started_at: string | null
+          welcome_status: string
+        }
+        Insert: {
+          acknowledged_tips?: string[]
+          content_version?: number
+          created_at?: string
+          getting_started_dismissed_at?: string | null
+          last_completed_tour_step?: number | null
+          updated_at?: string
+          user_id: string
+          welcome_completed_at?: string | null
+          welcome_dismissed_at?: string | null
+          welcome_started_at?: string | null
+          welcome_status?: string
+        }
+        Update: {
+          acknowledged_tips?: string[]
+          content_version?: number
+          created_at?: string
+          getting_started_dismissed_at?: string | null
+          last_completed_tour_step?: number | null
+          updated_at?: string
+          user_id?: string
+          welcome_completed_at?: string | null
+          welcome_dismissed_at?: string | null
+          welcome_started_at?: string | null
+          welcome_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_onboarding_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_submitted_feedback: {
         Row: {
           answer_index: number | null
@@ -1901,10 +1951,6 @@ export type Database = {
           solved: number
         }[]
       }
-      set_primary_goal: {
-        Args: { p_goal_id: number }
-        Returns: Database["public"]["Tables"]["goals"]["Row"]
-      }
       goal_streak_progress: {
         Args: { p_requests: Json }
         Returns: {
@@ -2119,6 +2165,28 @@ export type Database = {
         Args: { p_feedback_id: number; p_status: string }
         Returns: undefined
       }
+      set_primary_goal: {
+        Args: { p_goal_id: number }
+        Returns: {
+          achieved_at: string | null
+          archived_at: string | null
+          created_at: string
+          deadline: string | null
+          id: number
+          is_primary: boolean
+          scope: Json
+          target: Json
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "goals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_problem_engagement: {
         Args: { p_engagement: string; p_problem_id: number }
         Returns: {
@@ -2293,3 +2361,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
