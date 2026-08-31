@@ -7,6 +7,7 @@ import {
     deadlineLabel,
     describeScope,
     formatMetric,
+    goalCommitmentSentence,
     goalProgressView,
     goalSentence,
     isMaterialEdit,
@@ -259,6 +260,17 @@ describe("scope description", () => {
                 NAMES,
             ),
         ).toBe("Solve 80% of eligible problems in Geometry in AMC 10");
+    });
+
+    test("the creation commitment adds the optional planning date", () => {
+        expect(
+            goalCommitmentSentence(
+                { type: "solved_count", count: 20 },
+                { topic: ["G"], seriesIds: ["7"], seriesScopes: {} },
+                NAMES,
+                "2026-10-01",
+            ),
+        ).toBe("Solve 20 problems in Geometry in AMC 10 by October 1, 2026.");
     });
 });
 

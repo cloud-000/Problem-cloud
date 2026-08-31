@@ -496,7 +496,7 @@ links into this intent-first flow and does not reproduce the Goals empty state.
 
 ## 12. Delivery sequence
 
-### Phase 1 — clarify existing records
+### Phase 1 — clarify existing records (done)
 
 - Make the saved commitment text, prefilled from the generated default, the
   primary card identity.
@@ -523,7 +523,7 @@ This phase can preserve the existing persistence model and creation form.
 **Enables Phase 2:** a stable, plain-language commitment and progress
 vocabulary that the creation review can produce and verify.
 
-### Phase 2 — intent-first creation
+### Phase 2 — intent-first creation (done)
 
 - Replace the target-type-first modal with the guided creation flow.
 - Add common material presets with the full Track behind customization.

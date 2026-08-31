@@ -35,6 +35,27 @@ import { topicLabel } from "$lib/library";
 /** Series id (string, as the Track stores it) → display name. */
 export type SeriesNames = Map<string, string>;
 
+/**
+ * The plain-language promise shown while authoring a goal. It intentionally
+ * describes the persisted target and Track scope only: changing this sentence
+ * cannot change what the evaluator counts.
+ */
+export function goalCommitmentSentence(
+    target: GoalTargetData,
+    scope: GoalScope,
+    seriesNames: SeriesNames,
+    deadline: string | null = null,
+): string {
+    const horizon = deadline
+        ? ` by ${new Intl.DateTimeFormat(undefined, {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+          }).format(new Date(`${deadline}T12:00:00`))}`
+        : "";
+    return `${describeTarget(target)} in ${describeScope(scope, seriesNames)}${horizon}.`;
+}
+
 const MS_PER_DAY = 86_400_000;
 
 /**

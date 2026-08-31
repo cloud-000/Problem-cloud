@@ -371,5 +371,6 @@
         {seriesNames}
         goal={editing}
         onsaved={onSaved}
+        onstart={practiceGoal}
     />
 {/if}

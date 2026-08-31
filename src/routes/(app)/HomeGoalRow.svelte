@@ -56,7 +56,7 @@
         >
             {lead ?? describeScope(goal.scope, seriesNames)}
         </p>
-        <p class="mt-0.5 truncate type-secondary font-medium text-foreground">
+        <p class="mt-0.5 type-secondary font-medium text-foreground">
             {goal.title}
         </p>
         {#if entry.result}
@@ -66,7 +66,7 @@
                 data={entry.familyData}
                 {now}
                 compact
-                class="mt-2 max-w-sm"
+                class="mt-2 w-full"
             />
         {/if}
     </a>
