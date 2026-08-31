@@ -421,7 +421,10 @@
                 />
             {/if}
 
-            <section aria-label={`Problem ${problem.n + 1} statement`}>
+            <section
+                class="min-w-0 overflow-x-auto overscroll-x-contain"
+                aria-label={`Problem ${problem.n + 1} statement`}
+            >
                 {#if showRaw}
                     <pre
                         class="min-w-0 overflow-x-auto rounded-lg border border-border/60 bg-surface-container-low p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-foreground">{problem.statement ??
