@@ -260,18 +260,40 @@ describe("scope description", () => {
         ).toBe("AMC 10 (#21–25) · MATHCOUNTS (Sprint, #11–15)");
     });
 
-    test("year range is appended when present", () => {
+    test("year ranges stay attached to their series", () => {
         expect(
             describeScope(
                 {
                     topic: [],
                     seriesIds: ["7"],
-                    seriesScopes: {},
-                    yearRange: [2010, 2024],
+                    seriesScopes: {
+                        "7": {
+                            divisions: [],
+                            formats: [],
+                            yearRange: [2010, 2024],
+                        },
+                    },
                 },
                 NAMES,
             ),
-        ).toBe("AMC 10, 2010–2024");
+        ).toBe("AMC 10 (2010–2024)");
+        expect(
+            describeScope(
+                {
+                    topic: [],
+                    seriesIds: ["7"],
+                    seriesScopes: {
+                        "7": {
+                            divisions: [],
+                            formats: [],
+                            yearRange: [2010, 2024],
+                            problemNumbers: [21, 25],
+                        },
+                    },
+                },
+                NAMES,
+            ),
+        ).toBe("AMC 10 (2010–2024, #21–25)");
     });
 
     test("the commitment sentence joins target and scope", () => {

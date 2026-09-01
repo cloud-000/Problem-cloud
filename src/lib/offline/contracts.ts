@@ -62,10 +62,22 @@ const parseProblemNumbers: p.Parser<[number, number]> = (value, path = "") => {
     return range;
 };
 
+const parseYearRange: p.Parser<[number, number]> = (value, path = "") => {
+    const range = p.tupleOf(p.integer, p.integer)(value, path);
+    if (range[1] < range[0]) {
+        throw new p.OfflineParseError(
+            path,
+            "expected an inclusive [lo, hi] year range",
+        );
+    }
+    return range;
+};
+
 const parseSeriesScope: p.Parser<OfflineSeriesScope> = p.objectOf<OfflineSeriesScope>({
     divisions: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
     formats: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
     problemNumbers: p.optional(parseProblemNumbers),
+    yearRange: p.optional(parseYearRange),
 });
 
 export const parseScope: p.Parser<OfflineScope> = p.objectOf<OfflineScope>({
@@ -95,11 +107,15 @@ export function normalizeScope(scope: OfflineScope): OfflineScope {
                   number,
               ])
             : undefined;
-        if (divisions.length || formats.length || problemNumbers) {
+        const years = entry.yearRange
+            ? ([entry.yearRange[0], entry.yearRange[1]] as [number, number])
+            : undefined;
+        if (divisions.length || formats.length || problemNumbers || years) {
             seriesScopes[id] = {
                 divisions,
                 formats,
                 ...(problemNumbers ? { problemNumbers } : {}),
+                ...(years ? { yearRange: years } : {}),
             };
         }
     }

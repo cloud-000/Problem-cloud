@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
     COUNTER_RANGE,
     clampProblemNumbers,
+    clampYearRange,
     configsForSelectedSeries,
     createPracticeSettingsForm,
     practiceSettingsFromForm,
     problemNumberRange,
+    yearRange,
     type SeriesScopeConfig,
 } from "./practice-settings";
 
@@ -146,5 +148,33 @@ describe("problem-number helpers", () => {
         expect(clampProblemNumbers([5, 25], 8)).toEqual([5, 8]);
         expect(clampProblemNumbers(undefined, 25)).toBeUndefined();
     });
+});
 
+describe("year-range helpers", () => {
+    test("a missing or full span is not a narrowing", () => {
+        expect(yearRange(undefined)).toBeNull();
+        expect(yearRange({ yearRange: [2010, 2024] }, { min: 2010, max: 2024 })).toBeNull();
+        expect(yearRange({ yearRange: [1990, 2030] }, { min: 2000, max: 2020 })).toBeNull();
+        expect(yearRange({ yearRange: [2015, 2018] }, { min: 2010, max: 2024 })).toEqual([
+            2015, 2018,
+        ]);
+        expect(yearRange({ yearRange: [2015, 2018] })).toEqual([2015, 2018]);
+    });
+
+    test("rejects inverted stored ranges", () => {
+        expect(yearRange({ yearRange: [2024, 2010] })).toBeNull();
+    });
+
+    test("clamps onto a shorter span and resets ranges past it", () => {
+        expect(clampYearRange([2015, 2018], { min: 2010, max: 2024 })).toEqual([
+            2015, 2018,
+        ]);
+        expect(clampYearRange([2010, 2024], { min: 2010, max: 2024 })).toBeUndefined();
+        expect(clampYearRange([2020, 2024], { min: 2010, max: 2015 })).toBeUndefined();
+        expect(clampYearRange([2000, 2005], { min: 2010, max: 2024 })).toBeUndefined();
+        expect(clampYearRange([2008, 2012], { min: 2010, max: 2015 })).toEqual([
+            2010, 2012,
+        ]);
+        expect(clampYearRange(undefined, { min: 2010, max: 2024 })).toBeUndefined();
+    });
 });

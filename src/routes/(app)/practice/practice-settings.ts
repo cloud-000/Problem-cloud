@@ -22,18 +22,23 @@ export type CounterEnabled = Record<CounterKey, boolean>;
 /**
  * Per-series narrowing, keyed by series id (string). `problemNumbers` is a
  * 1-based inclusive range (`problems.n + 1`); omit it when the slider is the
- * full number line (no narrowing), matching the difficulty slider.
+ * full number line (no narrowing), matching the difficulty slider. `yearRange`
+ * is an inclusive `[min, max]` on `tests.year`; omit it when the slider is
+ * that series' full span.
  */
 export type SeriesScope = {
     divisions: string[];
     formats: string[];
     problemNumbers?: [number, number];
+    yearRange?: [number, number];
 };
 export type SeriesScopes = Record<string, SeriesScope>;
 
 export {
     clampProblemNumbers,
+    clampYearRange,
     problemNumberRange,
+    yearRange,
 } from "$lib/series-review";
 
 /**
@@ -65,10 +70,10 @@ export function configsForSelectedSeries(
 
 /**
  * The "what is this session about" slice of {@link PracticeSettingsForm} —
- * topic + series + per-series division/format/problem-number narrowing. Shared by the session-creation
- * dialog (`Track.svelte` in `SessionsView`) and the mid-session settings panel
- * (`Track.svelte` in `SettingsPanel`), so a full `PracticeSettingsForm`
- * structurally satisfies it with zero conversion.
+ * topic + series + per-series division/format/problem-number/year narrowing.
+ * Shared by the session-creation dialog (`Track.svelte` in `SessionsView`) and
+ * the mid-session settings panel (`Track.svelte` in `SettingsPanel`), so a
+ * full `PracticeSettingsForm` structurally satisfies it with zero conversion.
  */
 export type TrackValue = Pick<
     PracticeSettingsForm,
@@ -79,7 +84,7 @@ export function createTrackValue(): TrackValue {
     return { topic: [], seriesIds: [], seriesScopes: {} };
 }
 
-function cloneProblemNumbers(
+function cloneInclusiveRange(
     range: [number, number] | undefined,
 ): [number, number] | undefined {
     return range ? [range[0], range[1]] : undefined;
@@ -89,11 +94,13 @@ function cloneProblemNumbers(
 function cloneScopes(raw: SeriesScopes | undefined | null): SeriesScopes {
     const out: SeriesScopes = {};
     for (const [id, scope] of Object.entries(raw ?? {})) {
-        const problemNumbers = cloneProblemNumbers(scope?.problemNumbers);
+        const problemNumbers = cloneInclusiveRange(scope?.problemNumbers);
+        const yearRange = cloneInclusiveRange(scope?.yearRange);
         out[id] = {
             divisions: [...(scope?.divisions ?? [])],
             formats: [...(scope?.formats ?? [])],
             ...(problemNumbers ? { problemNumbers } : {}),
+            ...(yearRange ? { yearRange } : {}),
         };
     }
     return out;

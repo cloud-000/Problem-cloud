@@ -291,6 +291,34 @@ const SCOPES: { name: string; scope: GoalScope }[] = [
             },
         },
     },
+    {
+        name: "a year range on one series",
+        scope: {
+            topic: [],
+            seriesIds: [`${SERIES.alpha}`],
+            seriesScopes: {
+                [SERIES.alpha]: {
+                    divisions: [],
+                    formats: [],
+                    yearRange: [2020, 2020],
+                },
+            },
+        },
+    },
+    {
+        name: "split years across series",
+        scope: {
+            topic: [],
+            seriesIds: [`${SERIES.alpha}`, `${SERIES.beta}`],
+            seriesScopes: {
+                [SERIES.alpha]: {
+                    divisions: [],
+                    formats: [],
+                    yearRange: [2020, 2020],
+                },
+            },
+        },
+    },
 ];
 
 /** The trainer's own filter, applied the way `applyAttributeFilters` applies it. */

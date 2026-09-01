@@ -18,6 +18,7 @@ select
   t.series_id,
   t.division,
   t.format,
+  t.year,
   p.topic,
   p.tags,
   p.difficulty,

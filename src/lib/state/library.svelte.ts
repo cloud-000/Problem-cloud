@@ -32,6 +32,7 @@ function normalizedFilters(filters: Filters): Filters {
     if (next.testId != null) {
         delete next.divisions;
         delete next.formats;
+        delete next.year;
     }
     return next;
 }

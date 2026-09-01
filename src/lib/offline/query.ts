@@ -79,6 +79,16 @@ export function placementMatchesScope(
         const format = placement.test?.format;
         if (!format || !scope.formats.includes(format)) return false;
     }
+    const years = scope.yearRange;
+    if (
+        years &&
+        Number.isInteger(years[0]) &&
+        Number.isInteger(years[1]) &&
+        years[1] >= years[0]
+    ) {
+        const year = placement.test?.year;
+        if (year == null || year < years[0] || year > years[1]) return false;
+    }
     const numbers = scope.problemNumbers;
     if (
         numbers &&

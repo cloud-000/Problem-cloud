@@ -55,6 +55,9 @@
     let problemNumbers = $state<[number, number] | undefined>(
         f.problemNumbers ? [f.problemNumbers[0], f.problemNumbers[1]] : undefined,
     );
+    let seriesYear = $state<[number, number] | undefined>(
+        f.year && f.seriesId != null ? [f.year[0], f.year[1]] : undefined,
+    );
 
     const masteryOptions = [
         { value: "unassessed", label: "Unassessed" },
@@ -88,6 +91,7 @@
         divisions = [];
         formats = [];
         problemNumbers = undefined;
+        seriesYear = undefined;
     });
 
     /** Treat an untouched (full-range) slider as "no filter" so null-valued rows show. */
@@ -114,6 +118,12 @@
             scoped && !lockedTest && formats.length ? formats : undefined;
         const problemNumbersValue =
             scoped && level === "problems" ? problemNumbers : undefined;
+        const seriesYearValue = scoped && !lockedTest ? seriesYear : undefined;
+        const globalYearValue =
+            !scoped && level === "tests"
+                ? rangeOrUndef(year, YEAR_RANGE)
+                : undefined;
+        const yearValue = seriesYearValue ?? globalYearValue;
         let patch: Filters;
         if (level === "series") {
             patch = {
@@ -122,7 +132,7 @@
         } else if (level === "tests") {
             patch = {
                 seriesId,
-                year: rangeOrUndef(year, YEAR_RANGE),
+                year: yearValue,
                 type: type.length ? type : undefined,
                 isComputational: triToBool(isComputational),
                 divisions: divisionsValue,
@@ -133,6 +143,7 @@
             patch = {
                 seriesId,
                 testId: lockedTest?.id,
+                year: yearValue,
                 topic: topic.length ? topic : undefined,
                 tags: tags.length ? tags : undefined,
                 difficulty: rangeOrUndef(difficulty, DIFFICULTY_RANGE),
@@ -164,8 +175,10 @@
                 bind:divisions
                 bind:formats
                 bind:problemNumbers
+                bind:yearRange={seriesYear}
                 showDivisionFormat={!lockedTest}
                 showProblemNumbers={level === "problems"}
+                showYear={!lockedTest}
             />
         {/key}
     {/if}
@@ -210,21 +223,23 @@
             </div>
         </section>
 
-        <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-date-filters">
-            <h3 id="test-date-filters" class="type-secondary font-semibold text-foreground">
-                Date
-            </h3>
-            <div class="flex flex-col gap-1.5">
-                {@render field(`Year (${year[0]}–${year[1]})`)}
-                <RangeSlider
-                    bind:value={year}
-                    min={YEAR_RANGE[0]}
-                    max={YEAR_RANGE[1]}
-                    step={1}
-                    label="Year"
-                />
-            </div>
-        </section>
+        {#if !lockedSeries && selectedSeriesId == null}
+            <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-date-filters">
+                <h3 id="test-date-filters" class="type-secondary font-semibold text-foreground">
+                    Date
+                </h3>
+                <div class="flex flex-col gap-1.5">
+                    {@render field(`Year (${year[0]}–${year[1]})`)}
+                    <RangeSlider
+                        bind:value={year}
+                        min={YEAR_RANGE[0]}
+                        max={YEAR_RANGE[1]}
+                        step={1}
+                        label="Year"
+                    />
+                </div>
+            </section>
+        {/if}
 
         <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-attribute-filters">
             <h3 id="test-attribute-filters" class="type-secondary font-semibold text-foreground">

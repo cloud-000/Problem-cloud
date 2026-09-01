@@ -27,15 +27,17 @@ export type Cursor = string;
  * placement-aware; filtering canonical rows by their own test metadata is not
  * equivalent.
  *
- * `yearRange` is deliberately absent: the SQL resolver accepts it, but the
- * shared goal/practice editor does not author it yet (`docs/offline.md` §5a).
- * `problemNumbers` is authored by the Track.
+ * `yearRange` is an inclusive `[min, max]` on `tests.year`; omit it when the
+ * slider is that series' full span. `problemNumbers` is authored by the Track
+ * the same way (1-based inclusive; omit for the full number line).
  */
 export type OfflineSeriesScope = {
     divisions: string[];
     formats: string[];
     /** 1-based inclusive range; omit when the slider is the full number line. */
     problemNumbers?: [number, number];
+    /** Inclusive `[min, max]` on `tests.year`; omit when the slider is the full span. */
+    yearRange?: [number, number];
 };
 
 export type OfflineScope = {
@@ -302,6 +304,8 @@ export type BrowseQueryV1 = SharedLocalQueryV1 & {
         formats?: string[];
         /** 1-based inclusive range (`problems.n + 1`); omit for the full number line. */
         problemNumbers?: [number, number];
+        /** Inclusive `[min, max]` on `tests.year`; only applied when `seriesId` is set. */
+        year?: [number, number];
     };
     offset: number;
     limit: number;

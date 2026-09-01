@@ -258,7 +258,15 @@ A download scope uses the same shape and semantics as a goal:
 type OfflineScope = {
     topic: string[];
     seriesIds: string[];
-    seriesScopes: Record<string, { divisions: string[]; formats: string[] }>;
+    seriesScopes: Record<
+        string,
+        {
+            divisions: string[];
+            formats: string[];
+            problemNumbers?: [number, number];
+            yearRange?: [number, number];
+        }
+    >;
 };
 ```
 
@@ -267,9 +275,8 @@ Membership must flow through
 canonical may enter the scope through an alias placement under another test.
 Filtering canonical rows directly by their own test metadata is not equivalent.
 
-`yearRange` is accepted by the SQL function but no current goal/practice editor
-authors it. Do not advertise a year filter in offline v1 until the shared scope
-UI and practice contract both own it.
+`yearRange` is per-series, authored by the Track the same way as `problemNumbers`.
+A year chosen for one series never filters another.
 
 ### 5b. A package contains an explicitly bounded membership, not a hidden draw
 

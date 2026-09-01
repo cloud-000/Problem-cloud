@@ -115,4 +115,27 @@ describe("downloaded catalogue filter parity", () => {
             matchesLocalProblemFilters(late, { problemNumbers: [1, 10] }),
         ).toBe(true);
     });
+
+    test("a year range matches the placement test year", () => {
+        const amc = candidate({
+            placement: {
+                ...candidate().placement,
+                test: {
+                    name: "2024 AMC 10A",
+                    seriesId: 3,
+                    division: "A",
+                    format: "A",
+                    year: 2024,
+                    aopsCategoryId: null,
+                },
+            },
+        });
+        expect(
+            matchesLocalProblemFilters(amc, { seriesId: 3, year: [2020, 2024] }),
+        ).toBe(true);
+        expect(
+            matchesLocalProblemFilters(amc, { seriesId: 3, year: [2010, 2015] }),
+        ).toBe(false);
+        expect(matchesLocalProblemFilters(amc, { year: [2010, 2015] })).toBe(true);
+    });
 });

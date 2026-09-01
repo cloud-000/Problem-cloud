@@ -18,6 +18,8 @@ export type ProblemFilterValues = {
     formats?: string[];
     /** 1-based inclusive range (`problems.n + 1`); only applied when `seriesId` is set. */
     problemNumbers?: [number, number];
+    /** Inclusive `[min, max]` on `tests.year`; only applied when `seriesId` is set. */
+    year?: [number, number];
 };
 
 export type LocalProblemCandidate = {
@@ -112,6 +114,27 @@ export const PROBLEM_FILTERS = {
             }
             const displayed = candidate.placement.problemNumber + 1;
             return displayed >= lo && displayed <= hi;
+        },
+    },
+    year: {
+        remote: (query, value, all) => {
+            if (all.seriesId == null) return query;
+            const lo = value[0];
+            const hi = value[1];
+            if (!Number.isInteger(lo) || !Number.isInteger(hi) || hi < lo) {
+                return query;
+            }
+            return query.gte("year", lo).lte("year", hi);
+        },
+        local: (candidate, value, all) => {
+            if (all.seriesId == null) return true;
+            const lo = value[0];
+            const hi = value[1];
+            if (!Number.isInteger(lo) || !Number.isInteger(hi) || hi < lo) {
+                return true;
+            }
+            const year = candidate.placement.test?.year;
+            return year != null && year >= lo && year <= hi;
         },
     },
     topic: {

@@ -9,15 +9,19 @@
         dimensionOptions,
         fetchSeriesDimensions,
         fetchSeriesNumberLine,
+        fetchSeriesYearSpan,
         type SeriesDimensionRow,
+        type SeriesYearSpan,
     } from "$lib/series-review";
     import { cn } from "$lib/utils";
     import { fly } from "svelte/transition";
     import { SvelteMap } from "svelte/reactivity";
     import {
         clampProblemNumbers,
+        clampYearRange,
         configsForSelectedSeries,
         problemNumberRange,
+        yearRange,
         type SeriesScopeConfig,
         type TrackValue,
     } from "./practice-settings";
@@ -31,6 +35,7 @@
         supabase,
         loadSeriesDimensions,
         loadSeriesNumberLine,
+        loadSeriesYearSpan,
     }: {
         value: TrackValue;
         seriesOptions: { value: string; label: string }[];
@@ -40,6 +45,10 @@
             seriesId: number,
             scope?: NumberLineScope,
         ) => Promise<number>;
+        loadSeriesYearSpan?: (
+            seriesId: number,
+            scope?: NumberLineScope,
+        ) => Promise<SeriesYearSpan | null>;
     } = $props();
 
     // Per-series scope rows expand/collapse independently. A row defaults to open
@@ -120,7 +129,8 @@
         const hasSelection =
             (scope?.divisions.length ?? 0) > 0 ||
             (scope?.formats.length ?? 0) > 0 ||
-            scope?.problemNumbers != null;
+            scope?.problemNumbers != null ||
+            scope?.yearRange != null;
         return (
             expandedScopes[cfg.id] ??
             (seriesScopeConfigs.length === 1 || hasSelection)
@@ -130,6 +140,12 @@
     function scopeSummary(cfg: SeriesScopeConfig): string {
         const scope = value.seriesScopes[cfg.id];
         const parts = [...(scope?.divisions ?? []), ...(scope?.formats ?? [])];
+        const years = yearRange(scope);
+        if (years) {
+            parts.push(
+                years[0] === years[1] ? `${years[0]}` : `${years[0]}–${years[1]}`,
+            );
+        }
         const numbers = problemNumberRange(scope);
         if (numbers) {
             parts.push(
@@ -223,15 +239,93 @@
         })();
     });
 
+    let yearSpans = $state<Record<string, SeriesYearSpan | null>>({});
+    let yearSpanToken = 0;
+    const yearSpanCache = new SvelteMap<string, SeriesYearSpan | null>();
+
+    $effect(() => {
+        const ids = [...value.seriesIds];
+        const scopes = ids.map((id) => {
+            const scope = value.seriesScopes[id];
+            return {
+                id,
+                divisions: [...(scope?.divisions ?? [])],
+                formats: [...(scope?.formats ?? [])],
+            };
+        });
+        const token = ++yearSpanToken;
+
+        void (async () => {
+            const spans: Record<string, SeriesYearSpan | null> = {};
+            for (const scope of scopes) {
+                const id = Number(scope.id);
+                if (!Number.isFinite(id)) continue;
+                const key = numberLineCacheKey(
+                    scope.id,
+                    scope.divisions,
+                    scope.formats,
+                );
+                let span: SeriesYearSpan | null;
+                if (yearSpanCache.has(key)) {
+                    span = yearSpanCache.get(key) ?? null;
+                } else {
+                    try {
+                        if (loadSeriesYearSpan) {
+                            span = await loadSeriesYearSpan(id, {
+                                divisions: scope.divisions,
+                                formats: scope.formats,
+                            });
+                        } else if (supabase) {
+                            span = await fetchSeriesYearSpan(supabase, id, {
+                                divisions: scope.divisions,
+                                formats: scope.formats,
+                            });
+                        } else {
+                            span = null;
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch series year span:", e);
+                        continue;
+                    }
+                    yearSpanCache.set(key, span);
+                }
+                spans[scope.id] = span;
+            }
+            if (token !== yearSpanToken) return;
+            for (const [id, span] of Object.entries(spans)) {
+                if (!span) continue;
+                const scope = value.seriesScopes[id];
+                if (!scope) continue;
+                const next = clampYearRange(scope.yearRange, span);
+                const current = scope.yearRange;
+                const same =
+                    (next === undefined && current === undefined) ||
+                    (next != null &&
+                        current != null &&
+                        next[0] === current[0] &&
+                        next[1] === current[1]);
+                if (same) continue;
+                if (next) scope.yearRange = next;
+                else delete scope.yearRange;
+            }
+            yearSpans = spans;
+        })();
+    });
+
     function seriesLength(id: string): number {
         return numberLineLengths[id] ?? 0;
+    }
+
+    function seriesYearSpan(id: string): SeriesYearSpan | null {
+        return yearSpans[id] ?? null;
     }
 
     function seriesHasMeta(cfg: SeriesScopeConfig): boolean {
         return (
             cfg.divisionOptions.length > 0 ||
             cfg.formatOptions.length > 0 ||
-            seriesLength(cfg.id) >= 1
+            seriesLength(cfg.id) >= 1 ||
+            seriesYearSpan(cfg.id) != null
         );
     }
 
@@ -271,6 +365,30 @@
         const [lo, hi] = seriesRange(id, length);
         return lo === hi ? `Problem ${lo}` : `Problems ${lo}–${hi}`;
     }
+
+    function seriesYears(
+        id: string,
+        span: SeriesYearSpan,
+    ): [number, number] {
+        return yearRange(value.seriesScopes[id], span) ?? [span.min, span.max];
+    }
+
+    function setSeriesYears(
+        id: string,
+        span: SeriesYearSpan,
+        next: [number, number],
+    ) {
+        const stored = clampYearRange(next, span);
+        const scope = value.seriesScopes[id];
+        if (!scope) return;
+        if (stored) scope.yearRange = stored;
+        else delete scope.yearRange;
+    }
+
+    function yearCaption(id: string, span: SeriesYearSpan): string {
+        const [lo, hi] = seriesYears(id, span);
+        return lo === hi ? `${lo}` : `${lo}–${hi}`;
+    }
 </script>
 
 <div class="flex flex-col gap-2 border-b border-border/30 pb-4">
@@ -299,6 +417,7 @@
                 {#if seriesHasMeta(cfg) && value.seriesScopes[cfg.id]}
                     {@const open = scopeOpen(cfg)}
                     {@const length = seriesLength(cfg.id)}
+                    {@const span = seriesYearSpan(cfg.id)}
                     <div
                         class="rounded-lg border border-border/50 bg-surface-container-low/40"
                     >
@@ -414,6 +533,36 @@
                                             class="text-xs text-muted-foreground"
                                         >
                                             {rangeCaption(cfg.id, length)}
+                                        </span>
+                                    </div>
+                                {/if}
+                                {#if span}
+                                    <div class="flex flex-col gap-1.5">
+                                        <span
+                                            class="text-xxs font-medium uppercase tracking-wide text-muted-foreground"
+                                        >
+                                            Years
+                                        </span>
+                                        <RangeSlider
+                                            bind:value={
+                                                () => seriesYears(cfg.id, span),
+                                                (next) =>
+                                                    setSeriesYears(
+                                                        cfg.id,
+                                                        span,
+                                                        next,
+                                                    )
+                                            }
+                                            min={span.min}
+                                            max={span.max}
+                                            step={1}
+                                            minGap={0}
+                                            label="Years"
+                                        />
+                                        <span
+                                            class="text-xs text-muted-foreground"
+                                        >
+                                            {yearCaption(cfg.id, span)}
                                         </span>
                                     </div>
                                 {/if}

@@ -45,27 +45,28 @@ what each needs first — both are blocked on modelling work, not on effort.
 
 ```ts
 // src/routes/(app)/practice/practice-settings.ts
-type GoalScope = TrackValue & { yearRange: [number, number] | null };
+type GoalScope = TrackValue;
 // TrackValue = { topic: string[]; seriesIds: string[]; seriesScopes: SeriesScopes }
+// SeriesScope = { divisions; formats; problemNumbers?; yearRange? }
 ```
 
 Each selected series is one clause carrying its own division/format and optional
-problem-number narrowing (`problemNumbers`, a 1-based inclusive range on
-`problems.n + 1`); clauses are OR-ed; topic narrows the result. A division or
-`#21–25` chosen for one series must never filter another series with a different
-vocabulary or number line. An empty axis — including a full `[1, L]` problem-number
-slider, which is stored as absent — means no narrowing on that axis.
+problem-number and year narrowing (`problemNumbers`, a 1-based inclusive range on
+`problems.n + 1`; `yearRange`, an inclusive `[min, max]` on `tests.year`); clauses
+are OR-ed; topic narrows the result. A division, `#21–25`, or `2010–2024` chosen
+for one series must never filter another series with a different vocabulary,
+number line, or year span. An empty axis — including a full `[1, L]` problem-number
+slider or a full year span, both stored as absent — means no narrowing on that
+axis.
 
 Scope being structurally identical to `TrackValue` is what makes "Practice
 remaining" free: the goal's scope is handed to the trainer unchanged.
 
-**Year range is user-chosen**, so `PracticeSettingsForm` gains a
-`yearRange` field and the Track gains a control for it. Adding it to the Track
-rather than to goals alone is what preserves scope ≡ Track: if a goal could
-narrow by year and a Track could not, "Practice remaining" would silently draw
-from a wider pool than the goal measures. `tests.year` already exists and the
-library filters on it (`src/lib/library.ts:431`); `canonical_placements` carries
-it, so no `user_problem_index` change is required.
+**Year range is per-series**, authored on the Track next to the problem-number
+slider so each series uses its own min/max. Adding it to `SeriesScope` rather
+than as a Track-wide field is what preserves "a year chosen for one series never
+filters another." `tests.year` already exists; `canonical_placements` carries it;
+library problem browse also filters on `user_problem_index.year`.
 
 ### How scope is matched
 
@@ -344,7 +345,7 @@ Both halves are built: the headless layers and the `/goals` route.
 | Eligibility, placements, scope resolver | `supabase/schemas/goal_scope.sql` | done — `is_gradeable`, `canonical_placements`, `goal_scope_canonicals` |
 | Goals table + four family RPCs | `supabase/schemas/goals.sql` | done — `goal_set_progress`, `goal_window_progress`, `goal_volume_progress`, `goal_streak_progress` |
 | Types, registry, batching, period math | `src/lib/goals/` | done — `types`, `registry`, `plan`, `period`, `data` |
-| SQL semantics | `supabase/tests/goal_scope.test.sql`, `goal_families.test.sql` | 39 pgTAP assertions |
+| SQL semantics | `supabase/tests/goal_scope.test.sql`, `goal_families.test.sql` | 43 pgTAP assertions |
 | Pure evaluation | `src/lib/goals/*.test.ts` | 54 unit tests |
 | Trainer ≡ SQL scope contract | `src/lib/goals/scope-contract.test.ts` | 10 scope cases + fixture guards; skips without a local stack |
 | UI | `src/routes/(app)/goals/` | done — list, create/edit dialog, detail, practice handoff; nav entry in `(app)/+layout.svelte` |

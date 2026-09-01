@@ -1844,6 +1844,7 @@ export type Database = {
           topic: string | null
           total_time_ms: number | null
           verified: boolean | null
+          year: number | null
         }
         Relationships: [
           {

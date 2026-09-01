@@ -27,10 +27,14 @@ function cloneScopes(scope: GoalScope): PracticeSettings["seriesScopes"] {
                   number,
               ])
             : undefined;
+        const years = entry?.yearRange
+            ? ([entry.yearRange[0], entry.yearRange[1]] as [number, number])
+            : undefined;
         out[id] = {
             divisions: [...(entry?.divisions ?? [])],
             formats: [...(entry?.formats ?? [])],
             ...(problemNumbers ? { problemNumbers } : {}),
+            ...(years ? { yearRange: years } : {}),
         };
     }
     return out;

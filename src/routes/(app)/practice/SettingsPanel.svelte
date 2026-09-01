@@ -82,7 +82,7 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
     import type { Database } from "$lib/types/database.types";
-    import type { SeriesDimensionRow } from "$lib/series-review";
+    import type { SeriesDimensionRow, SeriesYearSpan } from "$lib/series-review";
     import { Button } from "$lib/components/button";
     import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
@@ -114,6 +114,7 @@
         supabase,
         loadSeriesDimensions,
         loadSeriesNumberLine,
+        loadSeriesYearSpan,
         canReview = true,
         enabledModes,
         disabledModeReason = "This mode is unavailable for this practice source.",
@@ -133,6 +134,10 @@
             seriesId: number,
             scope?: { divisions: string[]; formats: string[] },
         ) => Promise<number>;
+        loadSeriesYearSpan?: (
+            seriesId: number,
+            scope?: { divisions: string[]; formats: string[] },
+        ) => Promise<SeriesYearSpan | null>;
         canReview?: boolean;
         enabledModes?: Readonly<Record<PracticeMode, boolean>>;
         disabledModeReason?: string;
@@ -274,7 +279,7 @@
         {:else}
             <!-- Track: what this session is about (topic, series, per-series metadata).
          Front-loaded and always visible, shared with the session-creation dialog. -->
-            <Track bind:value={form} {seriesOptions} {supabase} {loadSeriesDimensions} {loadSeriesNumberLine} />
+            <Track bind:value={form} {seriesOptions} {supabase} {loadSeriesDimensions} {loadSeriesNumberLine} {loadSeriesYearSpan} />
 
             <!-- Session mechanics (collapsible): everything else — mode, mastery,
          difficulty, pacing, and the nested Advanced filters sub-group. -->

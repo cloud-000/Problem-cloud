@@ -95,22 +95,23 @@ grant select on public.canonical_placements to authenticated;
 --
 --   {"topic": [...], "seriesIds": ["7", ...],
 --    "seriesScopes": {"7": {"divisions": [...], "formats": [...],
---                           "problemNumbers": [21, 25]}},
---    "yearRange": [2010, 2024] | null}
+--                           "problemNumbers": [21, 25],
+--                           "yearRange": [2010, 2024]}}}
 --
 -- Semantics, in the order the WHERE clause states them:
 --
 --   * a semi-join, not a join: the question is *does this canonical have any
 --     placement satisfying the scope?* Joining placements to events instead
 --     would fan one submission into N rows and break every count (§3);
---   * series clauses are OR-ed, each AND-ed with its OWN divisions/formats
---     and optional 1-based problemNumbers range (stored as problems.n + 1;
---     matched against the placement's 0-based n), so a division or #21–25
---     chosen for one series never filters another with a different vocabulary
---     or number line (§3). This mirrors `seriesScopeFilter` in
+--   * series clauses are OR-ed, each AND-ed with its OWN divisions/formats,
+--     optional 1-based problemNumbers range (stored as problems.n + 1;
+--     matched against the placement's 0-based n), and optional inclusive
+--     yearRange on tests.year, so a division, #21–25, or 2010–2024 chosen
+--     for one series never filters another with a different vocabulary,
+--     number line, or year span (§3). This mirrors `seriesScopeFilter` in
 --     `src/lib/trainer.ts`, and where they disagree, THIS is right and the
 --     client is the bug;
---   * topic and year narrow the result across all clauses;
+--   * topic narrows the result across all clauses;
 --   * an empty axis means no narrowing on that axis. An empty scope therefore
 --     selects the whole catalog, which is the intended reading of a Track with
 --     nothing chosen.
@@ -149,11 +150,11 @@ as $$
     select
       coalesce(p_scope -> 'topic',        '[]'::jsonb) as topics,
       coalesce(p_scope -> 'seriesIds',    '[]'::jsonb) as series_ids,
-      coalesce(p_scope -> 'seriesScopes', '{}'::jsonb) as series_scopes,
-      p_scope -> 'yearRange'                           as year_range
+      coalesce(p_scope -> 'seriesScopes', '{}'::jsonb) as series_scopes
   ),
   -- One row per selected series: the OR-ed clauses, each carrying its own
-  -- division/format vocabulary and optional 1-based problem-number range (§3).
+  -- division/format vocabulary, optional 1-based problem-number range, and
+  -- optional inclusive year range (§3).
   clauses as (
     select
       sid::bigint as series_id,
@@ -172,7 +173,17 @@ as $$
         when pg_catalog.jsonb_typeof(s.series_scopes -> sid -> 'problemNumbers') = 'array'
          and pg_catalog.jsonb_array_length(s.series_scopes -> sid -> 'problemNumbers') = 2
         then (s.series_scopes -> sid -> 'problemNumbers' ->> 1)::integer
-      end as n_hi
+      end as n_hi,
+      case
+        when pg_catalog.jsonb_typeof(s.series_scopes -> sid -> 'yearRange') = 'array'
+         and pg_catalog.jsonb_array_length(s.series_scopes -> sid -> 'yearRange') = 2
+        then (s.series_scopes -> sid -> 'yearRange' ->> 0)::integer
+      end as year_lo,
+      case
+        when pg_catalog.jsonb_typeof(s.series_scopes -> sid -> 'yearRange') = 'array'
+         and pg_catalog.jsonb_array_length(s.series_scopes -> sid -> 'yearRange') = 2
+        then (s.series_scopes -> sid -> 'yearRange' ->> 1)::integer
+      end as year_hi
     from scope s, pg_catalog.jsonb_array_elements_text(s.series_ids) as sid
     -- Scope is user-authored JSON reaching us through a jsonb column, so a
     -- non-numeric id must be skipped rather than raise: one malformed entry
@@ -183,10 +194,6 @@ as $$
     select
       (select pg_catalog.array_agg(t)
          from pg_catalog.jsonb_array_elements_text(s.topics) t) as topics,
-      case when pg_catalog.jsonb_typeof(s.year_range) = 'array'
-        then (s.year_range ->> 0)::integer end as year_min,
-      case when pg_catalog.jsonb_typeof(s.year_range) = 'array'
-        then (s.year_range ->> 1)::integer end as year_max,
       (select pg_catalog.count(*) from clauses) as clause_count
     from scope s
   )
@@ -198,12 +205,6 @@ as $$
     -- topic never matches a non-empty filter, which is also what the trainer's
     -- `.in("topic", …)` does.
     (f.topics is null or cp.topic = any(f.topics))
-    -- Year range. No UI authors this yet (it is deferred from the Track), but
-    -- the axis costs three lines here and would cost a migration later.
-    and (
-      f.year_min is null
-      or (cp.year is not null and cp.year >= f.year_min and cp.year <= f.year_max)
-    )
     -- OR-of-ANDs over the selected series: matching ANY clause is enough, and
     -- each clause's narrowing applies only within itself.
     and (
@@ -219,6 +220,13 @@ as $$
           and (
             c.n_lo is null or c.n_hi is null
             or (cp.n >= c.n_lo - 1 and cp.n <= c.n_hi - 1)
+          )
+          -- yearRange is inclusive on tests.year. NULL lo/hi means the axis
+          -- was omitted (full span). A null placement year never matches a
+          -- narrowed range.
+          and (
+            c.year_lo is null or c.year_hi is null
+            or (cp.year is not null and cp.year >= c.year_lo and cp.year <= c.year_hi)
           )
       )
     )

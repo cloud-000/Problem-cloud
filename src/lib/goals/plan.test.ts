@@ -47,12 +47,8 @@ const goal = (target: GoalTargetData, goalScope = scope()): Goal => ({
  * silently draw from a different pool than the goal measures.
  */
 type Assert<T extends true> = T;
-type TrackIsAScope = TrackValue extends Omit<GoalScope, "yearRange">
-    ? true
-    : false;
-type ScopeIsATrack = Omit<GoalScope, "yearRange"> extends TrackValue
-    ? true
-    : false;
+type TrackIsAScope = TrackValue extends GoalScope ? true : false;
+type ScopeIsATrack = GoalScope extends TrackValue ? true : false;
 type _scopeMatchesTrack = Assert<TrackIsAScope>;
 type _trackMatchesScope = Assert<ScopeIsATrack>;
 
@@ -97,6 +93,20 @@ describe("scopeKey", () => {
                             divisions: [],
                             formats: [],
                             problemNumbers: [21, 25],
+                        },
+                    },
+                }),
+            ),
+        ).not.toBe(scopeKey(scope({ seriesIds: ["3"] })));
+        expect(
+            scopeKey(
+                scope({
+                    seriesIds: ["3"],
+                    seriesScopes: {
+                        "3": {
+                            divisions: [],
+                            formats: [],
+                            yearRange: [2010, 2024],
                         },
                     },
                 }),

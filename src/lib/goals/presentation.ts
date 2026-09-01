@@ -508,6 +508,19 @@ export function describeScope(scope: GoalScope, names: SeriesNames): string {
         const name = names.get(id) ?? `Series ${id}`;
         const entry = scope.seriesScopes?.[id];
         const tags = [...(entry?.divisions ?? []), ...(entry?.formats ?? [])];
+        const years = entry?.yearRange;
+        if (
+            years &&
+            Number.isInteger(years[0]) &&
+            Number.isInteger(years[1]) &&
+            years[1] >= years[0]
+        ) {
+            tags.push(
+                years[0] === years[1]
+                    ? `${years[0]}`
+                    : `${years[0]}–${years[1]}`,
+            );
+        }
         const numbers = entry?.problemNumbers;
         if (
             numbers &&
@@ -525,17 +538,11 @@ export function describeScope(scope: GoalScope, names: SeriesNames): string {
         return tags.length > 0 ? `${name} (${tags.join(", ")})` : name;
     });
     const topics = (scope.topic ?? []).map((code) => topicLabel(code) ?? code);
-    const years = scope.yearRange
-        ? `${scope.yearRange[0]}–${scope.yearRange[1]}`
-        : null;
 
-    let text: string;
-    if (series.length === 0 && topics.length === 0) text = "the whole catalog";
-    else if (series.length === 0) text = topics.join(", ");
-    else if (topics.length === 0) text = series.join(" · ");
-    else text = `${topics.join(", ")} in ${series.join(" · ")}`;
-
-    return years ? `${text}, ${years}` : text;
+    if (series.length === 0 && topics.length === 0) return "the whole catalog";
+    if (series.length === 0) return topics.join(", ");
+    if (topics.length === 0) return series.join(" · ");
+    return `${topics.join(", ")} in ${series.join(" · ")}`;
 }
 
 /** The commitment in one line: what, over which slice. */

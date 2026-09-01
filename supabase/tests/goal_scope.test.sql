@@ -12,7 +12,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(20);
+select extensions.plan(21);
 
 -- ---------------------------------------------------------------------------
 -- Fixture
@@ -102,7 +102,12 @@ insert into scope_fixtures values
   ('alpha_national_plus_beta',
      '{"seriesIds":["-920001","-920002"],"seriesScopes":{"-920001":{"divisions":["National"]}}}'),
   ('alpha_geometry', '{"seriesIds":["-920001"],"topic":["geometry"]}'),
-  ('alpha_2020',     '{"seriesIds":["-920001"],"yearRange":[2020,2020]}'),
+  ('alpha_2020',     '{"seriesIds":["-920001"],"seriesScopes":{"-920001":{"yearRange":[2020,2020]}}}'),
+  -- Year chosen for alpha must not leak onto beta. Alpha 2020 is 6 canonicals;
+  -- beta unnarrowed is 4; they share none of those (the dups live under
+  -- alpha 2022). Union is 10. A leaked year would drop beta 2021 and read 9.
+  ('alpha_2020_plus_beta',
+     '{"seriesIds":["-920001","-920002"],"seriesScopes":{"-920001":{"yearRange":[2020,2020]}}}'),
   -- 1-based problemNumbers. Canonical dup is alpha n=1 (#2); its alias is
   -- beta n=5 (#6). Matching the alias number through beta, and not matching
   -- the canonical number through beta, is the placement-n rule.
@@ -267,6 +272,12 @@ select extensions.is(
   pg_temp.in_scope('alpha_2020'),
   6::bigint,
   'a year range narrows to tests from that year'
+);
+
+select extensions.is(
+  pg_temp.in_scope('alpha_2020_plus_beta'),
+  10::bigint,
+  'a year chosen for one series never filters another series'
 );
 
 -- Canonical dup is alpha #2 (n=1): p2 (-920102) and the dup (-920301).

@@ -69,6 +69,11 @@
         ],
     };
     const TOUR_SERIES_LENGTH: Record<number, number> = { 1: 25, 2: 25, 3: 15 };
+    const TOUR_SERIES_YEARS: Record<number, { min: number; max: number }> = {
+        1: { min: 2000, max: 2025 },
+        2: { min: 2000, max: 2025 },
+        3: { min: 1982, max: 2025 },
+    };
 
     function loadTourSeriesDimensions(seriesId: number) {
         return Promise.resolve(TOUR_SERIES_DIMENSIONS[seriesId] ?? []);
@@ -76,6 +81,10 @@
 
     function loadTourSeriesNumberLine(seriesId: number) {
         return Promise.resolve(TOUR_SERIES_LENGTH[seriesId] ?? 0);
+    }
+
+    function loadTourSeriesYearSpan(seriesId: number) {
+        return Promise.resolve(TOUR_SERIES_YEARS[seriesId] ?? null);
     }
 
     const TOUR_COACH_CAPABILITIES = {
@@ -511,6 +520,7 @@
                                     seriesOptions={SERIES_OPTIONS}
                                     loadSeriesDimensions={loadTourSeriesDimensions}
                                     loadSeriesNumberLine={loadTourSeriesNumberLine}
+                                    loadSeriesYearSpan={loadTourSeriesYearSpan}
                                 />
                                 <div
                                     class="flex flex-col gap-3 border-b border-border/30 pb-4"

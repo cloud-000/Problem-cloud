@@ -77,4 +77,24 @@ describe("LibraryStore series scope", () => {
         store.patchFilters({ seriesId: 7, problemNumbers: [21, 25] });
         expect(store.current.filters).toBe(original);
     });
+
+    test("keeps a year filter when seriesId is cleared", () => {
+        const store = new LibraryStore();
+        store.patchFilters({ seriesId: 7, year: [2010, 2024] });
+        store.patchFilters({ seriesId: undefined, year: [2010, 2024] });
+        expect(store.current.filters).toEqual({ year: [2010, 2024] });
+    });
+
+    test("drops year when a test is locked", () => {
+        const store = new LibraryStore();
+        store.patchFilters({
+            seriesId: 7,
+            testId: 9,
+            year: [2010, 2024],
+        });
+        expect(store.current.filters).toEqual({
+            seriesId: 7,
+            testId: 9,
+        });
+    });
 });

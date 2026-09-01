@@ -62,17 +62,20 @@ export function scopeKey(scope: GoalScope): string {
                   number,
               ])
             : undefined;
+        const years = entry?.yearRange
+            ? ([entry.yearRange[0], entry.yearRange[1]] as [number, number])
+            : undefined;
         scopes[id] = {
             divisions: [...(entry?.divisions ?? [])].sort(),
             formats: [...(entry?.formats ?? [])].sort(),
             ...(problemNumbers ? { problemNumbers } : {}),
+            ...(years ? { yearRange: years } : {}),
         };
     }
     return JSON.stringify({
         topic: [...(scope.topic ?? [])].sort(),
         seriesIds: [...(scope.seriesIds ?? [])].sort(),
         seriesScopes: scopes,
-        yearRange: scope.yearRange ?? null,
     });
 }
 

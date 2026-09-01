@@ -103,6 +103,23 @@ describe("scope normalization", () => {
             "10": { divisions: [], formats: [], problemNumbers: [21, 25] },
         });
     });
+
+    test("keeps a year range as a real narrowing", () => {
+        const normalized = normalizeScope({
+            topic: [],
+            seriesIds: ["10"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    yearRange: [2010, 2024] as [number, number],
+                },
+            },
+        });
+        expect(normalized.seriesScopes).toEqual({
+            "10": { divisions: [], formats: [], yearRange: [2010, 2024] },
+        });
+    });
 });
 
 describe("package creation", () => {

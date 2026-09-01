@@ -233,6 +233,47 @@ export function clampProblemNumbers(
     return [lo, hi];
 }
 
+/** Inclusive `[min, max]` year span of a series' tests, after optional narrowing. */
+export type SeriesYearSpan = { min: number; max: number };
+
+/**
+ * The stored year range if it actually narrows, else `null`. Pass `span` to
+ * treat a full `[min, max]` as absent; omit it at filter time, where a missing
+ * field already means no narrowing.
+ */
+export function yearRange(
+    scope: { yearRange?: [number, number] } | undefined | null,
+    span?: SeriesYearSpan | null,
+): [number, number] | null {
+    const range = scope?.yearRange;
+    if (!range) return null;
+    const lo = range[0];
+    const hi = range[1];
+    if (!Number.isInteger(lo) || !Number.isInteger(hi) || hi < lo) {
+        return null;
+    }
+    if (span != null && lo <= span.min && hi >= span.max) return null;
+    return [lo, hi];
+}
+
+/**
+ * Fit a stored year range onto a (possibly shorter) span. A range entirely
+ * past the new span — e.g. 2020–2024 after switching to a format last run in
+ * 2015 — resets to unset (full). A range covering the whole span is also unset.
+ */
+export function clampYearRange(
+    range: [number, number] | undefined | null,
+    span: SeriesYearSpan | null,
+): [number, number] | undefined {
+    if (!span || !range) return undefined;
+    if (range[0] > span.max || range[1] < span.min) return undefined;
+    const lo = Math.max(span.min, range[0]);
+    const hi = Math.min(range[1], span.max);
+    if (lo > hi) return undefined;
+    if (lo <= span.min && hi >= span.max) return undefined;
+    return [lo, hi];
+}
+
 async function localSeriesPlacements(seriesId: number): Promise<OfflinePlacementV1[]> {
     const { offlineRepository } = await import("$lib/offline/browser");
     const repository = await offlineRepository();
@@ -355,6 +396,78 @@ async function fetchLocalSeriesNumberLine(
         if (placement.problemNumber > max) max = placement.problemNumber;
     }
     return max >= 0 ? max + 1 : 0;
+}
+
+/**
+ * Inclusive min/max of `tests.year` for a series after optional
+ * division/format/test narrowing. `null` when no matching test has a year.
+ */
+export async function fetchSeriesYearSpan(
+    supabase: Supabase,
+    seriesId: number,
+    scope?: SeriesNumberLineScope,
+): Promise<SeriesYearSpan | null> {
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") {
+        return fetchLocalSeriesYearSpan(seriesId, scope);
+    }
+    try {
+        let query = supabase
+            .from("tests")
+            .select("year")
+            .eq("series_id", seriesId)
+            .not("year", "is", null);
+        if (scope?.testId != null) query = query.eq("id", scope.testId);
+        if (scope?.divisions.length) query = query.in("division", scope.divisions);
+        if (scope?.formats.length) query = query.in("format", scope.formats);
+        const { data, error } = await query;
+        if (error) throw error;
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteSuccess();
+        return yearSpanFromValues(
+            (data ?? []).map((row) => (row as { year: number | null }).year),
+        );
+    } catch (error) {
+        if (typeof window === "undefined") throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalSeriesYearSpan(seriesId, scope);
+    }
+}
+
+async function fetchLocalSeriesYearSpan(
+    seriesId: number,
+    scope?: SeriesNumberLineScope,
+): Promise<SeriesYearSpan | null> {
+    const years: Array<number | null> = [];
+    for (const placement of await localSeriesPlacements(seriesId)) {
+        if (scope?.testId != null && placement.testId !== scope.testId) continue;
+        if (
+            scope?.divisions.length &&
+            (!placement.test?.division ||
+                !scope.divisions.includes(placement.test.division))
+        ) {
+            continue;
+        }
+        if (
+            scope?.formats.length &&
+            (!placement.test?.format ||
+                !scope.formats.includes(placement.test.format))
+        ) {
+            continue;
+        }
+        years.push(placement.test?.year ?? null);
+    }
+    return yearSpanFromValues(years);
+}
+
+function yearSpanFromValues(values: Array<number | null | undefined>): SeriesYearSpan | null {
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const value of values) {
+        if (typeof value !== "number" || !Number.isInteger(value)) continue;
+        if (value < min) min = value;
+        if (value > max) max = value;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return { min, max };
 }
 
 export function statusForReview(

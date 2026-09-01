@@ -5,6 +5,7 @@ import type { ProblemRow } from "$lib/library";
 import {
     fetchTestProblems,
     hasProblemNumberScope,
+    hasSeriesScope,
     seriesScopeEmbedAlias,
     seriesScopeFilter,
     seriesScopeSelectAliases,
@@ -177,5 +178,67 @@ describe("seriesScopeFilter problem numbers", () => {
             seriesScopeFilter(scoped, { qualifyForProblemNumbers: true }),
         ).toBe("and(n.gte.0,n.lte.9,s10.not.is.null)");
         expect(seriesScopeSelectAliases(scoped)).toBe(", s10:tests()");
+    });
+});
+
+describe("seriesScopeFilter year range", () => {
+    test("a year-only narrowing uses the tests-embed OR body", () => {
+        const scoped = settings({
+            seriesIds: ["10"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    yearRange: [2010, 2020],
+                },
+            },
+        });
+        expect(hasSeriesScope(scoped)).toBe(true);
+        expect(hasProblemNumberScope(scoped)).toBe(false);
+        expect(seriesScopeFilter(scoped)).toBe(
+            "and(series_id.eq.10,year.gte.2010,year.lte.2020)",
+        );
+    });
+
+    test("split years stay on their own series", () => {
+        expect(
+            seriesScopeFilter(
+                settings({
+                    seriesIds: ["10", "12"],
+                    seriesScopes: {
+                        "10": {
+                            divisions: [],
+                            formats: [],
+                            yearRange: [2010, 2015],
+                        },
+                        "12": {
+                            divisions: [],
+                            formats: [],
+                            yearRange: [2020, 2024],
+                        },
+                    },
+                }),
+            ),
+        ).toBe(
+            "and(series_id.eq.10,year.gte.2010,year.lte.2015),and(series_id.eq.12,year.gte.2020,year.lte.2024)",
+        );
+    });
+
+    test("year plus problem numbers keeps year on the embed alias", () => {
+        const scoped = settings({
+            seriesIds: ["10"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [21, 25],
+                    yearRange: [2010, 2020],
+                },
+            },
+        });
+        expect(hasProblemNumberScope(scoped)).toBe(true);
+        expect(
+            seriesScopeFilter(scoped, { qualifyForProblemNumbers: true }),
+        ).toBe("and(n.gte.20,n.lte.24,s10.not.is.null)");
     });
 });

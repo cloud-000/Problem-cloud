@@ -44,7 +44,9 @@ import {
 import {
     fetchSeriesDimensions,
     fetchSeriesNumberLine,
+    fetchSeriesYearSpan,
     type SeriesDimensionRow,
+    type SeriesYearSpan,
 } from "$lib/series-review";
 import type { OfflineRepository } from "$lib/offline/repository";
 import type {
@@ -167,6 +169,10 @@ export interface TrainerDataSource {
         seriesId: number,
         scope?: { divisions: string[]; formats: string[] },
     ): Promise<number>;
+    getSeriesYearSpan(
+        seriesId: number,
+        scope?: { divisions: string[]; formats: string[] },
+    ): Promise<SeriesYearSpan | null>;
     getSessionProblemIds(): Promise<number[]>;
     getOlderSubmission(beforeId: number | null): Promise<OlderSubmission | null>;
     getSessionHistory(): Promise<SessionHistoryEntry[]>;
@@ -236,6 +242,8 @@ export function createOnlineTrainerDataSource(input: {
         getSeriesDimensions: (seriesId) => fetchSeriesDimensions(supabase, seriesId),
         getSeriesNumberLine: (seriesId, scope) =>
             fetchSeriesNumberLine(supabase, seriesId, scope),
+        getSeriesYearSpan: (seriesId, scope) =>
+            fetchSeriesYearSpan(supabase, seriesId, scope),
         async getSessionProblemIds() {
             if (!userId) return [];
             return fetchSessionProblemIds(supabase, (await requireSession()).id);
@@ -560,6 +568,33 @@ export function createDownloadedTrainerDataSource(input: {
                 if (placement.problemNumber > max) max = placement.problemNumber;
             }
             return max >= 0 ? max + 1 : 0;
+        },
+        async getSeriesYearSpan(seriesId, scope) {
+            let min = Number.POSITIVE_INFINITY;
+            let max = Number.NEGATIVE_INFINITY;
+            for (const placement of await placements()) {
+                if (placement.series?.id !== seriesId) continue;
+                if (
+                    scope?.divisions.length &&
+                    (!placement.test?.division ||
+                        !scope.divisions.includes(placement.test.division))
+                ) {
+                    continue;
+                }
+                if (
+                    scope?.formats.length &&
+                    (!placement.test?.format ||
+                        !scope.formats.includes(placement.test.format))
+                ) {
+                    continue;
+                }
+                const year = placement.test?.year;
+                if (typeof year !== "number" || !Number.isInteger(year)) continue;
+                if (year < min) min = year;
+                if (year > max) max = year;
+            }
+            if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+            return { min, max };
         },
         async getSessionProblemIds() {
             const loaded = await repository.loadSession(manifest.userId, sessionId);

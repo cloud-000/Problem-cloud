@@ -2557,6 +2557,7 @@
                {seriesOptions}
                loadSeriesDimensions={trainerSource.getSeriesDimensions}
                loadSeriesNumberLine={trainerSource.getSeriesNumberLine}
+               loadSeriesYearSpan={trainerSource.getSeriesYearSpan}
                canReview={!!user}
                enabledModes={capabilities.modes}
                {isTest}

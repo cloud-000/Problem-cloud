@@ -197,6 +197,22 @@
             scopes[id] = {
                 divisions: [...(entry?.divisions ?? [])],
                 formats: [...(entry?.formats ?? [])],
+                ...(entry?.problemNumbers
+                    ? {
+                          problemNumbers: [
+                              entry.problemNumbers[0],
+                              entry.problemNumbers[1],
+                          ] as [number, number],
+                      }
+                    : {}),
+                ...(entry?.yearRange
+                    ? {
+                          yearRange: [
+                              entry.yearRange[0],
+                              entry.yearRange[1],
+                          ] as [number, number],
+                      }
+                    : {}),
             };
         }
         return {

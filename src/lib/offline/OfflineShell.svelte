@@ -118,6 +118,14 @@
                               ] as [number, number],
                           }
                         : {}),
+                    ...(scope.yearRange
+                        ? {
+                              yearRange: [
+                                  scope.yearRange[0],
+                                  scope.yearRange[1],
+                              ] as [number, number],
+                          }
+                        : {}),
                 },
             ]),
         );

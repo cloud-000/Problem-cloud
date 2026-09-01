@@ -153,6 +153,33 @@ describe("scope matching is placement-aware", () => {
         expect(placementMatchesScope(early, scoped)).toBe(false);
     });
 
+    test("a year range matches the placement year and does not leak", () => {
+        const recent = placement({ placementId: 6 });
+        const older = placement({
+            placementId: 7,
+            test: { ...recent.test!, year: 2015 },
+        });
+        const otherSeries = placement({
+            placementId: 8,
+            series: { id: 20, name: "AMC 12" },
+            test: { ...recent.test!, seriesId: 20, year: 2015 },
+        });
+        const scoped = {
+            topic: [],
+            seriesIds: ["10", "20"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    yearRange: [2020, 2024] as [number, number],
+                },
+            },
+        };
+        expect(placementMatchesScope(recent, scoped)).toBe(true);
+        expect(placementMatchesScope(older, scoped)).toBe(false);
+        expect(placementMatchesScope(otherSeries, scoped)).toBe(true);
+    });
+
     test("a canonical enters through any one of its placements", () => {
         const alias = candidate(102, {
             placements: [

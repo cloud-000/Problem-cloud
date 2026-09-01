@@ -51,13 +51,20 @@ export function scopeOf(raw: unknown): GoalScope {
                       ] as [number, number],
                   }
                 : {}),
+            ...(entry?.yearRange
+                ? {
+                      yearRange: [
+                          entry.yearRange[0],
+                          entry.yearRange[1],
+                      ] as [number, number],
+                  }
+                : {}),
         };
     }
     return {
         topic: [...(source.topic ?? [])],
         seriesIds: [...(source.seriesIds ?? [])],
         seriesScopes,
-        yearRange: source.yearRange ?? null,
     };
 }
 

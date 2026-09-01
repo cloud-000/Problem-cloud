@@ -81,9 +81,10 @@ export type PracticeSettings = {
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
     // Per-series test-level draw scope. Keyed by series id (string, matching
     // `seriesIds`); each entry narrows *that* series' draws to the chosen
-    // divisions, formats, and/or problem-number range (an empty axis = no
-    // narrowing on that axis). `problemNumbers` is 1-based inclusive
-    // (`problems.n + 1`); omit it for the full number line. Because
+    // divisions, formats, problem-number range, and/or year range (an empty
+    // axis = no narrowing on that axis). `problemNumbers` is 1-based inclusive
+    // (`problems.n + 1`); omit it for the full number line. `yearRange` is
+    // inclusive on `tests.year`; omit it for that series' full span. Because
     // division/format vocabulary is per-series, the draw is an OR-of-ANDs
     // across series (see {@link seriesScopeFilter}), so one series' "State"
     // never leaks onto another. Entries for series not in `seriesIds` are
@@ -96,6 +97,7 @@ export type PracticeSettings = {
             divisions: string[];
             formats: string[];
             problemNumbers?: [number, number];
+            yearRange?: [number, number];
         }
     >;
     // Problem-attribute filters — apply to every mode.
@@ -315,24 +317,6 @@ function scopesTests(settings: PracticeSettings): boolean {
     return (settings.seriesIds?.length ?? 0) > 0;
 }
 
-/**
- * Whether any selected series carries a division/format narrowing.
- *
- * Exported for the goals scope-contract test: the SQL resolver owns the
- * definition of scope matching and this filter is its mirror, so the test must
- * exercise this code rather than a copy of it (`docs/goals.md` §3).
- */
-export function hasSeriesScope(settings: PracticeSettings): boolean {
-    const scopes = settings.seriesScopes ?? {};
-    return (settings.seriesIds ?? []).some((id) => {
-        const scope = scopes[id];
-        return (
-            (scope?.divisions?.length ?? 0) > 0 ||
-            (scope?.formats?.length ?? 0) > 0
-        );
-    });
-}
-
 /** A stored 1-based problem-number pair that actually narrows that series. */
 function storedProblemNumbers(
     scope: { problemNumbers?: [number, number] } | undefined,
@@ -345,6 +329,39 @@ function storedProblemNumbers(
         return null;
     }
     return [lo, hi];
+}
+
+/** A stored inclusive year pair that actually narrows that series. */
+function storedYearRange(
+    scope: { yearRange?: [number, number] } | undefined,
+): [number, number] | null {
+    const range = scope?.yearRange;
+    if (!range) return null;
+    const lo = range[0];
+    const hi = range[1];
+    if (!Number.isInteger(lo) || !Number.isInteger(hi) || hi < lo) {
+        return null;
+    }
+    return [lo, hi];
+}
+
+/**
+ * Whether any selected series carries a division/format/year narrowing.
+ *
+ * Exported for the goals scope-contract test: the SQL resolver owns the
+ * definition of scope matching and this filter is its mirror, so the test must
+ * exercise this code rather than a copy of it (`docs/goals.md` §3).
+ */
+export function hasSeriesScope(settings: PracticeSettings): boolean {
+    const scopes = settings.seriesScopes ?? {};
+    return (settings.seriesIds ?? []).some((id) => {
+        const scope = scopes[id];
+        return (
+            (scope?.divisions?.length ?? 0) > 0 ||
+            (scope?.formats?.length ?? 0) > 0 ||
+            storedYearRange(scope) != null
+        );
+    });
 }
 
 /**
@@ -366,7 +383,7 @@ export type SeriesScopeFilterOptions = {
      * Build the problem-number OR body (`n` on the problems resource plus a
      * per-series empty-embed `not.is.null`). PostgREST cannot put `tests.series_id`
      * inside `and()` — after a table name the parser only accepts `not` or an
-     * operator — so series/division/format live on `{alias}:tests()` filters
+     * operator — so series/division/format/year live on `{alias}:tests()` filters
      * applied by {@link applySeriesScopeFilter}, not in this string.
      */
     qualifyForProblemNumbers?: boolean;
@@ -394,11 +411,12 @@ export function seriesScopeSelectAliases(settings: PracticeSettings): string {
 
 /**
  * The comma-separated OR body scoping a draw to the selected series, narrowing
- * each series by its own divisions/formats and optional problem-number range.
- * Because vocabulary is per-series, this is an OR-of-ANDs — one branch per
- * series, each requiring that series' id and (if set) its own narrowing — so a
- * division or #21–25 chosen for one series never applies to another. A series
- * with no narrowing contributes a bare `series_id.eq.N` branch.
+ * each series by its own divisions/formats and optional problem-number or year
+ * range. Because vocabulary is per-series, this is an OR-of-ANDs — one branch
+ * per series, each requiring that series' id and (if set) its own narrowing —
+ * so a division, #21–25, or 2010–2024 chosen for one series never applies to
+ * another. A series with no narrowing contributes a bare `series_id.eq.N`
+ * branch.
  *
  * When {@link hasProblemNumberScope} is true (or `qualifyForProblemNumbers` is
  * passed), the body is applied on the *problems* resource: `n` lives there, not
@@ -442,14 +460,19 @@ export function seriesScopeFilter(
             if (scope?.formats?.length) {
                 terms.push(`format.in.(${scope.formats.map(pgQuote).join(",")})`);
             }
+            const years = storedYearRange(scope);
+            if (years) {
+                terms.push(`year.gte.${years[0]}`, `year.lte.${years[1]}`);
+            }
             return terms.length === 1 ? terms[0] : `and(${terms.join(",")})`;
         })
         .join(",");
 }
 
 /**
- * Apply series / division / format / problem-number scope to a PostgREST query.
- * Shared with the goals scope-contract test so the two cannot drift.
+ * Apply series / division / format / problem-number / year scope to a
+ * PostgREST query. Shared with the goals scope-contract test so the two cannot
+ * drift.
  */
 export function applySeriesScopeFilter(
     query: any,
@@ -469,6 +492,10 @@ export function applySeriesScopeFilter(
             }
             if (scope?.formats?.length) {
                 next = next.in(`${col}.format`, scope.formats);
+            }
+            const years = storedYearRange(scope);
+            if (years) {
+                next = next.gte(`${col}.year`, years[0]).lte(`${col}.year`, years[1]);
             }
         }
         const body = seriesScopeFilter(settings, {

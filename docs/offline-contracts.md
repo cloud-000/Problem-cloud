@@ -61,6 +61,8 @@ type OfflineScope = {
             formats: string[];
             /** 1-based inclusive range (`problems.n + 1`); omit for the full number line. */
             problemNumbers?: [number, number];
+            /** Inclusive `[min, max]` on `tests.year`; omit for that series' full span. */
+            yearRange?: [number, number];
         }
     >;
 };
@@ -68,10 +70,9 @@ type OfflineScope = {
 type PackageState = "staging" | "ready" | "stale";
 ```
 
-`OfflineScope` deliberately omits `yearRange`. The SQL resolver accepts it, but
-the shared goal/practice UI does not author it yet. Add it here only when that
-shared UI contract changes. `problemNumbers` *is* authored by the Track (a 1-based
-inclusive range per series); omit it when the slider is the full number line.
+`yearRange` is an inclusive `[min, max]` on `tests.year` per selected series,
+authored by the Track the same way as `problemNumbers`; omit it when the slider
+is that series' full span. A year chosen for one series never filters another.
 
 IDs supplied by the browser are UUIDs generated with `crypto.randomUUID()`.
 Integer database IDs remain numbers within JavaScript's safe range; runtime
@@ -549,6 +550,7 @@ type PracticeQueryV1 = {
                 divisions: string[];
                 formats: string[];
                 problemNumbers?: [number, number];
+                yearRange?: [number, number];
             }
         >;
         ratingBand: [number, number] | null;
@@ -588,6 +590,8 @@ type BrowseQueryV1 = {
         formats?: string[];
         /** 1-based inclusive range (`problems.n + 1`); omit for the full number line. */
         problemNumbers?: [number, number];
+        /** Inclusive `[min, max]` on `tests.year`; only applied when `seriesId` is set. */
+        year?: [number, number];
     };
     offset: number;
     limit: number;
@@ -1208,7 +1212,6 @@ service worker, real IndexedDB lifecycle, restart, auth recovery, and retry.
 
 ## 11. Deferred contract extensions
 
-- `yearRange` in the shared scope/editor contract;
 - List, Skipped, and Mixed query members;
 - Review scheduling and provisional SM-2 policy;
 - Test-mode ordered placements and atomic final submission;
