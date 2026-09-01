@@ -2,9 +2,12 @@
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
     import { Input } from "$lib/components/input";
+    import { getAuthForm } from "../form-state";
     import type { ActionData } from "./$types";
 
     let { data, form }: { data: { oauthMessage: string | null }; form: ActionData } = $props();
+
+    const authForm = getAuthForm();
 </script>
 
 <svelte:head><title>Log in — ProblemCloud</title></svelte:head>
@@ -44,9 +47,9 @@
     <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form?.message ?? data.oauthMessage}</p>
 {/if}
 
-<Button type="submit" size="lg" class="w-full">Log in</Button>
+<Button type="submit" size="lg" class="w-full" disabled={authForm.submitting}>Log in</Button>
 
-<Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" data-sveltekit-reload>
+<Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" disabled={authForm.submitting} data-sveltekit-reload>
     Continue with Google
 </Button>
 

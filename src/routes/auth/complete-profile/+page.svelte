@@ -1,9 +1,12 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Input } from "$lib/components/input";
+    import { getAuthForm } from "../form-state";
     import type { ActionData, PageData } from "./$types";
 
     let { data, form }: { data: PageData; form: ActionData } = $props();
+
+    const authForm = getAuthForm();
 </script>
 
 <svelte:head><title>Choose a username — ProblemCloud</title></svelte:head>
@@ -31,4 +34,4 @@
     <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form?.message ?? data.message}</p>
 {/if}
 
-<Button type="submit" size="lg" class="w-full">Continue</Button>
+<Button type="submit" size="lg" class="w-full" disabled={authForm.submitting}>Continue</Button>

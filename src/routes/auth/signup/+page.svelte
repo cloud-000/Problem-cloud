@@ -4,9 +4,12 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
+    import { getAuthForm } from "../form-state";
     import type { ActionData } from "./$types";
 
     let { form }: { form: ActionData } = $props();
+
+    const authForm = getAuthForm();
 
     let password = $state("");
     let passwordConfirm = $state("");
@@ -123,9 +126,9 @@
         <p role="alert" class="border-l-2 border-error px-3 py-2 type-secondary text-error">{form.message}</p>
     {/if}
 
-    <Button type="submit" size="lg" class="w-full">Create account</Button>
+    <Button type="submit" size="lg" class="w-full" disabled={authForm.submitting}>Create account</Button>
 
-    <Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" data-sveltekit-reload>
+    <Button type="submit" formaction="?/google" formnovalidate variant="outline" size="lg" class="w-full" disabled={authForm.submitting} data-sveltekit-reload>
         Sign up with Google
     </Button>
 
