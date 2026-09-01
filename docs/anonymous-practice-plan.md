@@ -1,6 +1,6 @@
 # Guest Practice Plan
 
-> **Status:** proposed — not implemented.
+> **Status:** Phase 0 complete; Phases 1–3 proposed.
 >
 > **Goal:** let a visitor start solving immediately, retain their work in the
 > current browser, and convert that work into a durable account when they choose
@@ -253,12 +253,10 @@ the rest of the pipeline.
 
 ### Phase 0 — instrumentation and threat inventory
 
-- Inventory every authenticated table, policy, RPC, SvelteKit endpoint, and app
-  route; classify each as guest-allowed or account-only.
-- Define analytics events: guest created, first problem shown, first submission,
-  first solve, prompt shown/dismissed, quota reached, upgrade
-  started/completed/failed, and confirmed guest discard.
-- Assign the cleanup job and abuse-monitoring operational owner.
+- Complete. See [the Phase 0 inventory](./anonymous-practice-phase-0.md) for
+  the table/policy/RPC/endpoint/route classification, analytics contract, and
+  operational ownership. It deliberately does not enable anonymous sign-ins or
+  introduce guest behavior.
 
 ### Phase 1 — safe guest practice
 
