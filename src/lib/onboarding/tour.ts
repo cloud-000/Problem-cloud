@@ -37,7 +37,7 @@ export const TOUR_STEPS: TourStep[] = [
     {
         id: "trainer",
         title: "Practice",
-        body: "The loop. Whiteboard, Coach, and settings live in the top bar.",
+        body: "The loop. Coach sits where the answer box does — switch with Answer / Coach. Whiteboard and settings live in the top bar.",
     },
 ];
 
