@@ -25,6 +25,7 @@ declare global {
             supabase?: SupabaseClient<Database>;
             user?: User | null;
             profile?: Database["public"]["Tables"]["profiles"]["Row"] | null;
+            hostedAllowance?: import("./lib/ai/hosted-allowance").HostedAllowance | null;
         }
     }
 }

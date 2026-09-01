@@ -155,9 +155,17 @@ at promotion and the next send writes into the same conversation.
 
 ## 2. Schema
 
-Only `ai_conversations` and `ai_messages` change. Declarative source of truth is
-`supabase/schemas/ai_coach.sql`; use the CLI diff/migration flow, then regenerate
-`src/lib/types/database.types.ts`.
+Declarative source of truth is `supabase/schemas/ai_coach.sql`; use the CLI
+diff/migration flow, then regenerate `src/lib/types/database.types.ts`.
+
+`ai_conversations` / `ai_messages` are the persisted-thread tables. Hosted
+allowance is a separate table, `ai_hosted_usage` — one row per `(user_id,
+period_start)` with `credits` (server-derived units already spent) and `turns`.
+The picker exposes one hosted offer (`hosted:auto`); the OpenRouter fallback
+list stays on the server in `hosted-plan.ts`. Clients may read their own row; remaining allowance is shown in the profile
+menu (`Usage N% remaining`) and on `/usage`. Limits stay server-side.
+`reserve_ai_hosted_turn` and `add_ai_hosted_credits` are service-role only.
+BYOK turns never touch it.
 
 ```sql
 alter table public.ai_conversations

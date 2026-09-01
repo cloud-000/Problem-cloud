@@ -185,6 +185,11 @@ export const AI_PROVIDER_PRESETS: Record<AIPresetId, AIProviderPreset> = {
                 tags: ["general"],
                 capabilities: MULTIMODAL,
             },
+            "openai/gpt-4o-mini": {
+                label: "GPT-4o mini",
+                tags: ["fast"],
+                capabilities: MULTIMODAL,
+            },
             "openai/o3": {
                 label: "o3",
                 description: "Deliberate reasoning; strongest on hard math.",

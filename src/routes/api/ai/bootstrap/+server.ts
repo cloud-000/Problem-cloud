@@ -5,6 +5,7 @@ import { parseBootstrap } from "$lib/ai/schemas";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import { catalogFor } from "$lib/ai/catalog";
 import { providerRegistry } from "$lib/server/ai/providers/registry";
+import { catalogWithHostedQuota } from "$lib/server/ai/hosted-usage";
 import { preferencesFor } from "$lib/server/ai/persistence";
 import { assertRateLimit, requireAIUser, stableError } from "$lib/server/ai/security";
 
@@ -20,7 +21,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
     try {
         const [{ providers, models }, preferences] = await Promise.all([
-            catalogFor(providerRegistry()),
+            catalogFor(providerRegistry()).then((catalog) => catalogWithHostedQuota(user.id, catalog)),
             preferencesFor(user.id),
         ]);
         // No server-owned connection is a normal state, not a failure: the user's own

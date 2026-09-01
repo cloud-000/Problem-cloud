@@ -9,10 +9,12 @@
 import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
+import { hostedAllowanceFor } from "$lib/server/ai/hosted-usage";
 
 export const load: LayoutServerLoad = async ({
     locals: { safeGetSession, supabase },
     cookies,
+    depends,
 }) => {
     const { session, user } = await safeGetSession();
 
@@ -46,11 +48,14 @@ export const load: LayoutServerLoad = async ({
         }
     }
 
+    depends("ai:hosted-usage");
+
     return {
         session,
         user,
         profile,
         cookies: cookies.getAll(),
         aiCoachEnabled: Boolean(user && aiCoachEnabled()),
+        hostedAllowance: user ? await hostedAllowanceFor(user.id) : null,
     };
 };

@@ -69,6 +69,15 @@ describe("AI runtime schemas", () => {
         expect(() => parseChatRequest({ model: "auto", message: "   " })).toThrow(AISchemaError);
     });
 
+    test("drops client-supplied providerOptions so OpenRouter extras cannot be spoofed", () => {
+        const parsed = parseChatRequest({
+            model: "hosted:auto",
+            message: "Hello",
+            providerOptions: { hosted: { models: ["evil/model"] } },
+        });
+        expect(parsed).not.toHaveProperty("providerOptions");
+    });
+
     test("accepts vendor-namespaced model references", () => {
         for (const reference of [
             "openai:gpt-4o",
@@ -139,8 +148,9 @@ describe("AI runtime schemas", () => {
             baseURL: "https://api.openai.com/v1",
             apiKey: "sk-secret",
         };
-        // "mock" is reserved for the built-in mock adapter.
+        // "mock" and "hosted" are reserved for server-owned adapters.
         expect(() => parseCredentialEnvelope([{ ...valid, id: "mock" }])).toThrow(AISchemaError);
+        expect(() => parseCredentialEnvelope([{ ...valid, id: "hosted" }])).toThrow(AISchemaError);
         expect(() => parseCredentialEnvelope([{ ...valid, id: "Not Valid" }])).toThrow(
             AISchemaError,
         );

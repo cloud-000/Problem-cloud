@@ -30,10 +30,10 @@ import type { AIProviderAdapter } from "./types";
  * Every preset and every custom endpoint runs through this single class — they differ
  * only by id, label, and base URL.
  *
- * Nothing in this file may log or return the API key: `blockingMessage`, model
- * metadata, and error text are all rendered to the user, and provider error bodies
- * sometimes echo the request (or a key prefix) back. Error messages are therefore
- * fixed per code and never taken from the provider.
+ * User-facing error text is fixed per code and never taken from the provider —
+ * bodies sometimes echo the request (or a key prefix). The raw payload is
+ * logged, with secrets stripped, so a hosted failure is visible in the server
+ * terminal and a BYOK failure in the browser console.
  */
 
 export interface OpenAICompatAdapterOptions {
@@ -48,8 +48,44 @@ interface ErrorMapping {
     retryable: boolean;
 }
 
+function redactSecrets(text: string, secrets: string[]): string {
+    let out = text;
+    for (const secret of secrets) {
+        if (secret.length >= 8) out = out.split(secret).join("[redacted]");
+    }
+    return out.replace(/sk-[a-zA-Z0-9_-]{8,}/g, "[redacted]");
+}
+
+function providerErrorSnapshot(error: unknown): unknown {
+    if (error instanceof AnyModelError) {
+        return {
+            name: error.name,
+            message: error.message,
+            provider: error.provider,
+            statusCode: error.statusCode,
+            isRetryable: error.isRetryable,
+            raw: error.raw,
+        };
+    }
+    if (error instanceof Error) return { name: error.name, message: error.message };
+    return { value: String(error) };
+}
+
+function logProviderError(error: unknown, apiKey: string): void {
+    if (isAbort(error)) return;
+    try {
+        console.error(
+            "[ai] provider error",
+            redactSecrets(JSON.stringify(providerErrorSnapshot(error)), [apiKey]),
+        );
+    } catch {
+        console.error("[ai] provider error", error instanceof Error ? error.name : "unknown");
+    }
+}
+
 /** Provider failures, normalized to codes the Coach client already handles. */
-function mapError(error: unknown): ErrorMapping {
+function mapError(error: unknown, apiKey: string): ErrorMapping {
+    logProviderError(error, apiKey);
     if (error instanceof AuthError) {
         return {
             code: "connection_needs_reauth",
@@ -267,9 +303,14 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                 };
 
                 try {
+                    // `providerOptions[this.id]` is any-model's extra-body hatch
+                    // (OpenRouter `models` fallbacks). Unknown keys are ignored.
                     const providerStream = model.stream({
                         messages,
                         abortSignal: request.signal,
+                        ...(request.providerOptions
+                            ? { providerOptions: request.providerOptions }
+                            : {}),
                     });
                     if (request.debug) {
                         send({
@@ -331,7 +372,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                             }
                             case "error": {
                                 finished = true;
-                                const mapped = mapError(part.error);
+                                const mapped = mapError(part.error, this.#credential.apiKey);
                                 send({ type: "error", messageId, ...mapped });
                                 finish({ inputTokens: 0, outputTokens: 0 }, "failed");
                                 return;
@@ -361,7 +402,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                         controller.error(new DOMException("The operation was aborted", "AbortError"));
                         return;
                     }
-                    const mapped = mapError(error);
+                    const mapped = mapError(error, this.#credential.apiKey);
                     send({ type: "error", messageId, ...mapped });
                     finish({ inputTokens: 0, outputTokens: 0 }, "failed");
                 }

@@ -7,7 +7,10 @@
 -- directly to their provider — the server never receives one. Turns streamed that way
 -- are saved afterwards via POST /api/ai/messages, which is why ai_messages stays
 -- service-role-only. See src/lib/state/ai-credentials.svelte.ts.
--- Usage and action runs remain deferred.
+--
+-- The first-party hosted connection is the exception that *does* spend a key the
+-- server owns (env, never a column). Its allowance is ai_hosted_usage below;
+-- BYOK turns never touch that table. Action runs remain deferred.
 
 create table public.ai_preferences (
   user_id          uuid primary key references public.profiles(id) on delete cascade,
@@ -144,3 +147,117 @@ grant select on public.ai_messages to authenticated;
 grant all on public.ai_preferences to service_role;
 grant all on public.ai_conversations to service_role;
 grant all on public.ai_messages to service_role;
+
+-- Hosted Coach allowance. One row per user per billing window. `credits` are
+-- dimensionless units the server derives from token usage (weights live in env,
+-- not here) so a limit can be retuned without a migration; `turns` is the
+-- cheaper cap that bounds request fan-out even when a provider omits usage.
+-- Clients may read their own row; every write is service-role via the RPCs
+-- below so a browser cannot mint free allowance.
+create table public.ai_hosted_usage (
+  user_id       uuid not null references public.profiles(id) on delete cascade,
+  period_start  date not null,
+  credits       integer not null default 0 check (credits >= 0),
+  turns         integer not null default 0 check (turns >= 0),
+  primary key (user_id, period_start)
+);
+
+alter table public.ai_hosted_usage enable row level security;
+
+create policy "Users can read their own hosted Coach usage."
+  on public.ai_hosted_usage for select to authenticated
+  using (auth.uid() = user_id);
+
+revoke all on public.ai_hosted_usage from anon, authenticated;
+grant select on public.ai_hosted_usage to authenticated;
+grant all on public.ai_hosted_usage to service_role;
+
+-- Atomically spend one turn if the row is still under both caps. Limits are
+-- arguments (from server env) so they are not spoofable from the client and
+-- do not belong on the row. Returns the row after the increment, or no row
+-- when the user is already at a cap — the in-flight turn is allowed to push
+-- credits over the limit; the next reserve is what stops.
+create or replace function public.reserve_ai_hosted_turn(
+  p_user_id uuid,
+  p_period_start date,
+  p_credit_limit integer,
+  p_turn_limit integer
+) returns table (
+  credits integer,
+  turns integer,
+  period_start date
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_user_id is null then
+    raise exception 'AI_HOSTED_USAGE:user required';
+  end if;
+  if p_period_start is null then
+    raise exception 'AI_HOSTED_USAGE:period required';
+  end if;
+  if p_credit_limit is null or p_credit_limit < 0
+     or p_turn_limit is null or p_turn_limit < 0 then
+    raise exception 'AI_HOSTED_USAGE:limits must be non-negative';
+  end if;
+
+  insert into public.ai_hosted_usage (user_id, period_start, credits, turns)
+  values (p_user_id, p_period_start, 0, 0)
+  on conflict on constraint ai_hosted_usage_pkey do nothing;
+
+  return query
+  update public.ai_hosted_usage as usage
+     set turns = usage.turns + 1
+   where usage.user_id = p_user_id
+     and usage.period_start = p_period_start
+     and usage.turns < p_turn_limit
+     and usage.credits < p_credit_limit
+  returning usage.credits, usage.turns, usage.period_start;
+end;
+$$;
+
+-- Records credits for a turn that already reserved. An in-flight reply may
+-- push the balance over the credit cap; reserve_ai_hosted_turn is what
+-- refuses the next one.
+create or replace function public.add_ai_hosted_credits(
+  p_user_id uuid,
+  p_period_start date,
+  p_credits integer
+) returns public.ai_hosted_usage
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  updated public.ai_hosted_usage;
+begin
+  if p_user_id is null then
+    raise exception 'AI_HOSTED_USAGE:user required';
+  end if;
+  if p_period_start is null then
+    raise exception 'AI_HOSTED_USAGE:period required';
+  end if;
+  if p_credits is null or p_credits < 0 then
+    raise exception 'AI_HOSTED_USAGE:credits must be non-negative';
+  end if;
+
+  insert into public.ai_hosted_usage as usage (user_id, period_start, credits, turns)
+  values (p_user_id, p_period_start, p_credits, 0)
+  on conflict (user_id, period_start)
+  do update set credits = usage.credits + excluded.credits
+  returning * into updated;
+
+  return updated;
+end;
+$$;
+
+revoke all on function public.reserve_ai_hosted_turn(uuid, date, integer, integer)
+  from public, anon, authenticated;
+revoke all on function public.add_ai_hosted_credits(uuid, date, integer)
+  from public, anon, authenticated;
+grant execute on function public.reserve_ai_hosted_turn(uuid, date, integer, integer)
+  to service_role;
+grant execute on function public.add_ai_hosted_credits(uuid, date, integer)
+  to service_role;

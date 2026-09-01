@@ -143,6 +143,12 @@ class CoachStore {
     #abortController: AbortController | null = null;
     /** The bootstrap request in flight, so concurrent callers join it instead of racing it. */
     #initializing: Promise<void> | null = null;
+    /**
+     * `initialize()` that landed before the layout's `$effect` called `configure(true)`.
+     * Child `onMount` flushes first; returning there used to leave the Coach on
+     * "Connect Coach" until the user pressed Retry.
+     */
+    #enableGate: PromiseWithResolvers<void> | null = null;
     #lastPrompt = "";
     #contextClient: SupabaseClient<Database> | null = null;
     #reconstructingRequest: { generation: number; promise: Promise<void> } | null = null;
@@ -246,6 +252,10 @@ class CoachStore {
 
     configure(enabled: boolean): void {
         this.enabled = enabled;
+        if (this.#enableGate) {
+            this.#enableGate.resolve();
+            this.#enableGate = null;
+        }
     }
 
     /**
@@ -396,7 +406,15 @@ class CoachStore {
      * and a null bootstrap reads as "saving is off".
      */
     async initialize(force = false): Promise<void> {
-        if (!this.enabled) return;
+        if (!this.enabled) {
+            this.loading = true;
+            this.#enableGate ??= Promise.withResolvers();
+            await this.#enableGate.promise;
+            if (!this.enabled) {
+                this.loading = false;
+                return;
+            }
+        }
         if (this.#initializing) {
             await this.#initializing;
             if (!force) return;
@@ -423,8 +441,11 @@ class CoachStore {
             // The dev mock exists so the Coach works with zero configuration, and it
             // advertises tool support no real model has. Left in the catalog alongside a
             // real connection, `auto` routing would always prefer it — so it stands down
-            // as soon as the user has a connection of their own.
-            const standDownMock = clientCatalog.providers.length > 0;
+            // as soon as the user has a connection of their own, or the server offers
+            // the first-party hosted connection.
+            const standDownMock =
+                clientCatalog.providers.length > 0 ||
+                server.connections.some((connection) => connection.id !== MOCK_PROVIDER_ID);
             const serverConnections = standDownMock
                 ? server.connections.filter((connection) => connection.id !== MOCK_PROVIDER_ID)
                 : server.connections;

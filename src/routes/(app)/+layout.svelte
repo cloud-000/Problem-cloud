@@ -43,9 +43,11 @@
    import { offlineSyncStatus, startForegroundOfflineSync } from "$lib/offline/sync";
    import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
    import { offlineMode } from "$lib/state/offline-mode.svelte";
+   import { hostedUsageMenuLabel } from "$lib/ai/hosted-allowance";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
+   let hostedAllowance = $derived(data.hostedAllowance ?? null);
    let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled && session));
    let coachFabVisible = $derived(
       aiCoachEnabled &&
@@ -191,6 +193,14 @@
          icon: "settings",
          onclick: () => goto(resolve("/settings")),
       });
+      if (hostedAllowance) {
+         list.push({
+            label: hostedUsageMenuLabel(hostedAllowance.remainingPct),
+            icon: "data_usage",
+            color: hostedAllowance.remainingPct === 0 ? "text-destructive" : undefined,
+            onclick: () => goto(resolve("/usage")),
+         });
+      }
       list.push({
          label: "Help",
          icon: "help",
@@ -258,6 +268,7 @@
       routeMatches(page.url.pathname, "/settings") ||
          routeMatches(page.url.pathname, "/help") ||
          routeMatches(page.url.pathname, "/offline") ||
+         routeMatches(page.url.pathname, "/usage") ||
          routeMatches(page.url.pathname, "/admin") ||
          routeMatches(page.url.pathname, "/testing-features"),
    );

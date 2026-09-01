@@ -260,6 +260,35 @@ export type Database = {
           },
         ]
       }
+      ai_hosted_usage: {
+        Row: {
+          credits: number
+          period_start: string
+          turns: number
+          user_id: string
+        }
+        Insert: {
+          credits?: number
+          period_start: string
+          turns?: number
+          user_id: string
+        }
+        Update: {
+          credits?: number
+          period_start?: string
+          turns?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_hosted_usage_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_messages: {
         Row: {
           content_parts: Json
@@ -1900,6 +1929,21 @@ export type Database = {
       }
     }
     Functions: {
+      add_ai_hosted_credits: {
+        Args: { p_credits: number; p_period_start: string; p_user_id: string }
+        Returns: {
+          credits: number
+          period_start: string
+          turns: number
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_hosted_usage"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_recompute_ratings: { Args: never; Returns: Json }
       backfill_content_sync_keys: { Args: never; Returns: undefined }
       canonicalize_existing_user_data: {
@@ -2140,6 +2184,19 @@ export type Database = {
         Returns: undefined
       }
       recompute_ratings: { Args: never; Returns: Json }
+      reserve_ai_hosted_turn: {
+        Args: {
+          p_credit_limit: number
+          p_period_start: string
+          p_turn_limit: number
+          p_user_id: string
+        }
+        Returns: {
+          credits: number
+          period_start: string
+          turns: number
+        }[]
+      }
       resolve_content_answer_status: {
         Args: {
           answer_index: number

@@ -43,6 +43,13 @@ export type AIPresetId = "openai" | "groq" | "deepseek" | "together" | "openrout
 export const MOCK_PROVIDER_ID = "mock";
 
 /**
+ * The first-party hosted connection's provider id. Reserved: a user connection
+ * may never claim it. Requests for its models always go through `/api/ai/chat`,
+ * which is what keeps the server's key off the client.
+ */
+export const HOSTED_PROVIDER_ID = "hosted";
+
+/**
  * A user-supplied connection, sent from the browser on every AI request and used
  * in memory for the lifetime of that request only. Keys are held in the browser
  * (see `$lib/state/ai-credentials.svelte`); the server never persists, logs, or
@@ -225,6 +232,11 @@ export interface NormalizedAIRequest {
     debug?: boolean;
     signal?: AbortSignal;
     scenario?: AIMockScenario;
+    /**
+     * any-model `providerOptions`, keyed by provider id. Hosted uses this for
+     * OpenRouter's `models` fallback array. Never parsed from the client body.
+     */
+    providerOptions?: Record<string, Record<string, unknown>>;
 }
 
 export interface AIProviderMessage {

@@ -158,6 +158,35 @@ describe("any-model provider adapter", () => {
         expect(events.at(-1)).toMatchObject({ type: "message.done", status: "complete" });
     });
 
+    test("spreads providerOptions into the OpenAI-compatible body", async () => {
+        let body: Record<string, unknown> | undefined;
+        const adapter = new OpenAICompatAdapter({
+            credential,
+            fetchImpl: async (input, init) => {
+                if (String(input).endsWith("/models")) {
+                    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+                }
+                body = JSON.parse(String(init?.body));
+                return sse(delta("ok", "stop"));
+            },
+        });
+
+        await collect(
+            await adapter.stream(
+                request({
+                    providerOptions: {
+                        openai: { models: ["gpt-4.1-mini"], route: "fallback" },
+                    },
+                }),
+            ),
+        );
+        expect(body).toMatchObject({
+            model: "gpt-4o",
+            models: ["gpt-4.1-mini"],
+            route: "fallback",
+        });
+    });
+
     test("captures the exact finalized message list when debugging is requested", async () => {
         const adapter = new OpenAICompatAdapter({
             credential,
@@ -311,22 +340,34 @@ describe("any-model provider adapter", () => {
     });
 
     test("maps a rejected key to a non-retryable reauth error without echoing the provider", async () => {
-        const adapter = new OpenAICompatAdapter({
-            credential,
-            fetchImpl: fakeFetch({
-                completion: () =>
-                    new Response(JSON.stringify({ error: { message: "Bad key sk-test-key" } }), {
-                        status: 401,
-                    }),
-            }),
-        });
+        const logged: string[] = [];
+        const original = console.error;
+        console.error = (...args: unknown[]) => {
+            logged.push(args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "));
+        };
+        try {
+            const adapter = new OpenAICompatAdapter({
+                credential,
+                fetchImpl: fakeFetch({
+                    completion: () =>
+                        new Response(JSON.stringify({ error: { message: "Bad key sk-test-key" } }), {
+                            status: 401,
+                        }),
+                }),
+            });
 
-        const events = await collect(await adapter.stream(request()));
-        const error = events.find((event) => event.type === "error");
-        expect(error).toMatchObject({ code: "connection_needs_reauth", retryable: false });
-        expect(events.at(-1)).toMatchObject({ type: "message.done", status: "failed" });
-        // Provider error bodies can quote the request, and the key with it.
-        expect(JSON.stringify(events)).not.toContain("sk-test-key");
+            const events = await collect(await adapter.stream(request()));
+            const error = events.find((event) => event.type === "error");
+            expect(error).toMatchObject({ code: "connection_needs_reauth", retryable: false });
+            expect(events.at(-1)).toMatchObject({ type: "message.done", status: "failed" });
+            // Provider error bodies can quote the request, and the key with it.
+            expect(JSON.stringify(events)).not.toContain("sk-test-key");
+            expect(logged.join("\n")).toContain("[ai] provider error");
+            expect(logged.join("\n")).toContain("Bad key");
+            expect(logged.join("\n")).not.toContain("sk-test-key");
+        } finally {
+            console.error = original;
+        }
     });
 
     test("maps rate limiting to a retryable error", async () => {

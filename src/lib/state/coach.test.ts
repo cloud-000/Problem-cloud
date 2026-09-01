@@ -417,6 +417,92 @@ describe("coach bootstrap ownership", () => {
         expect(bootstrapCalls).toBe(1);
         expect(coach.initialized).toBe(true);
     });
+
+    test("the mock stands down once the server offers a hosted connection", async () => {
+        const capabilities = {
+            chat: true,
+            streaming: true,
+            tools: false,
+            vision: false,
+            structuredOutput: false,
+        };
+        bootstrapPayload = {
+            enabled: true,
+            connections: [
+                {
+                    id: "mock",
+                    label: "Mock",
+                    authMethods: ["hosted"],
+                    capabilities: { ...capabilities, tools: true, structuredOutput: true },
+                    connectionState: "connected",
+                },
+                {
+                    id: "hosted",
+                    label: "ProblemCloud",
+                    authMethods: ["hosted"],
+                    capabilities,
+                    connectionState: "connected",
+                },
+            ],
+            models: [
+                {
+                    reference: "mock:coach-standard",
+                    providerId: "mock",
+                    id: "coach-standard",
+                    label: "Coach Standard",
+                    capabilities: { ...capabilities, structuredOutput: true },
+                    tags: [],
+                    available: true,
+                },
+                {
+                    reference: "hosted:auto",
+                    providerId: "hosted",
+                    id: "auto",
+                    label: "Auto",
+                    capabilities,
+                    tags: [],
+                    available: true,
+                },
+            ],
+            defaultModel: "auto",
+            historyEnabled: true,
+        };
+        await coach.initialize(true);
+        expect(coach.bootstrap?.connections.map((connection) => connection.id)).toEqual(["hosted"]);
+        expect(coach.bootstrap?.models.map((model) => model.reference)).toEqual(["hosted:auto"]);
+        bootstrapPayload = BOOTSTRAP;
+    });
+
+    test("initialize waits for configure instead of no-opping while disabled", async () => {
+        // Refresh: the panel's onMount runs before the layout `$effect` that
+        // calls configure(true). Returning here used to stick the gate on
+        // "Connect Coach" until Retry.
+        coach.configure(false);
+        coach.initialized = false;
+        coach.bootstrap = null;
+        coach.error = null;
+        const calls = bootstrapCalls;
+        const pending = coach.initialize();
+        expect(bootstrapCalls).toBe(calls);
+        expect(coach.loading).toBe(true);
+        expect(coach.initialized).toBe(false);
+        coach.configure(true);
+        await pending;
+        expect(bootstrapCalls).toBe(calls + 1);
+        expect(coach.initialized).toBe(true);
+        expect(coach.loading).toBe(false);
+    });
+
+    test("configure(false) does not leave a waiting initialize hung", async () => {
+        coach.configure(false);
+        coach.initialized = false;
+        coach.bootstrap = null;
+        const pending = coach.initialize();
+        coach.configure(false);
+        await pending;
+        expect(coach.initialized).toBe(false);
+        expect(coach.loading).toBe(false);
+    });
 });
 
 const CONNECTED_BYOK = {

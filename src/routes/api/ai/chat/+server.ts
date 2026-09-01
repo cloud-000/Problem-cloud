@@ -1,7 +1,14 @@
 import type { RequestHandler } from "./$types";
 import { AISchemaError, parseChatRequest } from "$lib/ai/schemas";
-import type { AIEphemeralMessage, AIUsage, NormalizedAIEvent, NormalizedAIMessage } from "$lib/ai/types";
+import {
+    HOSTED_PROVIDER_ID,
+    type AIEphemeralMessage,
+    type AIUsage,
+    type NormalizedAIEvent,
+    type NormalizedAIMessage,
+} from "$lib/ai/types";
 import { aiCoachEnabled } from "$lib/server/ai/config";
+import { hostedLimits } from "$lib/server/ai/hosted-plan";
 import { catalogFor } from "$lib/ai/catalog";
 import { AIModelRoutingError, resolveModel } from "$lib/ai/router";
 import {
@@ -15,6 +22,12 @@ import {
 } from "$lib/server/ai/persistence";
 import { AIContextResolutionError } from "$lib/ai/context/resolve";
 import { providerRegistry } from "$lib/server/ai/providers/registry";
+import {
+    addAiHostedCredits,
+    creditsFromUsage,
+    HOSTED_QUOTA_MESSAGE,
+    reserveAiHostedTurn,
+} from "$lib/server/ai/hosted-usage";
 import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
 import { encodeEventStream } from "$lib/server/ai/stream";
 
@@ -90,6 +103,12 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             body.contextSnapshot,
             history,
         );
+        if (provider.id === HOSTED_PROVIDER_ID) {
+            const reserved = await reserveAiHostedTurn(user.id);
+            if (!reserved.allowed) {
+                return stableError("quota_exhausted", HOSTED_QUOTA_MESSAGE, 429);
+            }
+        }
         const providerStream = await provider.stream({
             requestId: crypto.randomUUID(),
             conversationId,
@@ -126,6 +145,11 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             });
         };
 
+        const settleHosted = async () => {
+            if (provider.id !== HOSTED_PROVIDER_ID) return;
+            await addAiHostedCredits(user.id, creditsFromUsage(usage ?? { inputTokens: 0, outputTokens: 0 }, hostedLimits()));
+        };
+
         const stream = encodeEventStream(
             providerStream,
             (event: NormalizedAIEvent) => {
@@ -145,7 +169,13 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
                     status = event.status;
                 }
             },
-            persist,
+            async () => {
+                try {
+                    await persist();
+                } finally {
+                    await settleHosted();
+                }
+            },
         );
 
         return new Response(stream, {

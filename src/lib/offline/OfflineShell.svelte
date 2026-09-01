@@ -657,7 +657,7 @@
     {#if embedded}
         {@render presentationContent()}
     {:else}
-        <AppLayout data={{ supabase, session: null, user: null, profile: null, aiCoachEnabled: false } as never}>
+        <AppLayout data={{ supabase, session: null, user: null, profile: null, aiCoachEnabled: false, hostedAllowance: null } as never}>
             {@render presentationContent()}
         </AppLayout>
     {/if}

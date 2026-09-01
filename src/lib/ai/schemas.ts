@@ -1,5 +1,5 @@
 import { AI_PRESET_IDS, presetFor } from "./presets";
-import { MOCK_PROVIDER_ID } from "./types";
+import { HOSTED_PROVIDER_ID, MOCK_PROVIDER_ID } from "./types";
 import { COACH_THREAD_KINDS, type CoachThreadKind } from "./session/tier";
 import type {
     AIAgentPermissions,
@@ -268,8 +268,11 @@ export function parseConnectionCredential(value: unknown): AIConnectionCredentia
     if (!CONNECTION_ID_PATTERN.test(id)) {
         throw new AISchemaError("connection id must be lowercase letters, digits, _ or -");
     }
-    // Reserved for the server-owned development mock.
-    if (id === MOCK_PROVIDER_ID) throw new AISchemaError("connection id is reserved");
+    // Reserved for the server-owned development mock and the first-party hosted
+    // connection. A user credential claiming either would collide in the catalog.
+    if (id === MOCK_PROVIDER_ID || id === HOSTED_PROVIDER_ID) {
+        throw new AISchemaError("connection id is reserved");
+    }
 
     const preset = oneOf<AIPresetId>(input.preset, "connection preset", AI_PRESET_IDS);
 
