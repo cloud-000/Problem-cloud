@@ -181,7 +181,20 @@ guest restriction.
 
 At minimum, restrict:
 
-- AI Coach and all server-side AI persistence endpoints;
+- AI Coach and all server-side AI persistence endpoints. Make this a single
+  server-side boundary: change the shared AI authorization helper from
+  "authenticated user required" to "non-anonymous registered user required,"
+  using the JWT-validated `User.is_anonymous` value. Every `/api/ai/*` handler
+  must use that helper and return a stable account-required response (for
+  example, `403 account_required`) before hosted-model access, allowance
+  reservation, model discovery, conversation reads, or persistence. Do not
+  rely on hiding Coach controls: guest navigation and UI must also omit Coach,
+  but the endpoint check is the enforcement point.
+- BYOK is necessarily a product boundary rather than a network boundary: a
+  guest must not be able to use ProblemCloud's Coach UI, hosted key, allowance,
+  or AI persistence, but a browser user can always call an external AI provider
+  directly with their own credentials. This is not a ProblemCloud AI exploit
+  and must not motivate proxying BYOK keys through our server.
 - offline package creation and sync, including directly callable offline RPCs;
 - goals, account preferences, feedback, and notification-read writes;
 - `claim_profile_username`, profile preferences, roadmap votes, and
