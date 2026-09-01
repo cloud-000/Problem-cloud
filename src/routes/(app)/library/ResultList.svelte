@@ -44,6 +44,7 @@
         loading,
         error,
         isInstantFeedback = false,
+        contained = false,
         onEndReached,
         resetKey,
         onRetry,
@@ -54,6 +55,11 @@
         loading: boolean;
         error: string | null;
         isInstantFeedback?: boolean;
+        /**
+         * Stay on this surface: no practice launch, AoPS menus, or Coach Ask.
+         * The tour's Library mock uses this so the real rows cannot leave the tour.
+         */
+        contained?: boolean;
         onEndReached?: () => void;
         resetKey?: unknown;
         onRetry?: () => void;
@@ -115,6 +121,7 @@
      * says which problem this page is talking about.
      */
     $effect(() => {
+        if (contained) return;
         if (coachShowing) return;
         void coach.releaseWorkAnchor(LIBRARY_WORK);
     });
@@ -123,6 +130,7 @@
     // session-less anchor because that slot is this page's alone — the trainer's anchors
     // always carry a session, and releasing one of those from here would retire it.
     onDestroy(() => {
+        if (contained) return;
         if (coach.workAnchor?.practiceSessionId === null) {
             void coach.releaseWorkAnchor(LIBRARY_WORK);
         }
@@ -204,7 +212,7 @@
                 </span>
                 <Icon name="chevron_right" class="shrink-0 text-muted-foreground" />
             </button>
-            {#if aopsLinks.length}
+            {#if !contained && aopsLinks.length}
                 <div class="flex justify-end">
                     <LinkMenu
                         links={aopsLinks}
@@ -249,33 +257,35 @@
                 </span>
                 <Icon name="chevron_right" class="shrink-0 text-muted-foreground" />
             </button>
-            <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
-                {#if test.series_id != null}
-                    <Button
-                        href={practiceLaunchHref(
-                            {
-                                kind: "mock-test",
-                                testId: test.id,
-                                seriesId: test.series_id,
-                            },
-                            resolve("/practice"),
-                        )}
-                        variant="outline"
-                        size="sm"
-                        class="flex-1 gap-1.5 sm:flex-none"
-                        aria-label={`Take ${test.name} as a mock test`}
-                    >
-                        <Icon name="play_arrow" />
-                        Mock test
-                    </Button>
-                {/if}
-                {#if aopsLinks.length}
-                    <LinkMenu
-                        links={aopsLinks}
-                        label="Open in Art of Problem Solving"
-                    />
-                {/if}
-            </div>
+            {#if !contained}
+                <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
+                    {#if test.series_id != null}
+                        <Button
+                            href={practiceLaunchHref(
+                                {
+                                    kind: "mock-test",
+                                    testId: test.id,
+                                    seriesId: test.series_id,
+                                },
+                                resolve("/practice"),
+                            )}
+                            variant="outline"
+                            size="sm"
+                            class="flex-1 gap-1.5 sm:flex-none"
+                            aria-label={`Take ${test.name} as a mock test`}
+                        >
+                            <Icon name="play_arrow" />
+                            Mock test
+                        </Button>
+                    {/if}
+                    {#if aopsLinks.length}
+                        <LinkMenu
+                            links={aopsLinks}
+                            label="Open in Art of Problem Solving"
+                        />
+                    {/if}
+                </div>
+            {/if}
         </div>
     {:else}
         {@const problem = row as ProblemRow}
@@ -286,20 +296,21 @@
             appearance="row"
             solution="collapsed"
             {isInstantFeedback}
+            externalLinks={!contained}
             bind:answer={draft.answer}
             bind:selectedChoice={draft.selectedChoice}
             bind:eliminated={draft.eliminated}
             mastery={draft.mastery}
             engagement={draft.engagement}
             onOrganizationChange={(state) => updateOrganization(draft, state)}
-            onAsk={coach.enabled
+            onAsk={!contained && coach.enabled
                 ? (invoker) => askAboutProblem(problem, invoker)
                 : undefined}
         />
     {/if}
 {/snippet}
 
-{#if scopedProblem}
+{#if !contained && scopedProblem}
     <CoachContextRegister
         {...problemContextLayer({
             ownerId: "library:problem",

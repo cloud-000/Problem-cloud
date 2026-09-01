@@ -1,97 +1,150 @@
 <script lang="ts">
+    import { page } from "$app/state";
+    import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
     import * as Subtabs from "$lib/components/subtabs";
-    import { cn } from "$lib/utils";
+    import { setAppScrollViewport } from "$lib/components/virtual-list";
+    import {
+        fetchProblems,
+        fetchSeries,
+        fetchTests,
+        LocalCatalogUnavailable,
+        PAGE_SIZE,
+        type Filters,
+        type Level,
+        type ProblemRow,
+        type SeriesRow,
+        type TestRow,
+    } from "$lib/library";
+    import {
+        LIBRARY_MOCK_TABS,
+        libraryMockCaption,
+        librarySearchPlaceholder,
+    } from "$lib/onboarding/library-mock";
+    import { LibraryStore } from "$lib/state/library.svelte";
+    import ResultList from "../library/ResultList.svelte";
 
-    type Tab = "problems" | "tests" | "series";
+    type CatalogRow = SeriesRow | TestRow | ProblemRow;
 
-    const tabs: { value: Tab; label: string }[] = [
-        { value: "problems", label: "Problems" },
-        { value: "tests", label: "Tests" },
-        { value: "series", label: "Series" },
-    ];
+    const store = new LibraryStore();
 
-    const catalog: Record<
-        Tab,
-        { title: string; meta: string; hint: string }[]
-    > = {
-        problems: [
-            {
-                title: "AMC 10A 2024 #12",
-                meta: "Algebra · 2024",
-                hint: "A single problem you can open or practice.",
-            },
-            {
-                title: "AIME I 2023 #4",
-                meta: "Number theory · 2023",
-                hint: "A single problem you can open or practice.",
-            },
-            {
-                title: "AMC 12B 2023 #18",
-                meta: "Geometry · 2023",
-                hint: "A single problem you can open or practice.",
-            },
-        ],
-        tests: [
-            {
-                title: "AMC 10A 2024",
-                meta: "AMC 10 · 25 problems",
-                hint: "A full contest sitting, in order.",
-            },
-            {
-                title: "AIME I 2024",
-                meta: "AIME · 15 problems",
-                hint: "A full contest sitting, in order.",
-            },
-            {
-                title: "AMC 12B 2023",
-                meta: "AMC 12 · 25 problems",
-                hint: "A full contest sitting, in order.",
-            },
-        ],
-        series: [
-            {
-                title: "AMC 10",
-                meta: "Official series",
-                hint: "Every year of a competition, in one place.",
-            },
-            {
-                title: "AIME",
-                meta: "Official series",
-                hint: "Every year of a competition, in one place.",
-            },
-            {
-                title: "AHSME",
-                meta: "Official series",
-                hint: "Every year of a competition, in one place.",
-            },
-        ],
-    };
+    let listViewport = $state<HTMLElement | null>(null);
+    setAppScrollViewport({ getElement: () => listViewport });
 
-    let tab = $state("problems");
-    let query = $state("");
-    let selected = $state<string | null>(null);
+    let results = $state.raw<CatalogRow[]>([]);
+    let resultsLevel = $state<Level | null>(null);
+    let loading = $state(false);
+    let errorMsg = $state<string | null>(null);
+    let errorRetryable = $state(true);
+    let retryKey = $state(0);
+    let queryKey = $state(0);
+    let hasMore = $state(false);
+    let loadingMore = $state(false);
+    let token = 0;
+    let resultPage = 0;
 
-    function isTab(value: string): value is Tab {
-        return value === "problems" || value === "tests" || value === "series";
-    }
-    let activeTab = $derived(isTab(tab) ? tab : "problems");
-
-    let rows = $derived.by(() => {
-        const needle = query.trim().toLowerCase();
-        const items = catalog[activeTab];
-        if (!needle) return items;
-        return items.filter((item) => item.title.toLowerCase().includes(needle));
-    });
+    let level = $derived(store.current.level);
+    let searchValue = $derived(store.current.filters.search ?? "");
     let caption = $derived(
-        catalog[activeTab].find((item) => item.title === selected)?.hint ??
-            (activeTab === "problems"
-                ? "One problem at a time."
-                : activeTab === "tests"
-                  ? "A whole contest."
-                  : "A competition across years."),
+        libraryMockCaption({
+            level,
+            seriesName: store.current.context.series?.name,
+            testName: store.current.context.test?.name,
+        }),
     );
+    let resultCount = $derived(resultsLevel === level ? results.length : 0);
+
+    function fetchPage(
+        client: NonNullable<App.PageData["supabase"]>,
+        next: Level,
+        filters: Filters,
+        pageNum = 0,
+    ) {
+        if (next === "series") return fetchSeries(client, filters, pageNum);
+        if (next === "tests") return fetchTests(client, filters, pageNum);
+        return fetchProblems(client, filters, pageNum);
+    }
+
+    function updateSearch(event: Event) {
+        store.patchFilters({
+            search: (event.currentTarget as HTMLInputElement).value || undefined,
+        });
+    }
+
+    function removeScope(scope: "series" | "test") {
+        store.clearScope(scope);
+    }
+
+    $effect(() => {
+        const supabase = page.data.supabase;
+        const frame = store.current;
+        retryKey;
+        const nextLevel = frame.level;
+        const snapshot = $state.snapshot(frame.filters);
+        const myToken = ++token;
+        queryKey = myToken;
+        results = [];
+        resultsLevel = null;
+        resultPage = 0;
+        hasMore = false;
+        loadingMore = false;
+        loading = true;
+        errorMsg = null;
+        errorRetryable = true;
+
+        if (!supabase) {
+            loading = false;
+            errorRetryable = false;
+            errorMsg = "Catalog is unavailable.";
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                const data = await fetchPage(supabase, nextLevel, snapshot);
+                if (myToken === token) {
+                    results = data;
+                    resultsLevel = nextLevel;
+                    resultPage = 0;
+                    hasMore = data.length === PAGE_SIZE;
+                    errorMsg = null;
+                }
+            } catch (error) {
+                if (myToken === token) {
+                    errorMsg = (error as Error).message;
+                    errorRetryable = !(error instanceof LocalCatalogUnavailable);
+                    results = [];
+                }
+            } finally {
+                if (myToken === token) loading = false;
+            }
+        }, 250);
+
+        return () => clearTimeout(timer);
+    });
+
+    async function loadMore() {
+        const supabase = page.data.supabase;
+        if (!supabase || loading || loadingMore || !hasMore) return;
+        const frame = store.current;
+        const nextLevel = frame.level;
+        const snapshot = $state.snapshot(frame.filters);
+        const myToken = token;
+        loadingMore = true;
+        try {
+            const next = await fetchPage(supabase, nextLevel, snapshot, resultPage + 1);
+            if (myToken === token) {
+                results = [...results, ...next];
+                resultPage += 1;
+                hasMore = next.length === PAGE_SIZE;
+            }
+        } catch (error) {
+            if (myToken === token) errorMsg = (error as Error).message;
+        } finally {
+            if (myToken === token) loadingMore = false;
+        }
+    }
 </script>
 
 <div
@@ -104,75 +157,96 @@
             class="pointer-events-none absolute top-1/2 left-5 z-10 -translate-y-1/2 text-muted-foreground"
         />
         <Input
-            bind:value={query}
-            placeholder={activeTab === "problems"
-                ? "Search by problem ID"
-                : `Search ${activeTab} by name`}
+            value={searchValue}
+            oninput={updateSearch}
+            placeholder={librarySearchPlaceholder(level)}
             class="h-9 pl-10 shadow-none"
         />
     </label>
 
     <Subtabs.Root
-        bind:value={tab}
-        onchange={() => {
-            selected = null;
-        }}
+        value={level}
+        onchange={(value) => store.setLevel(value as Level)}
         class="min-h-0 flex-1 gap-0"
     >
         <div class="flex min-w-0 items-end border-b border-border px-3">
             <Subtabs.List class="min-w-0 flex-1 gap-4 border-b-0 sm:gap-6">
-                {#each tabs as item (item.value)}
+                {#each LIBRARY_MOCK_TABS as item (item.value)}
                     <Subtabs.Trigger value={item.value}>{item.label}</Subtabs.Trigger>
                 {/each}
             </Subtabs.List>
-            <span class="pb-2 type-caption text-muted-foreground">
-                {rows.length} result{rows.length === 1 ? "" : "s"}
+            <span class="pb-2 type-caption text-muted-foreground" aria-live="polite">
+                {#if loading}
+                    Searching…
+                {:else}
+                    {resultCount}{hasMore ? "+" : ""} result{resultCount === 1 && !hasMore
+                        ? ""
+                        : "s"}
+                {/if}
             </span>
         </div>
 
-        {#each tabs as item (item.value)}
-            <Subtabs.Content
-                value={item.value}
-                class="min-h-0 flex-1 overflow-y-auto rounded-none px-1"
-            >
-                {#if rows.length === 0}
-                    <p class="px-3 py-6 type-caption text-muted-foreground">
-                        Nothing in this sample matches.
-                    </p>
-                {:else}
-                    <ul>
-                        {#each rows as row (row.title)}
-                            <li>
-                                <button
-                                    type="button"
-                                    class={cn(
-                                        "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                                        selected === row.title && "bg-muted/60",
-                                    )}
-                                    aria-pressed={selected === row.title}
-                                    onclick={() =>
-                                        (selected =
-                                            selected === row.title ? null : row.title)}
-                                >
-                                    <span class="min-w-0 flex-1">
-                                        <span class="block type-body font-semibold text-foreground">
-                                            {row.title}
-                                        </span>
-                                        <span class="mt-0.5 block type-caption text-muted-foreground">
-                                            {row.meta}
-                                        </span>
-                                    </span>
-                                    <Icon
-                                        name="chevron_right"
-                                        class="shrink-0 text-muted-foreground"
-                                    />
-                                </button>
-                            </li>
-                        {/each}
-                    </ul>
+        {#if store.current.context.series || store.current.context.test}
+            <div class="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+                {#if store.current.context.series}
+                    <span
+                        class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground"
+                    >
+                        {store.current.context.series.name}
+                        <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove ${store.current.context.series.name} scope`}
+                            onclick={() => removeScope("series")}
+                        >
+                            <Icon name="close" />
+                        </Button>
+                    </span>
                 {/if}
-            </Subtabs.Content>
-        {/each}
+                {#if store.current.context.test}
+                    <span
+                        class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground"
+                    >
+                        {store.current.context.test.name}
+                        <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Remove ${store.current.context.test.name} scope`}
+                            onclick={() => removeScope("test")}
+                        >
+                            <Icon name="close" />
+                        </Button>
+                    </span>
+                {/if}
+            </div>
+        {/if}
+
+        <div
+            bind:this={listViewport}
+            class="min-h-0 flex-1 overflow-y-auto px-3"
+        >
+            {#key queryKey}
+                <ResultList
+                    {store}
+                    {results}
+                    {resultsLevel}
+                    {loading}
+                    error={errorMsg}
+                    contained
+                    isInstantFeedback
+                    onEndReached={!loading && hasMore ? loadMore : undefined}
+                    resetKey={queryKey}
+                    onRetry={errorRetryable ? () => (retryKey += 1) : undefined}
+                />
+            {/key}
+            {#if loadingMore}
+                <div
+                    class="flex h-12 items-center justify-center type-caption text-muted-foreground"
+                >
+                    Loading more…
+                </div>
+            {/if}
+        </div>
     </Subtabs.Root>
 
     <p class="border-t border-border px-3 py-2 type-caption text-muted-foreground">

@@ -427,7 +427,9 @@ The quick tour and Help use the same content model at different depths.
 The quick tour has five short steps:
 
 1. A personal greeting (`Hi, {username}.`).
-2. Library: Problems, Tests, and Series, with a clickable mock of the three tabs.
+2. Library: Problems, Tests, and Series, with a clickable mock of the three tabs
+   that shows live catalog rows through the real Library list (drill series →
+   tests → problems; outbound practice/Coach/AoPS actions stay off).
 3. Goals: a destination Home can follow, with a clickable mock of lead-goal cards.
 4. Progress: rating climb and Series matrix on one slide, both interactive mocks.
 5. Practice: the core loop, with a mock of the trainer chrome (whiteboard, Coach,

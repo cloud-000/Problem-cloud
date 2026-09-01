@@ -70,6 +70,11 @@
         isInstantFeedback?: boolean;
         /** Shows controls for the signed-in user's mastery and future plan. */
         showOrganization?: boolean;
+        /**
+         * AoPS test/problem links in the header. Off for surfaces that must
+         * not navigate away (the tour's Library mock).
+         */
+        externalLinks?: boolean;
         class?: string;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
@@ -92,6 +97,7 @@
         disabled = false,
         isInstantFeedback = false,
         showOrganization = false,
+        externalLinks = true,
         class: className,
         onEnter,
         onOrganizationChange,
@@ -134,9 +140,11 @@
     let problemAnswer = $state<ProblemAnswer | null>(null);
     let detailsAnswerBlocked = $state(true);
 
-    let aopsProblemHref = $derived(aopsProblemUrl(problem.aops_id));
+    let aopsProblemHref = $derived(
+        externalLinks ? aopsProblemUrl(problem.aops_id) : null,
+    );
     let aopsTestHref = $derived(
-        aopsCommunityUrl(problem.tests?.aops_category_id),
+        externalLinks ? aopsCommunityUrl(problem.tests?.aops_category_id) : null,
     );
 
     export function trigger(useAnimation: boolean): boolean | null {
