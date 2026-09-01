@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
+    import { MediaQuery } from "svelte/reactivity";
     import {
         AIChatComposer,
         AIChatMessageList,
@@ -13,6 +14,7 @@
     import { MathStatement } from "$lib/components/math-statement";
     import { ProblemAnswer } from "$lib/components/problem";
     import { RangeSlider } from "$lib/components/range-slider";
+    import { ResizablePanel } from "$lib/components/resizable-panel";
     import { Switch } from "$lib/components/toggle";
     import { WhiteboardPanel } from "$lib/components/whiteboard";
     import {
@@ -196,6 +198,7 @@
     let focusMode = $state(false);
     const whiteboardStore = new WhiteboardStore();
     const coach = new TourCoachController();
+    const sideBySideQuery = new MediaQuery("(min-width: 768px)", false);
 
     let coachExpanded = $derived(coachMode && coach.messages.length > 0);
     let composerHeight = $state(0);
@@ -204,6 +207,15 @@
         ...(nextHintAction ? [nextHintAction] : []),
         ...PROBLEM_SUPPORT_ACTIONS,
     ]);
+    let sideBySide = $derived(sideBySideQuery.current);
+    let stageWidth = $state(0);
+    let stageHeight = $state(0);
+    let railMaxWidth = $derived(
+        Math.max(240, Math.round(Math.min(480, stageWidth * 0.6 || 420))),
+    );
+    let railMaxHeight = $derived(
+        Math.max(180, Math.round(Math.min(400, stageHeight * 0.75 || 240))),
+    );
 
     onDestroy(() => coach.stop());
 
@@ -309,7 +321,14 @@
         </Button>
     </div>
 
-    <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+    <div
+        bind:clientWidth={stageWidth}
+        bind:clientHeight={stageHeight}
+        class={cn(
+            "flex min-h-0 flex-1 flex-col md:flex-row",
+            tool === "settings" ? "overflow-visible" : "overflow-hidden",
+        )}
+    >
         <div class="flex min-h-0 min-w-0 flex-1 flex-col">
             <div
                 class={cn(
@@ -401,79 +420,128 @@
             {/if}
         </div>
 
-        {#if tool === "whiteboard"}
-            <aside
-                class="flex min-h-52 w-full min-w-0 flex-col border-t border-border bg-background md:min-h-0 md:w-[min(28rem,54%)] md:border-t-0 md:border-l"
-                aria-label="Sample whiteboard"
-            >
-                <WhiteboardPanel store={whiteboardStore} />
-            </aside>
-        {:else if tool === "settings"}
-            <aside
-                class="flex min-h-52 w-full min-w-0 flex-col overflow-visible border-t border-border bg-surface-container-low p-3 md:min-h-0 md:w-[min(22rem,48%)] md:border-t-0 md:border-l"
-                aria-label="Sample settings"
-            >
-                <p
-                    class="flex items-center gap-1.5 type-caption font-medium text-foreground"
+        {#snippet toolRail(kind: "whiteboard" | "settings")}
+            {#key `${kind}-${sideBySide ? "side" : "stack"}`}
+                <ResizablePanel
+                    edges={sideBySide ? ["left"] : ["top"]}
+                    initialWidth={sideBySide
+                        ? kind === "whiteboard"
+                            ? 360
+                            : 280
+                        : undefined}
+                    initialHeight={sideBySide
+                        ? undefined
+                        : kind === "whiteboard"
+                          ? 280
+                          : 220}
+                    minWidth={kind === "whiteboard" ? 240 : 200}
+                    maxWidth={railMaxWidth}
+                    minHeight={kind === "whiteboard" ? 200 : 160}
+                    maxHeight={railMaxHeight}
+                    collapseWidthBelowMin={sideBySide}
+                    collapseHeightBelowMin={!sideBySide}
+                    revealAxis={sideBySide ? "horizontal" : "vertical"}
+                    onCollapse={() => (tool = "none")}
+                    class={cn(
+                        "flex min-h-52 w-full min-w-0 shrink-0 flex-col md:min-h-0 md:border-t-0 md:border-l",
+                        kind === "whiteboard"
+                            ? "overflow-hidden border-t border-border bg-background"
+                            : "overflow-visible border-t border-border bg-surface-container-low",
+                    )}
                 >
-                    <Icon name="tune" class="size-3.5" />
-                    Settings
-                </p>
-                <div class="mt-3 flex flex-col gap-3">
-                    <div class="flex flex-col gap-1.5">
-                        <span class="text-xs font-medium text-muted-foreground"
-                            >Topic</span
+                    {#if kind === "whiteboard"}
+                        <aside
+                            class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+                            aria-label="Sample whiteboard"
                         >
-                        <Combobox
-                            bind:value={topics}
-                            options={TOPICS}
-                            strict
-                            placeholder="Any topic"
-                            inputPlaceholder="Add topic"
-                            class="bg-surface-container-lowest"
-                        />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        <span class="text-xs font-medium text-muted-foreground"
-                            >Series</span
+                            <WhiteboardPanel store={whiteboardStore} />
+                        </aside>
+                    {:else}
+                        <aside
+                            class="flex h-full min-h-0 min-w-0 flex-col overflow-visible p-3"
+                            aria-label="Sample settings"
                         >
-                        <Combobox
-                            bind:value={series}
-                            options={SERIES_OPTIONS}
-                            strict
-                            placeholder="All series"
-                            inputPlaceholder="Add series"
-                            class="bg-surface-container-lowest"
-                        />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        <span class="text-xs font-medium text-muted-foreground">
-                            Difficulty — problem rating ({rating[0]}–{rating[1]})
-                        </span>
-                        <RangeSlider
-                            bind:value={rating}
-                            min={RATING_RANGE[0]}
-                            max={RATING_RANGE[1]}
-                            step={50}
-                            label="Difficulty (problem rating)"
-                        />
-                    </div>
-                    <div
-                        class="flex items-center justify-between gap-3 border-t border-border/40 pt-2"
-                    >
-                        <span class="text-xs font-medium text-muted-foreground"
-                            >Timer</span
-                        >
-                        <Switch bind:checked={timerOn} size="sm" />
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                        <span class="text-xs font-medium text-muted-foreground"
-                            >Focus mode</span
-                        >
-                        <Switch bind:checked={focusMode} size="sm" />
-                    </div>
-                </div>
-            </aside>
+                            <p
+                                class="flex items-center gap-1.5 type-caption font-medium text-foreground"
+                            >
+                                <Icon name="tune" class="size-3.5" />
+                                Settings
+                            </p>
+                            <div class="mt-3 flex min-h-0 flex-col gap-3">
+                                <div class="flex flex-col gap-1.5">
+                                    <span
+                                        class="text-xs font-medium text-muted-foreground"
+                                        >Topic</span
+                                    >
+                                    <Combobox
+                                        bind:value={topics}
+                                        options={TOPICS}
+                                        strict
+                                        placeholder="Any topic"
+                                        inputPlaceholder="Add topic"
+                                        class="bg-surface-container-lowest"
+                                    />
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <span
+                                        class="text-xs font-medium text-muted-foreground"
+                                        >Series</span
+                                    >
+                                    <Combobox
+                                        bind:value={series}
+                                        options={SERIES_OPTIONS}
+                                        strict
+                                        placeholder="All series"
+                                        inputPlaceholder="Add series"
+                                        class="bg-surface-container-lowest"
+                                    />
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <span
+                                        class="text-xs font-medium text-muted-foreground"
+                                    >
+                                        Difficulty — problem rating ({rating[0]}–{rating[1]})
+                                    </span>
+                                    <RangeSlider
+                                        bind:value={rating}
+                                        min={RATING_RANGE[0]}
+                                        max={RATING_RANGE[1]}
+                                        step={50}
+                                        label="Difficulty (problem rating)"
+                                    />
+                                </div>
+                                <div
+                                    class="flex items-center justify-between gap-3 border-t border-border/40 pt-2"
+                                >
+                                    <span
+                                        class="text-xs font-medium text-muted-foreground"
+                                        >Timer</span
+                                    >
+                                    <Switch bind:checked={timerOn} size="sm" />
+                                </div>
+                                <div
+                                    class="flex items-center justify-between gap-3"
+                                >
+                                    <span
+                                        class="text-xs font-medium text-muted-foreground"
+                                        >Focus mode</span
+                                    >
+                                    <Switch
+                                        bind:checked={focusMode}
+                                        size="sm"
+                                    />
+                                </div>
+                            </div>
+                        </aside>
+                    {/if}
+                </ResizablePanel>
+            {/key}
+        {/snippet}
+
+        {#if tool === "whiteboard"}
+            {@render toolRail("whiteboard")}
+        {:else if tool === "settings"}
+            {@render toolRail("settings")}
         {/if}
     </div>
 
