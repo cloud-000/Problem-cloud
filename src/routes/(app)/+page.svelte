@@ -3,6 +3,7 @@
     import { onMount } from "svelte";
     import { resolve } from "$app/paths";
     import { Button } from "$lib/components/button";
+    import { Checklist } from "$lib/components/checklist";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import { toasts } from "$lib/state/toast.svelte";
@@ -67,7 +68,6 @@
     import { cn } from "$lib/utils";
     import HomeGoalRow from "./HomeGoalRow.svelte";
     import TourView from "./TourView.svelte";
-    import GettingStartedCard from "./GettingStartedCard.svelte";
     import ContextualTip from "./ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -501,10 +501,9 @@
             </section>
 
             {#if gettingStartedVisible}
-                <GettingStartedCard
+                <Checklist
+                    title="Getting started"
                     items={gettingStarted.items}
-                    completedCount={gettingStarted.completedCount}
-                    total={gettingStarted.total}
                     ondismiss={dismissStarted}
                 />
             {/if}

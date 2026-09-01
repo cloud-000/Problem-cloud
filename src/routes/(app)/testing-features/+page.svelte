@@ -16,6 +16,13 @@
             href: "/testing-features/combobox",
         },
         {
+            icon: "task_alt",
+            name: "Checklist",
+            description:
+                "Dismissible milestone list with progress and linked open rows.",
+            href: "/testing-features/checklist",
+        },
+        {
             icon: "chat",
             name: "AI Chat",
             description:
