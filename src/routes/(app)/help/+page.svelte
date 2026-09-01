@@ -289,7 +289,6 @@
             layout="dialog"
             username={data.profile?.username ?? null}
             onskip={skipReplay}
-            onclose={closeReplay}
             onadvance={advanceReplay}
             onfinish={finishReplay}
         />

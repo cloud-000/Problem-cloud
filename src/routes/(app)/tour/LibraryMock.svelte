@@ -95,7 +95,7 @@
 </script>
 
 <div
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface-container-lowest"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-container-lowest"
 >
     <label class="relative border-b border-border px-3 py-2.5">
         <span class="sr-only">Search this sample Library</span>

@@ -22,6 +22,13 @@ describe("the short tour", () => {
             "trainer",
         ]);
         expect(TOUR_STEPS[4]?.title).toBe("Practice");
+        expect(TOUR_STEPS.map((step) => step.nav)).toEqual([
+            "home",
+            "library",
+            "goals",
+            "progress",
+            "practice",
+        ]);
         expect(tourHeading(TOUR_STEPS[0]!, "Alex")).toBe("Hi, Alex.");
         expect(tourHeading(TOUR_STEPS[0]!, "  ")).toBe("Hi.");
         expect(tourHeading(TOUR_STEPS[1]!, "Alex")).toBe("Library");

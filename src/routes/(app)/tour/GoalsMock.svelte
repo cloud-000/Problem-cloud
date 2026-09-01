@@ -35,7 +35,7 @@
 </script>
 
 <div
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface-container-lowest"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-container-lowest"
 >
     <div class="flex items-center justify-between border-b border-border px-4 py-3">
         <p class="type-secondary font-medium text-foreground">Goals</p>

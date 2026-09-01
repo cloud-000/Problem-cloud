@@ -79,7 +79,6 @@
     let loading = $state(true);
     let onboarding = $state<OnboardingState>(emptyOnboarding());
     let onboardingFailed = $state(false);
-    let tourExitedThisVisit = $state(false);
     let hasAnyGoal = $state(false);
     let hasCoachConversation = $state(false);
     let whiteboardHasContent = $state(false);
@@ -169,7 +168,7 @@
     let presentation = $derived.by(() => {
         if (onboardingFailed) return "home" as const;
         if (loading) return null;
-        const decided = decideHomePresentation({
+        return decideHomePresentation({
             status: onboarding.welcomeStatus,
             hasProductHistory: hasProductHistory({
                 attempted: summary?.attempted ?? 0,
@@ -177,8 +176,6 @@
                 sessionTimesSeen: activeSession?.times_seen ?? 0,
             }),
         });
-        if (decided === "introduction" && tourExitedThisVisit) return "home";
-        return decided;
     });
     let gettingStarted = $derived.by(() =>
         rankGettingStarted({
@@ -292,10 +289,6 @@
 
     function dismissTip(id: ContextualTipId) {
         void persistOnboarding(acknowledgeTipInState(onboarding, id));
-    }
-
-    function closeTour() {
-        tourExitedThisVisit = true;
     }
 
     function advanceTour(completedIndex: number) {
@@ -418,7 +411,6 @@
         initialStep={resumeTourStep(onboarding.lastCompletedTourStep)}
         username={profile?.username ?? null}
         onskip={skipOnboarding}
-        onclose={closeTour}
         onadvance={advanceTour}
         onfinish={finishTour}
     />

@@ -69,7 +69,7 @@
 </script>
 
 <div
-    class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface-container-lowest md:grid-cols-2"
+    class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-surface-container-lowest md:grid-cols-2"
 >
     <section
         class="flex min-h-0 flex-col border-b border-border p-3 md:border-r md:border-b-0"
