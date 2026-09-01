@@ -53,7 +53,7 @@ export const TOUR_STEPS: TourStep[] = [
     {
         id: "progress",
         title: "Progress",
-        body: "Rating on the left. The series matrix on the right — every problem in a competition.",
+        body: "Your rating climb and a series matrix — tap a cell to see mastery across a competition.",
         nav: "progress",
     },
     {
