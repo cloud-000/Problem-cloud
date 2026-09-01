@@ -298,6 +298,10 @@ export type BrowseQueryV1 = SharedLocalQueryV1 & {
         verified?: boolean | null;
         mastery?: (Mastery | "unassessed")[];
         engagement?: (Engagement | "none")[];
+        divisions?: string[];
+        formats?: string[];
+        /** 1-based inclusive range (`problems.n + 1`); omit for the full number line. */
+        problemNumbers?: [number, number];
     };
     offset: number;
     limit: number;

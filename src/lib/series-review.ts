@@ -3,6 +3,11 @@ import type { Database, Tables } from "$lib/types/database.types";
 import { LocalCatalogUnavailable } from "$lib/library";
 import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
 import {
+    BROWSE_INTENT,
+    type BrowseQueryV1,
+    type OfflinePlacementV1,
+} from "$lib/offline/types";
+import {
     reviewScheduleFor,
     statusFor,
     type ActivityStatus,
@@ -191,6 +196,64 @@ export function dimensionOptions(
 }
 
 /**
+ * The stored 1-based range if it actually narrows, else `null`. Pass `length`
+ * (1-based max) to treat a full `[1, L]` as absent; omit it at filter time,
+ * where a missing field already means no narrowing.
+ */
+export function problemNumberRange(
+    scope: { problemNumbers?: [number, number] } | undefined | null,
+    length?: number,
+): [number, number] | null {
+    const range = scope?.problemNumbers;
+    if (!range) return null;
+    const lo = range[0];
+    const hi = range[1];
+    if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
+        return null;
+    }
+    if (length != null && length >= 1 && lo <= 1 && hi >= length) return null;
+    return [lo, hi];
+}
+
+/**
+ * Fit a stored range onto a (possibly shorter) number line. A range that
+ * starts past the new length — e.g. 21–25 after switching to an 8-problem
+ * format — resets to unset (full). `[1, L]` is also unset.
+ */
+export function clampProblemNumbers(
+    range: [number, number] | undefined | null,
+    length: number,
+): [number, number] | undefined {
+    if (length < 1 || !range) return undefined;
+    if (range[0] > length) return undefined;
+    const lo = Math.max(1, range[0]);
+    const hi = Math.min(range[1], length);
+    if (lo > hi) return undefined;
+    if (lo <= 1 && hi >= length) return undefined;
+    return [lo, hi];
+}
+
+async function localSeriesPlacements(seriesId: number): Promise<OfflinePlacementV1[]> {
+    const { offlineRepository } = await import("$lib/offline/browser");
+    const repository = await offlineRepository();
+    const marker = await repository.getAccountMarker();
+    if (!marker) throw new LocalCatalogUnavailable("signed-out");
+    const query: BrowseQueryV1 = {
+        version: 1,
+        intent: BROWSE_INTENT,
+        userId: marker.userId,
+        packageIds: [],
+        filters: { seriesId },
+        offset: 0,
+        limit: 10_000,
+    };
+    const result = await repository.browseProblems(query);
+    if (result.status !== "ok") throw new LocalCatalogUnavailable("not-downloaded");
+    catalogReadRuntime.noteLocalRead();
+    return result.problems.map((row) => row.placement);
+}
+
+/**
  * The compact per-test division/format metadata for a series — just enough to
  * populate the trainer's division/format filter options, without pulling every
  * problem and its progress the way {@link fetchSeriesReview} does.
@@ -199,26 +262,44 @@ export async function fetchSeriesDimensions(
     supabase: Supabase,
     seriesId: number,
 ): Promise<SeriesDimensionRow[]> {
-    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") throw new LocalCatalogUnavailable("not-downloaded");
-    const { data, error } = await supabase
-        .from("tests")
-        .select("division, division_order, format, format_order")
-        .eq("series_id", seriesId);
-    if (error) {
-        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteFailure();
-        throw typeof window !== "undefined" ? new LocalCatalogUnavailable("not-downloaded") : error;
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") {
+        return fetchLocalSeriesDimensions(seriesId);
     }
-    return (data ?? []) as unknown as SeriesDimensionRow[];
+    try {
+        const { data, error } = await supabase
+            .from("tests")
+            .select("division, division_order, format, format_order")
+            .eq("series_id", seriesId);
+        if (error) throw error;
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteSuccess();
+        return (data ?? []) as unknown as SeriesDimensionRow[];
+    } catch (error) {
+        if (typeof window === "undefined") throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalSeriesDimensions(seriesId);
+    }
+}
+
+async function fetchLocalSeriesDimensions(
+    seriesId: number,
+): Promise<SeriesDimensionRow[]> {
+    return (await localSeriesPlacements(seriesId)).map((placement) => ({
+        division: placement.test?.division ?? null,
+        division_order: null,
+        format: placement.test?.format ?? null,
+        format_order: null,
+    }));
 }
 
 export type SeriesNumberLineScope = {
     divisions: string[];
     formats: string[];
+    testId?: number;
 };
 
 /**
  * 1-based length of a series' number line (`max(n) + 1`) after optional
- * division/format narrowing. 0 when the series has no matching problems.
+ * division/format/test narrowing. 0 when the series has no matching problems.
  */
 export async function fetchSeriesNumberLine(
     supabase: Supabase,
@@ -226,25 +307,54 @@ export async function fetchSeriesNumberLine(
     scope?: SeriesNumberLineScope,
 ): Promise<number> {
     if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") {
-        throw new LocalCatalogUnavailable("not-downloaded");
+        return fetchLocalSeriesNumberLine(seriesId, scope);
     }
-    let query = supabase
-        .from("problems")
-        .select("n, tests!inner(series_id)")
-        .eq("tests.series_id", seriesId)
-        .order("n", { ascending: false })
-        .limit(1);
-    if (scope?.divisions.length) query = query.in("tests.division", scope.divisions);
-    if (scope?.formats.length) query = query.in("tests.format", scope.formats);
-    const { data, error } = await query.maybeSingle();
-    if (error) {
-        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteFailure();
-        throw typeof window !== "undefined"
-            ? new LocalCatalogUnavailable("not-downloaded")
-            : error;
+    try {
+        let query = supabase
+            .from("problems")
+            .select("n, tests!inner(series_id)")
+            .eq("tests.series_id", seriesId)
+            .order("n", { ascending: false })
+            .limit(1);
+        if (scope?.testId != null) query = query.eq("test_id", scope.testId);
+        if (scope?.divisions.length) query = query.in("tests.division", scope.divisions);
+        if (scope?.formats.length) query = query.in("tests.format", scope.formats);
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteSuccess();
+        const n = (data as { n?: number } | null)?.n;
+        return typeof n === "number" ? n + 1 : 0;
+    } catch (error) {
+        if (typeof window === "undefined") throw error;
+        catalogReadRuntime.noteRemoteFailure();
+        return fetchLocalSeriesNumberLine(seriesId, scope);
     }
-    const n = (data as { n?: number } | null)?.n;
-    return typeof n === "number" ? n + 1 : 0;
+}
+
+async function fetchLocalSeriesNumberLine(
+    seriesId: number,
+    scope?: SeriesNumberLineScope,
+): Promise<number> {
+    let max = -1;
+    for (const placement of await localSeriesPlacements(seriesId)) {
+        if (scope?.testId != null && placement.testId !== scope.testId) continue;
+        if (
+            scope?.divisions.length &&
+            (!placement.test?.division ||
+                !scope.divisions.includes(placement.test.division))
+        ) {
+            continue;
+        }
+        if (
+            scope?.formats.length &&
+            (!placement.test?.format ||
+                !scope.formats.includes(placement.test.format))
+        ) {
+            continue;
+        }
+        if (placement.problemNumber > max) max = placement.problemNumber;
+    }
+    return max >= 0 ? max + 1 : 0;
 }
 
 export function statusForReview(

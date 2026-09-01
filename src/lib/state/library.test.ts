@@ -45,3 +45,36 @@ describe("LibraryStore.patchFilters", () => {
         expect(store.current.filters).toEqual({ topic: ["algebra"] });
     });
 });
+
+describe("LibraryStore series scope", () => {
+    test("drops division scope when seriesId is cleared", () => {
+        const store = new LibraryStore();
+        store.patchFilters({ seriesId: 7, divisions: ["A"], formats: ["Sprint"] });
+        store.patchFilters({ seriesId: undefined, problemNumbers: [21, 25] });
+        expect(store.current.filters).toEqual({});
+    });
+
+    test("drops division and format when a test is locked", () => {
+        const store = new LibraryStore();
+        store.patchFilters({
+            seriesId: 7,
+            testId: 9,
+            divisions: ["A"],
+            formats: ["Sprint"],
+            problemNumbers: [21, 25],
+        });
+        expect(store.current.filters).toEqual({
+            seriesId: 7,
+            testId: 9,
+            problemNumbers: [21, 25],
+        });
+    });
+
+    test("compares problem-number ranges by value", () => {
+        const store = new LibraryStore();
+        store.patchFilters({ seriesId: 7, problemNumbers: [21, 25] });
+        const original = store.current.filters;
+        store.patchFilters({ seriesId: 7, problemNumbers: [21, 25] });
+        expect(store.current.filters).toBe(original);
+    });
+});

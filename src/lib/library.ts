@@ -375,6 +375,11 @@ export interface Filters {
     verified?: boolean | null;
     mastery?: (Mastery | "unassessed")[];
     engagement?: (Engagement | "none")[];
+    /** Shown only when a single series is selected; dropped if that series is cleared. */
+    divisions?: string[];
+    formats?: string[];
+    /** 1-based inclusive range (`problems.n + 1`); problems tab only. */
+    problemNumbers?: [number, number];
 }
 
 /** Page size for the infinite-scroll result feed. */
@@ -433,6 +438,8 @@ export async function fetchTests(
     if (searchIds?.length) q = q.in("id", searchIds);
     else if (search) q = q.ilike("name", `%${search}%`);
     if (f.seriesId != null) q = q.eq("series_id", f.seriesId);
+    if (f.seriesId != null && f.divisions?.length) q = q.in("division", f.divisions);
+    if (f.seriesId != null && f.formats?.length) q = q.in("format", f.formats);
     if (f.name?.trim()) q = q.ilike("name", `%${f.name.trim()}%`);
     if (f.year) q = q.gte("year", f.year[0]).lte("year", f.year[1]);
     if (f.type?.length) q = q.in("type", f.type);

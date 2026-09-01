@@ -16,12 +16,24 @@ function freshFrame(level: Level): Frame {
 }
 
 function normalizedFilters(filters: Filters): Filters {
-    return Object.fromEntries(
+    const next = Object.fromEntries(
         Object.entries(filters).filter(([, value]) => {
             if (value == null) return false;
             return !Array.isArray(value) || value.length > 0;
         }),
     ) as Filters;
+    // Division/format vocabulary is per-series, and a locked test already
+    // determines both. Problem numbers still apply under a test.
+    if (next.seriesId == null) {
+        delete next.divisions;
+        delete next.formats;
+        delete next.problemNumbers;
+    }
+    if (next.testId != null) {
+        delete next.divisions;
+        delete next.formats;
+    }
+    return next;
 }
 
 function filtersEqual(left: Filters, right: Filters): boolean {

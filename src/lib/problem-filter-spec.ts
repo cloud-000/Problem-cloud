@@ -13,6 +13,11 @@ export type ProblemFilterValues = {
     verified?: boolean | null;
     mastery?: (Mastery | "unassessed")[];
     engagement?: (Engagement | "none")[];
+    /** Per-series vocabulary; only applied when `seriesId` is set and `testId` is not. */
+    divisions?: string[];
+    formats?: string[];
+    /** 1-based inclusive range (`problems.n + 1`); only applied when `seriesId` is set. */
+    problemNumbers?: [number, number];
 };
 
 export type LocalProblemCandidate = {
@@ -65,6 +70,49 @@ export const PROBLEM_FILTERS = {
     seriesId: {
         remote: (query, value, all) => all.testId == null ? query.eq("series_id", value) : query,
         local: (candidate, value, all) => all.testId != null || (candidate.placement.series?.id ?? candidate.placement.test?.seriesId) === value,
+    },
+    divisions: {
+        remote: (query, value, all) =>
+            all.seriesId == null || all.testId != null
+                ? query
+                : query.in("division", value),
+        local: (candidate, value, all) => {
+            if (all.seriesId == null || all.testId != null) return true;
+            const division = candidate.placement.test?.division;
+            return division != null && value.includes(division);
+        },
+    },
+    formats: {
+        remote: (query, value, all) =>
+            all.seriesId == null || all.testId != null
+                ? query
+                : query.in("format", value),
+        local: (candidate, value, all) => {
+            if (all.seriesId == null || all.testId != null) return true;
+            const format = candidate.placement.test?.format;
+            return format != null && value.includes(format);
+        },
+    },
+    problemNumbers: {
+        remote: (query, value, all) => {
+            if (all.seriesId == null) return query;
+            const lo = value[0];
+            const hi = value[1];
+            if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
+                return query;
+            }
+            return query.gte("n", lo - 1).lte("n", hi - 1);
+        },
+        local: (candidate, value, all) => {
+            if (all.seriesId == null) return true;
+            const lo = value[0];
+            const hi = value[1];
+            if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
+                return true;
+            }
+            const displayed = candidate.placement.problemNumber + 1;
+            return displayed >= lo && displayed <= hi;
+        },
     },
     topic: {
         remote: (query, value) => query.in("topic", value),

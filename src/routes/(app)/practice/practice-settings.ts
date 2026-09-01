@@ -31,43 +31,10 @@ export type SeriesScope = {
 };
 export type SeriesScopes = Record<string, SeriesScope>;
 
-/**
- * The stored 1-based range if it actually narrows, else `null`. Pass `length`
- * (1-based max) to treat a full `[1, L]` as absent; omit it at filter time,
- * where a missing field already means no narrowing.
- */
-export function problemNumberRange(
-    scope: { problemNumbers?: [number, number] } | undefined | null,
-    length?: number,
-): [number, number] | null {
-    const range = scope?.problemNumbers;
-    if (!range) return null;
-    const lo = range[0];
-    const hi = range[1];
-    if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
-        return null;
-    }
-    if (length != null && length >= 1 && lo <= 1 && hi >= length) return null;
-    return [lo, hi];
-}
-
-/**
- * Fit a stored range onto a (possibly shorter) number line. A range that
- * starts past the new length — e.g. 21–25 after switching to an 8-problem
- * format — resets to unset (full). `[1, L]` is also unset.
- */
-export function clampProblemNumbers(
-    range: [number, number] | undefined | null,
-    length: number,
-): [number, number] | undefined {
-    if (length < 1 || !range) return undefined;
-    if (range[0] > length) return undefined;
-    const lo = Math.max(1, range[0]);
-    const hi = Math.min(range[1], length);
-    if (lo > hi) return undefined;
-    if (lo <= 1 && hi >= length) return undefined;
-    return [lo, hi];
-}
+export {
+    clampProblemNumbers,
+    problemNumberRange,
+} from "$lib/series-review";
 
 /**
  * A settings-panel row for one selected series: its own division/format

@@ -365,4 +365,56 @@ describe("browse intent", () => {
         expect(result.availableCount).toBe(2);
         expect(result.problems.map((entry) => entry.placement.placementId)).toEqual([11, 12]);
     });
+
+    test("applies series division and problem-number browse filters", () => {
+        const lateA = candidate(1, {
+            placements: [
+                placement({
+                    placementId: 1,
+                    canonicalId: 1,
+                    problemNumber: 20,
+                    test: {
+                        name: "2024 AMC 10A",
+                        seriesId: 10,
+                        division: "A",
+                        format: "Sprint",
+                        year: 2024,
+                        aopsCategoryId: null,
+                    },
+                }),
+            ],
+        });
+        const earlyB = candidate(2, {
+            placements: [
+                placement({
+                    placementId: 2,
+                    canonicalId: 2,
+                    problemNumber: 2,
+                    test: {
+                        name: "2024 AMC 10B",
+                        seriesId: 10,
+                        division: "B",
+                        format: "Sprint",
+                        year: 2024,
+                        aopsCategoryId: null,
+                    },
+                    series: { id: 10, name: "AMC 10" },
+                }),
+            ],
+        });
+        const result = runBrowseQuery([lateA, earlyB], {
+            version: 1,
+            intent: BROWSE_INTENT,
+            userId: "u",
+            packageIds: [],
+            filters: {
+                seriesId: 10,
+                divisions: ["A"],
+                problemNumbers: [21, 25],
+            },
+            offset: 0,
+            limit: 20,
+        });
+        expect(result.problems.map((entry) => entry.placement.placementId)).toEqual([1]);
+    });
 });

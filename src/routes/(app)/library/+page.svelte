@@ -104,6 +104,23 @@
             Boolean(filters.topic?.length),
         );
         add("tags", `Tags: ${filters.tags?.join(", ")}`, Boolean(filters.tags?.length));
+        add(
+            "divisions",
+            `Division: ${filters.divisions?.join(", ")}`,
+            Boolean(filters.divisions?.length),
+        );
+        add(
+            "formats",
+            `Format: ${filters.formats?.join(", ")}`,
+            Boolean(filters.formats?.length),
+        );
+        if (filters.problemNumbers) {
+            const [lo, hi] = filters.problemNumbers;
+            add(
+                "problemNumbers",
+                lo === hi ? `Problem #${lo}` : `Problems #${lo}–${hi}`,
+            );
+        }
         add("year", `Years: ${filters.year?.[0]}–${filters.year?.[1]}`, Boolean(filters.year));
         add("type", `Types: ${filters.type?.join(", ")}`, Boolean(filters.type?.length));
         add(
@@ -320,7 +337,7 @@
 
     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {#key `${store.cursor}:${filterEditorKey}`}
-            <Filters {store} {seriesOptions} />
+            <Filters {store} {seriesOptions} {supabase} />
         {/key}
     </div>
 

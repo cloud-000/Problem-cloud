@@ -57,4 +57,62 @@ describe("downloaded catalogue filter parity", () => {
         expect(matchesLocalProblemFilters(candidate(), { search: "12" })).toBe(true);
         expect(matchesLocalProblemFilters(candidate(), { search: "10" })).toBe(true);
     });
+
+    test("division and format only apply when a series is selected", () => {
+        const amc = candidate({
+            placement: {
+                ...candidate().placement,
+                test: {
+                    name: "2024 AMC 10A",
+                    seriesId: 3,
+                    division: "A",
+                    format: "A",
+                    year: 2024,
+                    aopsCategoryId: null,
+                },
+            },
+        });
+        expect(
+            matchesLocalProblemFilters(amc, {
+                seriesId: 3,
+                divisions: ["A"],
+                formats: ["A"],
+            }),
+        ).toBe(true);
+        expect(
+            matchesLocalProblemFilters(amc, {
+                seriesId: 3,
+                divisions: ["B"],
+            }),
+        ).toBe(false);
+        expect(matchesLocalProblemFilters(amc, { divisions: ["B"] })).toBe(true);
+        expect(
+            matchesLocalProblemFilters(amc, {
+                seriesId: 3,
+                testId: 4,
+                divisions: ["B"],
+            }),
+        ).toBe(true);
+    });
+
+    test("a problem-number range matches the 1-based displayed number", () => {
+        const late = candidate({
+            placement: { ...candidate().placement, problemNumber: 20 },
+        });
+        expect(
+            matchesLocalProblemFilters(late, {
+                seriesId: 3,
+                problemNumbers: [21, 25],
+            }),
+        ).toBe(true);
+        expect(
+            matchesLocalProblemFilters(late, {
+                seriesId: 3,
+                problemNumbers: [1, 10],
+            }),
+        ).toBe(false);
+        expect(
+            matchesLocalProblemFilters(late, { problemNumbers: [1, 10] }),
+        ).toBe(true);
+    });
 });

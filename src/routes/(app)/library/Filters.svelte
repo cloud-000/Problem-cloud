@@ -1,4 +1,6 @@
 <script lang="ts">
+    import type { SupabaseClient } from "@supabase/supabase-js";
+    import type { Database } from "$lib/types/database.types";
     import { Combobox, type Option } from "$lib/components/combobox";
     import { RangeSlider } from "$lib/components/range-slider";
     import { TriStateSwitch, type TriState } from "$lib/components/toggle";
@@ -14,11 +16,16 @@
     import type { LibraryStore } from "$lib/state/library.svelte";
     import type { Engagement, Mastery } from "$lib/progress";
     import { untrack } from "svelte";
+    import SeriesScopeFields from "./SeriesScopeFields.svelte";
+
+    type Supabase = SupabaseClient<Database>;
 
     let {
         store,
         seriesOptions,
-    }: { store: LibraryStore; seriesOptions: Option[] } = $props();
+        supabase,
+    }: { store: LibraryStore; seriesOptions: Option[]; supabase: Supabase } =
+        $props();
 
     // Captured once at mount. The parent wraps this component in `{#key store.cursor}`,
     // so it remounts (re-seeding all locals) whenever the active frame changes.
@@ -43,6 +50,11 @@
     let verified = $state<TriState>(boolToTri(f.verified));
     let mastery = $state<(Mastery | "unassessed")[]>([...(f.mastery ?? [])]);
     let engagement = $state<(Engagement | "none")[]>([...(f.engagement ?? [])]);
+    let divisions = $state<string[]>([...(f.divisions ?? [])]);
+    let formats = $state<string[]>([...(f.formats ?? [])]);
+    let problemNumbers = $state<[number, number] | undefined>(
+        f.problemNumbers ? [f.problemNumbers[0], f.problemNumbers[1]] : undefined,
+    );
 
     const masteryOptions = [
         { value: "unassessed", label: "Unassessed" },
@@ -61,6 +73,23 @@
     const lockedSeries = frame.context.series;
     const lockedTest = frame.context.test;
 
+    const selectedSeriesId = $derived(
+        lockedSeries?.id ??
+            (seriesSel[0] ? Number(seriesSel[0]) : undefined),
+    );
+
+    // Nested scope is per-series. Reset it when the selected series changes
+    // (not on the initial seed from the current frame).
+    let scopedSeriesId = untrack(() => selectedSeriesId);
+    $effect(() => {
+        const id = selectedSeriesId;
+        if (id === scopedSeriesId) return;
+        scopedSeriesId = id;
+        divisions = [];
+        formats = [];
+        problemNumbers = undefined;
+    });
+
     /** Treat an untouched (full-range) slider as "no filter" so null-valued rows show. */
     function rangeOrUndef(
         v: [number, number],
@@ -77,6 +106,14 @@
     // Push local edits into the current frame. Reads only locals + locked context,
     // never `frame.filters`, so it doesn't loop with patchFilters.
     $effect(() => {
+        const seriesId = selectedSeriesId;
+        const scoped = seriesId != null;
+        const divisionsValue =
+            scoped && !lockedTest && divisions.length ? divisions : undefined;
+        const formatsValue =
+            scoped && !lockedTest && formats.length ? formats : undefined;
+        const problemNumbersValue =
+            scoped && level === "problems" ? problemNumbers : undefined;
         let patch: Filters;
         if (level === "series") {
             patch = {
@@ -84,18 +121,17 @@
             };
         } else if (level === "tests") {
             patch = {
-                seriesId:
-                    lockedSeries?.id ??
-                    (seriesSel[0] ? Number(seriesSel[0]) : undefined),
+                seriesId,
                 year: rangeOrUndef(year, YEAR_RANGE),
                 type: type.length ? type : undefined,
                 isComputational: triToBool(isComputational),
+                divisions: divisionsValue,
+                formats: formatsValue,
+                problemNumbers: undefined,
             };
         } else {
             patch = {
-                seriesId:
-                    lockedSeries?.id ??
-                    (seriesSel[0] ? Number(seriesSel[0]) : undefined),
+                seriesId,
                 testId: lockedTest?.id,
                 topic: topic.length ? topic : undefined,
                 tags: tags.length ? tags : undefined,
@@ -105,6 +141,9 @@
                 verified: triToBool(verified),
                 mastery: mastery.length ? mastery : undefined,
                 engagement: engagement.length ? engagement : undefined,
+                divisions: divisionsValue,
+                formats: formatsValue,
+                problemNumbers: problemNumbersValue,
             };
         }
         store.patchFilters(patch);
@@ -113,6 +152,23 @@
 
 {#snippet field(label: string)}
     <span class="type-caption text-muted-foreground">{label}</span>
+{/snippet}
+
+{#snippet seriesScope()}
+    {#if selectedSeriesId != null && (level === "problems" || !lockedTest)}
+        {#key selectedSeriesId}
+            <SeriesScopeFields
+                seriesId={selectedSeriesId}
+                testId={lockedTest?.id}
+                {supabase}
+                bind:divisions
+                bind:formats
+                bind:problemNumbers
+                showDivisionFormat={!lockedTest}
+                showProblemNumbers={level === "problems"}
+            />
+        {/key}
+    {/if}
 {/snippet}
 
 <div class="flex flex-col gap-6">
@@ -143,6 +199,7 @@
                     />
                 </div>
             {/if}
+            {@render seriesScope()}
             <div class="flex flex-col gap-1.5">
                 {@render field("Type")}
                 <Combobox
@@ -204,6 +261,7 @@
                     />
                 </div>
             {/if}
+            {@render seriesScope()}
             <div class="flex flex-col gap-1.5">
                 {@render field("Topic")}
                 <Combobox
