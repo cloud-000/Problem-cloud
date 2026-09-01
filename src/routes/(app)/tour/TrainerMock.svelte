@@ -45,6 +45,8 @@
 
     type Tool = "none" | "whiteboard" | "settings";
 
+    const iconClass = "size-[1em] shrink-0 leading-none";
+
     const STATEMENT = "What is $2^3 + 1$?";
     const ANSWER_KEY = "9";
     const SERIES_OPTIONS = [
@@ -215,7 +217,7 @@
         return "Ask for a small hint, or talk through the idea. I will not spoil the answer on the first try.";
     }
 
-    let tool = $state<Tool>("none");
+    let tool = $state<Tool>("settings");
     let coachMode = $state(false);
     let answer = $state("");
     let submitted = $state(false);
@@ -300,22 +302,24 @@
         aria-label="Practice tools"
     >
         <span
-            class="mr-1 inline-flex size-8 items-center justify-center text-muted-foreground"
+            class="mr-1 inline-flex size-10 shrink-0 items-center justify-center text-muted-foreground"
             aria-hidden="true"
         >
-            <Icon name="arrow_back" />
+            <Icon name="arrow_back" class={iconClass} />
         </span>
         <span class="min-w-0 flex-1 truncate type-caption text-foreground">
             Mixed practice
         </span>
-        <span class="px-2 font-mono type-caption tabular-nums text-foreground">
+        <span
+            class="inline-flex h-10 shrink-0 items-center px-2 font-mono type-caption tabular-nums text-foreground"
+        >
             0:42
         </span>
         <Button
             variant="ghost"
             size="icon-sm"
             class={cn(
-                "size-9 text-muted-foreground hover:text-foreground",
+                "size-10 text-muted-foreground hover:text-foreground",
                 coachMode && "bg-muted text-foreground",
             )}
             aria-pressed={coachMode}
@@ -323,13 +327,13 @@
             title={coachMode ? "Return to answer mode" : "Coach mode"}
             onclick={toggleCoach}
         >
-            <Icon name="auto_awesome" fill={coachMode} />
+            <Icon name="auto_awesome" class={iconClass} fill={coachMode} />
         </Button>
         <Button
             variant="ghost"
             size="icon-sm"
             class={cn(
-                "size-9 text-muted-foreground hover:text-foreground",
+                "size-10 text-muted-foreground hover:text-foreground",
                 tool === "whiteboard" && "bg-muted text-foreground",
             )}
             aria-pressed={tool === "whiteboard"}
@@ -337,13 +341,13 @@
             title="Whiteboard"
             onclick={() => toggle("whiteboard")}
         >
-            <Icon name="draw" fill={tool === "whiteboard"} />
+            <Icon name="draw" class={iconClass} fill={tool === "whiteboard"} />
         </Button>
         <Button
             variant="ghost"
             size="icon-sm"
             class={cn(
-                "size-9 text-muted-foreground hover:text-foreground",
+                "size-10 text-muted-foreground hover:text-foreground",
                 tool === "settings" && "bg-muted text-foreground",
             )}
             aria-pressed={tool === "settings"}
@@ -351,7 +355,7 @@
             title="More options · Settings"
             onclick={() => toggle("settings")}
         >
-            <Icon name="more_horiz" />
+            <Icon name="more_horiz" class={iconClass} />
         </Button>
     </div>
 
@@ -495,12 +499,12 @@
                             class="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto p-3"
                             aria-label="Sample settings"
                         >
-                            <p
-                                class="flex items-center gap-1.5 type-caption font-medium text-foreground"
+                            <h2
+                                class="flex items-center gap-1.5 text-sm font-semibold text-foreground"
                             >
-                                <Icon name="tune" class="size-3.5" />
+                                <Icon name="tune" class={iconClass} />
                                 Settings
-                            </p>
+                            </h2>
                             <div class="mt-3 flex min-h-0 flex-col gap-4">
                                 <Track
                                     bind:value={track}
@@ -590,7 +594,8 @@
                                         <Icon
                                             name="keyboard_arrow_down"
                                             class={cn(
-                                                "size-[1em] transition-transform",
+                                                iconClass,
+                                                "transition-transform",
                                                 moreOpen && "rotate-180",
                                             )}
                                         />
