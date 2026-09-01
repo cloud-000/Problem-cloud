@@ -4,6 +4,7 @@
     import LaTeX from "$lib/components/LaTeX.svelte";
     import { cn } from "$lib/utils";
     import { prefersReducedMotion } from "svelte/motion";
+    import WelcomeFilters from "./WelcomeFilters.svelte";
     import WelcomeTrainer from "./WelcomeTrainer.svelte";
 
     let { data } = $props();
@@ -73,6 +74,10 @@
         {
             q: "Is it free?",
             a: "Yes. An account adds history, rating, and review.",
+        },
+        {
+            q: "Can I filter?",
+            a: "Yes. Topic, series, division, problem numbers, years.",
         },
     ];
 
@@ -380,6 +385,25 @@
 {/if}
 
 <div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm pb-xl sm:px-md md:px-xl">
+    <section aria-labelledby="filters-heading" class="pt-xl pb-xl">
+        <h2
+            id="filters-heading"
+            class="type-display text-foreground max-w-[22ch] text-balance"
+        >
+            Custom filters.
+        </h2>
+        <p class="type-secondary text-muted-foreground mt-md max-w-[48ch]">
+            Topic, series, division, problem numbers, years. Practice the slice
+            you want.
+        </p>
+        <figure class="mt-xl min-w-0">
+            <WelcomeFilters />
+            <figcaption class="type-caption text-muted-foreground mt-md">
+                Same filters as practice.
+            </figcaption>
+        </figure>
+    </section>
+
     <section class="border-border/60 border-t py-xl">
         <h2 class="type-section-title text-foreground">Common questions</h2>
         <div class="mt-md">
