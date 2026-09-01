@@ -5,7 +5,7 @@
 
 export const TOUR_STEP_COUNT = 5;
 
-export type TourStepId = "hello" | "library" | "goals" | "progress" | "trainer";
+export type TourStepId = "hello" | "trainer" | "library" | "progress" | "goals";
 
 /** Compact nav ids, in the same order as the real primary sidebar. */
 export type TourNavId = "home" | "practice" | "library" | "progress" | "goals";
@@ -39,16 +39,16 @@ export const TOUR_STEPS: TourStep[] = [
         nav: "home",
     },
     {
+        id: "trainer",
+        title: "Practice",
+        body: "The loop. Coach sits where the answer box does — switch with Answer / Coach. Whiteboard and settings live in the top bar.",
+        nav: "practice",
+    },
+    {
         id: "library",
         title: "Library",
         body: "Problems, tests, and whole series. Switch the tabs.",
         nav: "library",
-    },
-    {
-        id: "goals",
-        title: "Goals",
-        body: "A destination for practice. Home follows one lead goal.",
-        nav: "goals",
     },
     {
         id: "progress",
@@ -57,10 +57,10 @@ export const TOUR_STEPS: TourStep[] = [
         nav: "progress",
     },
     {
-        id: "trainer",
-        title: "Practice",
-        body: "The loop. Coach sits where the answer box does — switch with Answer / Coach. Whiteboard and settings live in the top bar.",
-        nav: "practice",
+        id: "goals",
+        title: "Goals",
+        body: "A destination for practice. Home follows one lead goal.",
+        nav: "goals",
     },
 ];
 

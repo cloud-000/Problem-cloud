@@ -12,26 +12,26 @@ import {
 } from "./welcome";
 
 describe("the short tour", () => {
-    test("has five product-mock steps ending on the trainer", () => {
+    test("has five product-mock steps in sidebar order, ending on goals", () => {
         expect(TOUR_STEPS).toHaveLength(TOUR_STEP_COUNT);
         expect(TOUR_STEPS.map((step) => step.id)).toEqual([
             "hello",
-            "library",
-            "goals",
-            "progress",
             "trainer",
+            "library",
+            "progress",
+            "goals",
         ]);
-        expect(TOUR_STEPS[4]?.title).toBe("Practice");
+        expect(TOUR_STEPS[4]?.title).toBe("Goals");
         expect(TOUR_STEPS.map((step) => step.nav)).toEqual([
             "home",
-            "library",
-            "goals",
-            "progress",
             "practice",
+            "library",
+            "progress",
+            "goals",
         ]);
         expect(tourHeading(TOUR_STEPS[0]!, "Alex")).toBe("Hi, Alex.");
         expect(tourHeading(TOUR_STEPS[0]!, "  ")).toBe("Hi.");
-        expect(tourHeading(TOUR_STEPS[1]!, "Alex")).toBe("Library");
+        expect(tourHeading(TOUR_STEPS[1]!, "Alex")).toBe("Practice");
     });
 
     test("resumes on the step after the last completed one", () => {

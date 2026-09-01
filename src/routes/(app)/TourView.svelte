@@ -177,7 +177,7 @@
 </svelte:head>
 
 {#if layout === "dialog"}
-    <div class="flex min-h-[28rem] flex-col md:min-h-[32rem]">
+    <div class="flex h-[28rem] min-h-0 flex-col md:h-[32rem]">
         {@render tourBody()}
     </div>
 {:else}

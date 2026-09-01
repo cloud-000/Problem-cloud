@@ -142,8 +142,8 @@ The exact copy may change, but these constraints do not:
 
 - The first screen is a personal greeting. It does not mention Goals, rating,
   the Series matrix, Coach configuration, or offline downloads.
-- The tour uses interactive product mocks (Library tabs, Goals, rating plus
-  Series matrix, trainer chrome) rather than a list of live controls.
+- The tour uses interactive product mocks (trainer chrome, Library tabs, rating plus
+  Series matrix, lead-goal cards) rather than a list of live controls.
 - Completing the last step opens early-use Home. Skip at any step does the
   same and leaves all product access available. Welcome is deliberate
   first-run guidance, not account setup.
@@ -427,13 +427,14 @@ The quick tour and Help use the same content model at different depths.
 The quick tour has five short steps:
 
 1. A personal greeting (`Hi, {username}.`).
-2. Library: Problems, Tests, and Series, with a clickable mock of the three tabs
+2. Practice: the core loop, with a mock of the trainer chrome (whiteboard, Coach,
+   settings).
+3. Library: Problems, Tests, and Series, with a clickable mock of the three tabs
    that shows live catalog rows through the real Library list (drill series →
    tests → problems; outbound practice/Coach/AoPS actions stay off).
-3. Goals: a destination Home can follow, with a clickable mock of lead-goal cards.
 4. Progress: rating climb and Series matrix on one slide, both interactive mocks.
-5. Practice: the core loop, with a mock of the trainer chrome (whiteboard, Coach,
-   settings). Completing this step opens Home.
+5. Goals: a destination Home can follow, with a clickable mock of lead-goal cards.
+   Completing this step opens Home.
 
 It should use interactive product mocks, not a fragile sequence of spotlights
 attached to live controls. A student can skip at any step to reach minimal Home,
