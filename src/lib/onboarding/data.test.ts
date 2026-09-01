@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mapOnboardingRow, saveOnboarding } from "./data";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { mapOnboardingRow, resetOnboardingRowCache, saveOnboarding } from "./data";
 import { emptyOnboarding } from "./types";
 import { skipWelcome } from "./welcome";
 
@@ -39,6 +39,10 @@ function mockClient(options: {
 describe("saveOnboarding", () => {
     const state = skipWelcome(emptyOnboarding(), "2026-08-31T12:00:00.000Z");
 
+    beforeEach(() => {
+        resetOnboardingRowCache();
+    });
+
     test("inserts a new row instead of upserting", async () => {
         const client = mockClient({ insert: { error: null } });
         await saveOnboarding(client as never, "user-1", state);
@@ -69,6 +73,16 @@ describe("saveOnboarding", () => {
             code: "42501",
         });
         expect(client.calls.map((call) => call.method)).toEqual(["add-row"]);
+    });
+
+    test("updates directly after the row is known", async () => {
+        const client = mockClient({
+            insert: { error: null },
+            update: { error: null },
+        });
+        await saveOnboarding(client as never, "user-1", state);
+        await saveOnboarding(client as never, "user-1", state);
+        expect(client.calls.map((call) => call.method)).toEqual(["add-row", "patch-row"]);
     });
 });
 

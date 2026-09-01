@@ -15,6 +15,14 @@ import {
 type Supabase = SupabaseClient<Database>;
 type OnboardingRow = Database["public"]["Tables"]["user_onboarding"]["Row"];
 
+/** Rows loaded or written this session — skip doomed INSERTs after the first. */
+const knownRows = new Set<string>();
+
+/** @internal Clears the per-session row cache (tests). */
+export function resetOnboardingRowCache(): void {
+    knownRows.clear();
+}
+
 function asStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return value.filter((entry): entry is string => typeof entry === "string");
@@ -52,6 +60,7 @@ export async function fetchOnboarding(
         .maybeSingle();
     if (error) throw error;
     if (!data) return emptyOnboarding();
+    knownRows.add(userId);
     return mapOnboardingRow(data);
 }
 
@@ -85,11 +94,27 @@ function onboardingPatch(state: OnboardingState) {
     };
 }
 
+async function updateOnboardingRow(
+    supabase: Supabase,
+    userId: string,
+    patch: ReturnType<typeof onboardingPatch>,
+): Promise<void> {
+    const { error } = await supabase
+        .from("user_onboarding")
+        .update(patch)
+        .eq("user_id", userId);
+    if (error) throw error;
+    knownRows.add(userId);
+}
+
 /**
  * Insert, then update on a unique collision. Do not upsert: PostgREST's
  * `ON CONFLICT DO UPDATE` requires UPDATE on every written column, and
  * `user_id` / `created_at` are intentionally not updatable
  * (`user_onboarding.sql`, same pattern as `practice_sessions`).
+ *
+ * After `fetchOnboarding` or a successful write, later saves update only
+ * so tour steps do not spam 409s in the network panel.
  */
 export async function saveOnboarding(
     supabase: Supabase,
@@ -97,15 +122,18 @@ export async function saveOnboarding(
     state: OnboardingState,
 ): Promise<void> {
     const patch = onboardingPatch(state);
+    if (knownRows.has(userId)) {
+        await updateOnboardingRow(supabase, userId, patch);
+        return;
+    }
     const inserted = await supabase.from("user_onboarding").insert({
         user_id: userId,
         ...patch,
     });
-    if (!inserted.error) return;
+    if (!inserted.error) {
+        knownRows.add(userId);
+        return;
+    }
     if (inserted.error.code !== "23505") throw inserted.error;
-    const { error } = await supabase
-        .from("user_onboarding")
-        .update(patch)
-        .eq("user_id", userId);
-    if (error) throw error;
+    await updateOnboardingRow(supabase, userId, patch);
 }
