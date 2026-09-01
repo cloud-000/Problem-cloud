@@ -26,6 +26,7 @@
         type GoalProgressResult,
         type VolumePeriod,
     } from "$lib/goals";
+    import { acknowledgeSetGoal } from "$lib/onboarding";
     import Track from "../practice/Track.svelte";
     import { createTrackValue, type TrackValue } from "../practice/practice-settings";
     import {
@@ -512,6 +513,7 @@
                     },
                     { eligibleTotal: isCountTarget ? totals?.eligibleTotal : undefined },
                 );
+                acknowledgeSetGoal();
                 open = false;
                 onsaved(created, "created");
                 if (startPracticing && onstart) await onstart(created);

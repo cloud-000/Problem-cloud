@@ -68,6 +68,11 @@ export function acknowledgeCoachSend(): void {
     acknowledgeTip(GETTING_STARTED_TIP.coach);
 }
 
+/** First goal created — sticky even if every goal row is later deleted. */
+export function acknowledgeSetGoal(): void {
+    acknowledgeTip(GETTING_STARTED_TIP.setGoal);
+}
+
 /** Opening the trainer's practice-settings utility panel. */
 export function acknowledgePracticeSettingsOpen(): void {
     acknowledgeTip(GETTING_STARTED_TIP.practiceSettings);

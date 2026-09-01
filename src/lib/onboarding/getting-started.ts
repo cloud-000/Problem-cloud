@@ -80,7 +80,9 @@ export function rankGettingStarted(input: GettingStartedInput): GettingStartedCa
             id: "set-goal",
             label: "Set a goal",
             href: NEW_GOAL_HREF,
-            done: input.hasGoal,
+            done:
+                input.hasGoal ||
+                hasAcknowledgedTip(input.acknowledgedTips, GETTING_STARTED_TIP.setGoal),
         },
     ];
     return {

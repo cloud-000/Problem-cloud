@@ -10,6 +10,7 @@ export const GETTING_STARTED_TIP = {
     practiceSettings: "getting-started:practice-settings",
     whiteboard: "getting-started:whiteboard",
     coach: "getting-started:coach",
+    setGoal: "getting-started:set-goal",
 } as const;
 
 export const CONTEXTUAL_TIP = {

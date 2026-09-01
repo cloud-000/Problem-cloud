@@ -59,6 +59,7 @@
         showGettingStarted,
         skipWelcome,
         startTour,
+        acknowledgeSetGoal,
         acknowledgeTipInState,
         contextualTipCopy,
         type ContextualTipId,
@@ -213,6 +214,7 @@
         try {
             const rows = await fetchGoals(supabase, { includeArchived: true });
             hasAnyGoal = rows.length > 0;
+            if (hasAnyGoal) acknowledgeSetGoal();
             const active = rows.filter((goal) => !goal.archivedAt);
             goalsNow = new Date();
             const plan = planGoalRequests(active, { now: goalsNow });

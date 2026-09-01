@@ -51,6 +51,19 @@ describe("Getting started ranking", () => {
         );
     });
 
+    test("set-goal acknowledgement is sticky after every goal row is gone", () => {
+        expect(rankGettingStarted({ ...incomplete, hasGoal: false }).items[4]?.done).toBe(
+            false,
+        );
+        expect(
+            rankGettingStarted({
+                ...incomplete,
+                hasGoal: false,
+                acknowledgedTips: [GETTING_STARTED_TIP.setGoal],
+            }).items[4]?.done,
+        ).toBe(true);
+    });
+
     test("Coach is done from a conversation row or the send acknowledgement", () => {
         expect(
             rankGettingStarted({ ...incomplete, hasCoachConversation: true }).items[3]

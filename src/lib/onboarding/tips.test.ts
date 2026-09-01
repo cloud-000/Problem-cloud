@@ -17,6 +17,7 @@ describe("tip ids", () => {
             "getting-started:practice-settings",
         );
         expect(GETTING_STARTED_TIP.whiteboard).toBe("getting-started:whiteboard");
+        expect(GETTING_STARTED_TIP.setGoal).toBe("getting-started:set-goal");
     });
 
     test("whiteboard persist only counts scratch and page keys", () => {
