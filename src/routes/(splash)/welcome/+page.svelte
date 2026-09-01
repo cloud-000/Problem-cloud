@@ -69,11 +69,11 @@
         },
         {
             q: "Is there an AI coach?",
-            a: "Yes. BYOK — your key, your browser. Hints, not answers.",
+            a: "Yes. Free with every account — hints, not answers. Bring your own key if you prefer.",
         },
         {
             q: "Is it free?",
-            a: "Yes. An account adds history, rating, and review.",
+            a: "Yes. Practice and a monthly free Coach allowance. An account adds history, rating, and review.",
         },
         {
             q: "Can I filter?",
@@ -122,11 +122,11 @@
 </script>
 
 <svelte:head>
-    <title>ProblemCloud — contest math practice in one place</title>
+    <title>ProblemCloud — contest math practice with free AI</title>
     <meta
         name="description"
         content="{problemLabel ??
-            'Thousands of'} contest math problems from MATHCOUNTS, AMC, AIME, HMMT, PUMAC and more — complete papers, a review grid, and a BYOK coach."
+            'Thousands of'} contest math problems from MATHCOUNTS, AMC, AIME, HMMT, PUMAC and more — complete papers, a review grid, and a free AI coach."
     />
 </svelte:head>
 
@@ -140,11 +140,12 @@
                 Contest math.
             </p>
             <h1 class="type-hero text-foreground text-balance">
-                Every problem in one place.
+                <span class="block">Every problem in one place.</span>
+                <span class="text-primary-foreground block">With free AI.</span>
             </h1>
-            <p class="type-lead text-muted-foreground mt-md max-w-[36ch]">
-                Complete papers. A review grid. A BYOK coach — your key, your
-                browser.
+            <p class="type-lead text-muted-foreground mt-md max-w-[40ch]">
+                Complete papers and a review grid. Bring your own key if you
+                prefer.
             </p>
 
             <div class="mt-lg flex flex-wrap items-center gap-sm">
@@ -191,14 +192,14 @@
     <section class="pb-xl" aria-labelledby="tools-heading">
         <h2
             id="tools-heading"
-            class="type-display text-foreground max-w-[22ch] text-balance"
+            class="type-display text-foreground max-w-[24ch] text-balance"
         >
-            Coach and grid.
+            Free AI coach and review grid.
         </h2>
         <ul
             class="type-secondary text-muted-foreground mt-md flex flex-wrap gap-x-lg gap-y-1"
         >
-            <li>BYOK coach</li>
+            <li>Free AI coach</li>
             <li>Review grid</li>
             <li>Complete papers</li>
         </ul>
@@ -218,7 +219,7 @@
                         />
                         <span class="type-caption text-foreground">Coach</span>
                         <span class="type-caption text-muted-foreground"
-                            >BYOK</span
+                            >Free</span
                         >
                     </div>
                     <div class="flex flex-col gap-3 p-md">
@@ -239,7 +240,7 @@
                     </div>
                 </div>
                 <figcaption class="type-caption text-muted-foreground mt-md">
-                    BYOK. Hints, not answers.
+                    Free with every account. Hints, not answers.
                 </figcaption>
             </figure>
 
@@ -433,9 +434,11 @@
         class="border-border/60 flex flex-col items-start gap-md border-t py-xl sm:flex-row sm:items-center sm:justify-between"
     >
         <div>
-            <h2 class="type-display text-foreground">Start with one problem.</h2>
+            <h2 class="type-display text-foreground text-balance">
+                Start with free AI.
+            </h2>
             <p class="type-secondary text-muted-foreground mt-1.5">
-                Free. History starts with your first answer.
+                One problem is enough. History starts with your first answer.
             </p>
         </div>
         <Button
