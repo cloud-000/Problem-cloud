@@ -2556,6 +2556,7 @@
                bind:form={settingsForm}
                {seriesOptions}
                loadSeriesDimensions={trainerSource.getSeriesDimensions}
+               loadSeriesNumberLine={trainerSource.getSeriesNumberLine}
                canReview={!!user}
                enabledModes={capabilities.modes}
                {isTest}

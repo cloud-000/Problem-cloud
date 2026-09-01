@@ -211,6 +211,42 @@ export async function fetchSeriesDimensions(
     return (data ?? []) as unknown as SeriesDimensionRow[];
 }
 
+export type SeriesNumberLineScope = {
+    divisions: string[];
+    formats: string[];
+};
+
+/**
+ * 1-based length of a series' number line (`max(n) + 1`) after optional
+ * division/format narrowing. 0 when the series has no matching problems.
+ */
+export async function fetchSeriesNumberLine(
+    supabase: Supabase,
+    seriesId: number,
+    scope?: SeriesNumberLineScope,
+): Promise<number> {
+    if (typeof window !== "undefined" && catalogReadRuntime.effective === "local") {
+        throw new LocalCatalogUnavailable("not-downloaded");
+    }
+    let query = supabase
+        .from("problems")
+        .select("n, tests!inner(series_id)")
+        .eq("tests.series_id", seriesId)
+        .order("n", { ascending: false })
+        .limit(1);
+    if (scope?.divisions.length) query = query.in("tests.division", scope.divisions);
+    if (scope?.formats.length) query = query.in("tests.format", scope.formats);
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+        if (typeof window !== "undefined") catalogReadRuntime.noteRemoteFailure();
+        throw typeof window !== "undefined"
+            ? new LocalCatalogUnavailable("not-downloaded")
+            : error;
+    }
+    const n = (data as { n?: number } | null)?.n;
+    return typeof n === "number" ? n + 1 : 0;
+}
+
 export function statusForReview(
     progress: SeriesReviewProgress | null,
 ): SeriesReviewStatus {

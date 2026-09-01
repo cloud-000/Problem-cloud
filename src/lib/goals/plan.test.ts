@@ -92,7 +92,13 @@ describe("scopeKey", () => {
             scopeKey(
                 scope({
                     seriesIds: ["3"],
-                    seriesScopes: { "3": { divisions: ["State"], formats: [] } },
+                    seriesScopes: {
+                        "3": {
+                            divisions: [],
+                            formats: [],
+                            problemNumbers: [21, 25],
+                        },
+                    },
                 }),
             ),
         ).not.toBe(scopeKey(scope({ seriesIds: ["3"] })));

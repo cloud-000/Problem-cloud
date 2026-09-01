@@ -81,14 +81,23 @@ export type PracticeSettings = {
     seriesIds?: string[]; // Optional for backward compatibility with older snapshots
     // Per-series test-level draw scope. Keyed by series id (string, matching
     // `seriesIds`); each entry narrows *that* series' draws to the chosen
-    // divisions and/or formats (an empty axis = no narrowing on that axis).
-    // Because division/format vocabulary is per-series, the draw is an
-    // OR-of-ANDs across series (see {@link seriesScopeFilter}), so one series'
-    // "State" never leaks onto another. Entries for series not in `seriesIds`
-    // are ignored. Optional so older snapshots are tolerated (no constraint).
+    // divisions, formats, and/or problem-number range (an empty axis = no
+    // narrowing on that axis). `problemNumbers` is 1-based inclusive
+    // (`problems.n + 1`); omit it for the full number line. Because
+    // division/format vocabulary is per-series, the draw is an OR-of-ANDs
+    // across series (see {@link seriesScopeFilter}), so one series' "State"
+    // never leaks onto another. Entries for series not in `seriesIds` are
+    // ignored. Optional so older snapshots are tolerated (no constraint).
     // NOTE: `formats` (paper type — Sprint/Target/Team) is distinct from
     // `format` (SessionFormat) above; don't conflate.
-    seriesScopes?: Record<string, { divisions: string[]; formats: string[] }>;
+    seriesScopes?: Record<
+        string,
+        {
+            divisions: string[];
+            formats: string[];
+            problemNumbers?: [number, number];
+        }
+    >;
     // Problem-attribute filters — apply to every mode.
     topic: string[];
     difficulty: Range;
@@ -324,30 +333,111 @@ export function hasSeriesScope(settings: PracticeSettings): boolean {
     });
 }
 
+/** A stored 1-based problem-number pair that actually narrows that series. */
+function storedProblemNumbers(
+    scope: { problemNumbers?: [number, number] } | undefined,
+): [number, number] | null {
+    const range = scope?.problemNumbers;
+    if (!range) return null;
+    const lo = range[0];
+    const hi = range[1];
+    if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
+        return null;
+    }
+    return [lo, hi];
+}
+
+/**
+ * Whether any selected series carries a problem-number range. Full-range
+ * sliders omit the field, so presence is the narrowing.
+ */
+export function hasProblemNumberScope(settings: PracticeSettings): boolean {
+    const scopes = settings.seriesScopes ?? {};
+    return (settings.seriesIds ?? []).some((id) => storedProblemNumbers(scopes[id]) != null);
+}
+
 /** Double-quote + escape a value for a PostgREST `in.(…)` list literal. */
 function pgQuote(value: string): string {
     return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+export type SeriesScopeFilterOptions = {
+    /**
+     * Build the problem-number OR body (`n` on the problems resource plus a
+     * per-series empty-embed `not.is.null`). PostgREST cannot put `tests.series_id`
+     * inside `and()` — after a table name the parser only accepts `not` or an
+     * operator — so series/division/format live on `{alias}:tests()` filters
+     * applied by {@link applySeriesScopeFilter}, not in this string.
+     */
+    qualifyForProblemNumbers?: boolean;
+};
+
+/**
+ * Empty `tests` embed alias for one series. Negative ids become `sn940001`
+ * (`-` is not a PostgREST identifier character).
+ */
+export function seriesScopeEmbedAlias(seriesId: string): string {
+    return `s${seriesId.replaceAll("-", "n")}`;
+}
+
+/**
+ * Extra select fragments for those aliases. Must be present on the query
+ * whenever {@link hasProblemNumberScope} is true, or the alias filters are
+ * silently dropped.
+ */
+export function seriesScopeSelectAliases(settings: PracticeSettings): string {
+    if (!hasProblemNumberScope(settings)) return "";
+    return (settings.seriesIds ?? [])
+        .map((id) => `, ${seriesScopeEmbedAlias(id)}:tests()`)
+        .join("");
+}
+
 /**
  * The comma-separated OR body scoping a draw to the selected series, narrowing
- * each series by its own divisions/formats. Because vocabulary is per-series,
- * this is an OR-of-ANDs — one branch per series, each requiring that series'
- * id and (if set) its division/format membership — so a division chosen for one
- * series never applies to another. A series with no narrowing contributes a
- * bare `series_id.eq.N` branch (all its problems pass). Consumed via `.or(body,
- * { referencedTable })` against the (possibly nested) embedded `tests` table.
- * Only called when {@link hasSeriesScope} is true; otherwise the plainer
- * `series_id in (…)` membership filter is used.
+ * each series by its own divisions/formats and optional problem-number range.
+ * Because vocabulary is per-series, this is an OR-of-ANDs — one branch per
+ * series, each requiring that series' id and (if set) its own narrowing — so a
+ * division or #21–25 chosen for one series never applies to another. A series
+ * with no narrowing contributes a bare `series_id.eq.N` branch.
+ *
+ * When {@link hasProblemNumberScope} is true (or `qualifyForProblemNumbers` is
+ * passed), the body is applied on the *problems* resource: `n` lives there, not
+ * on tests, and `{ referencedTable: "tests" }` would look for `tests.n`. Each
+ * branch is `and(n.gte,n.lte,{alias}.not.is.null)` (or just the alias when that
+ * series has no number range). Otherwise the unprefixed tests-column form is
+ * consumed via `.or(body, { referencedTable })` as before.
  */
-export function seriesScopeFilter(settings: PracticeSettings): string {
+export function seriesScopeFilter(
+    settings: PracticeSettings,
+    options: SeriesScopeFilterOptions = {},
+): string {
+    const qualify =
+        options.qualifyForProblemNumbers ?? hasProblemNumberScope(settings);
     const scopes = settings.seriesScopes ?? {};
+    if (qualify) {
+        return (settings.seriesIds ?? [])
+            .map((id) => {
+                const alias = seriesScopeEmbedAlias(id);
+                const numbers = storedProblemNumbers(scopes[id]);
+                const terms: string[] = [`${alias}.not.is.null`];
+                if (numbers) {
+                    terms.unshift(
+                        `n.gte.${numbers[0] - 1}`,
+                        `n.lte.${numbers[1] - 1}`,
+                    );
+                }
+                return terms.length === 1 ? terms[0] : `and(${terms.join(",")})`;
+            })
+            .join(",");
+    }
     return (settings.seriesIds ?? [])
         .map((id) => {
             const scope = scopes[id];
             const terms = [`series_id.eq.${Number(id)}`];
             if (scope?.divisions?.length) {
-                terms.push(`division.in.(${scope.divisions.map(pgQuote).join(",")})`);
+                terms.push(
+                    `division.in.(${scope.divisions.map(pgQuote).join(",")})`,
+                );
             }
             if (scope?.formats?.length) {
                 terms.push(`format.in.(${scope.formats.map(pgQuote).join(",")})`);
@@ -355,6 +445,45 @@ export function seriesScopeFilter(settings: PracticeSettings): string {
             return terms.length === 1 ? terms[0] : `and(${terms.join(",")})`;
         })
         .join(",");
+}
+
+/**
+ * Apply series / division / format / problem-number scope to a PostgREST query.
+ * Shared with the goals scope-contract test so the two cannot drift.
+ */
+export function applySeriesScopeFilter(
+    query: any,
+    settings: PracticeSettings,
+    prefix: "" | "problems." = "",
+): any {
+    if (!settings.seriesIds?.length) return query;
+    const embed = prefix === "" ? "tests" : "problems.tests";
+    if (hasProblemNumberScope(settings)) {
+        let next = query;
+        for (const id of settings.seriesIds) {
+            const col = `${prefix}${seriesScopeEmbedAlias(id)}`;
+            next = next.eq(`${col}.series_id`, Number(id));
+            const scope = settings.seriesScopes?.[id];
+            if (scope?.divisions?.length) {
+                next = next.in(`${col}.division`, scope.divisions);
+            }
+            if (scope?.formats?.length) {
+                next = next.in(`${col}.format`, scope.formats);
+            }
+        }
+        const body = seriesScopeFilter(settings, {
+            qualifyForProblemNumbers: true,
+        });
+        return prefix === "problems."
+            ? next.or(body, { referencedTable: "problems" })
+            : next.or(body);
+    }
+    if (hasSeriesScope(settings)) {
+        return query.or(seriesScopeFilter(settings), {
+            referencedTable: embed,
+        });
+    }
+    return query.in(`${embed}.series_id`, settings.seriesIds.map(Number));
 }
 
 /** PostgREST `in` list literal, or null when there is nothing to exclude. */
@@ -423,19 +552,15 @@ function applyAttributeFilters(
     if (settings.computational != null) {
         next = next.eq(`${prefix}is_computational`, settings.computational);
     }
-    // Series scope. With no per-series division/format narrowing this is plain
-    // `series_id` membership (unchanged behavior). When at least one series is
-    // narrowed, switch to the per-series OR-of-ANDs so each series is filtered by
-    // its *own* divisions/formats. Both target the embedded `tests` table
-    // (nested under `problems` when drawing through `problem_progress`); the
-    // embed is inner-joined (see the `*Select` helpers) so these drop the parent.
+    // Series scope. With no per-series division/format/problem-number narrowing
+    // this is plain `series_id` membership (unchanged behavior). When at least
+    // one series is narrowed, switch to the per-series OR-of-ANDs so each
+    // series is filtered by its *own* axes. Problem numbers live on `problems.n`,
+    // so that path uses empty-embed aliases plus a problems-resource OR rather
+    // than the tests embed (which would look for `tests.n`). The embed is
+    // inner-joined (see the `*Select` helpers) so these drop the parent.
     if (settings.seriesIds && settings.seriesIds.length > 0) {
-        const embed = prefix === "" ? "tests" : "problems.tests";
-        if (hasSeriesScope(settings)) {
-            next = next.or(seriesScopeFilter(settings), { referencedTable: embed });
-        } else {
-            next = next.in(`${embed}.series_id`, settings.seriesIds.map(Number));
-        }
+        next = applySeriesScopeFilter(next, settings, prefix);
     }
 
     // Adaptive difficulty: keep only problems whose overall-scope rating sits in
@@ -457,7 +582,7 @@ function applyAttributeFilters(
 function problemsDirectSelect(settings: ResolvedSettings): string {
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
-    return `*, ${tests}${rating}`;
+    return `*, ${tests}${seriesScopeSelectAliases(settings)}${rating}`;
 }
 
 /** Minimal head-count select for a direct `problems` draw (ids + join anchors). */
@@ -466,6 +591,7 @@ function problemsCountSelect(settings: ResolvedSettings): string {
     if (scopesTests(settings)) {
         sel += ", tests!inner(series_id, division, format)";
     }
+    sel += seriesScopeSelectAliases(settings);
     if (settings.ratingBand) sel += ", problem_ratings!inner(rating)";
     return sel;
 }
@@ -474,7 +600,7 @@ function problemsCountSelect(settings: ResolvedSettings): string {
 function reviewSelect(settings: ResolvedSettings): string {
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
     const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
-    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_reviewed_at, last_correct, solved, mastery, engagement, problems!inner(*, ${tests}${rating})`;
+    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_reviewed_at, last_correct, solved, mastery, engagement, problems!inner(*, ${tests}${seriesScopeSelectAliases(settings)}${rating})`;
 }
 
 /** Whether settings permit problems without a comparable reference answer. */
@@ -621,7 +747,7 @@ async function fetchNearestNewProblem(
     const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
     const allowAnswerless = allowsWithoutComparableAnswer(settings);
     const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
-    const select = `problem_id, rating, problems!inner(*, ${tests})`;
+    const select = `problem_id, rating, problems!inner(*, ${tests}${seriesScopeSelectAliases(settings)})`;
 
     // The band is intentionally dropped here (nearest lives *outside* it); every
     // other attribute filter still applies, under the `problems.` embed prefix.

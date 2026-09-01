@@ -86,6 +86,23 @@ describe("scope normalization", () => {
         });
         expect(normalized.seriesScopes).toEqual({});
     });
+
+    test("keeps a problem-number range as a real narrowing", () => {
+        const normalized = normalizeScope({
+            topic: [],
+            seriesIds: ["10"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [21, 25] as [number, number],
+                },
+            },
+        });
+        expect(normalized.seriesScopes).toEqual({
+            "10": { divisions: [], formats: [], problemNumbers: [21, 25] },
+        });
+    });
 });
 
 describe("package creation", () => {

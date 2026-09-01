@@ -19,14 +19,60 @@ export type PracticeTriState = "on" | "off" | "neutral";
 export type CounterKey = "seen" | "reviewed" | "correct" | "skipped";
 export type CounterRanges = Record<CounterKey, Range>;
 export type CounterEnabled = Record<CounterKey, boolean>;
-/** Per-series division/format narrowing, keyed by series id (string). */
-export type SeriesScope = { divisions: string[]; formats: string[] };
+/**
+ * Per-series narrowing, keyed by series id (string). `problemNumbers` is a
+ * 1-based inclusive range (`problems.n + 1`); omit it when the slider is the
+ * full number line (no narrowing), matching the difficulty slider.
+ */
+export type SeriesScope = {
+    divisions: string[];
+    formats: string[];
+    problemNumbers?: [number, number];
+};
 export type SeriesScopes = Record<string, SeriesScope>;
 
 /**
- * A settings-panel row for narrowing one selected series by division/format.
- * Built per selected *classified* series (unclassified series get no row); the
- * option lists come from that series' tests.
+ * The stored 1-based range if it actually narrows, else `null`. Pass `length`
+ * (1-based max) to treat a full `[1, L]` as absent; omit it at filter time,
+ * where a missing field already means no narrowing.
+ */
+export function problemNumberRange(
+    scope: { problemNumbers?: [number, number] } | undefined | null,
+    length?: number,
+): [number, number] | null {
+    const range = scope?.problemNumbers;
+    if (!range) return null;
+    const lo = range[0];
+    const hi = range[1];
+    if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
+        return null;
+    }
+    if (length != null && length >= 1 && lo <= 1 && hi >= length) return null;
+    return [lo, hi];
+}
+
+/**
+ * Fit a stored range onto a (possibly shorter) number line. A range that
+ * starts past the new length — e.g. 21–25 after switching to an 8-problem
+ * format — resets to unset (full). `[1, L]` is also unset.
+ */
+export function clampProblemNumbers(
+    range: [number, number] | undefined | null,
+    length: number,
+): [number, number] | undefined {
+    if (length < 1 || !range) return undefined;
+    if (range[0] > length) return undefined;
+    const lo = Math.max(1, range[0]);
+    const hi = Math.min(range[1], length);
+    if (lo > hi) return undefined;
+    if (lo <= 1 && hi >= length) return undefined;
+    return [lo, hi];
+}
+
+/**
+ * A settings-panel row for one selected series: its own division/format
+ * vocabulary (empty when unclassified) plus a problem-number slider once the
+ * number line is known. Option lists come from that series' tests.
  */
 export type SeriesScopeConfig = {
     id: string;
@@ -37,7 +83,7 @@ export type SeriesScopeConfig = {
 
 /**
  * The "what is this session about" slice of {@link PracticeSettingsForm} —
- * topic + series + division/format narrowing. Shared by the session-creation
+ * topic + series + per-series division/format/problem-number narrowing. Shared by the session-creation
  * dialog (`Track.svelte` in `SessionsView`) and the mid-session settings panel
  * (`Track.svelte` in `SettingsPanel`), so a full `PracticeSettingsForm`
  * structurally satisfies it with zero conversion.
@@ -51,13 +97,21 @@ export function createTrackValue(): TrackValue {
     return { topic: [], seriesIds: [], seriesScopes: {} };
 }
 
+function cloneProblemNumbers(
+    range: [number, number] | undefined,
+): [number, number] | undefined {
+    return range ? [range[0], range[1]] : undefined;
+}
+
 /** Deep-clone the per-series scope map so form and snapshot never share arrays. */
 function cloneScopes(raw: SeriesScopes | undefined | null): SeriesScopes {
     const out: SeriesScopes = {};
     for (const [id, scope] of Object.entries(raw ?? {})) {
+        const problemNumbers = cloneProblemNumbers(scope?.problemNumbers);
         out[id] = {
             divisions: [...(scope?.divisions ?? [])],
             formats: [...(scope?.formats ?? [])],
+            ...(problemNumbers ? { problemNumbers } : {}),
         };
     }
     return out;

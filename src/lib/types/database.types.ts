@@ -1709,6 +1709,7 @@ export type Database = {
           division: string | null
           format: string | null
           gradeable: boolean | null
+          n: number | null
           placement_id: number | null
           series_id: number | null
           test_id: number | null

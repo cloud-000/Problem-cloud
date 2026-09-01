@@ -110,6 +110,14 @@
                 {
                     divisions: [...scope.divisions],
                     formats: [...scope.formats],
+                    ...(scope.problemNumbers
+                        ? {
+                              problemNumbers: [
+                                  scope.problemNumbers[0],
+                                  scope.problemNumbers[1],
+                              ] as [number, number],
+                          }
+                        : {}),
                 },
             ]),
         );

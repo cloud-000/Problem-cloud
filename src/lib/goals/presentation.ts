@@ -508,6 +508,20 @@ export function describeScope(scope: GoalScope, names: SeriesNames): string {
         const name = names.get(id) ?? `Series ${id}`;
         const entry = scope.seriesScopes?.[id];
         const tags = [...(entry?.divisions ?? []), ...(entry?.formats ?? [])];
+        const numbers = entry?.problemNumbers;
+        if (
+            numbers &&
+            Number.isInteger(numbers[0]) &&
+            Number.isInteger(numbers[1]) &&
+            numbers[0] >= 1 &&
+            numbers[1] >= numbers[0]
+        ) {
+            tags.push(
+                numbers[0] === numbers[1]
+                    ? `#${numbers[0]}`
+                    : `#${numbers[0]}–${numbers[1]}`,
+            );
+        }
         return tags.length > 0 ? `${name} (${tags.join(", ")})` : name;
     });
     const topics = (scope.topic ?? []).map((code) => topicLabel(code) ?? code);

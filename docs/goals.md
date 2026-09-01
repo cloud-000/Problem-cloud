@@ -49,10 +49,12 @@ type GoalScope = TrackValue & { yearRange: [number, number] | null };
 // TrackValue = { topic: string[]; seriesIds: string[]; seriesScopes: SeriesScopes }
 ```
 
-Each selected series is one clause carrying its own division/format narrowing;
-clauses are OR-ed; topic narrows the result. A division chosen for one series
-must never filter another series with a different vocabulary. An empty axis means
-no narrowing on that axis.
+Each selected series is one clause carrying its own division/format and optional
+problem-number narrowing (`problemNumbers`, a 1-based inclusive range on
+`problems.n + 1`); clauses are OR-ed; topic narrows the result. A division or
+`#21–25` chosen for one series must never filter another series with a different
+vocabulary or number line. An empty axis — including a full `[1, L]` problem-number
+slider, which is stored as absent — means no narrowing on that axis.
 
 Scope being structurally identical to `TrackValue` is what makes "Practice
 remaining" free: the goal's scope is handed to the trainer unchanged.
@@ -68,8 +70,8 @@ it, so no `user_problem_index` change is required.
 ### How scope is matched
 
 Every family resolves scope through one object — `canonical_placements`, one row
-per (canonical, placement) carrying `series_id`, `division`, `format` and `year`,
-aliases included. Matching is a **semi-join**: *does this canonical have any
+per (canonical, placement) carrying `series_id`, `division`, `format`, `year`
+and `n`, aliases included. Matching is a **semi-join**: *does this canonical have any
 placement satisfying the scope?* That is already the set family's rule (§5), and
 it is the only formulation that also works for event metrics, where joining
 placements directly would fan one submission into N rows and break every count.

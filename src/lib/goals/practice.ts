@@ -21,9 +21,16 @@ import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
 function cloneScopes(scope: GoalScope): PracticeSettings["seriesScopes"] {
     const out: NonNullable<PracticeSettings["seriesScopes"]> = {};
     for (const [id, entry] of Object.entries(scope.seriesScopes ?? {})) {
+        const problemNumbers = entry?.problemNumbers
+            ? ([entry.problemNumbers[0], entry.problemNumbers[1]] as [
+                  number,
+                  number,
+              ])
+            : undefined;
         out[id] = {
             divisions: [...(entry?.divisions ?? [])],
             formats: [...(entry?.formats ?? [])],
+            ...(problemNumbers ? { problemNumbers } : {}),
         };
     }
     return out;

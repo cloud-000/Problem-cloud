@@ -18,7 +18,7 @@
 import { describe, expect, test } from "bun:test";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
-import { hasSeriesScope, seriesScopeFilter, type PracticeSettings } from "$lib/trainer";
+import { applySeriesScopeFilter, seriesScopeSelectAliases, type PracticeSettings } from "$lib/trainer";
 import type { GoalScope } from "./types";
 
 // Web APIs and the three bun:test exports only: `@types/bun` is not installed,
@@ -253,6 +253,44 @@ const SCOPES: { name: string; scope: GoalScope }[] = [
             },
         },
     },
+    {
+        name: "shared problem-number range across series",
+        scope: {
+            topic: [],
+            seriesIds: [`${SERIES.alpha}`, `${SERIES.beta}`],
+            seriesScopes: {
+                [SERIES.alpha]: {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [2, 2],
+                },
+                [SERIES.beta]: {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [2, 2],
+                },
+            },
+        },
+    },
+    {
+        name: "split problem-number ranges",
+        scope: {
+            topic: [],
+            seriesIds: [`${SERIES.alpha}`, `${SERIES.beta}`],
+            seriesScopes: {
+                [SERIES.alpha]: {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [1, 1],
+                },
+                [SERIES.beta]: {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [2, 2],
+                },
+            },
+        },
+    },
 ];
 
 /** The trainer's own filter, applied the way `applyAttributeFilters` applies it. */
@@ -263,25 +301,30 @@ async function trainerCanonicals(scope: GoalScope): Promise<number[]> {
         topic: scope.topic,
     } as unknown as PracticeSettings;
 
-    let query = admin
+    const select =
+        `id, canonical_id, tests!inner(series_id, division, format)${seriesScopeSelectAliases(settings)}`;
+    // Select is built at runtime (empty-embed aliases for problem numbers), so
+    // the client's string-literal parser cannot type it.
+    let query: any = admin
         .from("problems")
-        .select("id, canonical_id, tests!inner(series_id, division, format)")
+        .select(select)
         .gte("id", -949999)
         .lte("id", -940000);
 
     if (scope.topic.length > 0) query = query.in("topic", scope.topic);
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        query = hasSeriesScope(settings)
-            ? query.or(seriesScopeFilter(settings), { referencedTable: "tests" })
-            : query.in("tests.series_id", settings.seriesIds.map(Number));
-    }
+    query = applySeriesScopeFilter(query, settings);
 
     const { data, error } = await query;
     if (error) throw error;
     // Collapse placements onto canonicals — the trainer's own alias exclusion is
     // deliberately NOT applied: it is right for discovery draws and wrong here
     // (`docs/goals.md` §5). What is under test is the scope filter itself.
-    return unique((data ?? []).map((r) => r.canonical_id ?? r.id));
+    return unique(
+        (data ?? []).map(
+            (r: { canonical_id: number | null; id: number }) =>
+                r.canonical_id ?? r.id,
+        ),
+    );
 }
 
 async function sqlCanonicals(scope: GoalScope): Promise<number[]> {

@@ -67,8 +67,10 @@ describe("practice handoff", () => {
         const settings = practiceSettingsForGoal(source);
         settings.topic.push("A");
         settings.seriesScopes!["7"].divisions.push("12B");
+        settings.seriesScopes!["7"].problemNumbers = [1, 5];
         expect(source.scope.topic).toEqual(["G"]);
         expect(source.scope.seriesScopes["7"].divisions).toEqual(["12A"]);
+        expect(source.scope.seriesScopes["7"].problemNumbers).toBeUndefined();
     });
 
     test("an attempted goal draws only problems with no graded attempt", () => {

@@ -33,6 +33,7 @@ import type {
     OfflineProblemRatingV1,
     OfflineProblemV1,
     OfflineScope,
+    OfflineSeriesScope,
     OfflineSyncErrorV1,
     OfflineSyncRequestV1,
     OfflineSyncResponseV1,
@@ -50,16 +51,27 @@ export const ENGAGEMENT_VALUES = ["working", "revisit", "later", "ignored"] as c
 export const parseMastery = p.enumOf(MASTERY_VALUES) as p.Parser<Mastery>;
 export const parseEngagement = p.enumOf(ENGAGEMENT_VALUES) as p.Parser<Engagement>;
 
+const parseProblemNumbers: p.Parser<[number, number]> = (value, path = "") => {
+    const range = p.tupleOf(p.integer, p.integer)(value, path);
+    if (range[0] < 1 || range[1] < range[0]) {
+        throw new p.OfflineParseError(
+            path,
+            "expected a 1-based inclusive [lo, hi] range",
+        );
+    }
+    return range;
+};
+
+const parseSeriesScope: p.Parser<OfflineSeriesScope> = p.objectOf<OfflineSeriesScope>({
+    divisions: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
+    formats: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
+    problemNumbers: p.optional(parseProblemNumbers),
+});
+
 export const parseScope: p.Parser<OfflineScope> = p.objectOf<OfflineScope>({
     topic: p.arrayOf(p.nonEmptyString, { max: SCOPE_MAX_TOPICS }),
     seriesIds: p.arrayOf(p.nonEmptyString, { max: SCOPE_MAX_SERIES }),
-    seriesScopes: p.recordOf(
-        p.objectOf<{ divisions: string[]; formats: string[] }>({
-            divisions: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
-            formats: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
-        }),
-        { maxKeys: SCOPE_MAX_SERIES },
-    ),
+    seriesScopes: p.recordOf(parseSeriesScope, { maxKeys: SCOPE_MAX_SERIES }),
 });
 
 /**
@@ -77,8 +89,18 @@ export function normalizeScope(scope: OfflineScope): OfflineScope {
         if (!entry) continue;
         const divisions = dedupe(entry.divisions);
         const formats = dedupe(entry.formats);
-        if (divisions.length || formats.length) {
-            seriesScopes[id] = { divisions, formats };
+        const problemNumbers = entry.problemNumbers
+            ? ([entry.problemNumbers[0], entry.problemNumbers[1]] as [
+                  number,
+                  number,
+              ])
+            : undefined;
+        if (divisions.length || formats.length || problemNumbers) {
+            seriesScopes[id] = {
+                divisions,
+                formats,
+                ...(problemNumbers ? { problemNumbers } : {}),
+            };
         }
     }
     return { topic: dedupe(scope.topic), seriesIds, seriesScopes };
@@ -371,13 +393,9 @@ export const parsePracticeQuery: p.Parser<PracticeQueryV1> =
         filters: p.objectOf<PracticeQueryV1["filters"]>({
             topic: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
             seriesIds: p.arrayOf(p.string, { max: SCOPE_MAX_SERIES }),
-            seriesScopes: p.recordOf(
-                p.objectOf<{ divisions: string[]; formats: string[] }>({
-                    divisions: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
-                    formats: p.arrayOf(p.string, { max: SCOPE_MAX_TOPICS }),
-                }),
-                { maxKeys: SCOPE_MAX_SERIES },
-            ),
+            seriesScopes: p.recordOf(parseSeriesScope, {
+                maxKeys: SCOPE_MAX_SERIES,
+            }),
             ratingBand: p.nullable(p.tupleOf(p.finiteNumber, p.finiteNumber)),
             verifiedOnly: p.boolean,
             computational: p.nullable(p.boolean),

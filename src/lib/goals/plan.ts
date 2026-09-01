@@ -56,9 +56,16 @@ export function scopeKey(scope: GoalScope): string {
     const scopes: Record<string, SeriesScope> = {};
     for (const id of Object.keys(scope.seriesScopes ?? {}).sort()) {
         const entry = scope.seriesScopes[id];
+        const problemNumbers = entry?.problemNumbers
+            ? ([entry.problemNumbers[0], entry.problemNumbers[1]] as [
+                  number,
+                  number,
+              ])
+            : undefined;
         scopes[id] = {
             divisions: [...(entry?.divisions ?? [])].sort(),
             formats: [...(entry?.formats ?? [])].sort(),
+            ...(problemNumbers ? { problemNumbers } : {}),
         };
     }
     return JSON.stringify({

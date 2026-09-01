@@ -43,6 +43,7 @@ import {
 } from "$lib/trainer";
 import {
     fetchSeriesDimensions,
+    fetchSeriesNumberLine,
     type SeriesDimensionRow,
 } from "$lib/series-review";
 import type { OfflineRepository } from "$lib/offline/repository";
@@ -162,6 +163,10 @@ export interface TrainerDataSource {
     loadSession(): Promise<TrainerLoadedSession | null>;
     getSeriesOptions(): Promise<{ value: string; label: string }[]>;
     getSeriesDimensions(seriesId: number): Promise<SeriesDimensionRow[]>;
+    getSeriesNumberLine(
+        seriesId: number,
+        scope?: { divisions: string[]; formats: string[] },
+    ): Promise<number>;
     getSessionProblemIds(): Promise<number[]>;
     getOlderSubmission(beforeId: number | null): Promise<OlderSubmission | null>;
     getSessionHistory(): Promise<SessionHistoryEntry[]>;
@@ -229,6 +234,8 @@ export function createOnlineTrainerDataSource(input: {
             }));
         },
         getSeriesDimensions: (seriesId) => fetchSeriesDimensions(supabase, seriesId),
+        getSeriesNumberLine: (seriesId, scope) =>
+            fetchSeriesNumberLine(supabase, seriesId, scope),
         async getSessionProblemIds() {
             if (!userId) return [];
             return fetchSessionProblemIds(supabase, (await requireSession()).id);
@@ -433,7 +440,18 @@ export function createDownloadedTrainerDataSource(input: {
                     seriesScopes: Object.fromEntries(
                         Object.entries(settings.seriesScopes ?? {}).map(([id, scope]) => [
                             id,
-                            { divisions: [...scope.divisions], formats: [...scope.formats] },
+                            {
+                                divisions: [...scope.divisions],
+                                formats: [...scope.formats],
+                                ...(scope.problemNumbers
+                                    ? {
+                                          problemNumbers: [
+                                              scope.problemNumbers[0],
+                                              scope.problemNumbers[1],
+                                          ] as [number, number],
+                                      }
+                                    : {}),
+                            },
                         ]),
                     ),
                     ratingBand: adaptive && ratingCenter != null
@@ -520,6 +538,28 @@ export function createDownloadedTrainerDataSource(input: {
                     format: placement.test?.format ?? null,
                     format_order: null,
                 }));
+        },
+        async getSeriesNumberLine(seriesId, scope) {
+            let max = -1;
+            for (const placement of await placements()) {
+                if (placement.series?.id !== seriesId) continue;
+                if (
+                    scope?.divisions.length &&
+                    (!placement.test?.division ||
+                        !scope.divisions.includes(placement.test.division))
+                ) {
+                    continue;
+                }
+                if (
+                    scope?.formats.length &&
+                    (!placement.test?.format ||
+                        !scope.formats.includes(placement.test.format))
+                ) {
+                    continue;
+                }
+                if (placement.problemNumber > max) max = placement.problemNumber;
+            }
+            return max >= 0 ? max + 1 : 0;
         },
         async getSessionProblemIds() {
             const loaded = await repository.loadSession(manifest.userId, sessionId);

@@ -135,6 +135,24 @@ describe("scope matching is placement-aware", () => {
         expect(placementMatchesScope(amc10b, scoped)).toBe(false);
     });
 
+    test("a problem-number range matches the placement number, 1-based", () => {
+        const late = placement({ placementId: 4, problemNumber: 21 });
+        const early = placement({ placementId: 5, problemNumber: 2 });
+        const scoped = {
+            topic: [],
+            seriesIds: ["10"],
+            seriesScopes: {
+                "10": {
+                    divisions: [],
+                    formats: [],
+                    problemNumbers: [21, 25] as [number, number],
+                },
+            },
+        };
+        expect(placementMatchesScope(late, scoped)).toBe(true);
+        expect(placementMatchesScope(early, scoped)).toBe(false);
+    });
+
     test("a canonical enters through any one of its placements", () => {
         const alias = candidate(102, {
             placements: [

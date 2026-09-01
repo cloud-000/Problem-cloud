@@ -43,6 +43,14 @@ export function scopeOf(raw: unknown): GoalScope {
         seriesScopes[id] = {
             divisions: [...(entry?.divisions ?? [])],
             formats: [...(entry?.formats ?? [])],
+            ...(entry?.problemNumbers
+                ? {
+                      problemNumbers: [
+                          entry.problemNumbers[0],
+                          entry.problemNumbers[1],
+                      ] as [number, number],
+                  }
+                : {}),
         };
     }
     return {

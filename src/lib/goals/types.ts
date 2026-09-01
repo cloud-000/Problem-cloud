@@ -13,8 +13,15 @@
  * most of the risk lives and where it can be unit-tested without a database.
  */
 
-/** Per-series division/format narrowing, keyed by series id. */
-export type SeriesScope = { divisions: string[]; formats: string[] };
+/**
+ * Per-series narrowing, keyed by series id. `problemNumbers` is a 1-based
+ * inclusive range; omit it when the slider is the full number line.
+ */
+export type SeriesScope = {
+    divisions: string[];
+    formats: string[];
+    problemNumbers?: [number, number];
+};
 
 /**
  * The slice of the catalog a goal is about.
@@ -26,9 +33,10 @@ export type SeriesScope = { divisions: string[]; formats: string[] };
  * not depend on a route module; `plan.test.ts` asserts the two stay assignable
  * in both directions, which is the part that actually matters.
  *
- * Each selected series is one clause carrying its own division/format
- * narrowing; clauses are OR-ed and topic narrows the result. An empty axis means
- * no narrowing on that axis, so an empty scope is the whole catalog.
+ * Each selected series is one clause carrying its own division/format and
+ * optional problem-number narrowing; clauses are OR-ed and topic narrows the
+ * result. An empty axis means no narrowing on that axis, so an empty scope is
+ * the whole catalog.
  *
  * `yearRange` is accepted by the SQL resolver but no UI authors it yet — it is
  * deferred from the Track, and adding it to a goal alone would break scope ≡

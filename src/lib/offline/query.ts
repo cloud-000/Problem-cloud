@@ -79,6 +79,17 @@ export function placementMatchesScope(
         const format = placement.test?.format;
         if (!format || !scope.formats.includes(format)) return false;
     }
+    const numbers = scope.problemNumbers;
+    if (
+        numbers &&
+        Number.isInteger(numbers[0]) &&
+        Number.isInteger(numbers[1]) &&
+        numbers[0] >= 1 &&
+        numbers[1] >= numbers[0]
+    ) {
+        const displayed = placement.problemNumber + 1;
+        if (displayed < numbers[0] || displayed > numbers[1]) return false;
+    }
     return true;
 }
 

@@ -76,7 +76,8 @@ select
   t.format,
   t.year,
   p.topic,
-  public.is_gradeable(c.statement, c.answer_status, c.answer_index, c.choices) as gradeable
+  public.is_gradeable(c.statement, c.answer_status, c.answer_index, c.choices) as gradeable,
+  p.n
 from public.problems p
 left join public.tests t on t.id = p.test_id
 -- The canonical row itself. An inner join is correct: `canonical_id` is a real
@@ -93,7 +94,8 @@ grant select on public.canonical_placements to authenticated;
 -- whether it is gradeable.
 --
 --   {"topic": [...], "seriesIds": ["7", ...],
---    "seriesScopes": {"7": {"divisions": [...], "formats": [...]}},
+--    "seriesScopes": {"7": {"divisions": [...], "formats": [...],
+--                           "problemNumbers": [21, 25]}},
 --    "yearRange": [2010, 2024] | null}
 --
 -- Semantics, in the order the WHERE clause states them:
@@ -101,10 +103,13 @@ grant select on public.canonical_placements to authenticated;
 --   * a semi-join, not a join: the question is *does this canonical have any
 --     placement satisfying the scope?* Joining placements to events instead
 --     would fan one submission into N rows and break every count (§3);
---   * series clauses are OR-ed, each AND-ed with its OWN divisions/formats, so a
---     division chosen for one series never filters another with a different
---     vocabulary (§3). This mirrors `seriesScopeFilter` in `src/lib/trainer.ts`,
---     and where they disagree, THIS is right and the client is the bug;
+--   * series clauses are OR-ed, each AND-ed with its OWN divisions/formats
+--     and optional 1-based problemNumbers range (stored as problems.n + 1;
+--     matched against the placement's 0-based n), so a division or #21–25
+--     chosen for one series never filters another with a different vocabulary
+--     or number line (§3). This mirrors `seriesScopeFilter` in
+--     `src/lib/trainer.ts`, and where they disagree, THIS is right and the
+--     client is the bug;
 --   * topic and year narrow the result across all clauses;
 --   * an empty axis means no narrowing on that axis. An empty scope therefore
 --     selects the whole catalog, which is the intended reading of a Track with
@@ -148,7 +153,7 @@ as $$
       p_scope -> 'yearRange'                           as year_range
   ),
   -- One row per selected series: the OR-ed clauses, each carrying its own
-  -- division/format vocabulary (§3).
+  -- division/format vocabulary and optional 1-based problem-number range (§3).
   clauses as (
     select
       sid::bigint as series_id,
@@ -157,7 +162,17 @@ as $$
            coalesce(s.series_scopes -> sid -> 'divisions', '[]'::jsonb)) d) as divisions,
       (select pg_catalog.array_agg(f)
          from pg_catalog.jsonb_array_elements_text(
-           coalesce(s.series_scopes -> sid -> 'formats', '[]'::jsonb)) f) as formats
+           coalesce(s.series_scopes -> sid -> 'formats', '[]'::jsonb)) f) as formats,
+      case
+        when pg_catalog.jsonb_typeof(s.series_scopes -> sid -> 'problemNumbers') = 'array'
+         and pg_catalog.jsonb_array_length(s.series_scopes -> sid -> 'problemNumbers') = 2
+        then (s.series_scopes -> sid -> 'problemNumbers' ->> 0)::integer
+      end as n_lo,
+      case
+        when pg_catalog.jsonb_typeof(s.series_scopes -> sid -> 'problemNumbers') = 'array'
+         and pg_catalog.jsonb_array_length(s.series_scopes -> sid -> 'problemNumbers') = 2
+        then (s.series_scopes -> sid -> 'problemNumbers' ->> 1)::integer
+      end as n_hi
     from scope s, pg_catalog.jsonb_array_elements_text(s.series_ids) as sid
     -- Scope is user-authored JSON reaching us through a jsonb column, so a
     -- non-numeric id must be skipped rather than raise: one malformed entry
@@ -199,6 +214,12 @@ as $$
         where c.series_id = cp.series_id
           and (c.divisions is null or cp.division = any(c.divisions))
           and (c.formats   is null or cp.format   = any(c.formats))
+          -- problemNumbers is 1-based inclusive; problems.n is 0-based.
+          -- NULL lo/hi means the axis was omitted (full number line).
+          and (
+            c.n_lo is null or c.n_hi is null
+            or (cp.n >= c.n_lo - 1 and cp.n <= c.n_hi - 1)
+          )
       )
     )
   group by cp.canonical_id;

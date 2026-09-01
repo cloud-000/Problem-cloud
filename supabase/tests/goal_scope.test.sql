@@ -12,7 +12,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(17);
+select extensions.plan(20);
 
 -- ---------------------------------------------------------------------------
 -- Fixture
@@ -69,7 +69,9 @@ insert into public.problems
 insert into public.problems
   (id, test_id, n, topic, statement, choices, answer_index, answer_status, canonical_id, sync_key) values
   (-920301, -920013, 1, 'number theory', 'dup', '{a,b,c,d,e}', 2, 'known', null,     'test:goal-scope:d1'),
-  (-920302, -920014, 1, 'number theory', 'dup', '{a,b,c,d,e}', 2, 'known', -920301,  'test:goal-scope:d2');
+  -- Alias n differs from the canonical's n so a filter on placement number
+  -- can be told apart from a filter on the canonical row's n.
+  (-920302, -920014, 5, 'number theory', 'dup', '{a,b,c,d,e}', 2, 'known', -920301,  'test:goal-scope:d2');
 
 -- An alias whose canonical is NOT gradeable, while the alias row itself looks
 -- perfectly fine. Eligibility is judged on the canonical (§4), because practice
@@ -100,7 +102,16 @@ insert into scope_fixtures values
   ('alpha_national_plus_beta',
      '{"seriesIds":["-920001","-920002"],"seriesScopes":{"-920001":{"divisions":["National"]}}}'),
   ('alpha_geometry', '{"seriesIds":["-920001"],"topic":["geometry"]}'),
-  ('alpha_2020',     '{"seriesIds":["-920001"],"yearRange":[2020,2020]}');
+  ('alpha_2020',     '{"seriesIds":["-920001"],"yearRange":[2020,2020]}'),
+  -- 1-based problemNumbers. Canonical dup is alpha n=1 (#2); its alias is
+  -- beta n=5 (#6). Matching the alias number through beta, and not matching
+  -- the canonical number through beta, is the placement-n rule.
+  ('alpha_n2',
+     '{"seriesIds":["-920001"],"seriesScopes":{"-920001":{"problemNumbers":[2,2]}}}'),
+  ('beta_n6',
+     '{"seriesIds":["-920002"],"seriesScopes":{"-920002":{"problemNumbers":[6,6]}}}'),
+  ('beta_n2',
+     '{"seriesIds":["-920002"],"seriesScopes":{"-920002":{"problemNumbers":[2,2]}}}');
 
 -- Every assertion counts only the fixture's own canonicals, so a live catalog
 -- underneath cannot move any number here.
@@ -256,6 +267,33 @@ select extensions.is(
   pg_temp.in_scope('alpha_2020'),
   6::bigint,
   'a year range narrows to tests from that year'
+);
+
+-- Canonical dup is alpha #2 (n=1): p2 (-920102) and the dup (-920301).
+select extensions.is(
+  pg_temp.in_scope('alpha_n2'),
+  2::bigint,
+  'a problem-number range matches the placement n, 1-based'
+);
+
+-- Alias is beta #6 (n=5). The canonical is in scope through that placement
+-- even though the canonical row itself is #2.
+select extensions.is(
+  (select count(*)
+     from scope_fixtures sf, lateral public.goal_scope_canonicals(sf.scope) g
+     where sf.name = 'beta_n6' and g.canonical_id = -920301),
+  1::bigint,
+  'a canonical is in scope through an alias placement whose n is in range'
+);
+
+-- Beta #2 would match the canonical's own n, which is the wrong question:
+-- the alias is #6, so this must not include the dup.
+select extensions.is(
+  (select count(*)
+     from scope_fixtures sf, lateral public.goal_scope_canonicals(sf.scope) g
+     where sf.name = 'beta_n2' and g.canonical_id = -920301),
+  0::bigint,
+  'problem-number matching uses the placement n, not the canonical n'
 );
 
 select * from extensions.finish();

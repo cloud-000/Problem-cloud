@@ -29,11 +29,19 @@ export type Cursor = string;
  *
  * `yearRange` is deliberately absent: the SQL resolver accepts it, but the
  * shared goal/practice editor does not author it yet (`docs/offline.md` §5a).
+ * `problemNumbers` is authored by the Track.
  */
+export type OfflineSeriesScope = {
+    divisions: string[];
+    formats: string[];
+    /** 1-based inclusive range; omit when the slider is the full number line. */
+    problemNumbers?: [number, number];
+};
+
 export type OfflineScope = {
     topic: string[];
     seriesIds: string[];
-    seriesScopes: Record<string, { divisions: string[]; formats: string[] }>;
+    seriesScopes: Record<string, OfflineSeriesScope>;
 };
 
 export type PackageState = "staging" | "ready" | "stale" | "incompatible";
@@ -254,7 +262,7 @@ export type PracticeQueryV1 = SharedLocalQueryV1 & {
     filters: {
         topic: string[];
         seriesIds: string[];
-        seriesScopes: Record<string, { divisions: string[]; formats: string[] }>;
+        seriesScopes: Record<string, OfflineSeriesScope>;
         ratingBand: [number, number] | null;
         verifiedOnly: boolean;
         computational: boolean | null;

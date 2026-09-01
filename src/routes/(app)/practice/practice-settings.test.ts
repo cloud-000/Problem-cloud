@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
     COUNTER_RANGE,
+    clampProblemNumbers,
     createPracticeSettingsForm,
     practiceSettingsFromForm,
+    problemNumberRange,
 } from "./practice-settings";
 
 describe("practice settings form", () => {
@@ -32,7 +34,13 @@ describe("practice settings form", () => {
             topic: ["geometry"],
             difficulty: [800, 1600],
             seriesIds: ["12"],
-            seriesScopes: { "12": { divisions: ["State"], formats: ["Sprint"] } },
+            seriesScopes: {
+                "12": {
+                    divisions: ["State"],
+                    formats: ["Sprint"],
+                    problemNumbers: [21, 25],
+                },
+            },
             timesCorrect: [1, 4],
             computational: true,
             answerAvailability: "without",
@@ -44,6 +52,7 @@ describe("practice settings form", () => {
         form.difficulty[0] = 0;
         form.seriesIds.push("13");
         form.seriesScopes["12"].divisions.push("National");
+        form.seriesScopes["12"].problemNumbers![0] = 1;
         form.seriesScopes["13"] = { divisions: ["Chapter"], formats: [] };
         form.counterRanges.correct[0] = 0;
 
@@ -51,7 +60,11 @@ describe("practice settings form", () => {
         expect(snapshot.difficulty).toEqual([800, 1600]);
         expect(snapshot.seriesIds).toEqual(["12"]);
         expect(snapshot.seriesScopes).toEqual({
-            "12": { divisions: ["State"], formats: ["Sprint"] },
+            "12": {
+                divisions: ["State"],
+                formats: ["Sprint"],
+                problemNumbers: [21, 25],
+            },
         });
         expect(snapshot.timesCorrect).toEqual([1, 4]);
         expect(snapshot.computational).toBe(true);
@@ -89,4 +102,33 @@ describe("practice settings form", () => {
         form.counterEnabled.skipped = false;
         expect(practiceSettingsFromForm(form).timesSkipped).toBeNull();
     });
+});
+
+describe("problem-number helpers", () => {
+    test("a missing or full range is not a narrowing", () => {
+        expect(problemNumberRange(undefined)).toBeNull();
+        expect(problemNumberRange({ problemNumbers: [1, 25] }, 25)).toBeNull();
+        expect(problemNumberRange({ problemNumbers: [1, 30] }, 25)).toBeNull();
+        expect(problemNumberRange({ problemNumbers: [21, 25] }, 25)).toEqual([
+            21, 25,
+        ]);
+        expect(problemNumberRange({ problemNumbers: [21, 25] })).toEqual([
+            21, 25,
+        ]);
+    });
+
+    test("rejects inverted or non-positive stored ranges", () => {
+        expect(problemNumberRange({ problemNumbers: [5, 2] })).toBeNull();
+        expect(problemNumberRange({ problemNumbers: [0, 10] })).toBeNull();
+    });
+
+    test("clamps onto a shorter number line and resets ranges past it", () => {
+        expect(clampProblemNumbers([21, 25], 25)).toEqual([21, 25]);
+        expect(clampProblemNumbers([1, 25], 25)).toBeUndefined();
+        expect(clampProblemNumbers([1, 25], 8)).toBeUndefined();
+        expect(clampProblemNumbers([21, 25], 8)).toBeUndefined();
+        expect(clampProblemNumbers([5, 25], 8)).toEqual([5, 8]);
+        expect(clampProblemNumbers(undefined, 25)).toBeUndefined();
+    });
+
 });

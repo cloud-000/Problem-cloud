@@ -236,6 +236,30 @@ describe("scope description", () => {
         ).toBe("Series 404");
     });
 
+    test("problem-number ranges stay attached to their series", () => {
+        expect(
+            describeScope(
+                {
+                    topic: [],
+                    seriesIds: ["7", "9"],
+                    seriesScopes: {
+                        "7": {
+                            divisions: [],
+                            formats: [],
+                            problemNumbers: [21, 25],
+                        },
+                        "9": {
+                            divisions: [],
+                            formats: ["Sprint"],
+                            problemNumbers: [11, 15],
+                        },
+                    },
+                },
+                NAMES,
+            ),
+        ).toBe("AMC 10 (#21–25) · MATHCOUNTS (Sprint, #11–15)");
+    });
+
     test("year range is appended when present", () => {
         expect(
             describeScope(

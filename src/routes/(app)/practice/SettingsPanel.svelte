@@ -113,6 +113,7 @@
         seriesOptions = [],
         supabase,
         loadSeriesDimensions,
+        loadSeriesNumberLine,
         canReview = true,
         enabledModes,
         disabledModeReason = "This mode is unavailable for this practice source.",
@@ -128,6 +129,10 @@
         seriesOptions: { value: string; label: string }[];
         supabase?: Supabase;
         loadSeriesDimensions?: (seriesId: number) => Promise<SeriesDimensionRow[]>;
+        loadSeriesNumberLine?: (
+            seriesId: number,
+            scope?: { divisions: string[]; formats: string[] },
+        ) => Promise<number>;
         canReview?: boolean;
         enabledModes?: Readonly<Record<PracticeMode, boolean>>;
         disabledModeReason?: string;
@@ -267,9 +272,9 @@
                 {/if}
             </div>
         {:else}
-            <!-- Track: what this session is about (topic, series, division/format).
+            <!-- Track: what this session is about (topic, series, per-series metadata).
          Front-loaded and always visible, shared with the session-creation dialog. -->
-            <Track bind:value={form} {seriesOptions} {supabase} {loadSeriesDimensions} />
+            <Track bind:value={form} {seriesOptions} {supabase} {loadSeriesDimensions} {loadSeriesNumberLine} />
 
             <!-- Session mechanics (collapsible): everything else — mode, mastery,
          difficulty, pacing, and the nested Advanced filters sub-group. -->

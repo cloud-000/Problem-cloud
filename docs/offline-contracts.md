@@ -56,7 +56,12 @@ type OfflineScope = {
     seriesIds: string[];
     seriesScopes: Record<
         string,
-        { divisions: string[]; formats: string[] }
+        {
+            divisions: string[];
+            formats: string[];
+            /** 1-based inclusive range (`problems.n + 1`); omit for the full number line. */
+            problemNumbers?: [number, number];
+        }
     >;
 };
 
@@ -65,7 +70,8 @@ type PackageState = "staging" | "ready" | "stale";
 
 `OfflineScope` deliberately omits `yearRange`. The SQL resolver accepts it, but
 the shared goal/practice UI does not author it yet. Add it here only when that
-shared UI contract changes.
+shared UI contract changes. `problemNumbers` *is* authored by the Track (a 1-based
+inclusive range per series); omit it when the slider is the full number line.
 
 IDs supplied by the browser are UUIDs generated with `crypto.randomUUID()`.
 Integer database IDs remain numbers within JavaScript's safe range; runtime
@@ -539,7 +545,11 @@ type PracticeQueryV1 = {
         seriesIds: string[];
         seriesScopes: Record<
             string,
-            { divisions: string[]; formats: string[] }
+            {
+                divisions: string[];
+                formats: string[];
+                problemNumbers?: [number, number];
+            }
         >;
         ratingBand: [number, number] | null;
         verifiedOnly: boolean;
