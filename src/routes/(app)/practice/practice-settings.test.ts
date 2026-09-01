@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
     COUNTER_RANGE,
     clampProblemNumbers,
+    configsForSelectedSeries,
     createPracticeSettingsForm,
     practiceSettingsFromForm,
     problemNumberRange,
+    type SeriesScopeConfig,
 } from "./practice-settings";
 
 describe("practice settings form", () => {
@@ -101,6 +103,20 @@ describe("practice settings form", () => {
         const form = createPracticeSettingsForm({ timesSkipped: [3, 5] });
         form.counterEnabled.skipped = false;
         expect(practiceSettingsFromForm(form).timesSkipped).toBeNull();
+    });
+});
+
+describe("configsForSelectedSeries", () => {
+    const loaded: SeriesScopeConfig[] = [
+        { id: "1", name: "AMC 10", divisionOptions: [], formatOptions: [] },
+        { id: "2", name: "AMC 12", divisionOptions: [], formatOptions: [] },
+    ];
+
+    test("drops loaded rows the moment a series leaves the selection", () => {
+        expect(configsForSelectedSeries(loaded, [])).toEqual([]);
+        expect(configsForSelectedSeries(loaded, ["2"]).map((c) => c.id)).toEqual(
+            ["2"],
+        );
     });
 });
 

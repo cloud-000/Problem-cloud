@@ -49,6 +49,21 @@ export type SeriesScopeConfig = {
 };
 
 /**
+ * Loaded per-series metadata lags the selection (async fetch), but the
+ * settings form drops `seriesScopes[id]` as soon as that series is
+ * deselected. Binding into a stale row then throws. Keep the visible
+ * rows in lockstep with `seriesIds` even when the cache hasn't caught up.
+ */
+export function configsForSelectedSeries(
+    loaded: SeriesScopeConfig[],
+    seriesIds: string[],
+): SeriesScopeConfig[] {
+    if (seriesIds.length === 0) return [];
+    const keep = new Set(seriesIds);
+    return loaded.filter((c) => keep.has(c.id));
+}
+
+/**
  * The "what is this session about" slice of {@link PracticeSettingsForm} —
  * topic + series + per-series division/format/problem-number narrowing. Shared by the session-creation
  * dialog (`Track.svelte` in `SessionsView`) and the mid-session settings panel

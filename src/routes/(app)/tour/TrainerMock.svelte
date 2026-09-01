@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
     import { MediaQuery } from "svelte/reactivity";
+    import { fly } from "svelte/transition";
     import {
         AIChatComposer,
         AIChatMessageList,
@@ -9,7 +10,6 @@
         type AIChatQuickAction,
     } from "$lib/components/ai-chat";
     import { Button } from "$lib/components/button";
-    import { Combobox } from "$lib/components/combobox";
     import { Icon } from "$lib/components/icon";
     import { MathStatement } from "$lib/components/math-statement";
     import { ProblemAnswer } from "$lib/components/problem";
@@ -24,9 +24,13 @@
         type HintRung,
     } from "$lib/ai/hints";
     import { PROBLEM_SUPPORT_ACTIONS } from "$lib/ai/quick-actions";
-    import { TOPICS } from "$lib/library";
     import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { RATING_RANGE } from "$lib/trainer";
+    import type { SeriesDimensionRow } from "$lib/series-review";
+    import {
+        ADAPTIVE_RANGE_BOUNDS,
+        ADAPTIVE_RANGE_DEFAULT,
+        RATING_RANGE,
+    } from "$lib/trainer";
     import type {
         AIErrorPart,
         AIModelReference,
@@ -35,6 +39,8 @@
     } from "$lib/ai/types";
     import { cn } from "$lib/utils";
     import { answersMatch } from "$lib/utils/answer-matcher";
+    import Track from "../practice/Track.svelte";
+    import type { TrackValue } from "../practice/practice-settings";
     import HintRail from "../practice/HintRail.svelte";
 
     type Tool = "none" | "whiteboard" | "settings";
@@ -42,10 +48,34 @@
     const STATEMENT = "What is $2^3 + 1$?";
     const ANSWER_KEY = "9";
     const SERIES_OPTIONS = [
-        { value: "amc10", label: "AMC 10" },
-        { value: "amc12", label: "AMC 12" },
-        { value: "aime", label: "AIME" },
+        { value: "1", label: "AMC 10" },
+        { value: "2", label: "AMC 12" },
+        { value: "3", label: "AIME" },
     ];
+    const TOUR_SERIES_DIMENSIONS: Record<number, SeriesDimensionRow[]> = {
+        1: [
+            { division: "A", division_order: 1, format: null, format_order: null },
+            { division: "B", division_order: 2, format: null, format_order: null },
+        ],
+        2: [
+            { division: "A", division_order: 1, format: null, format_order: null },
+            { division: "B", division_order: 2, format: null, format_order: null },
+        ],
+        3: [
+            { division: null, division_order: null, format: "I", format_order: 1 },
+            { division: null, division_order: null, format: "II", format_order: 2 },
+        ],
+    };
+    const TOUR_SERIES_LENGTH: Record<number, number> = { 1: 25, 2: 25, 3: 15 };
+
+    function loadTourSeriesDimensions(seriesId: number) {
+        return Promise.resolve(TOUR_SERIES_DIMENSIONS[seriesId] ?? []);
+    }
+
+    function loadTourSeriesNumberLine(seriesId: number) {
+        return Promise.resolve(TOUR_SERIES_LENGTH[seriesId] ?? 0);
+    }
+
     const TOUR_COACH_CAPABILITIES = {
         chat: true,
         streaming: true,
@@ -191,11 +221,15 @@
     let submitted = $state(false);
     let correct = $state<boolean | null>(null);
     let hintLevel = $state(0);
-    let topics = $state<string[]>(["A"]);
-    let series = $state<string[]>(["amc10"]);
+    let track = $state<TrackValue>({
+        topic: ["A"],
+        seriesIds: ["1"],
+        seriesScopes: { "1": { divisions: [], formats: [] } },
+    });
+    let adaptive = $state(true);
+    let adaptiveRange = $state(ADAPTIVE_RANGE_DEFAULT);
     let rating = $state<[number, number]>([1200, 1800]);
-    let timerOn = $state(true);
-    let focusMode = $state(false);
+    let moreOpen = $state(false);
     const whiteboardStore = new WhiteboardStore();
     const coach = new TourCoachController();
     const sideBySideQuery = new MediaQuery("(min-width: 768px)", false);
@@ -214,7 +248,7 @@
         Math.max(240, Math.round(Math.min(480, stageWidth * 0.6 || 420))),
     );
     let railMaxHeight = $derived(
-        Math.max(180, Math.round(Math.min(400, stageHeight * 0.75 || 240))),
+        Math.max(220, Math.round(Math.min(480, stageHeight * 0.8 || 300))),
     );
 
     onDestroy(() => coach.stop());
@@ -427,16 +461,16 @@
                     initialWidth={sideBySide
                         ? kind === "whiteboard"
                             ? 360
-                            : 280
+                            : 320
                         : undefined}
                     initialHeight={sideBySide
                         ? undefined
                         : kind === "whiteboard"
                           ? 280
-                          : 220}
-                    minWidth={kind === "whiteboard" ? 240 : 200}
+                          : 300}
+                    minWidth={240}
                     maxWidth={railMaxWidth}
-                    minHeight={kind === "whiteboard" ? 200 : 160}
+                    minHeight={kind === "whiteboard" ? 200 : 180}
                     maxHeight={railMaxHeight}
                     collapseWidthBelowMin={sideBySide}
                     collapseHeightBelowMin={!sideBySide}
@@ -446,7 +480,7 @@
                         "flex min-h-52 w-full min-w-0 shrink-0 flex-col md:min-h-0 md:border-t-0 md:border-l",
                         kind === "whiteboard"
                             ? "overflow-hidden border-t border-border bg-background"
-                            : "overflow-visible border-t border-border bg-surface-container-low",
+                            : "overflow-hidden border-t border-border bg-surface-container-low",
                     )}
                 >
                     {#if kind === "whiteboard"}
@@ -458,7 +492,7 @@
                         </aside>
                     {:else}
                         <aside
-                            class="flex h-full min-h-0 min-w-0 flex-col overflow-visible p-3"
+                            class="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto p-3"
                             aria-label="Sample settings"
                         >
                             <p
@@ -467,69 +501,114 @@
                                 <Icon name="tune" class="size-3.5" />
                                 Settings
                             </p>
-                            <div class="mt-3 flex min-h-0 flex-col gap-3">
-                                <div class="flex flex-col gap-1.5">
-                                    <span
-                                        class="text-xs font-medium text-muted-foreground"
-                                        >Topic</span
-                                    >
-                                    <Combobox
-                                        bind:value={topics}
-                                        options={TOPICS}
-                                        strict
-                                        placeholder="Any topic"
-                                        inputPlaceholder="Add topic"
-                                        class="bg-surface-container-lowest"
-                                    />
-                                </div>
-                                <div class="flex flex-col gap-1.5">
-                                    <span
-                                        class="text-xs font-medium text-muted-foreground"
-                                        >Series</span
-                                    >
-                                    <Combobox
-                                        bind:value={series}
-                                        options={SERIES_OPTIONS}
-                                        strict
-                                        placeholder="All series"
-                                        inputPlaceholder="Add series"
-                                        class="bg-surface-container-lowest"
-                                    />
-                                </div>
-                                <div class="flex flex-col gap-1.5">
-                                    <span
-                                        class="text-xs font-medium text-muted-foreground"
-                                    >
-                                        Difficulty — problem rating ({rating[0]}–{rating[1]})
-                                    </span>
-                                    <RangeSlider
-                                        bind:value={rating}
-                                        min={RATING_RANGE[0]}
-                                        max={RATING_RANGE[1]}
-                                        step={50}
-                                        label="Difficulty (problem rating)"
-                                    />
-                                </div>
+                            <div class="mt-3 flex min-h-0 flex-col gap-4">
+                                <Track
+                                    bind:value={track}
+                                    seriesOptions={SERIES_OPTIONS}
+                                    loadSeriesDimensions={loadTourSeriesDimensions}
+                                    loadSeriesNumberLine={loadTourSeriesNumberLine}
+                                />
                                 <div
-                                    class="flex items-center justify-between gap-3 border-t border-border/40 pt-2"
+                                    class="flex flex-col gap-3 border-b border-border/30 pb-4"
                                 >
-                                    <span
-                                        class="text-xs font-medium text-muted-foreground"
-                                        >Timer</span
+                                    <div
+                                        class="flex items-center justify-between gap-3"
                                     >
-                                    <Switch bind:checked={timerOn} size="sm" />
+                                        <div class="flex flex-col gap-0.5">
+                                            <span
+                                                class="text-xs font-medium text-muted-foreground"
+                                            >
+                                                Adaptive difficulty
+                                            </span>
+                                            {#if adaptive}
+                                                <span
+                                                    class="text-xs text-muted-foreground"
+                                                >
+                                                    Near your rating (±{adaptiveRange})
+                                                </span>
+                                            {/if}
+                                        </div>
+                                        <Switch
+                                            bind:checked={adaptive}
+                                            size="sm"
+                                            aria-label="Toggle adaptive difficulty"
+                                        />
+                                    </div>
+                                    {#if adaptive}
+                                        <div
+                                            class="flex flex-col gap-2"
+                                            transition:fly={{
+                                                y: -6,
+                                                duration: 150,
+                                            }}
+                                        >
+                                            <span
+                                                class="text-xs text-muted-foreground"
+                                            >
+                                                Rating range
+                                            </span>
+                                            <RangeSlider
+                                                single
+                                                bind:singleValue={adaptiveRange}
+                                                min={ADAPTIVE_RANGE_BOUNDS[0]}
+                                                max={ADAPTIVE_RANGE_BOUNDS[1]}
+                                                step={25}
+                                                label="Adaptive rating range"
+                                            />
+                                        </div>
+                                    {:else}
+                                        <div
+                                            class="flex flex-col gap-2"
+                                            transition:fly={{
+                                                y: -6,
+                                                duration: 150,
+                                            }}
+                                        >
+                                            <span
+                                                class="text-xs text-muted-foreground"
+                                            >
+                                                Difficulty — problem rating ({rating[0]}–{rating[1]})
+                                            </span>
+                                            <RangeSlider
+                                                bind:value={rating}
+                                                min={RATING_RANGE[0]}
+                                                max={RATING_RANGE[1]}
+                                                step={50}
+                                                label="Difficulty (problem rating)"
+                                            />
+                                        </div>
+                                    {/if}
                                 </div>
-                                <div
-                                    class="flex items-center justify-between gap-3"
-                                >
-                                    <span
-                                        class="text-xs font-medium text-muted-foreground"
-                                        >Focus mode</span
+                                <div class="flex flex-col gap-3">
+                                    <button
+                                        type="button"
+                                        class="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                        aria-expanded={moreOpen}
+                                        onclick={() => (moreOpen = !moreOpen)}
                                     >
-                                    <Switch
-                                        bind:checked={focusMode}
-                                        size="sm"
-                                    />
+                                        <span>More settings</span>
+                                        <Icon
+                                            name="keyboard_arrow_down"
+                                            class={cn(
+                                                "size-[1em] transition-transform",
+                                                moreOpen && "rotate-180",
+                                            )}
+                                        />
+                                    </button>
+                                    {#if moreOpen}
+                                        <p
+                                            class="text-xs text-muted-foreground"
+                                            transition:fly={{
+                                                y: -6,
+                                                duration: 150,
+                                            }}
+                                        >
+                                            This is a sample session. Real
+                                            practice settings include problem
+                                            modes, review filters, a timer, and
+                                            more.
+                                        </p>
+                                    {/if}
                                 </div>
                             </div>
                         </aside>

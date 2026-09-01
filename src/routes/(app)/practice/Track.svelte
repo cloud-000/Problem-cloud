@@ -16,6 +16,7 @@
     import { SvelteMap } from "svelte/reactivity";
     import {
         clampProblemNumbers,
+        configsForSelectedSeries,
         problemNumberRange,
         type SeriesScopeConfig,
         type TrackValue,
@@ -48,8 +49,14 @@
 
     // One metadata row per selected series — division/format when that series
     // has a vocabulary, plus a problem-number slider once its number line is
-    // known. Fetched dimensions are cached across selection changes.
-    let seriesScopeConfigs = $state<SeriesScopeConfig[]>([]);
+    // known. Fetched dimensions are cached across selection changes. The
+    // loaded list lags the combobox (async), so the template reads a derived
+    // slice keyed on the live selection — otherwise a just-removed series
+    // still binds into `seriesScopes[id]` after that entry is deleted.
+    let loadedScopeConfigs = $state<SeriesScopeConfig[]>([]);
+    const seriesScopeConfigs = $derived(
+        configsForSelectedSeries(loadedScopeConfigs, value.seriesIds),
+    );
     let dimensionToken = 0;
     const dimensionCache = new SvelteMap<number, SeriesDimensionRow[]>();
 
@@ -104,7 +111,7 @@
                 });
             }
             if (token !== dimensionToken) return;
-            seriesScopeConfigs = configs;
+            loadedScopeConfigs = configs;
         })();
     });
 
@@ -235,12 +242,29 @@
 
     function setSeriesRange(id: string, length: number, next: [number, number]) {
         const stored = clampProblemNumbers(next, length);
-        const scope = (value.seriesScopes[id] ??= {
-            divisions: [],
-            formats: [],
-        });
+        const scope = value.seriesScopes[id];
+        if (!scope) return;
         if (stored) scope.problemNumbers = stored;
         else delete scope.problemNumbers;
+    }
+
+    const EMPTY_SCOPE_LIST: string[] = [];
+
+    function scopeField(
+        id: string,
+        key: "divisions" | "formats",
+    ): string[] {
+        return value.seriesScopes[id]?.[key] ?? EMPTY_SCOPE_LIST;
+    }
+
+    function setScopeField(
+        id: string,
+        key: "divisions" | "formats",
+        next: string[],
+    ) {
+        const scope = value.seriesScopes[id];
+        if (!scope) return;
+        scope[key] = next;
     }
 
     function rangeCaption(id: string, length: number): string {
@@ -272,7 +296,7 @@
     {#if seriesScopeConfigs.some(seriesHasMeta)}
         <div class="flex flex-col gap-1.5">
             {#each seriesScopeConfigs as cfg (cfg.id)}
-                {#if seriesHasMeta(cfg)}
+                {#if seriesHasMeta(cfg) && value.seriesScopes[cfg.id]}
                     {@const open = scopeOpen(cfg)}
                     {@const length = seriesLength(cfg.id)}
                     <div
@@ -316,8 +340,17 @@
                                         </span>
                                         <Combobox
                                             bind:value={
-                                                value.seriesScopes[cfg.id]
-                                                    .divisions
+                                                () =>
+                                                    scopeField(
+                                                        cfg.id,
+                                                        "divisions",
+                                                    ),
+                                                (next) =>
+                                                    setScopeField(
+                                                        cfg.id,
+                                                        "divisions",
+                                                        next,
+                                                    )
                                             }
                                             options={cfg.divisionOptions}
                                             strict
@@ -335,8 +368,17 @@
                                         </span>
                                         <Combobox
                                             bind:value={
-                                                value.seriesScopes[cfg.id]
-                                                    .formats
+                                                () =>
+                                                    scopeField(
+                                                        cfg.id,
+                                                        "formats",
+                                                    ),
+                                                (next) =>
+                                                    setScopeField(
+                                                        cfg.id,
+                                                        "formats",
+                                                        next,
+                                                    )
                                             }
                                             options={cfg.formatOptions}
                                             strict
