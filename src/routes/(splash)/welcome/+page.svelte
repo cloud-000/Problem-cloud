@@ -3,6 +3,7 @@
     import { Icon } from "$lib/components/icon";
     import LaTeX from "$lib/components/LaTeX.svelte";
     import { cn } from "$lib/utils";
+    import { markGuestSeenAppShell } from "$lib/guest-app-shell";
     import { prefersReducedMotion } from "svelte/motion";
     import WelcomeFilters from "./WelcomeFilters.svelte";
     import WelcomeTrainer from "./WelcomeTrainer.svelte";
@@ -167,6 +168,17 @@
                     >
                         Browse the library
                         <Icon name="arrow_forward" fontsize="18px" />
+                    </Button>
+                {:else}
+                    <Button
+                        href="/practice"
+                        variant="outline"
+                        size="lg"
+                        class="px-lg"
+                        id="hero-guest-practice-btn"
+                        onclick={markGuestSeenAppShell}
+                    >
+                        Practice as a guest
                     </Button>
                 {/if}
             </div>
@@ -441,14 +453,28 @@
                 One problem is enough. History starts with your first answer.
             </p>
         </div>
-        <Button
-            href={signedIn ? "/" : "/auth/signup"}
-            size="lg"
-            class="px-lg"
-            id="bottom-cta-btn"
-        >
-            {signedIn ? "Go!" : "Create free account"}
-        </Button>
+        <div class="flex flex-wrap items-center gap-sm">
+            <Button
+                href={signedIn ? "/" : "/auth/signup"}
+                size="lg"
+                class="px-lg"
+                id="bottom-cta-btn"
+            >
+                {signedIn ? "Go!" : "Create free account"}
+            </Button>
+            {#if !signedIn}
+                <Button
+                    href="/"
+                    variant="outline"
+                    size="lg"
+                    class="px-lg"
+                    id="bottom-guest-practice-btn"
+                    onclick={markGuestSeenAppShell}
+                >
+                    Practice as a guest
+                </Button>
+            {/if}
+        </div>
     </section>
 </div>
 

@@ -8,6 +8,7 @@
  */
 import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types";
+import { hasGuestSeenAppShell } from "$lib/guest-app-shell";
 import { aiCoachEnabled } from "$lib/server/ai/config";
 import { hostedAllowanceFor } from "$lib/server/ai/hosted-usage";
 
@@ -17,6 +18,10 @@ export const load: LayoutServerLoad = async ({
     depends,
 }) => {
     const { session, user } = await safeGetSession();
+
+    if (!user && !hasGuestSeenAppShell(cookies)) {
+        redirect(303, "/welcome");
+    }
 
     let profile = null;
     if (user) {
