@@ -1,6 +1,12 @@
-# Guest Practice Plan
+# Deferred: Supabase Anonymous-Account Guest Practice Plan
 
-> **Status:** Phase 0 complete; Phases 1–3 proposed.
+> **Status:** deferred before Phase 1. The Phase 0 inventory remains useful
+> background, but this plan must not be implemented unless the product returns
+> to database-backed anonymous accounts.
+>
+> **Current direction:** [Device-local guest practice](./local-practice-plan.md)
+> replaces this design for V1. It uses public catalog reads and browser-local
+> state, with no anonymous Supabase user or guest database writes.
 >
 > **Goal:** let a visitor start solving immediately, retain their work in the
 > current browser, and convert that work into a durable account when they choose
