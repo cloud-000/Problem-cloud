@@ -12,6 +12,8 @@
         fetchSeries,
         fetchTests,
         fetchProblems,
+        fetchPublicProblems,
+        isRemoteConnectivityError,
         fetchAllSeries,
         LocalCatalogUnavailable,
         topicLabel,
@@ -28,7 +30,7 @@
     import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { data }: { data: PageData } = $props();
-    let { supabase } = $derived(data);
+    let { supabase, user } = $derived(data);
 
     const store = new LibraryStore();
     const tabs: { value: Level; label: string }[] = [
@@ -181,7 +183,9 @@
             ? fetchSeries(supabase, filters, pageNum)
             : level === "tests"
               ? fetchTests(supabase, filters, pageNum)
-              : fetchProblems(supabase, filters, pageNum);
+              : user
+                ? fetchProblems(supabase, filters, pageNum)
+                : fetchPublicProblems(supabase, filters, pageNum);
     }
 
     function updateSearch(event: Event) {
@@ -271,7 +275,9 @@
                 }
             } catch (error) {
                 if (myToken === token) {
-                    if (readMode === "online") offlineMode.noteRemoteFailure();
+                    if (readMode === "online" && isRemoteConnectivityError(error)) {
+                        offlineMode.noteRemoteFailure();
+                    }
                     errorMsg = (error as Error).message;
                     errorRetryable = !(error instanceof LocalCatalogUnavailable);
                 }

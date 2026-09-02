@@ -398,7 +398,16 @@
     }
 </script>
 
-{#if loading}
+{#if !user}
+    <Page.Root width="standard">
+        <Page.Header title="Practice on this device" description="Start solving now. Your guest practice is saved in this browser only." />
+        <section class="rounded-xl border border-border bg-surface-container-lowest p-6">
+            <h2 class="type-section-title">Ready for a problem?</h2>
+            <p class="mt-2 max-w-prose type-secondary text-muted-foreground">Create an account when you want progress, goals, and sessions to follow you across browsers and devices.</p>
+            <div class="mt-5 flex flex-wrap gap-2"><Button href="/practice">Start practice <Icon name="arrow_forward" /></Button><Button href="/library" variant="outline">Browse problems</Button></div>
+        </section>
+    </Page.Root>
+{:else if loading}
     <Page.Root width="standard">
         <div
             class="flex min-h-40 items-center justify-center gap-2 type-secondary text-muted-foreground"

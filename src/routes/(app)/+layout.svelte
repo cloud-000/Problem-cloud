@@ -1,5 +1,6 @@
 <script lang="ts">
    import * as Sidebar from "$lib/components/sidebar";
+   import { Button } from "$lib/components/button";
    import { ToastContainer } from "$lib/components/toast";
    import { ModalContainer } from "$lib/components/modal";
    import { page } from "$app/state";
@@ -278,6 +279,14 @@
       addAccountOptions(list);
       return list;
    });
+
+   const guestOnlyAccountRoutes = [
+      "/progress", "/goals", "/history", "/coach", "/offline", "/settings",
+      "/usage", "/leaderboard", "/admin", "/testing-features",
+   ];
+   let guestRouteBlocked = $derived(
+      !user && guestOnlyAccountRoutes.some((route) => routeMatches(page.url.pathname, route)),
+   );
 
    // The Coach's chord lives here rather than on a launcher, so suppressing the
    // button on one route can't kill the shortcut there. `shell.coachAvailable`
@@ -578,7 +587,17 @@
          bind:this={appScrollViewport}
          class="flex-1 overflow-y-auto overscroll-contain p-0"
       >
-         {@render children()}
+         {#if guestRouteBlocked}
+            <main class="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center p-6">
+               <div class="rounded-xl border border-border bg-surface-container-lowest p-6">
+                  <h1 class="type-section-title">Create an account to use this area</h1>
+                  <p class="mt-2 type-secondary text-muted-foreground">Guest practice is saved only in this browser. An account adds progress, goals, history, Coach, and sync across devices.</p>
+                  <div class="mt-5 flex flex-wrap gap-2"><Button href="/auth/signup">Create account</Button><Button href="/practice" variant="outline">Continue practicing</Button></div>
+               </div>
+            </main>
+         {:else}
+            {@render children()}
+         {/if}
       </div>
    </div>
 

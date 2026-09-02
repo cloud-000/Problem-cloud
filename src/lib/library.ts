@@ -10,6 +10,12 @@ import { BROWSE_INTENT, type BrowseQueryV1, type OfflineBrowseProblemV1 } from "
 type Supabase = SupabaseClient<Database>;
 const isBrowser = () => typeof window !== "undefined";
 
+/** Only browser transport failures prove the catalog is unreachable. HTTP/RLS
+ * errors are application responses and must never flip the app into offline mode. */
+export function isRemoteConnectivityError(error: unknown): boolean {
+    return error instanceof TypeError && /fetch|network|load/i.test(error.message);
+}
+
 // Row shapes. Tests/problems carry their joined parent names for display.
 export type SeriesRow = Tables<"series">;
 export type TestRow = Tables<"tests"> & { series?: { name: string } | null };
@@ -468,8 +474,52 @@ export async function fetchProblems(
         return rows;
     } catch (error) {
         if (!isBrowser()) throw error;
-        catalogReadRuntime.noteRemoteFailure();
+        if (isRemoteConnectivityError(error)) catalogReadRuntime.noteRemoteFailure();
         return fetchLocalProblems(f, page);
+    }
+}
+
+/** Anonymous Library query: catalog-only fields, with no per-user embeds/RPCs. */
+export async function fetchPublicProblems(
+    supabase: Supabase,
+    f: Filters = {},
+    page = 0,
+): Promise<ProblemRow[]> {
+    if (isBrowser() && catalogReadRuntime.effective === "local") {
+        return fetchLocalProblems(f, page);
+    }
+    const search = f.search?.trim();
+    const ids = search ? parseProblemSearchIds(search) : null;
+    if (search && !ids) return [];
+    try {
+        let query = supabase
+            .from("problems")
+            .select(`*, ${TESTS_EMBED_INNER}, ${RATING_SELECT}`);
+        if (ids?.length) query = query.or(`id.in.(${ids.join(",")}),canonical_id.in.(${ids.join(",")})`);
+        if (f.testId != null) query = query.eq("test_id", f.testId);
+        if (f.seriesId != null && f.testId == null) query = query.eq("tests.series_id", f.seriesId);
+        if (f.seriesId != null && f.testId == null && f.divisions?.length) query = query.in("tests.division", f.divisions);
+        if (f.seriesId != null && f.testId == null && f.formats?.length) query = query.in("tests.format", f.formats);
+        if (f.seriesId != null && f.year) query = query.gte("tests.year", f.year[0]).lte("tests.year", f.year[1]);
+        if (f.seriesId != null && f.problemNumbers) query = query.gte("n", f.problemNumbers[0] - 1).lte("n", f.problemNumbers[1] - 1);
+        if (f.topic?.length) query = query.in("topic", f.topic);
+        if (f.tags?.length) query = query.contains("tags", f.tags);
+        if (f.quality) query = query.gte("quality", f.quality[0]).lte("quality", f.quality[1]);
+        if (f.isComputational != null) query = query.eq("is_computational", f.isComputational);
+        if (f.verified != null) query = query.eq("verified", f.verified);
+        const { data, error } = await query.order("n").order("id").range(...pageRange(page));
+        if (error) throw error;
+        const rows = ((data ?? []) as unknown as Array<ProblemRow & { problem_ratings?: (ProblemRating & { scope: string })[] | null }>)
+            .map(({ problem_ratings, ...row }) => ({ ...row, progress: null, rating: overallProblemRating(problem_ratings) }));
+        const filtered = f.difficulty
+            ? rows.filter((row) => row.rating != null && row.rating.rating >= f.difficulty![0] && row.rating.rating <= f.difficulty![1])
+            : rows;
+        if (isBrowser()) catalogReadRuntime.noteRemoteSuccess();
+        return filtered;
+    } catch (error) {
+        if (!isBrowser()) throw error;
+        if (isRemoteConnectivityError(error)) catalogReadRuntime.noteRemoteFailure();
+        throw error;
     }
 }
 
@@ -561,7 +611,7 @@ export async function fetchByIds(
         );
     } catch (error) {
         if (!isBrowser()) throw error;
-        catalogReadRuntime.noteRemoteFailure();
+        if (isRemoteConnectivityError(error)) catalogReadRuntime.noteRemoteFailure();
         const result = await localBrowse({ search: ids.join(",") }, 0, Math.max(ids.length, PAGE_SIZE));
         return result.problems.map(localProblemRow);
     }

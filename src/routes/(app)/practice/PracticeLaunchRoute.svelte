@@ -2,6 +2,8 @@
     import { offlineMode } from "$lib/state/offline-mode.svelte";
     import type { PageData } from "./$types";
     import DownloadedPracticeRoute from "./DownloadedPracticeRoute.svelte";
+    import GuestPracticeRoute from "./GuestPracticeRoute.svelte";
+    import GuestSessionsView from "./GuestSessionsView.svelte";
     import OnlinePracticeRoute from "./OnlinePracticeRoute.svelte";
     import SessionsView from "./SessionsView.svelte";
 
@@ -21,8 +23,14 @@
 
 {#if useLocalAtLaunch}
     <DownloadedPracticeRoute {data} requestedSessionId={sessionParam} />
+{:else if !data.user && sessionParam?.startsWith("guest:")}
+    <GuestPracticeRoute {data} {sessionParam} />
 {:else if sessionParam == null}
-    <SessionsView {data} />
+    {#if data.user}
+        <SessionsView {data} />
+    {:else}
+        <GuestSessionsView />
+    {/if}
 {:else}
     <OnlinePracticeRoute {data} {sessionParam} />
 {/if}

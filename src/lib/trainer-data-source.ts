@@ -4,6 +4,7 @@ import {
     fetchByIds,
     fetchAllSeries,
     fetchPlayerRating,
+    TESTS_EMBED,
     type PlayerRating,
     type ProblemRating,
     type ProblemRow,
@@ -56,12 +57,15 @@ import type {
     PracticeQueryV1,
 } from "$lib/offline/types";
 import { BROWSE_INTENT } from "$lib/offline/types";
+import { guestPracticeRepository, type GuestSession } from "$lib/guest-practice/repository";
+import { hasComparableAnswer } from "$lib/problem-response";
 
 type Supabase = SupabaseClient<Database>;
 
 export type TrainerLoadedSession = {
     row: PracticeSessionRow;
     localSubmissions: LocalSubmissionV1[];
+    draft?: { problemId: number; answer: string; selectedChoice: number | null } | null;
 };
 
 export type TrainerProblem = {
@@ -147,12 +151,29 @@ export const OFFLINE_TRAINER_CAPABILITIES: TrainerCapabilities = Object.freeze({
     serverHistory: false,
 });
 
+export const GUEST_TRAINER_CAPABILITIES: TrainerCapabilities = Object.freeze({
+    modes: NEW_MODE_ONLY,
+    formats: Object.freeze({ practice: true, test: false }),
+    answer: true,
+    skip: true,
+    back: true,
+    mastery: false,
+    engagement: false,
+    adaptive: false,
+    settings: true,
+    coach: false,
+    discuss: false,
+    sourceLinks: false,
+    problemReports: false,
+    serverHistory: false,
+});
+
 /**
  * The trainer's data boundary. Components choose one implementation once and
  * then speak only in domain operations; PostgREST never leaks into IndexedDB.
  */
 export interface TrainerDataSource {
-    readonly kind: "online" | "offline";
+    readonly kind: "online" | "offline" | "guest";
     readonly capabilities: TrainerCapabilities;
     queryProblems(input: {
         settings: PracticeSettings;
@@ -187,6 +208,7 @@ export interface TrainerDataSource {
         dependsOn?: string[],
     ): Promise<void>;
     setCurrentProblem(problemId: number | null, elapsedMs: number): Promise<void>;
+    saveAnswerDraft?(draft: { problemId: number; answer: string; selectedChoice: number | null } | null): Promise<void>;
     finishSession(): Promise<void>;
     /** Advances only when authoritative sync state was applied locally. */
     syncVersion(): Promise<string | null>;
@@ -302,6 +324,128 @@ export function createOnlineTrainerDataSource(input: {
         async syncVersion() {
             return null;
         },
+    };
+}
+
+function guestSessionRow(session: GuestSession): PracticeSessionRow {
+    return {
+        id: session.id,
+        user_id: "guest",
+        name: session.name,
+        status: session.status,
+        settings: session.settings as PracticeSessionRow["settings"],
+        is_root: false,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        current_problem_id: session.current_problem_id,
+        current_elapsed_ms: session.current_elapsed_ms,
+        times_seen: session.times_seen,
+        times_reviewed: session.times_reviewed,
+        times_correct: session.times_correct,
+        times_skipped: session.times_skipped,
+        total_time_ms: session.total_time_ms,
+    } as PracticeSessionRow;
+}
+
+/** Public catalog reads with browser-local guest persistence; never writes Supabase. */
+export function createGuestTrainerDataSource(input: {
+    supabase: Supabase;
+    sessionId: number;
+}): TrainerDataSource {
+    const repository = guestPracticeRepository();
+    const { supabase, sessionId } = input;
+    const session = async () => {
+        const value = await (await repository).session(sessionId);
+        if (!value) throw new Error("Guest practice session not found on this device.");
+        return value;
+    };
+    const problem = async (problemId: number): Promise<TrainerProblem | null> => {
+        // Do not use fetchByIds here: its account view embeds problem_progress
+        // and ratings, which anonymous visitors are not allowed to read.
+        const { data, error } = await supabase
+            .from("problems")
+            .select(`*, ${TESTS_EMBED}`)
+            .eq("id", problemId)
+            .maybeSingle();
+        if (error) throw error;
+        const row = data as ProblemRow | null;
+        return row ? { problem: row, progress: null, rating: null } : null;
+    };
+
+    return {
+        kind: "guest",
+        capabilities: GUEST_TRAINER_CAPABILITIES,
+        async queryProblems({ settings, session: draw }) {
+            let query = supabase.from("problems").select(`*, ${TESTS_EMBED}`).is("canonical_id", null).limit(100);
+            if (settings.topic.length) query = query.in("topic", settings.topic);
+            if (settings.verifiedOnly) query = query.eq("verified", true);
+            if (settings.computational != null) query = query.eq("is_computational", settings.computational);
+            const { data, error } = await query;
+            if (error) throw error;
+            const candidates = ((data ?? []) as ProblemRow[]).filter((row) =>
+                !draw.shownIds.has(row.id) &&
+                (settings.answerAvailability !== "with" || hasComparableAnswer(row)) &&
+                (settings.answerAvailability !== "without" || !hasComparableAnswer(row)),
+            );
+            return {
+                problem: candidates[Math.floor(Math.random() * candidates.length)] ?? null,
+                source: "practice",
+                progress: null,
+            };
+        },
+        getProblem: problem,
+        async getEffectiveProgress() { return null; },
+        async getPlayerRating() { return null; },
+        async loadSession() {
+            const attempts = await (await repository).attempts(sessionId);
+            return {
+                row: guestSessionRow(await session()),
+                localSubmissions: attempts.map((entry) => ({ canonicalId: entry.canonicalId })) as LocalSubmissionV1[],
+                draft: (await session()).draft,
+            };
+        },
+        async getSeriesOptions() {
+            return (await fetchAllSeries(supabase)).map((entry) => ({ value: String(entry.id), label: entry.name }));
+        },
+        getSeriesDimensions: (id) => fetchSeriesDimensions(supabase, id),
+        getSeriesNumberLine: (id, scope) => fetchSeriesNumberLine(supabase, id, scope),
+        getSeriesYearSpan: (id, scope) => fetchSeriesYearSpan(supabase, id, scope),
+        async getSessionProblemIds() { return (await (await repository).attempts(sessionId)).map((entry) => entry.canonicalId); },
+        async getOlderSubmission() { return null; },
+        async getSessionHistory() { return []; },
+        async getTestProblems() { throw new Error("Mock tests require an account."); },
+        async recordTestSubmissions() { throw new Error("Mock tests require an account."); },
+        async updateSettings(settings) { await (await repository).save({ ...(await session()), settings }); },
+        async recordSubmission(input) {
+            await (await repository).record({
+                sessionId,
+                canonicalId: input.problemId,
+                selectedChoice: input.selectedChoice,
+                answer: input.answer ?? "",
+                isCorrect: input.isCorrect,
+                skipped: input.skipped,
+                flagged: input.flagged,
+                elapsedMs: input.elapsedMs,
+                triesUsed: input.triesUsed ?? 0,
+                createdAt: new Date().toISOString(),
+            });
+            return { submissionId: null, operationId: null };
+        },
+        async setMastery() {},
+        async setEngagement() {},
+        async setCurrentProblem(problemId, elapsedMs) {
+            await (await repository).save({
+                ...(await session()), current_problem_id: problemId,
+                current_elapsed_ms: Math.max(0, Math.round(elapsedMs)),
+            });
+        },
+        async saveAnswerDraft(draft) {
+            await (await repository).save({ ...(await session()), draft });
+        },
+        async finishSession() {
+            await (await repository).save({ ...(await session()), status: "ended", ended_at: new Date().toISOString() });
+        },
+        async syncVersion() { return null; },
     };
 }
 

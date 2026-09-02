@@ -1529,7 +1529,7 @@
       }
 
       let recorded: Promise<TrainerSubmissionResult> | null = null;
-      if (user || trainerSource.kind === "offline") {
+      if (user || trainerSource.kind === "offline" || trainerSource.kind === "guest") {
          recorded = trainerSource.recordSubmission({
             problemId: problem.id,
             selectedChoice: answerState.selectedChoice,
@@ -1547,7 +1547,7 @@
          // The offline result is the durability acknowledgement. Revealing a
          // finalized answer before this transaction commits lets a reload (or
          // a very fast Next) re-offer the same New-mode problem.
-         if (trainerSource.kind === "offline") {
+         if (trainerSource.kind === "offline" || trainerSource.kind === "guest") {
             submissionPending = true;
             try {
                await recorded;
@@ -1636,7 +1636,7 @@
          },
       ];
 
-      if (user || trainerSource.kind === "offline") {
+      if (user || trainerSource.kind === "offline" || trainerSource.kind === "guest") {
          const recorded = trainerSource.recordSubmission({
             problemId: problem.id,
             selectedChoice: null,
@@ -1913,6 +1913,10 @@
                      pending.progress,
                      s.current_elapsed_ms ?? 0,
                   );
+                  if (loaded?.draft?.problemId === pending.problem.id) {
+                     answerState.answer = loaded.draft.answer;
+                     answerState.selectedChoice = loaded.draft.selectedChoice;
+                  }
                   return;
                }
             }
@@ -1948,6 +1952,22 @@
       }, 5000);
 
       return () => clearInterval(timer);
+   });
+
+   // Guest sessions also preserve the live answer draft. The regular account
+   // path keeps only the current-problem pointer; its server session schema has
+   // intentionally never stored answer drafts.
+   $effect(() => {
+      if (trainerSource.kind !== "guest" || !problem || answerState.submitted) return;
+      const draft = {
+         problemId: problem.id,
+         answer: answerState.answer,
+         selectedChoice: answerState.selectedChoice,
+      };
+      const timer = setTimeout(() => trainerSource.saveAnswerDraft?.(draft).catch((e) =>
+         console.error("Failed to save guest answer draft:", e),
+      ), 250);
+      return () => clearTimeout(timer);
    });
 
    // Test format: persist draft answers/time to localStorage — immediately when

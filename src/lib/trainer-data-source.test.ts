@@ -13,6 +13,7 @@ import {
 import {
     createDownloadedTrainerDataSource,
     createOfflineTrainerDataSource,
+    GUEST_TRAINER_CAPABILITIES,
 } from "$lib/trainer-data-source";
 import { bindOfflinePracticePackage } from "$lib/offline/practice-binding";
 
@@ -235,5 +236,23 @@ describe("offline trainer data source", () => {
     test("reports authoritative sync advancement without exposing a network read", async () => {
         const { source } = await ready();
         expect(await source.syncVersion()).toBeNull();
+    });
+});
+
+test("guest trainer capabilities cannot reach account-only practice features", () => {
+    expect(GUEST_TRAINER_CAPABILITIES.modes).toEqual({
+        new: true,
+        review: false,
+        skipped: false,
+        list: false,
+        mixed: false,
+    });
+    expect(GUEST_TRAINER_CAPABILITIES.formats).toEqual({ practice: true, test: false });
+    expect(GUEST_TRAINER_CAPABILITIES).toMatchObject({
+        coach: false,
+        serverHistory: false,
+        problemReports: false,
+        mastery: false,
+        engagement: false,
     });
 });

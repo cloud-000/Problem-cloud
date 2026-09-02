@@ -48,7 +48,7 @@
 {:else}
     <header>
         <h1 class="type-page-title">Create account</h1>
-        <p class="mt-2 type-secondary text-muted-foreground">Save your work, understand your progress, and practice with purpose.</p>
+        <p class="mt-2 type-secondary text-muted-foreground">Save your work, understand your progress, and practice with purpose. Guest practice stays on this browser; new account activity starts fresh and syncs across devices.</p>
     </header>
 
     <div class="space-y-4">
