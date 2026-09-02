@@ -1,4 +1,8 @@
 import type { PageLoad } from "./$types";
+import {
+    WELCOME_PREFERRED_SERIES,
+    loadWelcomeProblems,
+} from "./welcome-trainer";
 
 type SeriesEmbed = {
     id: number;
@@ -11,7 +15,8 @@ type SeriesEmbed = {
  *  true as content syncs land. Both tables are world-readable (see the
  *  "viewable by everyone" policies in `supabase/schemas/problems.sql`), so
  *  this works for signed-out visitors. A failure drops the figure rather
- *  than the section. */
+ *  than the section. The hero trainer is the same contract: a real problem
+ *  from that table, or nothing if the catalog cannot be read. */
 export const load: PageLoad = async ({ parent }) => {
     const { supabase } = await parent();
 
@@ -23,14 +28,23 @@ export const load: PageLoad = async ({ parent }) => {
             .order("name"),
     ]);
 
+    const seriesRows = series.error
+        ? []
+        : (series.data as unknown as SeriesEmbed[]).map((row) => ({
+              id: row.id,
+              name: row.name,
+              testCount: row.tests?.[0]?.count ?? 0,
+          }));
+    const preferredSeriesId =
+        seriesRows.find((row) => row.name === WELCOME_PREFERRED_SERIES)?.id ?? null;
+    let welcomeProblems = await loadWelcomeProblems(supabase, preferredSeriesId);
+    if (welcomeProblems.length === 0 && preferredSeriesId != null) {
+        welcomeProblems = await loadWelcomeProblems(supabase, null);
+    }
+
     return {
         problemCount: problems.error ? null : (problems.count ?? null),
-        series: series.error
-            ? []
-            : (series.data as unknown as SeriesEmbed[]).map((row) => ({
-                  id: row.id,
-                  name: row.name,
-                  testCount: row.tests?.[0]?.count ?? 0,
-              })),
+        series: seriesRows,
+        problems: welcomeProblems,
     };
 };

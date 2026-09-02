@@ -134,7 +134,11 @@
 <div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm pt-lg sm:px-md sm:pt-xl md:px-xl">
     <!-- Hero -->
     <section
-        class="grid min-w-0 items-center gap-lg pb-lg sm:gap-xl sm:pb-xl lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:pb-[3.5rem]"
+        class={cn(
+            "grid min-w-0 items-center gap-lg pb-lg sm:gap-xl sm:pb-xl lg:pb-[3.5rem]",
+            data.problems.length > 0 &&
+                "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]",
+        )}
     >
         <div class="rise min-w-0">
             <p class="type-caption text-muted-foreground mb-sm">
@@ -196,9 +200,11 @@
             {/if}
         </div>
 
-        <div class="rise rise-late min-w-0 w-full">
-            <WelcomeTrainer />
-        </div>
+        {#if data.problems.length}
+            <div class="rise rise-late min-w-0 w-full">
+                <WelcomeTrainer problems={data.problems} />
+            </div>
+        {/if}
     </section>
 
     <section class="pb-xl" aria-labelledby="tools-heading">
