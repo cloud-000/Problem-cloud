@@ -59,8 +59,8 @@
             <a href="#experimental" class={sectionLinkClass}>Experimental</a>
             <a href="#developer" class={sectionLinkClass}>Developer</a>
             <a href="#account" class={sectionLinkClass}>Account</a>
+            <a href="#ai" class={sectionLinkClass}>AI</a>
             {#if session && user}
-                <a href="#ai" class={sectionLinkClass}>AI</a>
                 <a href="#feedback" class={sectionLinkClass}>Feedback</a>
             {/if}
         </nav>
@@ -194,9 +194,9 @@
         {/if}
     </Page.Section>
 
-    {#if session && user}
-        <AIConnectionsSection />
+    <AIConnectionsSection />
 
+    {#if session && user}
         <Page.Section
             id="feedback"
             title="Feedback"

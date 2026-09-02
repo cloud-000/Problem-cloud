@@ -400,11 +400,16 @@
 
 {#if !user}
     <Page.Root width="standard">
-        <Page.Header title="Practice on this device" description="Start solving now. Your guest practice is saved in this browser only." />
+        <Page.Header title="Practice as a guest" description="Start solving now. Guest practice is saved in this browser only." />
         <section class="rounded-xl border border-border bg-surface-container-lowest p-6">
             <h2 class="type-section-title">Ready for a problem?</h2>
-            <p class="mt-2 max-w-prose type-secondary text-muted-foreground">Create an account when you want progress, goals, and sessions to follow you across browsers and devices.</p>
-            <div class="mt-5 flex flex-wrap gap-2"><Button href="/practice">Start practice <Icon name="arrow_forward" /></Button><Button href="/library" variant="outline">Browse problems</Button></div>
+            <p class="mt-2 max-w-prose type-secondary text-muted-foreground">Create a free account to keep your progress, goals, and sessions across browsers and devices.</p>
+            <div class="mt-5 flex flex-wrap gap-2">
+                <Button href={resolve("/auth/signup")}>Create free account <Icon name="arrow_forward" /></Button>
+                <Button href={resolve("/practice")} variant="outline">Practice as a guest</Button>
+                <Button href={resolve("/library")} variant="ghost">Browse problems</Button>
+            </div>
+            <p class="mt-4 type-secondary text-muted-foreground">Already have an account? <a class="underline" href={resolve("/auth/login")}>Log in</a>.</p>
         </section>
     </Page.Root>
 {:else if loading}

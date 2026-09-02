@@ -239,7 +239,7 @@ describe("offline trainer data source", () => {
     });
 });
 
-test("guest trainer capabilities cannot reach account-only practice features", () => {
+test("guest trainer keeps local BYOK Coach while excluding account-only practice features", () => {
     expect(GUEST_TRAINER_CAPABILITIES.modes).toEqual({
         new: true,
         review: false,
@@ -249,7 +249,7 @@ test("guest trainer capabilities cannot reach account-only practice features", (
     });
     expect(GUEST_TRAINER_CAPABILITIES.formats).toEqual({ practice: true, test: false });
     expect(GUEST_TRAINER_CAPABILITIES).toMatchObject({
-        coach: false,
+        coach: true,
         serverHistory: false,
         problemReports: false,
         mastery: false,

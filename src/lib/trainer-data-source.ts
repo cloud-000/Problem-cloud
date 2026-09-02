@@ -161,7 +161,8 @@ export const GUEST_TRAINER_CAPABILITIES: TrainerCapabilities = Object.freeze({
     engagement: false,
     adaptive: false,
     settings: true,
-    coach: false,
+    // Guest Coach is BYOK-only, but it is otherwise available while practicing.
+    coach: true,
     discuss: false,
     sourceLinks: false,
     problemReports: false,

@@ -49,7 +49,7 @@
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
    let hostedAllowance = $derived(data.hostedAllowance ?? null);
-   let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled && session));
+   let aiCoachEnabled = $derived(Boolean(data.aiCoachEnabled));
    let coachFabVisible = $derived(
       aiCoachEnabled &&
          coach.enabled &&
@@ -102,8 +102,8 @@
    ] as const;
 
    // The Coach's full-screen surface. Deliberately the *only* way in: nothing
-   // inside the app escalates into the route, so if the account has no Coach the
-   // tab is absent rather than landing on an explanation.
+   // inside the app escalates into the route, so if Coach is disabled the tab is
+   // absent rather than landing on an explanation.
    const coachTab = { href: "/coach", icon: "auto_awesome", label: "Coach" } as const;
 
    let primaryTabs = $derived(
@@ -273,6 +273,9 @@
          routeMatches(page.url.pathname, "/admin") ||
          routeMatches(page.url.pathname, "/testing-features"),
    );
+   let isGuestMenuActive = $derived(
+      isProfileActive || routeMatches(page.url.pathname, "/auth/login"),
+   );
 
    let profileOptions = $derived.by<DropdownOption[]>(() => {
       const list: DropdownOption[] = [];
@@ -280,9 +283,21 @@
       return list;
    });
 
+   let guestOptions = $derived.by<DropdownOption[]>(() => {
+      const list: DropdownOption[] = [];
+      addAccountOptions(list);
+      list.push({ type: "divider" });
+      list.push({
+         label: "Log in",
+         icon: "login",
+         onclick: () => goto(resolve("/auth/login")),
+      });
+      return list;
+   });
+
    const guestOnlyAccountRoutes = [
-      "/progress", "/goals", "/history", "/coach", "/offline", "/settings",
-      "/usage", "/leaderboard", "/admin", "/testing-features",
+      "/progress", "/goals", "/history", "/offline", "/usage", "/leaderboard",
+      "/admin", "/testing-features",
    ];
    let guestRouteBlocked = $derived(
       !user && guestOnlyAccountRoutes.some((route) => routeMatches(page.url.pathname, route)),
@@ -525,12 +540,38 @@
                   </DropdownMenu>
                {/if}
             {:else}
-               <Sidebar.Item
-                  href="/auth/login"
-                  icon="login"
-                  label="Log In"
-                  active={page.url.pathname === "/auth/login"}
-               />
+               <DropdownMenu
+                  options={guestOptions}
+                  class="w-full"
+                  triggerClass="w-full"
+               >
+                  <button
+                     type="button"
+                     class={cn(
+                        "flex min-h-11 w-full items-center gap-3 rounded-md p-2 text-left outline-none transition-colors hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-ring",
+                        expanded ? "justify-start" : "justify-center",
+                        isGuestMenuActive && "bg-surface-container-high",
+                     )}
+                     aria-label="ProblemCloud menu"
+                  >
+                     <span
+                        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                     >
+                        <Icon name="cloud" fontsize="20px" />
+                     </span>
+                     {#if expanded}
+                        <span class="min-w-0 flex-1">
+                           <span class="type-secondary block truncate font-medium text-foreground">
+                              ProblemCloud
+                           </span>
+                           <span class="type-caption block truncate text-muted-foreground">
+                              Guest settings and help
+                           </span>
+                        </span>
+                        <Icon name="more_horiz" class="text-muted-foreground" />
+                     {/if}
+                  </button>
+               </DropdownMenu>
             {/if}
          </Sidebar.Footer>
       </Sidebar.Root>

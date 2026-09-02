@@ -55,7 +55,9 @@ export const load: LayoutServerLoad = async ({
         user,
         profile,
         cookies: cookies.getAll(),
-        aiCoachEnabled: Boolean(user && aiCoachEnabled()),
+        // Guests may use browser-local BYOK connections. The Coach bootstrap keeps
+        // server-owned providers (including the hosted offer) behind authentication.
+        aiCoachEnabled: aiCoachEnabled(),
         hostedAllowance: user ? await hostedAllowanceFor(user.id) : null,
     };
 };
