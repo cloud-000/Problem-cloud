@@ -362,7 +362,7 @@ describe("any-model provider adapter", () => {
             expect(events.at(-1)).toMatchObject({ type: "message.done", status: "failed" });
             // Provider error bodies can quote the request, and the key with it.
             expect(JSON.stringify(events)).not.toContain("sk-test-key");
-            expect(logged.join("\n")).toContain("[ai] provider error");
+            expect(logged.join("\n")).toContain("AI provider error");
             expect(logged.join("\n")).toContain("Bad key");
             expect(logged.join("\n")).not.toContain("sk-test-key");
         } finally {

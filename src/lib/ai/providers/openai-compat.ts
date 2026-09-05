@@ -51,9 +51,9 @@ interface ErrorMapping {
 function redactSecrets(text: string, secrets: string[]): string {
     let out = text;
     for (const secret of secrets) {
-        if (secret.length >= 8) out = out.split(secret).join("[redacted]");
+        if (secret.length >= 8) out = out.split(secret).join("<redacted>");
     }
-    return out.replace(/sk-[a-zA-Z0-9_-]{8,}/g, "[redacted]");
+    return out.replace(/sk-[a-zA-Z0-9_-]{8,}/g, "<redacted>");
 }
 
 function providerErrorSnapshot(error: unknown): unknown {
@@ -75,11 +75,11 @@ function logProviderError(error: unknown, apiKey: string): void {
     if (isAbort(error)) return;
     try {
         console.error(
-            "[ai] provider error",
+            "AI provider error",
             redactSecrets(JSON.stringify(providerErrorSnapshot(error)), [apiKey]),
         );
     } catch {
-        console.error("[ai] provider error", error instanceof Error ? error.name : "unknown");
+        console.error("AI provider error", error instanceof Error ? error.name : "unknown");
     }
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { settings } from "$lib/state/settings.svelte";
     import { onMount, type Snippet } from "svelte";
 
     let {
@@ -79,4 +80,5 @@
 <div
     bind:this={renderEl}
     class="font-serif leading-relaxed select-text {className}"
+    style:font-size={`${settings.readingTextScale}em`}
 >{@render children?.()}</div>

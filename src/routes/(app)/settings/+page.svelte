@@ -7,7 +7,8 @@
     import { Select } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
     import { modal } from "$lib/state/modal.svelte";
-    import { settings } from "$lib/state/settings.svelte";
+    import { MathStatement } from "$lib/components/math-statement";
+    import { settings, readingSizeOptions } from "$lib/state/settings.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
     import AIConnectionsSection from "./AIConnectionsSection.svelte";
     import FeedbackModal from "./FeedbackModal.svelte";
@@ -86,6 +87,34 @@
                         value={Theme.theme}
                         options={Theme.themeOptions}
                         onchange={(value) => Theme.setUserTheme(value)}
+                    />
+                </div>
+            </div>
+            <div class="border-t border-border/60 py-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+                    <div class="min-w-0">
+                        <label for="reading-text-size" class="type-body font-medium text-foreground">
+                            Reading text size
+                        </label>
+                        <p id="reading-text-size-description" class="mt-0.5 type-secondary text-muted-foreground">
+                            Resize problem statements, answer choices, solutions, and Coach text on this device.
+                        </p>
+                    </div>
+                    <div class="w-full shrink-0 sm:w-56">
+                        <Select
+                            id="reading-text-size"
+                            aria-describedby="reading-text-size-description"
+                            value={String(settings.readingTextScale)}
+                            options={readingSizeOptions}
+                            onchange={(value) => settings.readingTextScale = Number(value)}
+                        />
+                    </div>
+                </div>
+                <div class="mt-4 rounded-lg border border-border/60 bg-surface-container-low p-4">
+                    <p class="mb-2 type-caption text-muted-foreground">Preview</p>
+                    <MathStatement
+                        text="Find the positive value of $x$ such that $x^2 + 3x = 10$."
+                        class="type-problem text-foreground"
                     />
                 </div>
             </div>

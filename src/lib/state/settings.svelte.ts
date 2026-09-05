@@ -8,14 +8,46 @@ function persisted(key: string, initial: boolean): boolean {
     }
 }
 
-function persist(key: string, value: boolean): void {
+function persist(key: string, value: boolean | number): void {
     if (typeof window === "undefined") return;
     try {
         localStorage.setItem(key, String(value));
     } catch (_) {}
 }
 
+export const readingSizeOptions = [
+    { value: "0.875", label: "Small · 87.5%" },
+    { value: "1", label: "Default · 100%" },
+    { value: "1.125", label: "Large · 112.5%" },
+    { value: "1.25", label: "Larger · 125%" },
+    { value: "1.5", label: "Largest · 150%" },
+];
+
+function readingSize(value: number): number {
+    return readingSizeOptions.some((option) => Number(option.value) === value) ? value : 1;
+}
+
+function persistedReadingSize(): number {
+    if (typeof window === "undefined") return 1;
+    try {
+        return readingSize(Number(localStorage.getItem("settings:readingTextScale")));
+    } catch (_) {
+        return 1;
+    }
+}
+
 class SettingsStore {
+    #readingTextScale = $state(persistedReadingSize());
+
+    get readingTextScale() {
+        return this.#readingTextScale;
+    }
+
+    set readingTextScale(value: number) {
+        this.#readingTextScale = readingSize(value);
+        persist("settings:readingTextScale", this.#readingTextScale);
+    }
+
     #downloadedOnly = $state(persisted("settings:downloadedOnly", false));
     #showBetaFeatures = $state(persisted("settings:showBetaFeatures", false));
     /**
