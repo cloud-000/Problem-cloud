@@ -243,14 +243,14 @@
 
             <CompactControls
                 store={board}
-                class="absolute left-1/2 top-3 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
+                class="absolute left-1/2 top-[max(0.75rem,var(--safe-area-top))] z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 sm:top-4"
             />
         {/if}
     </div>
     <Button
         variant="ghost"
         size="icon"
-        class="absolute right-3 top-3 z-20 bg-surface-container-lowest/90 text-foreground sm:right-4 sm:top-4"
+        class="absolute right-3 top-[max(0.75rem,var(--safe-area-top))] z-20 bg-surface-container-lowest/90 text-foreground sm:right-4 sm:top-4"
         title="Close"
         onclick={closeLightbox}
     >
