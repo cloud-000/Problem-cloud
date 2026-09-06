@@ -239,6 +239,8 @@ function prepare(raw: string): string {
         .replace(/\\(?:qquad|quad)(?![a-zA-Z])/g, "")
         .replace(/\\[!,;: ]/g, "")
         .replace(/[−‒–—]/g, "-")
+        .replace(/\\ast(?![a-zA-Z])/g, "*")
+        .replace(/[·⋅×]/g, "*")
         .replace(/\s+/g, "")
         // Thousands separators only. Any other comma is left in place so it
         // fails the parse, because a comma is also how tuples and sets are

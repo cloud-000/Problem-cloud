@@ -311,6 +311,11 @@ export function normalizeAnswer(raw: string): string {
     //     for the same minus sign onto ASCII `-`.
     s = s.replace(/[−‒–—]/g, "-");
 
+    // 2c. Canonicalize multiplication operators to ASCII `*`.
+    s = s
+        .replace(/\\(?:cdot|times|ast)(?![a-zA-Z])/g, "*")
+        .replace(/[·⋅×]/g, "*");
+
     // 3. Collapse command aliases to their canonical spelling.
     for (const [from, to] of Object.entries(COMMAND_ALIASES)) {
         s = s.replace(new RegExp(escapeRegExp(from) + "(?![a-zA-Z])", "g"), to);

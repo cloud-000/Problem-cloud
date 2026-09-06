@@ -17,6 +17,7 @@ describe("normalizeAnswer", () => {
             "𝜋",
             "\\text{none}",
             "\\left(1+2\\right)",
+            "2 \\cdot 15!^2",
         ]) {
             const once = normalizeAnswer(input);
             expect(normalizeAnswer(once)).toBe(once);
@@ -65,6 +66,16 @@ describe("equivalent spellings of the same answer", () => {
         expect(matches("2π", "2\\pi")).toBe(true);
         expect(matches("π/2", "\\frac{\\pi}{2}")).toBe(true);
         expect(matches("π radians", "\\pi")).toBe(true);
+    });
+
+    test("multiplication operators", () => {
+        expect(matches("2 \\cdot 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 \\times 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 \\ast 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 · 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 ⋅ 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 × 15!^2", "2 * 15!^2")).toBe(true);
+        expect(matches("2 \\cdot 15!^{2}", "2 * 15!^2")).toBe(true);
     });
 
     test("text-mode wrappers", () => {

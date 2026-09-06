@@ -15,6 +15,12 @@ describe("arithmetic", () => {
         expect(evaluateNumeric("(2+3)*4")).toBe(20);
         expect(evaluateNumeric("10-2-3")).toBe(5);
         expect(evaluateNumeric("100/10/2")).toBe(5);
+        expect(evaluateNumeric("2 \\cdot 3")).toBe(6);
+        expect(evaluateNumeric("2 \\times 3")).toBe(6);
+        expect(evaluateNumeric("2 \\ast 3")).toBe(6);
+        expect(evaluateNumeric("2 · 3")).toBe(6);
+        expect(evaluateNumeric("2 ⋅ 3")).toBe(6);
+        expect(evaluateNumeric("2 × 3")).toBe(6);
     });
 
     test("exponentiation is right-associative", () => {
