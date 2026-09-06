@@ -4,6 +4,7 @@ import {
     HOSTED_PROVIDER_ID,
     type AIEphemeralMessage,
     type AIUsage,
+    type AIFinishReason,
     type NormalizedAIEvent,
     type NormalizedAIMessage,
 } from "$lib/ai/types";
@@ -127,6 +128,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
         let text = "";
         let status: "streaming" | "complete" | "failed" | "cancelled" = "streaming";
         let usage: AIUsage | undefined;
+        let finishReason: AIFinishReason | undefined;
         let streamError: { code: string; message: string; retryable: boolean } | undefined;
         let saved = false;
 
@@ -141,6 +143,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
                 providerId: provider.id,
                 model: resolvedModel,
                 usage,
+                finishReason,
                 error: streamError,
             });
         };
@@ -167,6 +170,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
                     status = "failed";
                 } else if (event.type === "message.done") {
                     status = event.status;
+                    finishReason = event.finishReason;
                 }
             },
             async () => {

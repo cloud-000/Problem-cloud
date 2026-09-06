@@ -323,6 +323,27 @@ describe("any-model provider adapter", () => {
         ).toBe("Answer");
     });
 
+    for (const reason of ["stop", "length", "tool_calls", "content_filter"]) test(`preserves the ${reason} finish reason and partial text`, async () => {
+        const events = await collect(await new OpenAICompatAdapter({
+            credential,
+            fetchImpl: fakeFetch({ completion: () => sse(delta("Partial reply", reason)) }),
+        }).stream(request()));
+        expect(events.filter((event) => event.type === "message.delta").map((event) => event.delta).join("")).toBe("Partial reply");
+        expect(events.at(-1)).toMatchObject({
+            type: "message.done",
+            finishReason: reason.replaceAll("_", "-"),
+            status: reason === "content_filter" ? "failed" : "complete",
+        });
+    });
+
+    test("marks a clean EOF without a terminal event as unconfirmed", async () => {
+        const events = await collect(await new OpenAICompatAdapter({
+            credential,
+            fetchImpl: fakeFetch({ completion: () => new Response(`data: ${JSON.stringify(delta("Partial"))}\n\n`) }),
+        }).stream(request()));
+        expect(events.at(-1)).toMatchObject({ type: "message.done", finishReason: "other" });
+    });
+
     test("completes when the endpoint omits a stop reason", async () => {
         // Endpoints that never set finish_reason normalize to an "other" finish. The
         // answer arrived, so it must not be recorded as a failed turn.
@@ -336,7 +357,7 @@ describe("any-model provider adapter", () => {
             "Answer",
         );
         expect(events.at(-2)?.type).toBe("usage");
-        expect(events.at(-1)).toMatchObject({ type: "message.done", status: "complete" });
+        expect(events.at(-1)).toMatchObject({ type: "message.done", status: "complete", finishReason: "other" });
     });
 
     test("maps a rejected key to a non-retryable reauth error without echoing the provider", async () => {

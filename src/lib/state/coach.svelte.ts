@@ -47,6 +47,7 @@ import { acknowledgeCoachSend } from "$lib/onboarding/acknowledge";
 import { aiCredentials } from "./ai-credentials.svelte";
 import { settings } from "./settings.svelte";
 import { utilityPanel } from "./utility-panel.svelte";
+import { completionNotice } from "$lib/ai/completion";
 import { MOCK_PROVIDER_ID } from "$lib/ai/types";
 import type {
     AIBootstrap,
@@ -54,6 +55,7 @@ import type {
     AIConnectionCredential,
     AIEphemeralMessage,
     AIErrorPart,
+    AIFinishReason,
     AIMessageStatus,
     AIModelReference,
     AIThreadIdentity,
@@ -1056,6 +1058,7 @@ class CoachStore {
         let assistantText = "";
         let status: AIMessageStatus = "streaming";
         let usage: AIUsage | undefined;
+        let finishReason: AIFinishReason | undefined;
         let streamError: { code: string; message: string; retryable: boolean } | undefined;
 
         // Read through a reader rather than `for await`: Safari does not implement
@@ -1074,7 +1077,10 @@ class CoachStore {
                 else if (event.type === "usage") usage = event.usage;
                 else if (event.type === "error") {
                     streamError = { code: event.code, message: event.message, retryable: event.retryable };
-                } else if (event.type === "message.done") status = event.status;
+                } else if (event.type === "message.done") {
+                    status = event.status;
+                    finishReason = event.finishReason;
+                }
                 this.applyEvent(event, generation);
             }
         } catch (error) {
@@ -1102,6 +1108,7 @@ class CoachStore {
             status: status === "streaming" ? "cancelled" : status,
             usage,
             error: streamError,
+            finishReason,
         });
     }
 
@@ -1127,6 +1134,7 @@ class CoachStore {
             providerId: string;
             status: Exclude<AIMessageStatus, "streaming">;
             usage?: AIUsage;
+            finishReason?: AIFinishReason;
             error?: { code: string; message: string; retryable: boolean };
         },
     ): Promise<void> {
@@ -1546,13 +1554,15 @@ class CoachStore {
             if (message) message.parts.push(this.error);
         } else if (event.type === "message.done" && message) {
             message.status = event.status;
+            if (event.finishReason) message.parts.push({ type: "completion", reason: event.finishReason });
             // A turn that reasoned and then failed (or was cancelled) never reaches
             // the answer, so this is the only place its trace can be closed.
             if (message.reasoning && !message.reasoning.endedAt) {
                 message.reasoning.endedAt = new Date().toISOString();
             }
             this.liveAnnouncement =
-                event.status === "complete" ? "Coach response complete" : "Coach response ended";
+                completionNotice(event.finishReason) ??
+                (event.status === "complete" ? "Coach response complete" : "Coach response ended");
         }
     }
 

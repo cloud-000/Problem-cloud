@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { parseContextSnapshot, parseMessagePart } from "$lib/ai/schemas";
 import type {
     AIMessageStatus,
+    AIFinishReason,
     AIThreadIdentity,
     AIUsage,
     ContextSnapshot,
@@ -550,10 +551,12 @@ export async function saveAssistantMessage(input: {
     providerId: string;
     model: string;
     usage?: AIUsage;
+    finishReason?: AIFinishReason;
     error?: { code: string; message: string; retryable: boolean };
 }): Promise<void> {
     const contentParts: Json[] = [];
     if (input.text) contentParts.push({ type: "text", text: input.text });
+    if (input.finishReason) contentParts.push({ type: "completion", reason: input.finishReason });
     if (input.error) contentParts.push({ type: "error", ...input.error });
     const { error } = await admin().from("ai_messages").upsert({
         id: input.id,

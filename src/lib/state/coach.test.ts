@@ -47,6 +47,7 @@ mock.module("./ai-credentials.svelte", () => ({
 let streamGate: PromiseWithResolvers<void> | null = null;
 /** Reasoning chunks the mock stream emits before its answer delta. */
 let streamReasoning: string[] = [];
+let streamFinishReason: "stop" | "length" | "other" = "stop";
 mock.module("$lib/ai/providers/client-registry", () => ({
     clientProviderRegistry: () => [],
     clientProviderById: () => ({
@@ -88,6 +89,7 @@ mock.module("$lib/ai/providers/client-registry", () => ({
                         type: "message.done",
                         messageId: "assistant-1",
                         status: "complete",
+                        finishReason: streamFinishReason,
                     });
                     controller.close();
                 },
@@ -213,6 +215,7 @@ beforeEach(() => {
     settings.debugMode = false;
     settings.showModelRequest = false;
     streamReasoning = [];
+    streamFinishReason = "stop";
 });
 
 describe("coach quick-ask presentation", () => {
@@ -578,6 +581,18 @@ describe("coach conversation identity", () => {
         recorded = [];
         persistStatus = 200;
         streamGate = null;
+    });
+
+    for (const reason of ["length", "other"] as const) test(`keeps ${reason} in the displayed transcript and saved turn`, async () => {
+        streamFinishReason = reason;
+        await coach.send("Explain");
+        const reply = coach.messages.at(-1)!;
+        expect(reply.parts).toContainEqual({ type: "text", text: "hi" });
+        expect(reply.parts).toContainEqual({ type: "completion", reason });
+        expect(reply.status).toBe("complete");
+        expect(coach.error).toBeNull();
+        expect(coach.liveAnnouncement).toContain(reason === "length" ? "token limit" : "Completion unconfirmed");
+        expect(persistCalls()[0].body.assistant).toMatchObject({ finishReason: reason, text: "hi" });
     });
 
     test("a failed save cannot split the thread", async () => {
@@ -1326,7 +1341,7 @@ describe("coach reasoning traces", () => {
         const assistant = coach.messages.find((message) => message.role === "assistant");
         expect(assistant?.reasoning?.text).toBe("let me check");
         // The answer's parts are what the transcript renders and what gets replayed.
-        expect(assistant?.parts).toEqual([{ type: "text", text: "hi" }]);
+        expect(assistant?.parts).toEqual([{ type: "text", text: "hi" }, { type: "completion", reason: "stop" }]);
     });
 
     test("the answer starting closes the trace", async () => {

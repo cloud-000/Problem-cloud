@@ -63,6 +63,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
             providerId: body.assistant.providerId,
             model: body.assistant.model,
             usage: body.assistant.usage,
+            finishReason: body.assistant.finishReason,
             error: body.assistant.error,
         });
 

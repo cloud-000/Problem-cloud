@@ -17,6 +17,7 @@
     import { Icon } from "$lib/components/icon";
     import { MathStatement } from "$lib/components/math-statement";
     import { cn } from "$lib/utils";
+    import { completionNotice } from "$lib/ai/completion";
     import AIChatReasoning from "./ai-chat-reasoning.svelte";
 
     let {
@@ -76,6 +77,12 @@
                 />
             {:else}
                 <p class="whitespace-pre-wrap leading-relaxed text-foreground">{part.text.trim()}</p>
+            {/if}
+        {:else if part.type === "completion"}
+            {#if completionNotice(part.reason)}
+                <p class="mt-2 rounded-lg border border-unsure/30 bg-unsure/10 px-2.5 py-2 text-xs text-foreground" role="status">
+                    {completionNotice(part.reason)}
+                </p>
             {/if}
         {:else if part.type === "status"}
             <p class="mt-1.5 text-xs text-muted-foreground">{part.label}</p>

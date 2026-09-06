@@ -450,6 +450,7 @@ export function parsePersistTurnRequest(value: unknown): AIPersistTurnRequest {
                 "failed",
                 "cancelled",
             ]),
+            finishReason: assistant.finishReason === undefined ? undefined : parseFinishReason(assistant.finishReason),
             usage: assistant.usage === undefined ? undefined : parseUsage(assistant.usage),
             error:
                 rawError === undefined || rawError === null
@@ -613,10 +614,15 @@ export function parseAgentPermissions(value: unknown): AIAgentPermissions {
     };
 }
 
+export function parseFinishReason(value: unknown) {
+    return oneOf(value, "finish reason", ["stop", "length", "tool-calls", "content-filter", "error", "other"] as const);
+}
+
 export function parseMessagePart(value: unknown): AIMessagePart {
     const input = record(value, "message part");
     const type = string(input.type, "message part type", 40);
     if (type === "text") return { type, text: string(input.text, "text", 100_000) };
+    if (type === "completion") return { type, reason: parseFinishReason(input.reason) };
     if (type === "status") return { type, label: string(input.label, "status label", 200) };
     if (type === "error") {
         return {
@@ -748,6 +754,7 @@ export function parseAIEvent(value: unknown): NormalizedAIEvent {
             };
         case "message.done":
             return {
+                ...(input.finishReason === undefined ? {} : { finishReason: parseFinishReason(input.finishReason) }),
                 type,
                 messageId: string(input.messageId, "message id", 80),
                 status: oneOf(input.status, "message status", [

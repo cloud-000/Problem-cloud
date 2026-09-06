@@ -100,6 +100,14 @@ export interface AITextPart {
     text: string;
 }
 
+/** Transport completion is separate from whether the model finished its answer. */
+export type AIFinishReason = "stop" | "length" | "tool-calls" | "content-filter" | "error" | "other";
+
+export interface AICompletionPart {
+    type: "completion";
+    reason: AIFinishReason;
+}
+
 export interface AIStatusPart {
     type: "status";
     label: string;
@@ -120,7 +128,7 @@ export interface AIToolPart {
     summary: string;
 }
 
-export type AIMessagePart = AITextPart | AIStatusPart | AIErrorPart | AIToolPart;
+export type AIMessagePart = AITextPart | AIStatusPart | AIErrorPart | AIToolPart | AICompletionPart;
 
 /**
  * A turn's reasoning trace, kept in its own lane rather than as an `AIMessagePart`.
@@ -289,6 +297,7 @@ export type NormalizedAIEvent =
           type: "message.done";
           messageId: string;
           status: Exclude<AIMessageStatus, "streaming">;
+          finishReason?: AIFinishReason;
       };
 
 export interface AIEphemeralMessage {
@@ -387,6 +396,7 @@ export interface AIPersistTurnRequest {
         model: string;
         providerId: string;
         status: Exclude<AIMessageStatus, "streaming">;
+        finishReason?: AIFinishReason;
         usage?: AIUsage;
         error?: { code: string; message: string; retryable: boolean };
     };

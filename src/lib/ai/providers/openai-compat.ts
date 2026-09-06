@@ -12,6 +12,7 @@ import { humanizeModelId, presetFor } from "../presets";
 import { isModelReference } from "../schemas";
 import type {
     AIAuthMethod,
+    AIFinishReason,
     AICoachConnectionState,
     AIConnectionCredential,
     AIProviderCapabilities,
@@ -293,12 +294,13 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                 const finish = (
                     usage: { inputTokens: number; outputTokens: number; cachedTokens?: number },
                     status: "complete" | "failed",
+                    finishReason: AIFinishReason,
                 ) => {
                     // Anything the demux is still holding for tag matching belongs
                     // to the turn; release it before the terminal events.
                     emit(demux.end());
                     send({ type: "usage", messageId, usage });
-                    send({ type: "message.done", messageId, status });
+                    send({ type: "message.done", messageId, status, finishReason });
                     controller.close();
                 };
 
@@ -350,7 +352,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                                         message: "The provider's safety filter blocked this response.",
                                         retryable: false,
                                     });
-                                    finish(usage, "failed");
+                                    finish(usage, "failed", part.finishReason);
                                     return;
                                 }
                                 if (part.finishReason === "error") {
@@ -361,20 +363,20 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                                         message: "The provider could not complete this request.",
                                         retryable: true,
                                     });
-                                    finish(usage, "failed");
+                                    finish(usage, "failed", part.finishReason);
                                     return;
                                 }
-                                // "other" is the unknown-stop-reason bucket, not a failure:
-                                // endpoints that omit finish_reason land here having sent a
-                                // perfectly good answer, and must not be recorded as failed.
-                                finish(usage, "complete");
+                                // The transport ended, but length/unknown outcomes still need
+                                // a visible notice. Keep their partial text in follow-up
+                                // history so the student can ask the model to continue.
+                                finish(usage, "complete", part.finishReason);
                                 return;
                             }
                             case "error": {
                                 finished = true;
                                 const mapped = mapError(part.error, this.#credential.apiKey);
                                 send({ type: "error", messageId, ...mapped });
-                                finish({ inputTokens: 0, outputTokens: 0 }, "failed");
+                                finish({ inputTokens: 0, outputTokens: 0 }, "failed", "error");
                                 return;
                             }
                             case "raw":
@@ -393,7 +395,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                     }
 
                     // Some endpoints close without a terminal chunk.
-                    if (!finished) finish({ inputTokens: 0, outputTokens: 0 }, "complete");
+                    if (!finished) finish({ inputTokens: 0, outputTokens: 0 }, "complete", "other");
                 } catch (error) {
                     // Check the signal before the error shape: an aborted fetch may surface
                     // wrapped in a ProviderError, and treating a user cancel as a failure
@@ -404,7 +406,7 @@ export class OpenAICompatAdapter implements AIProviderAdapter {
                     }
                     const mapped = mapError(error, this.#credential.apiKey);
                     send({ type: "error", messageId, ...mapped });
-                    finish({ inputTokens: 0, outputTokens: 0 }, "failed");
+                    finish({ inputTokens: 0, outputTokens: 0 }, "failed", "error");
                 }
             },
         });
