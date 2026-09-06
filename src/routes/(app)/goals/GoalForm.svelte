@@ -107,44 +107,44 @@
      * readable at every call site, and so `suffix` can be left out. */
     type NumberField = {
         label: string;
-        value: number;
-        set: (value: number) => void;
-        min: number;
-        max: number;
+        value: string;
+        onchange: (value: string) => void;
+        error?: string | null;
         suffix?: string;
     };
 
     /** Every target's fields at once, so switching type keeps what the student
-     * already typed instead of resetting the form under them. */
+     * already typed instead of resetting the form under them. Inputs use raw strings
+     * so typing, deleting, and clearing are unconstrained by artificial resets. */
     type Fields = {
-        count: number;
-        percentage: number;
-        volumeCount: number;
+        count: string;
+        percentage: string;
+        volumeCount: string;
         period: PeriodChoice;
-        rollingDays: number;
-        accuracy: number;
-        accuracySample: number;
-        maxSeconds: number;
-        speedSample: number;
-        minAccuracy: number;
-        streakDays: number;
-        perDay: number;
+        rollingDays: string;
+        accuracy: string;
+        accuracySample: string;
+        maxSeconds: string;
+        speedSample: string;
+        minAccuracy: string;
+        streakDays: string;
+        perDay: string;
     };
 
     function defaultFields(): Fields {
         return {
-            count: 25,
-            percentage: 80,
-            volumeCount: 100,
+            count: "25",
+            percentage: "80",
+            volumeCount: "100",
             period: "rolling",
-            rollingDays: 7,
-            accuracy: 85,
-            accuracySample: 30,
-            maxSeconds: 120,
-            speedSample: 30,
-            minAccuracy: 70,
-            streakDays: 14,
-            perDay: 5,
+            rollingDays: "7",
+            accuracy: "85",
+            accuracySample: "30",
+            maxSeconds: "120",
+            speedSample: "30",
+            minAccuracy: "70",
+            streakDays: "14",
+            perDay: "5",
         };
     }
 
@@ -155,37 +155,131 @@
         switch (target.type) {
             case "attempted_count":
             case "solved_count":
-                f.count = target.count;
+                f.count = String(target.count);
                 break;
             case "attempted_percent":
             case "solved_percent":
-                f.percentage = target.percentage;
+                f.percentage = String(target.percentage);
                 break;
             case "volume":
-                f.volumeCount = target.count;
+                f.volumeCount = String(target.count);
                 f.period =
                     target.period.kind === "rolling"
                         ? "rolling"
                         : target.period.kind === "calendar"
                           ? target.period.unit
                           : "since_creation";
-                if (target.period.kind === "rolling") f.rollingDays = target.period.days;
+                if (target.period.kind === "rolling") f.rollingDays = String(target.period.days);
                 break;
             case "accuracy":
-                f.accuracy = target.percentage;
-                f.accuracySample = target.sampleSize;
+                f.accuracy = String(target.percentage);
+                f.accuracySample = String(target.sampleSize);
                 break;
             case "speed":
-                f.maxSeconds = target.maxSeconds;
-                f.speedSample = target.sampleSize;
-                f.minAccuracy = target.minAccuracy;
+                f.maxSeconds = String(target.maxSeconds);
+                f.speedSample = String(target.sampleSize);
+                f.minAccuracy = String(target.minAccuracy);
                 break;
             case "streak":
-                f.streakDays = target.days;
-                f.perDay = target.perDay;
+                f.streakDays = String(target.days);
+                f.perDay = String(target.perDay);
                 break;
         }
         return f;
+    }
+
+    function parseRawNumber(raw: string): number {
+        const trimmed = raw.trim();
+        if (trimmed === "") return NaN;
+        return Number(trimmed);
+    }
+
+    function validateCountField(raw: string, eligibleTotal?: number): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter how many problems.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 100000) return "Cannot exceed 100,000 problems.";
+        if (eligibleTotal !== undefined && n > eligibleTotal) {
+            return `Only ${eligibleTotal} problems in this scope can be graded.`;
+        }
+        return null;
+    }
+
+    function validatePercentageField(raw: string, label: string = "Percentage"): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return `Please enter ${label.toLowerCase()}.`;
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (n < 1 || n > 100) return "Must be between 1 and 100.";
+        return null;
+    }
+
+    function validateVolumeCountField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter how many attempts.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 100000) return "Cannot exceed 100,000 attempts.";
+        return null;
+    }
+
+    function validateRollingDaysField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter the number of days.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 365) return "Window cannot exceed 365 days.";
+        return null;
+    }
+
+    function validateSampleField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter the number of problems.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n < 10) return "Measure over at least 10 problems — a smaller sample is noise.";
+        if (n > 500) return "Measure over at most 500 problems.";
+        return null;
+    }
+
+    function validateMaxSecondsField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter the target time.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 3600) return "Cannot exceed 3,600 seconds (1 hour).";
+        return null;
+    }
+
+    function validateStreakDaysField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter the number of days.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 3650) return "The streak cannot exceed 3,650 days (10 years).";
+        return null;
+    }
+
+    function validatePerDayField(raw: string): string | null {
+        const trimmed = raw.trim();
+        if (!trimmed) return "Please enter the daily target.";
+        const n = Number(trimmed);
+        if (Number.isNaN(n)) return "Must be a valid number.";
+        if (!Number.isInteger(n)) return "Must be a whole number.";
+        if (n <= 0) return "Must be greater than zero.";
+        if (n > 500) return "The daily target cannot exceed 500 problems.";
+        return null;
     }
 
     /** A detached copy of a scope. Used both to seed the Track and to hand a
@@ -326,7 +420,7 @@
 
     function volumePeriod(): VolumePeriod {
         if (fields.period === "rolling") {
-            return { kind: "rolling", days: fields.rollingDays };
+            return { kind: "rolling", days: parseRawNumber(fields.rollingDays) };
         }
         if (fields.period === "since_creation") return { kind: "since_creation" };
         return { kind: "calendar", unit: fields.period, timeZone };
@@ -335,30 +429,35 @@
     let target = $derived.by<GoalTargetData>(() => {
         switch (type) {
             case "attempted_count":
-                return { type, count: fields.count };
+                return { type, count: parseRawNumber(fields.count) };
             case "solved_count":
-                return { type, count: fields.count };
+                return { type, count: parseRawNumber(fields.count) };
             case "attempted_percent":
-                return { type, percentage: fields.percentage };
+                return { type, percentage: parseRawNumber(fields.percentage) };
             case "solved_percent":
-                return { type, percentage: fields.percentage };
+                return { type, percentage: parseRawNumber(fields.percentage) };
             case "volume":
-                return { type, count: fields.volumeCount, period: volumePeriod() };
+                return { type, count: parseRawNumber(fields.volumeCount), period: volumePeriod() };
             case "accuracy":
                 return {
                     type,
-                    percentage: fields.accuracy,
-                    sampleSize: fields.accuracySample,
+                    percentage: parseRawNumber(fields.accuracy),
+                    sampleSize: parseRawNumber(fields.accuracySample),
                 };
             case "speed":
                 return {
                     type,
-                    maxSeconds: fields.maxSeconds,
-                    sampleSize: fields.speedSample,
-                    minAccuracy: fields.minAccuracy,
+                    maxSeconds: parseRawNumber(fields.maxSeconds),
+                    sampleSize: parseRawNumber(fields.speedSample),
+                    minAccuracy: parseRawNumber(fields.minAccuracy),
                 };
             case "streak":
-                return { type, days: fields.streakDays, perDay: fields.perDay, timeZone };
+                return {
+                    type,
+                    days: parseRawNumber(fields.streakDays),
+                    perDay: parseRawNumber(fields.perDay),
+                    timeZone,
+                };
         }
     });
 
@@ -403,13 +502,68 @@
         };
     });
 
-    let invalid = $derived(
+    let countError = $derived(
+        validateCountField(fields.count, isCountTarget ? totals?.eligibleTotal : undefined),
+    );
+    let percentageError = $derived(
+        validatePercentageField(fields.percentage, "Share"),
+    );
+    let volumeCountError = $derived(
+        validateVolumeCountField(fields.volumeCount),
+    );
+    let rollingDaysError = $derived(
+        fields.period === "rolling" ? validateRollingDaysField(fields.rollingDays) : null,
+    );
+    let accuracyError = $derived(
+        validatePercentageField(fields.accuracy, "Accuracy"),
+    );
+    let accuracySampleError = $derived(
+        validateSampleField(fields.accuracySample),
+    );
+    let maxSecondsError = $derived(
+        validateMaxSecondsField(fields.maxSeconds),
+    );
+    let speedSampleError = $derived(
+        validateSampleField(fields.speedSample),
+    );
+    let minAccuracyError = $derived(
+        validatePercentageField(fields.minAccuracy, "Accuracy floor"),
+    );
+    let streakDaysError = $derived(
+        validateStreakDaysField(fields.streakDays),
+    );
+    let perDayError = $derived(
+        validatePerDayField(fields.perDay),
+    );
+
+    let currentFieldError = $derived.by(() => {
+        switch (type) {
+            case "attempted_count":
+            case "solved_count":
+                return countError;
+            case "attempted_percent":
+            case "solved_percent":
+                return percentageError;
+            case "volume":
+                return volumeCountError || rollingDaysError;
+            case "accuracy":
+                return accuracyError || accuracySampleError;
+            case "speed":
+                return maxSecondsError || speedSampleError || minAccuracyError;
+            case "streak":
+                return streakDaysError || perDayError;
+        }
+    });
+
+    let targetInvalid = $derived(
         validateTarget(target, {
             // A count target may not exceed the denominator it counts against —
             // but only when we actually know it (§7).
             eligibleTotal: isCountTarget ? totals?.eligibleTotal : undefined,
         }),
     );
+
+    let invalid = $derived(currentFieldError || targetInvalid);
 
     let scopeText = $derived(describeScope(scope, seriesNames));
     let reviewedCommitment = $derived(
@@ -547,13 +701,13 @@
         <span class="text-xs font-medium text-muted-foreground">{field.label}</span>
         <div class="flex items-center gap-2">
             <Input
-                type="number"
-                min={field.min}
-                max={field.max}
+                type="text"
+                inputmode="numeric"
                 bind:value={
                     () => field.value,
-                    (raw) => field.set(Number(raw) || 0)
+                    (raw) => field.onchange(raw ?? "")
                 }
+                aria-invalid={Boolean(field.error)}
             />
             {#if field.suffix}
                 <span class="shrink-0 text-xs text-muted-foreground">
@@ -561,6 +715,9 @@
                 </span>
             {/if}
         </div>
+        {#if field.error}
+            <p class="text-xxs text-destructive">{field.error}</p>
+        {/if}
     </div>
 {/snippet}
 
@@ -601,27 +758,24 @@
                 {@render numberField({
                     label: "How many problems",
                     value: fields.count,
-                    set: (v) => (fields.count = v),
-                    min: 1,
-                    max: 100000,
+                    onchange: (v) => (fields.count = v),
+                    error: countError,
                     suffix: totals ? `of ${totals.eligibleTotal} in scope` : undefined,
                 })}
             {:else if type === "attempted_percent" || type === "solved_percent"}
                 {@render numberField({
                     label: "Share of the scope",
                     value: fields.percentage,
-                    set: (v) => (fields.percentage = v),
-                    min: 1,
-                    max: 100,
+                    onchange: (v) => (fields.percentage = v),
+                    error: percentageError,
                     suffix: "%",
                 })}
             {:else if type === "volume"}
                 {@render numberField({
                     label: "How many attempts",
                     value: fields.volumeCount,
-                    set: (v) => (fields.volumeCount = v),
-                    min: 1,
-                    max: 100000,
+                    onchange: (v) => (fields.volumeCount = v),
+                    error: volumeCountError,
                 })}
                 <div class="flex flex-col gap-1.5">
                     <span class="text-xs font-medium text-muted-foreground">Period</span>
@@ -643,9 +797,8 @@
                     {@render numberField({
                         label: "Window",
                         value: fields.rollingDays,
-                        set: (v) => (fields.rollingDays = v),
-                        min: 1,
-                        max: 365,
+                        onchange: (v) => (fields.rollingDays = v),
+                        error: rollingDaysError,
                         suffix: "days",
                     })}
                 {/if}
@@ -653,42 +806,37 @@
                 {@render numberField({
                     label: "Accuracy",
                     value: fields.accuracy,
-                    set: (v) => (fields.accuracy = v),
-                    min: 1,
-                    max: 100,
+                    onchange: (v) => (fields.accuracy = v),
+                    error: accuracyError,
                     suffix: "%",
                 })}
                 {@render numberField({
                     label: "Measured over",
                     value: fields.accuracySample,
-                    set: (v) => (fields.accuracySample = v),
-                    min: 10,
-                    max: 500,
+                    onchange: (v) => (fields.accuracySample = v),
+                    error: accuracySampleError,
                     suffix: "fresh problems",
                 })}
             {:else if type === "speed"}
                 {@render numberField({
                     label: "Average time",
                     value: fields.maxSeconds,
-                    set: (v) => (fields.maxSeconds = v),
-                    min: 1,
-                    max: 3600,
+                    onchange: (v) => (fields.maxSeconds = v),
+                    error: maxSecondsError,
                     suffix: "seconds or less",
                 })}
                 {@render numberField({
                     label: "Measured over",
                     value: fields.speedSample,
-                    set: (v) => (fields.speedSample = v),
-                    min: 10,
-                    max: 500,
+                    onchange: (v) => (fields.speedSample = v),
+                    error: speedSampleError,
                     suffix: "problems",
                 })}
                 {@render numberField({
                     label: "While staying at least",
                     value: fields.minAccuracy,
-                    set: (v) => (fields.minAccuracy = v),
-                    min: 1,
-                    max: 100,
+                    onchange: (v) => (fields.minAccuracy = v),
+                    error: minAccuracyError,
                     suffix: "% accurate",
                 })}
                 <p class="text-xxs text-muted-foreground">
@@ -699,17 +847,15 @@
                 {@render numberField({
                     label: "Days in a row",
                     value: fields.streakDays,
-                    set: (v) => (fields.streakDays = v),
-                    min: 1,
-                    max: 3650,
+                    onchange: (v) => (fields.streakDays = v),
+                    error: streakDaysError,
                     suffix: "days",
                 })}
                 {@render numberField({
                     label: "Each day, at least",
                     value: fields.perDay,
-                    set: (v) => (fields.perDay = v),
-                    min: 1,
-                    max: 500,
+                    onchange: (v) => (fields.perDay = v),
+                    error: perDayError,
                     suffix: "problems",
                 })}
                 <p class="text-xxs text-muted-foreground">
@@ -756,7 +902,7 @@
                     {totals.eligibleTotal} problems in this scope can be graded.
                 </p>
             {/if}
-            {#if invalid}
+            {#if invalid && !currentFieldError}
                 <p class="text-xxs text-destructive">{invalid}</p>
             {/if}
             {#if goal && material && goal.achievedAt}
@@ -832,27 +978,100 @@
                     {/if}
                     <div class="flex flex-col gap-3">
                         {#if isCountTarget}
-                            {@render numberField({ label: "How many problems", value: fields.count, set: (v) => (fields.count = v), min: 1, max: 100000, suffix: totals ? `of ${totals.eligibleTotal} in this material` : undefined })}
+                            {@render numberField({
+                                label: "How many problems",
+                                value: fields.count,
+                                onchange: (v) => (fields.count = v),
+                                error: countError,
+                                suffix: totals ? `of ${totals.eligibleTotal} in this material` : undefined,
+                            })}
                         {:else if type === "attempted_percent" || type === "solved_percent"}
-                            {@render numberField({ label: "Share of this material", value: fields.percentage, set: (v) => (fields.percentage = v), min: 1, max: 100, suffix: "%" })}
+                            {@render numberField({
+                                label: "Share of this material",
+                                value: fields.percentage,
+                                onchange: (v) => (fields.percentage = v),
+                                error: percentageError,
+                                suffix: "%",
+                            })}
                         {:else if type === "volume"}
-                            {@render numberField({ label: "How many attempts", value: fields.volumeCount, set: (v) => (fields.volumeCount = v), min: 1, max: 100000 })}
-                            <Select options={PERIOD_OPTIONS} value={fields.period} onchange={(value: string) => (fields.period = value as PeriodChoice)} />
-                            {#if fields.period === "rolling"}{@render numberField({ label: "Window", value: fields.rollingDays, set: (v) => (fields.rollingDays = v), min: 1, max: 365, suffix: "days" })}{/if}
+                            {@render numberField({
+                                label: "How many attempts",
+                                value: fields.volumeCount,
+                                onchange: (v) => (fields.volumeCount = v),
+                                error: volumeCountError,
+                            })}
+                            <Select
+                                options={PERIOD_OPTIONS}
+                                value={fields.period}
+                                onchange={(value: string) => (fields.period = value as PeriodChoice)}
+                            />
+                            {#if fields.period === "rolling"}
+                                {@render numberField({
+                                    label: "Window",
+                                    value: fields.rollingDays,
+                                    onchange: (v) => (fields.rollingDays = v),
+                                    error: rollingDaysError,
+                                    suffix: "days",
+                                })}
+                            {/if}
                         {:else if type === "accuracy"}
-                            {@render numberField({ label: "Accuracy", value: fields.accuracy, set: (v) => (fields.accuracy = v), min: 1, max: 100, suffix: "%" })}
-                            {@render numberField({ label: "Measured over", value: fields.accuracySample, set: (v) => (fields.accuracySample = v), min: 10, max: 500, suffix: "fresh problems" })}
+                            {@render numberField({
+                                label: "Accuracy",
+                                value: fields.accuracy,
+                                onchange: (v) => (fields.accuracy = v),
+                                error: accuracyError,
+                                suffix: "%",
+                            })}
+                            {@render numberField({
+                                label: "Measured over",
+                                value: fields.accuracySample,
+                                onchange: (v) => (fields.accuracySample = v),
+                                error: accuracySampleError,
+                                suffix: "fresh problems",
+                            })}
                             <p class="text-xs text-muted-foreground">Fresh problems are ones you have not already graded.</p>
                         {:else if type === "speed"}
-                            {@render numberField({ label: "Average time", value: fields.maxSeconds, set: (v) => (fields.maxSeconds = v), min: 1, max: 3600, suffix: "seconds or less" })}
-                            {@render numberField({ label: "Measured over", value: fields.speedSample, set: (v) => (fields.speedSample = v), min: 10, max: 500, suffix: "problems" })}
-                            {@render numberField({ label: "While staying at least", value: fields.minAccuracy, set: (v) => (fields.minAccuracy = v), min: 1, max: 100, suffix: "% accurate" })}
+                            {@render numberField({
+                                label: "Average time",
+                                value: fields.maxSeconds,
+                                onchange: (v) => (fields.maxSeconds = v),
+                                error: maxSecondsError,
+                                suffix: "seconds or less",
+                            })}
+                            {@render numberField({
+                                label: "Measured over",
+                                value: fields.speedSample,
+                                onchange: (v) => (fields.speedSample = v),
+                                error: speedSampleError,
+                                suffix: "problems",
+                            })}
+                            {@render numberField({
+                                label: "While staying at least",
+                                value: fields.minAccuracy,
+                                onchange: (v) => (fields.minAccuracy = v),
+                                error: minAccuracyError,
+                                suffix: "% accurate",
+                            })}
                         {:else if type === "streak"}
-                            {@render numberField({ label: "Days in a row", value: fields.streakDays, set: (v) => (fields.streakDays = v), min: 1, max: 3650, suffix: "days" })}
-                            {@render numberField({ label: "Each day, at least", value: fields.perDay, set: (v) => (fields.perDay = v), min: 1, max: 500, suffix: "problems" })}
+                            {@render numberField({
+                                label: "Days in a row",
+                                value: fields.streakDays,
+                                onchange: (v) => (fields.streakDays = v),
+                                error: streakDaysError,
+                                suffix: "days",
+                            })}
+                            {@render numberField({
+                                label: "Each day, at least",
+                                value: fields.perDay,
+                                onchange: (v) => (fields.perDay = v),
+                                error: perDayError,
+                                suffix: "problems",
+                            })}
                         {/if}
                     </div>
-                    {#if invalid}<p class="text-xs text-destructive">{invalid}</p>{/if}
+                    {#if invalid && !currentFieldError}
+                        <p class="text-xs text-destructive">{invalid}</p>
+                    {/if}
                 </div>
             {:else if step === 4}
                 <div class="flex flex-col gap-3">

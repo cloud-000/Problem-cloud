@@ -361,6 +361,49 @@ describe("validation", () => {
             }),
         ).toBeTruthy();
     });
+
+    test("upper bounds and invalid numeric inputs are rejected", () => {
+        expect(validateTarget({ type: "solved_count", count: NaN })).toBeTruthy();
+        expect(validateTarget({ type: "solved_count", count: 100001 })).toBeTruthy();
+        expect(
+            validateTarget({
+                type: "volume",
+                count: 100001,
+                period: { kind: "since_creation" },
+            }),
+        ).toBeTruthy();
+        expect(
+            validateTarget({
+                type: "volume",
+                count: 100,
+                period: { kind: "rolling", days: 366 },
+            }),
+        ).toBeTruthy();
+        expect(
+            validateTarget({
+                type: "speed",
+                maxSeconds: 3601,
+                sampleSize: 30,
+                minAccuracy: 80,
+            }),
+        ).toBeTruthy();
+        expect(
+            validateTarget({
+                type: "streak",
+                days: 3651,
+                perDay: 5,
+                timeZone: "UTC",
+            }),
+        ).toBeTruthy();
+        expect(
+            validateTarget({
+                type: "streak",
+                days: 30,
+                perDay: 501,
+                timeZone: "UTC",
+            }),
+        ).toBeTruthy();
+    });
 });
 
 describe("descriptions", () => {
@@ -382,5 +425,21 @@ describe("descriptions", () => {
         for (const target of targets) {
             expect(describeTarget(target).length).toBeGreaterThan(0);
         }
+    });
+
+    test("descriptions handle NaN or missing numeric values gracefully", () => {
+        expect(describeTarget({ type: "attempted_count", count: NaN })).toBe(
+            "Attempt … problems",
+        );
+        expect(describeTarget({ type: "solved_count", count: NaN })).toBe(
+            "Solve … problems",
+        );
+        expect(
+            describeTarget({
+                type: "volume",
+                count: NaN,
+                period: { kind: "rolling", days: NaN },
+            }),
+        ).toBe("Do … problems in … days");
     });
 });

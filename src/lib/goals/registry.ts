@@ -158,21 +158,36 @@ function setPercent(
 }
 
 function positiveInteger(value: number, label: string): string | null {
-    if (!Number.isInteger(value) || value <= 0) {
+    if (!Number.isFinite(value)) {
+        return `${label} is required.`;
+    }
+    if (!Number.isInteger(value)) {
+        return `${label} must be a whole number.`;
+    }
+    if (value <= 0) {
         return `${label} must be a whole number greater than zero.`;
     }
     return null;
 }
 
 function percentage(value: number, label: string): string | null {
-    if (!Number.isFinite(value) || value < 1 || value > 100) {
+    if (!Number.isFinite(value)) {
+        return `${label} is required.`;
+    }
+    if (value < 1 || value > 100) {
         return `${label} must be between 1 and 100.`;
     }
     return null;
 }
 
 function sampleSize(value: number): string | null {
-    if (!Number.isInteger(value) || value < MIN_SAMPLE_SIZE) {
+    if (!Number.isFinite(value)) {
+        return "Sample size is required.";
+    }
+    if (!Number.isInteger(value)) {
+        return "Sample size must be a whole number.";
+    }
+    if (value < MIN_SAMPLE_SIZE) {
         return `Measure over at least ${MIN_SAMPLE_SIZE} problems — a smaller sample is noise.`;
     }
     if (value > MAX_SAMPLE_SIZE) {
@@ -194,7 +209,12 @@ function withinDenominator(
 }
 
 function countTarget(count: number, ctx: ValidationContext): string | null {
-    return positiveInteger(count, "The target") ?? withinDenominator(count, ctx);
+    const err = positiveInteger(count, "The target");
+    if (err) return err;
+    if (count > 100000) {
+        return "The target cannot exceed 100,000 problems.";
+    }
+    return withinDenominator(count, ctx);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -207,28 +227,28 @@ export const TARGETS = {
         requires: (_t, scope) => setRequest(scope),
         evaluate: (t, d) => ok(d.attempted, t.count, "problems"),
         validate: (t, ctx) => countTarget(t.count, ctx),
-        describe: (t) => `Attempt ${t.count} problems`,
+        describe: (t) => `Attempt ${Number.isFinite(t.count) && t.count > 0 ? t.count : "…"} problems`,
     },
     attempted_percent: {
         family: "set",
         requires: (_t, scope) => setRequest(scope),
         evaluate: (t, d) => setPercent(d.attempted, d.eligibleTotal, t.percentage),
         validate: (t) => percentage(t.percentage, "The target"),
-        describe: (t) => `Attempt ${t.percentage}% of eligible problems`,
+        describe: (t) => `Attempt ${Number.isFinite(t.percentage) && t.percentage > 0 ? t.percentage : "…"}% of eligible problems`,
     },
     solved_count: {
         family: "set",
         requires: (_t, scope) => setRequest(scope),
         evaluate: (t, d) => ok(d.solved, t.count, "problems"),
         validate: (t, ctx) => countTarget(t.count, ctx),
-        describe: (t) => `Solve ${t.count} problems`,
+        describe: (t) => `Solve ${Number.isFinite(t.count) && t.count > 0 ? t.count : "…"} problems`,
     },
     solved_percent: {
         family: "set",
         requires: (_t, scope) => setRequest(scope),
         evaluate: (t, d) => setPercent(d.solved, d.eligibleTotal, t.percentage),
         validate: (t) => percentage(t.percentage, "The target"),
-        describe: (t) => `Solve ${t.percentage}% of eligible problems`,
+        describe: (t) => `Solve ${Number.isFinite(t.percentage) && t.percentage > 0 ? t.percentage : "…"}% of eligible problems`,
     },
 
     volume: {
@@ -241,8 +261,15 @@ export const TARGETS = {
         validate: (t) => {
             const count = positiveInteger(t.count, "The target");
             if (count) return count;
+            if (t.count > 100000) {
+                return "The target cannot exceed 100,000 attempts.";
+            }
             if (t.period.kind === "rolling") {
-                return positiveInteger(t.period.days, "The number of days");
+                const days = positiveInteger(t.period.days, "The number of days");
+                if (days) return days;
+                if (t.period.days > 365) {
+                    return "The rolling window cannot exceed 365 days.";
+                }
             }
             if (t.period.kind === "calendar" && !t.period.timeZone) {
                 return "A calendar period needs a timezone.";
@@ -250,13 +277,14 @@ export const TARGETS = {
             return null;
         },
         describe: (t) => {
+            const count = Number.isFinite(t.count) && t.count > 0 ? t.count : "…";
             const when =
                 t.period.kind === "rolling"
-                    ? `in ${t.period.days} days`
+                    ? `in ${Number.isFinite(t.period.days) && t.period.days > 0 ? t.period.days : "…"} days`
                     : t.period.kind === "calendar"
                       ? `this ${t.period.unit}`
                       : "in total";
-            return `Do ${t.count} problems ${when}`;
+            return `Do ${count} problems ${when}`;
         },
     },
 
@@ -285,7 +313,7 @@ export const TARGETS = {
         validate: (t) =>
             percentage(t.percentage, "The target") ?? sampleSize(t.sampleSize),
         describe: (t) =>
-            `Get ${t.percentage}% right over ${t.sampleSize} fresh problems`,
+            `Get ${Number.isFinite(t.percentage) && t.percentage > 0 ? t.percentage : "…"}% right over ${Number.isFinite(t.sampleSize) && t.sampleSize > 0 ? t.sampleSize : "…"} fresh problems`,
     },
 
     speed: {
@@ -326,8 +354,14 @@ export const TARGETS = {
             };
         },
         validate: (t) => {
-            if (!Number.isFinite(t.maxSeconds) || t.maxSeconds <= 0) {
+            if (!Number.isFinite(t.maxSeconds)) {
+                return "The target time is required.";
+            }
+            if (t.maxSeconds <= 0) {
                 return "The time limit must be greater than zero.";
+            }
+            if (t.maxSeconds > 3600) {
+                return "The target time cannot exceed 3,600 seconds (1 hour).";
             }
             return (
                 sampleSize(t.sampleSize) ??
@@ -335,7 +369,7 @@ export const TARGETS = {
             );
         },
         describe: (t) =>
-            `Average under ${t.maxSeconds}s over ${t.sampleSize} problems, at ${t.minAccuracy}%+ accuracy`,
+            `Average under ${Number.isFinite(t.maxSeconds) && t.maxSeconds > 0 ? t.maxSeconds : "…"}s over ${Number.isFinite(t.sampleSize) && t.sampleSize > 0 ? t.sampleSize : "…"} problems, at ${Number.isFinite(t.minAccuracy) && t.minAccuracy > 0 ? t.minAccuracy : "…"}%+ accuracy`,
     },
 
     streak: {
@@ -345,12 +379,24 @@ export const TARGETS = {
             request: { scope, timeZone: t.timeZone, perDay: t.perDay },
         }),
         evaluate: (t, d) => ok(d.streakDays, t.days, "days"),
-        validate: (t) =>
-            positiveInteger(t.days, "The number of days") ??
-            positiveInteger(t.perDay, "The daily target") ??
-            (t.timeZone ? null : "A streak needs a timezone."),
+        validate: (t) => {
+            const days = positiveInteger(t.days, "The number of days");
+            if (days) return days;
+            if (t.days > 3650) {
+                return "The streak cannot exceed 3,650 days (10 years).";
+            }
+            const perDay = positiveInteger(t.perDay, "The daily target");
+            if (perDay) return perDay;
+            if (t.perDay > 500) {
+                return "The daily target cannot exceed 500 problems.";
+            }
+            if (!t.timeZone) {
+                return "A streak needs a timezone.";
+            }
+            return null;
+        },
         describe: (t) =>
-            `Practise ${t.perDay} problems a day for ${t.days} days`,
+            `Practise ${Number.isFinite(t.perDay) && t.perDay > 0 ? t.perDay : "…"} problems a day for ${Number.isFinite(t.days) && t.days > 0 ? t.days : "…"} days`,
     },
 } satisfies {
     [K in GoalTargetType]: AnyTargetSpec<Extract<GoalTargetData, { type: K }>>;
