@@ -641,9 +641,13 @@
     );
 }
 
-/* Allowlisted HTML tables rendered inside math statements (see math-parser.ts,
-   `.pc-table`). Injected via {@html} into the KaTeX render clone, so these must
-   be global rules rather than component-scoped. */
+/* Allowlisted HTML fragments rendered inside math statements (see
+   math-parser.ts). Injected via {@html} into the KaTeX render clone, so these
+   must be global rules rather than component-scoped. */
+.pc-center {
+    text-align: center;
+}
+
 /* The scroll track is centered with `text-align` + an inline-table rather than
    flex/`justify-content`, which makes the left edge of an overflowing table
    unreachable inside a scroll container. */

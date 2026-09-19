@@ -9,9 +9,10 @@ export type ASTNode =
     | { type: "asy"; imageSrc: string; code: string }
     | { type: "img"; src: string; label: string }
     | { type: "table"; head: TableRow[]; body: TableRow[] }
-    // Block nodes. Only the markdown dialect (`$lib/utils/markdown.ts`) produces
-    // these — BBCode statements are a single implicit paragraph, and adding block
-    // structure to that path would change how every problem in the app renders.
+    | { type: "center"; children: ASTNode[] }
+    // Block nodes. Markdown produces most of these, while `linebreak` and
+    // `center` can also come from the small HTML allowlist used by statements.
+    // BBCode statements otherwise remain a single implicit paragraph.
     | { type: "paragraph"; children: ASTNode[] }
     | { type: "heading"; level: number; children: ASTNode[] }
     | { type: "list"; ordered: boolean; items: ASTNode[][] }
@@ -258,15 +259,79 @@ function parseBBCode(text: string): ASTNode[] {
     return parse();
 }
 
-// --- HTML tables ----------------------------------------------------------
+// --- Allowlisted HTML fragments -------------------------------------------
 //
-// Statements may embed a *small* allowlist of HTML table tags:
-//   <table> <thead> <tbody> <tr> <td> <th>
+// Statements may embed a *small* allowlist of HTML fragments used by the
+// source scraper: tables, explicit line breaks, and centered content.
 // Everything else stays escaped exactly as before — this is NOT a general HTML
 // hole. We never re-emit any tag or attribute from the input; the structure is
-// rebuilt from scratch in `astToHtml` using a fixed template, and cell contents
-// are re-parsed through the BBCode parser (so they are escaped/sanitized like
-// any other inline text). Rows/cells found outside a <tr>/<td>/<th> are dropped.
+// rebuilt from scratch in `astToHtml`, and nested content is parsed again so it
+// is escaped/sanitized like any other statement text.
+
+// This is intentionally an open-tag matcher rather than an HTML parser. The
+// input is authored contest content, and the output is rebuilt from fixed
+// templates below; attributes are only consumed so they can never reach HTML.
+const HTML_FRAGMENT_REGEX =
+    /<table\b[^>]*>|<center\b[^>]*>|<br\b[^>]*\/?>/i;
+
+// HTML-looking text inside a BBCode verbatim block belongs to the code/asy
+// payload, not to the statement markup. The normal BBCode parser already
+// owns this rule; repeat the small amount of state here so the HTML scanner
+// does not split a verbatim node before that parser gets to see it.
+function isInsideVerbatim(text: string, position: number): boolean {
+    const re = new RegExp(TAG_REGEX.source, "gi");
+    let active: "code" | "asy" | null = null;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(text)) !== null && match.index < position) {
+        const name = match[2].toLowerCase();
+        if (name !== "code" && name !== "asy") continue;
+
+        if (match[1] === "/") {
+            if (active === name) active = null;
+        } else if (active === null) {
+            active = name;
+        }
+    }
+
+    return active !== null;
+}
+
+function nextHtmlFragment(text: string): RegExpExecArray | null {
+    const re = new RegExp(HTML_FRAGMENT_REGEX.source, "gi");
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+        if (!isInsideVerbatim(text, match.index)) return match;
+    }
+    return null;
+}
+
+// Find the matching `</center>`, accounting for nested centers. Returns the
+// inner markup and the index just past the close tag, or `end: -1` when the
+// fragment is unterminated.
+function matchCenter(
+    text: string,
+    from: number,
+): { end: number; inner: string } {
+    const re = /<(\/?)center\b[^>]*>/gi;
+    re.lastIndex = from;
+    let depth = 1;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+        if (match[1] === "/") {
+            depth--;
+            if (depth === 0) {
+                return {
+                    end: re.lastIndex,
+                    inner: text.slice(from, match.index),
+                };
+            }
+        } else {
+            depth++;
+        }
+    }
+    return { end: -1, inner: "" };
+}
 
 // Given the offset just past a `<table…>` open tag, find the matching
 // `</table>`, accounting for (unlikely) nested tables. Returns the inner markup
@@ -309,7 +374,7 @@ function parseRows(section: string): TableRow[] {
         while ((cell = cellRe.exec(tr[1])) !== null) {
             cells.push({
                 header: cell[1].toLowerCase() === "th",
-                children: parseBBCode(cell[2].trim()),
+                children: parseWithHtml(cell[2].trim()),
             });
         }
         rows.push({ cells });
@@ -335,23 +400,51 @@ function parseTable(inner: string): ASTNode | null {
     return { type: "table", head, body };
 }
 
-// Split raw statement text into an AST, extracting allowlisted HTML tables at
-// the top level and handing every non-table span to the BBCode parser.
-function parseWithTables(text: string): ASTNode[] {
+// Split raw statement text into an AST, extracting allowlisted HTML fragments
+// at the top level and handing every other span to the BBCode parser.
+function parseWithHtml(text: string): ASTNode[] {
     const nodes: ASTNode[] = [];
-    const openRe = /<table\b[^>]*>/i;
     let rest = text;
 
     while (true) {
-        const open = openRe.exec(rest);
+        const open = nextHtmlFragment(rest);
         if (!open) break;
-
-        const { end, inner } = matchTable(rest, open.index + open[0].length);
-        if (end === -1) break; // Unterminated <table>; fall through as text.
 
         if (open.index > 0) {
             nodes.push(...parseBBCode(rest.slice(0, open.index)));
         }
+
+        const raw = open[0];
+        if (/^<br\b/i.test(raw)) {
+            nodes.push({ type: "linebreak" });
+            rest = rest.slice(open.index + raw.length);
+            continue;
+        }
+
+        if (/^<center\b/i.test(raw)) {
+            const { end, inner } = matchCenter(
+                rest,
+                open.index + raw.length,
+            );
+            if (end === -1) {
+                // An unterminated fragment is not trusted as markup. Keep it
+                // as escaped text, including any later allowlisted-looking tags.
+                nodes.push(...parseBBCode(rest.slice(open.index)));
+                return nodes;
+            }
+            nodes.push({ type: "center", children: parseWithHtml(inner) });
+            rest = rest.slice(end);
+            continue;
+        }
+
+        const { end, inner } = matchTable(rest, open.index + raw.length);
+        if (end === -1) {
+            // An unterminated fragment is not trusted as markup. Keep it as
+            // escaped text, including any later allowlisted-looking tags.
+            nodes.push(...parseBBCode(rest.slice(open.index)));
+            return nodes;
+        }
+
         const table = parseTable(inner);
         if (table) {
             nodes.push(table);
@@ -386,10 +479,10 @@ export function preprocessTabular(text: string): string {
 
 /**
  * Parses a statement into an AST: swaps LaTeX `tabular`→`array` inside math,
- * extracts allowlisted HTML tables, and parses everything else as BBCode.
+ * extracts allowlisted HTML fragments, and parses everything else as BBCode.
  */
 export function parseMathStatement(text: string): ASTNode[] {
-    return parseWithTables(preprocessTabular(text));
+    return parseWithHtml(preprocessTabular(text));
 }
 
 // --- HTML rendering -------------------------------------------------------
@@ -523,6 +616,9 @@ export function astToHtml(nodes: ASTNode[]): string {
             }
             case "table":
                 html += tableToHtml(node);
+                break;
+            case "center":
+                html += `<div class="pc-center">${astToHtml(node.children)}</div>`;
                 break;
             case "paragraph":
                 html += `<p>${astToHtml(node.children)}</p>`;
