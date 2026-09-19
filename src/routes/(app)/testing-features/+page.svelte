@@ -127,6 +127,10 @@
     ];
 </script>
 
+<svelte:head>
+    <title>Feature Tests · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4">

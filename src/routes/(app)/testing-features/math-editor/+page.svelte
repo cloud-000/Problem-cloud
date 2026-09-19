@@ -11,6 +11,10 @@
     );
 </script>
 
+<svelte:head>
+    <title>Math Editor · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4 space-y-2">

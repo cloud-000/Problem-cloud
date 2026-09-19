@@ -23,6 +23,10 @@
     }
 </script>
 
+<svelte:head>
+    <title>Rating Counter · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8">
     <div class="border-b border-border/80 pb-4 space-y-2">
         <h1 class="text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">

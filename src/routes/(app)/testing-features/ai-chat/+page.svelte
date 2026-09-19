@@ -207,6 +207,10 @@
     onDestroy(() => demo.stop());
 </script>
 
+<svelte:head>
+    <title>AI Chat · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8">
     <div class="space-y-2 border-b border-border/80 pb-4">
         <h1

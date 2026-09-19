@@ -398,6 +398,10 @@
     }
 </script>
 
+<svelte:head>
+    <title>Home · ProblemCloud</title>
+</svelte:head>
+
 {#if !user}
     <Page.Root width="standard">
         <Page.Header title="Practice as a guest" description="Start solving now. Guest practice is saved in this browser only." />

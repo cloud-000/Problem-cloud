@@ -14,6 +14,10 @@
     let offlinePackage = $derived(page.url.searchParams.get("offlinePackage"));
 </script>
 
+<svelte:head>
+    <title>Practice · ProblemCloud</title>
+</svelte:head>
+
 {#if offlinePackage != null}
     {#key offlinePackage}
         <OfflinePracticeRoute {data} packageId={offlinePackage} />

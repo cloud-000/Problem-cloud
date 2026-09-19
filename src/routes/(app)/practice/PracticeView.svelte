@@ -2061,6 +2061,10 @@
    });
 </script>
 
+<svelte:head>
+   <title>{activeSession?.name ?? (isTest && testName ? testName : "Practice")} · ProblemCloud</title>
+</svelte:head>
+
 {#if coachAvailable && problem}
    <!-- Keyed like MetadataBar: CoachContextRegister registers on mount, so a new
         problem needs a new instance to replace the layer. -->

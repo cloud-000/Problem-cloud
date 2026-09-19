@@ -15,6 +15,10 @@
     let disabledValue = $state<RangeValue>([30, 60]);
 </script>
 
+<svelte:head>
+    <title>Range Slider · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8">
     <!-- Header -->
     <div class="border-b border-border/80 pb-4 space-y-2">

@@ -78,6 +78,10 @@
     }
 </script>
 
+<svelte:head>
+    <title>Find · ProblemCloud</title>
+</svelte:head>
+
 <div class="flex flex-col gap-4 p-6">
     <div class="flex items-center gap-2">
         <Select

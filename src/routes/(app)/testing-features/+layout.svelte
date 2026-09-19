@@ -11,6 +11,10 @@
     );
 </script>
 
+<svelte:head>
+    <title>Feature Tests · ProblemCloud</title>
+</svelte:head>
+
 <div class="p-6 max-w-4xl mx-auto flex flex-col gap-8">
     {#if isSubPage}
         <div class="flex">

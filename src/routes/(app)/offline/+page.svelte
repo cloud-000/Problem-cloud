@@ -5,4 +5,8 @@
     let { data }: { data: PageData } = $props();
 </script>
 
+<svelte:head>
+    <title>Downloads · ProblemCloud</title>
+</svelte:head>
+
 <OfflineShell embedded appSupabase={data.supabase} />

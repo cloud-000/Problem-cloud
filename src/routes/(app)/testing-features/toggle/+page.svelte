@@ -46,6 +46,10 @@
     let devMode = $state(false);
 </script>
 
+<svelte:head>
+    <title>Toggle & Switch · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8 pb-12">
     <!-- Header -->
     <div

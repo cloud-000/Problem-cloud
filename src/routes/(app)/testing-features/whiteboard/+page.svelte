@@ -22,6 +22,10 @@ draw(circle((0,0), 1), red+dashed);`;
     }
 </script>
 
+<svelte:head>
+    <title>Whiteboard · ProblemCloud</title>
+</svelte:head>
+
 <div class="flex h-full flex-col gap-3 p-4">
     <div class="flex items-center justify-between gap-2">
         <div>

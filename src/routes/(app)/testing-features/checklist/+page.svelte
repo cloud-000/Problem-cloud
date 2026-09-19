@@ -52,6 +52,10 @@
     }
 </script>
 
+<svelte:head>
+    <title>Checklist · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8 pb-12">
     <div class="border-b border-border/80 pb-4">
         <h1

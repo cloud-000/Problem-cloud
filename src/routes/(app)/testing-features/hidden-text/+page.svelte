@@ -6,6 +6,10 @@
     let blocked = $state(true);
 </script>
 
+<svelte:head>
+    <title>Hidden Text · ProblemCloud</title>
+</svelte:head>
+
 <div class="space-y-8 pb-12">
     <div class="border-b border-border/80 pb-4">
         <h1

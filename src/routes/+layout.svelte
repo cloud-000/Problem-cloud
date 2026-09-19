@@ -17,6 +17,10 @@
     $inspect(deviceDetails.isMobile);
 </script>
 
+<svelte:head>
+    <title>ProblemCloud</title>
+</svelte:head>
+
 <div class={`w-full min-h-full ${deviceDetails.isMobile ? "is-mobile" : ""}`}>
     {@render children()}
 </div>
