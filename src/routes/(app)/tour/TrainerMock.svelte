@@ -447,9 +447,7 @@
                             disabled={coach.streaming}
                             class={cn(
                                 "pointer-events-auto px-3 sm:px-4",
-                                coachExpanded
-                                    ? "pb-1 pt-2"
-                                    : "flex-nowrap overflow-x-auto pb-0 pt-1",
+                                coachExpanded ? "pb-1 pt-2" : "pb-0 pt-1",
                             )}
                             onselect={selectCoachQuickAction}
                         />

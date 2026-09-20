@@ -37,8 +37,10 @@
     <div
         data-slot="ai-chat-quick-actions"
         class={cn(
-            "flex bg-transparent",
-            layout === "stack" ? "flex-col gap-2" : "flex-wrap items-center gap-1.5",
+            "flex min-w-0 w-full bg-transparent",
+            layout === "stack"
+                ? "flex-col gap-2"
+                : "flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-none overscroll-x-contain",
             className,
         )}
     >
@@ -50,7 +52,7 @@
                     "flex items-center gap-2 text-left backdrop-blur-(--backdrop-blur) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50",
                     layout === "stack"
                         ? "min-h-11 w-full rounded-xl bg-surface-container-low/30 px-3.5 py-2.5 text-sm leading-5 hover:bg-surface-container/45"
-                        : "min-h-8 rounded-full bg-surface-container-low/30 px-3 py-1.5 text-xs leading-4 hover:bg-surface-container/45",
+                        : "min-h-8 shrink-0 whitespace-nowrap rounded-full bg-surface-container-low/30 px-3 py-1.5 text-xs leading-4 hover:bg-surface-container/45",
                 )}
                 onclick={() => onselect(action)}
             >
@@ -61,7 +63,7 @@
                         class="shrink-0 text-muted-foreground"
                     />
                 {/if}
-                <span class="min-w-0 truncate">{action.label}</span>
+                <span class="truncate">{action.label}</span>
             </button>
         {/each}
     </div>
