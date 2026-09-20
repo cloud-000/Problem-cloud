@@ -390,7 +390,7 @@
    {#if showNav}
       <Sidebar.Root
          bind:expanded={() => expanded, setSidebarExpanded}
-         class={expanded ? "w-60" : "w-16 overflow-hidden"}
+         resizable={!isMobilePortrait}
       >
          <Sidebar.Header
             class={cn(
@@ -725,6 +725,11 @@
          }
 
          :global([data-slot="sidebar-root"])::-webkit-scrollbar {
+            display: none !important;
+         }
+
+         :global([data-slot="sidebar-root"] > button[title*="Resize"]),
+         :global([data-slot="sidebar-root"] > button[aria-label*="Resize"]) {
             display: none !important;
          }
 

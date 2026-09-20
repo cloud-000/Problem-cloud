@@ -1,9 +1,12 @@
 <script lang="ts" module>
     import type { Snippet } from "svelte";
+    import type { HTMLAttributes } from "svelte/elements";
+    import { type WithElementRef } from "$lib/utils.js";
     import type { PanelSize, ResizeEdge } from "./resize";
 
-    export interface ResizablePanelProps {
-        children: Snippet;
+    export interface ResizablePanelProps
+        extends WithElementRef<HTMLAttributes<HTMLDivElement>> {
+        children?: Snippet;
         edges?: ResizeEdge[];
         initialWidth?: number;
         initialHeight?: number;
@@ -16,6 +19,7 @@
         collapseWidthBelowMin?: boolean;
         collapseHeightBelowMin?: boolean;
         collapseThresholdRatio?: number;
+        handleAriaLabel?: (edge: ResizeEdge) => string;
         class?: string;
         ref?: HTMLElement | null;
         onSizeChange?: (size: PanelSize) => void;
@@ -51,11 +55,13 @@
         collapseWidthBelowMin = false,
         collapseHeightBelowMin = false,
         collapseThresholdRatio = 0.5,
+        handleAriaLabel,
         class: className,
         ref = $bindable(null),
         onSizeChange,
         onResizeEnd,
         onCollapse,
+        ...restProps
     }: ResizablePanelProps = $props();
 
     let storedSize = $state<PanelSize>({});
@@ -218,8 +224,37 @@
         const collapsed = size.width === 0 || size.height === 0;
         cleanupDrag();
         if (collapsed) {
+            const fallback = { width: initialWidth, height: initialHeight };
+            if (storageKey) {
+                try {
+                    storedSize = parsePersistedPanelSize(
+                        localStorage.getItem(storageKey),
+                        fallback,
+                        activeConstraints,
+                    );
+                } catch {
+                    storedSize = clampPanelSize(fallback, activeConstraints);
+                }
+            } else {
+                storedSize = clampPanelSize(fallback, activeConstraints);
+            }
             onCollapse?.();
             return;
+        }
+        persistSize();
+        notifySize(true);
+        window.dispatchEvent(new Event("resize"));
+    }
+
+    function resetEdge(edge: ResizeEdge) {
+        if (edge === "left" || edge === "right") {
+            if (initialWidth !== undefined) {
+                storedSize = { ...storedSize, width: initialWidth };
+            }
+        } else if (edge === "top" || edge === "bottom") {
+            if (initialHeight !== undefined) {
+                storedSize = { ...storedSize, height: initialHeight };
+            }
         }
         persistSize();
         notifySize(true);
@@ -296,29 +331,31 @@
 
 <svelte:window onpointermove={moveResize} onpointerup={endResize} onpointercancel={endResize} />
 
-{#if ready}
+{#if !revealAxis || ready}
     <div
         bind:this={ref}
-        data-slot="resizable-panel"
+        data-slot={restProps["data-slot"] ?? "resizable-panel"}
         data-resizing={dragging}
-        class={cn("relative", className)}
+        class={cn("relative", !ready && !revealAxis && "transition-none", className)}
         style:width={size.width === undefined ? undefined : `${size.width}px`}
         style:height={size.height === undefined ? undefined : `${size.height}px`}
         transition:resizeReveal|global={{ axis: revealAxis }}
+        {...restProps}
     >
-        {@render children()}
+        {@render children?.()}
 
         {#each edges as edge (edge)}
             <button
                 type="button"
-                aria-label={`Resize panel from ${edge} edge`}
-                title={`Resize from ${edge} edge`}
+                aria-label={handleAriaLabel?.(edge) ?? `Resize panel from ${edge} edge`}
+                title={handleAriaLabel?.(edge) ?? `Resize from ${edge} edge`}
                 class={cn(
                     "group absolute z-50 touch-none select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60",
                     edgeClass(edge),
                 )}
                 onpointerdown={(event) => beginResize(event, [edge])}
                 onkeydown={(event) => keyboardResize(event, [edge])}
+                ondblclick={() => resetEdge(edge)}
             >
                 <span
                     class={cn(

@@ -93,10 +93,16 @@ export function parsePersistedPanelSize(
     if (!value) return clampPanelSize(fallback, constraints);
     try {
         const parsed = JSON.parse(value) as PanelSize;
+        const width = Number.isFinite(parsed?.width)
+            ? parsed.width
+            : Number.isFinite(parsed as unknown)
+              ? Number(parsed)
+              : fallback.width;
+        const height = Number.isFinite(parsed?.height) ? parsed.height : fallback.height;
         return clampPanelSize(
             {
-                width: Number.isFinite(parsed?.width) ? parsed.width : fallback.width,
-                height: Number.isFinite(parsed?.height) ? parsed.height : fallback.height,
+                width,
+                height,
             },
             constraints,
         );
