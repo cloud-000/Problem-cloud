@@ -1,3 +1,26 @@
+# Database Content Sync (AoPS Scrape -> ProblemCloud)
+
+> See detailed documentation in [AoPs-Scrape/cli/SYNC.md](file:///Users/cloud/CodeProjects/AoPs-Scrape/cli/SYNC.md).
+
+## Quick Sync Commands
+
+Run from `AoPs-Scrape`:
+```bash
+# Sync to local Supabase Postgres:
+bun cli/index.js sync --target=local
+
+# Dry run on local:
+bun cli/index.js sync --target=local --dry-run
+
+# Sync to production (when requested by user):
+bun cli/index.js sync --target=prod
+```
+
+The command automatically resolves:
+- **Local**: `SUPABASE_DEV_POSTGRES_URL` from `.env.development` (or port 54322).
+- **Production**: `DB_PASSWORD` + Supabase pooler URL from `.env`.
+
+---
 AI agents never execute,
 See AoPs-Scrape/cli/SYNC.md
 
