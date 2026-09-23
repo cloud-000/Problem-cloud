@@ -696,6 +696,60 @@ export type StatementSegment =
     | { kind: "asy"; imageSrc: string; code: string }
     | { kind: "img"; src: string; alt: string };
 
+function isWhitespaceOnly(nodes: ASTNode[]): boolean {
+    for (const node of nodes) {
+        if (node.type === "text") {
+            if (node.content.trim().length > 0) return false;
+        } else if (node.type === "linebreak") {
+            continue;
+        } else if ("children" in node && Array.isArray((node as { children?: unknown }).children)) {
+            if (!isWhitespaceOnly((node as { children: ASTNode[] }).children)) return false;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+function getInteractiveSegment(node: ASTNode): StatementSegment | null {
+    if (node.type === "asy") {
+        const src = sanitizeUrl(
+            node.imageSrc,
+            ["http", "https", "data"],
+            "",
+        );
+        if (src) {
+            return { kind: "asy", imageSrc: src, code: node.code };
+        }
+    } else if (node.type === "img") {
+        const src = sanitizeUrl(node.src, ["http", "https", "data"], "");
+        if (src) {
+            return { kind: "img", src, alt: node.label || "Image" };
+        }
+    }
+    return null;
+}
+
+type ASTParentNode = Extract<ASTNode, { children: ASTNode[] }>;
+
+function isSplittableContainer(node: ASTNode): node is ASTParentNode {
+    return "children" in node && Array.isArray((node as { children?: unknown }).children);
+}
+
+function cloneContainer(container: ASTParentNode, children: ASTNode[]): ASTNode {
+    return { ...container, children };
+}
+
+function hasInteractiveDescendant(nodes: ASTNode[]): boolean {
+    for (const node of nodes) {
+        if (getInteractiveSegment(node) !== null) return true;
+        if (isSplittableContainer(node) && hasInteractiveDescendant(node.children)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 export function segmentStatement(nodes: ASTNode[]): StatementSegment[] {
     const segments: StatementSegment[] = [];
     let buffer: ASTNode[] = [];
@@ -707,35 +761,50 @@ export function segmentStatement(nodes: ASTNode[]): StatementSegment[] {
         }
     }
 
-    for (const node of nodes) {
-        // Only asy nodes with a valid image become interactive components.
-        // A code-only asy stays in the buffer so astToHtml renders it as the
-        // static <pre> fallback (interactivity is meaningless without an image).
-        if (node.type === "asy") {
-            const src = sanitizeUrl(
-                node.imageSrc,
-                ["http", "https", "data"],
-                "",
-            );
-            if (src) {
+    function processContainer(container: ASTParentNode) {
+        let subBuffer: ASTNode[] = [];
+        for (const child of container.children) {
+            const interactive = getInteractiveSegment(child);
+            if (interactive) {
+                if (subBuffer.length > 0 && !isWhitespaceOnly(subBuffer)) {
+                    buffer.push(cloneContainer(container, subBuffer));
+                }
+                subBuffer = [];
                 flush();
-                segments.push({ kind: "asy", imageSrc: src, code: node.code });
+                segments.push(interactive);
                 continue;
             }
+
+            if (isSplittableContainer(child) && hasInteractiveDescendant(child.children)) {
+                if (subBuffer.length > 0 && !isWhitespaceOnly(subBuffer)) {
+                    buffer.push(cloneContainer(container, subBuffer));
+                }
+                subBuffer = [];
+                processContainer(child);
+                continue;
+            }
+
+            subBuffer.push(child);
         }
 
-        // Plain images become their own interactive segment too, so they get
-        // the same toolbar/invert/lightbox treatment as asy diagrams. Image
-        // nodes are always top-level (from markdown text runs or the [img]
-        // tag), so pulling them out of the buffer here is complete.
-        if (node.type === "img") {
-            const src = sanitizeUrl(node.src, ["http", "https", "data"], "");
-            if (src) {
-                flush();
-                segments.push({ kind: "img", src, alt: node.label || "Image" });
-                continue;
-            }
+        if (subBuffer.length > 0 && !isWhitespaceOnly(subBuffer)) {
+            buffer.push(cloneContainer(container, subBuffer));
         }
+    }
+
+    for (const node of nodes) {
+        const interactive = getInteractiveSegment(node);
+        if (interactive) {
+            flush();
+            segments.push(interactive);
+            continue;
+        }
+
+        if (isSplittableContainer(node) && hasInteractiveDescendant(node.children)) {
+            processContainer(node);
+            continue;
+        }
+
         buffer.push(node);
     }
 

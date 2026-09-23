@@ -38,6 +38,7 @@ function collectFromNodes(nodes: ASTNode[], out: string[]): void {
             case "paragraph":
             case "heading":
             case "blockquote":
+            case "center":
                 collectFromNodes(node.children, out);
                 break;
             case "list":

@@ -31,6 +31,14 @@ describe("problem image extraction", () => {
         expect(problemImageUrls({ statement: "[asy]unitsize(1cm);[/asy]" })).toEqual([]);
     });
 
+    test("finds asy and img references wrapped in center tags", () => {
+        const urls = problemImageUrls({
+            statement:
+                "<center>[asy=https://cdn.test/centered.png]draw();[/asy]</center>",
+        });
+        expect(urls).toEqual(["https://cdn.test/centered.png"]);
+    });
+
     test("deduplicates one image referenced twice", () => {
         const urls = problemImageUrls({
             statement: "[img]https://cdn.test/a.png[/img]",
