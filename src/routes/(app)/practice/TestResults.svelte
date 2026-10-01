@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Modal } from "$lib/components/modal";
@@ -21,8 +22,28 @@
         elapsedMs: number;
     } = $props();
 
+    let activeProblemIndex = $state<number | null>(null);
+    let userExpandedPreference = $state<boolean | null>(null);
+    let isSmallScreen = $state(false);
+
+    onMount(() => {
+        const mq = window.matchMedia("(max-width: 639px)");
+        isSmallScreen = mq.matches;
+        const handler = (e: MediaQueryListEvent) => {
+            isSmallScreen = e.matches;
+        };
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    });
+
+    let isExpanded = $derived(
+        userExpandedPreference !== null
+            ? userExpandedPreference
+            : !isSmallScreen,
+    );
+
     let cells = $derived<ProblemGridCell[]>(
-        history.map((entry) => {
+        history.map((entry, index) => {
             const mcq = isMultipleChoice(entry.problem.choices);
             const skipped =
                 entry.skipped ??
@@ -31,7 +52,12 @@
                 skipped,
                 is_correct: entry.correct,
             });
-            return { label: entry.problem.n + 1, state, flagged: entry.flagged };
+            return {
+                label: entry.problem.n + 1,
+                state,
+                flagged: entry.flagged,
+                current: activeProblemIndex === index,
+            };
         }),
     );
 
@@ -92,6 +118,7 @@
     });
 
     function scrollToProblem(index: number) {
+        activeProblemIndex = index;
         const target = document.getElementById(`test-review-${index}`);
         const scrollContainer = target?.closest<HTMLElement>(
             "[data-test-results-scroll]",
@@ -113,6 +140,32 @@
         });
     }
 
+    let scrollRafId: number | null = null;
+    function handleScroll(e: Event) {
+        if (scrollRafId !== null) return;
+        scrollRafId = requestAnimationFrame(() => {
+            scrollRafId = null;
+            const container = e.currentTarget as HTMLElement;
+            if (!container) return;
+            const summaryPanel = container.querySelector<HTMLElement>(
+                "[data-test-results-summary]",
+            );
+            const threshold = (summaryPanel ? summaryPanel.offsetHeight : 0) + 32;
+            const containerTop = container.getBoundingClientRect().top;
+
+            for (let i = 0; i < history.length; i++) {
+                const el = document.getElementById(`test-review-${i}`);
+                if (!el) continue;
+                const rect = el.getBoundingClientRect();
+                const bottomRelativeToContainer = rect.bottom - containerTop;
+                if (bottomRelativeToContainer > threshold) {
+                    activeProblemIndex = i;
+                    break;
+                }
+            }
+        });
+    }
+
     function openProblem(index: number) {
         focusedIndex = index;
         reviewOpen = true;
@@ -124,30 +177,67 @@
     }
 </script>
 
-{#snippet statChip(value: number, color: string)}
-    <span class="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-surface-container-low px-2.5 font-mono tabular-nums" style:color>
+{#snippet statChip(value: number, color: string, label: string)}
+    <span
+        class="inline-flex h-6 sm:h-7 min-w-6 sm:min-w-7 items-center justify-center rounded-md bg-surface-container-low px-1.5 sm:px-2 font-mono text-xs tabular-nums font-semibold"
+        style:color
+        title={`${value} ${label}`}
+    >
         {value}
     </span>
 {/snippet}
 
-<div data-test-results-scroll class="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
-    <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 pt-4">
-        <div data-test-results-summary class="sticky top-0 z-20 flex flex-col gap-3 rounded-xl border border-border/60 bg-surface-container-lowest p-5 shadow-sm">
-            <div class="flex items-center gap-2">
-                <Icon name="task_alt" class="text-primary" fontsize={22} />
-                <h2 class="text-lg font-semibold">Test complete</h2>
+<div
+    data-test-results-scroll
+    onscroll={handleScroll}
+    class="flex-1 overflow-y-auto px-3 sm:px-6 pb-10"
+>
+    <div class="mx-auto flex w-full max-w-3xl flex-col gap-4 sm:gap-6 pt-2 sm:pt-4">
+        <div
+            data-test-results-summary
+            class="sticky top-0 z-20 flex flex-col gap-2.5 sm:gap-3 rounded-xl border border-border/60 bg-surface-container-lowest/95 backdrop-blur-md p-3.5 sm:p-5 shadow-sm transition-all"
+        >
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <Icon name="task_alt" class="text-primary shrink-0" fontsize={20} />
+                    <h2 class="text-base sm:text-lg font-semibold truncate">Test complete</h2>
+                </div>
+                <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                    <div
+                        class="flex items-center gap-1 rounded-md bg-surface-container-low px-2 py-0.5 text-xs font-mono text-muted-foreground"
+                        title={`Total time: ${formatElapsed(elapsedMs)}`}
+                    >
+                        <Icon name="timer" fontsize={14} class="text-muted-foreground" />
+                        <span>{formatElapsed(elapsedMs)}</span>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onclick={() => (userExpandedPreference = !isExpanded)}
+                        aria-label={isExpanded ? "Collapse to compact strip" : "Expand to full grid"}
+                        title={isExpanded ? "Collapse to compact strip" : "Expand to full grid"}
+                        class="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    >
+                        <Icon name={isExpanded ? "expand_less" : "expand_more"} fontsize={18} />
+                    </Button>
+                </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground">
-                {@render statChip(summary.correct, "var(--color-correct)")}
-                {@render statChip(summary.incorrect, "var(--color-destructive)")}
-                {@render statChip(summary.ungraded, "var(--color-muted-foreground)")}
-                {@render statChip(summary.skipped, "var(--color-unsure)")}
-                <span class="ml-1">
-                    {summary.correct} correct · {summary.incorrect} incorrect · {summary.ungraded} submitted, ungraded · {summary.skipped} skipped · {formatElapsed(elapsedMs)}
+
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-mono text-muted-foreground">
+                {@render statChip(summary.correct, "var(--color-correct)", "correct")}
+                {@render statChip(summary.incorrect, "var(--color-destructive)", "incorrect")}
+                {@render statChip(summary.ungraded, "var(--color-muted-foreground)", "ungraded")}
+                {@render statChip(summary.skipped, "var(--color-unsure)", "skipped")}
+                <span class="hidden sm:inline ml-1 text-muted-foreground">
+                    {summary.correct} correct · {summary.incorrect} incorrect · {summary.ungraded} submitted, ungraded · {summary.skipped} skipped
+                </span>
+                <span class="inline sm:hidden ml-1 text-muted-foreground/90 font-medium">
+                    {summary.correct}/{history.length} score
                 </span>
             </div>
+
             <SegmentBar
-                class="h-2 min-w-0"
+                class="h-1.5 sm:h-2 min-w-0"
                 segments={[
                     { value: summary.correct, color: "var(--color-correct)", label: "Correct" },
                     { value: summary.incorrect, color: "var(--color-destructive)", label: "Incorrect" },
@@ -155,12 +245,18 @@
                     { value: summary.skipped, color: "var(--color-unsure)", label: "Skipped" },
                 ]}
             />
-            <ProblemGrid class="mt-1" {cells} onSelect={scrollToProblem} />
+
+            <ProblemGrid
+                class="mt-0.5"
+                variant={isExpanded ? "grid" : "strip"}
+                {cells}
+                onSelect={scrollToProblem}
+            />
         </div>
         
         <!-- Time per Problem Graph Card -->
         {#if history.length > 0}
-            <div class="rounded-xl border border-border/60 bg-surface-container-lowest p-5 shadow-sm flex flex-col gap-3">
+            <div class="rounded-xl border border-border/60 bg-surface-container-lowest p-3.5 sm:p-5 shadow-sm flex flex-col gap-2.5 sm:gap-3">
                 <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-3">
                     <div class="flex items-center gap-2">
                         <Icon name="bar_chart" class="text-primary-foreground" fontsize={20} />

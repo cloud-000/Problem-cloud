@@ -21,6 +21,8 @@
         /** Locked/non-jumpable (e.g. a locked segment); rendered dimmed + inert. */
         disabled?: boolean;
     };
+
+    export type ProblemGridVariant = "grid" | "strip";
 </script>
 
 <script lang="ts">
@@ -30,11 +32,13 @@
     let {
         cells,
         onSelect,
+        variant = "grid",
         class: className,
     }: {
         cells: ProblemGridCell[];
         /** Jump to a cell (by its array index). Omitted → cells are display-only. */
         onSelect?: (index: number) => void;
+        variant?: ProblemGridVariant;
         class?: string;
     } = $props();
 
@@ -54,18 +58,51 @@
                 return "border-border/60 bg-surface-container text-muted-foreground";
         }
     }
+
+    function autoScrollCell(node: HTMLElement, isCurrent: boolean | undefined) {
+        $effect(() => {
+            if (isCurrent && variant === "strip") {
+                const parent = node.parentElement;
+                if (!parent) return;
+                const nodeLeft = node.offsetLeft;
+                const nodeRight = nodeLeft + node.offsetWidth;
+                const parentLeft = parent.scrollLeft;
+                const parentRight = parentLeft + parent.clientWidth;
+                if (nodeLeft < parentLeft) {
+                    parent.scrollTo({ left: Math.max(0, nodeLeft - 8), behavior: "smooth" });
+                } else if (nodeRight > parentRight) {
+                    parent.scrollTo({
+                        left: nodeRight - parent.clientWidth + 8,
+                        behavior: "smooth",
+                    });
+                }
+            }
+        });
+    }
+
+    function handleWheel(e: WheelEvent) {
+        if (variant !== "strip") return;
+        const target = e.currentTarget as HTMLElement;
+        if (e.deltaY !== 0 && e.deltaX === 0) {
+            target.scrollLeft += e.deltaY;
+        }
+    }
 </script>
 
 <div
     class={cn(
-        "grid grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))] gap-1.5",
+        variant === "strip"
+            ? "flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none scroll-smooth overscroll-x-contain"
+            : "grid grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))] gap-1.5",
         className,
     )}
+    onwheel={handleWheel}
 >
     {#each cells as cell, index (index)}
         {@const interactive = !!onSelect && !cell.disabled}
         <svelte:element
             this={interactive ? "button" : "div"}
+            use:autoScrollCell={cell.current}
             role={interactive ? "button" : undefined}
             type={interactive ? "button" : undefined}
             tabindex={interactive ? 0 : undefined}
@@ -74,6 +111,7 @@
             onclick={interactive ? () => onSelect?.(index) : undefined}
             class={cn(
                 "relative flex aspect-square min-w-0 items-center justify-center rounded-md border text-xs font-medium tabular-nums transition-colors",
+                variant === "strip" && "size-8 shrink-0",
                 stateClass(cell.state),
                 cell.current && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                 cell.disabled && "opacity-45",
