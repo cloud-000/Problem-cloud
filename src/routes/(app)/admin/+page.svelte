@@ -7,11 +7,13 @@
     import UserList from "./user-list.svelte";
     import Announcements from "./announcements.svelte";
     import RatingsAdmin from "./ratings-admin.svelte";
+    import AiCoachAdmin from "./ai-coach-admin.svelte";
 
     let { data }: { data: PageData } = $props();
-    let { supabase, user } = $derived(data);
+    let { supabase, user, profile } = $derived(data);
 
     let activeTab = $state("problem-reports");
+    let isHighAdmin = $derived((profile?.admin_rank ?? 0) >= 10);
 </script>
 
 <svelte:head>
@@ -33,6 +35,9 @@
                 <Subtabs.Trigger value="user-feedback">Feedback</Subtabs.Trigger>
                 <Subtabs.Trigger value="users">Users</Subtabs.Trigger>
                 <Subtabs.Trigger value="announcements">Announcements</Subtabs.Trigger>
+                {#if isHighAdmin}
+                    <Subtabs.Trigger value="ai-coach">AI Coach</Subtabs.Trigger>
+                {/if}
                 <Subtabs.Trigger value="settings">Ratings</Subtabs.Trigger>
             </Subtabs.List>
         </Page.Toolbar>
@@ -46,12 +51,18 @@
         </Subtabs.Content>
 
         <Subtabs.Content value="users">
-            <UserList {supabase} />
+            <UserList {supabase} {profile} />
         </Subtabs.Content>
 
         <Subtabs.Content value="announcements">
             <Announcements {supabase} {user} />
         </Subtabs.Content>
+
+        {#if isHighAdmin}
+            <Subtabs.Content value="ai-coach">
+                <AiCoachAdmin {supabase} {profile} />
+            </Subtabs.Content>
+        {/if}
 
         <Subtabs.Content value="settings">
             <RatingsAdmin {supabase} />

@@ -261,3 +261,51 @@ grant execute on function public.reserve_ai_hosted_turn(uuid, date, integer, int
   to service_role;
 grant execute on function public.add_ai_hosted_credits(uuid, date, integer)
   to service_role;
+
+-- Reset hosted AI Coach usage. Only administrators with admin_rank >= 10
+-- may invoke this. Can reset either all users (p_user_ids is null or empty)
+-- or a specific list of user IDs. Optionally scopes to a specific period_start.
+-- Returns the count of deleted usage rows.
+create or replace function public.admin_reset_ai_hosted_usage(
+  p_user_ids uuid[] default null,
+  p_period_start date default null
+) returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := auth.uid();
+  v_rank integer;
+  v_count integer;
+begin
+  if v_caller is null then
+    raise exception 'AI_HOSTED_USAGE:not authenticated';
+  end if;
+
+  select admin_rank into v_rank
+    from public.profiles
+   where id = v_caller;
+
+  if coalesce(v_rank, 0) < 10 then
+    raise exception 'AI_HOSTED_USAGE:not authorized (admin_rank >= 10 required)';
+  end if;
+
+  if p_user_ids is not null and cardinality(p_user_ids) > 0 then
+    delete from public.ai_hosted_usage
+     where user_id = any(p_user_ids)
+       and (p_period_start is null or period_start = p_period_start);
+  else
+    delete from public.ai_hosted_usage
+     where (p_period_start is null or period_start = p_period_start);
+  end if;
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+revoke all on function public.admin_reset_ai_hosted_usage(uuid[], date)
+  from public, anon;
+grant execute on function public.admin_reset_ai_hosted_usage(uuid[], date)
+  to authenticated;

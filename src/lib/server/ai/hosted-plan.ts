@@ -27,7 +27,7 @@ export const HOSTED_PLAN = {
         "z-ai/glm-5.2:free",
     ],
     creditLimit: 230_000,
-    turnLimit: 1000,
+    turnLimit: 5000,
     period: "month" as const,
     inputWeight: 1,
     outputWeight: 4,

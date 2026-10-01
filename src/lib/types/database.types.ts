@@ -1945,6 +1945,10 @@ export type Database = {
         }
       }
       admin_recompute_ratings: { Args: never; Returns: Json }
+      admin_reset_ai_hosted_usage: {
+        Args: { p_period_start?: string; p_user_ids?: string[] }
+        Returns: number
+      }
       backfill_content_sync_keys: { Args: never; Returns: undefined }
       canonicalize_existing_user_data: {
         Args: never

@@ -169,3 +169,27 @@ export async function fetchProfiles(
     if (error) throw error;
     return data ?? [];
 }
+
+export interface ResetAiHostedUsageOptions {
+    userIds?: string[];
+    periodStart?: string;
+}
+
+/**
+ * Reset AI Coach hosted usage allowance (turns and credits).
+ * Requires caller to have `admin_rank >= 10`.
+ * Can reset all users (if userIds is omitted or empty) or specific user IDs,
+ * optionally constrained to a specific periodStart (ISO date 'YYYY-MM-DD').
+ * Returns the number of usage records deleted.
+ */
+export async function resetAiHostedUsage(
+    supabase: Supabase,
+    options: ResetAiHostedUsageOptions = {},
+): Promise<number> {
+    const { data, error } = await supabase.rpc("admin_reset_ai_hosted_usage", {
+        p_user_ids: options.userIds && options.userIds.length > 0 ? options.userIds : undefined,
+        p_period_start: options.periodStart ?? undefined,
+    });
+    if (error) throw error;
+    return data ?? 0;
+}
