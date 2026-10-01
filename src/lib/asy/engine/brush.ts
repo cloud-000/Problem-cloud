@@ -19,10 +19,10 @@ interface PreparedSample extends PointerSample {
 }
 
 const MIN_DIAMETER_RATIO = 0.6;
-const PRESSURE_CARRY = 0.82;
+const PRESSURE_CARRY = 0.90;
 const VELOCITY_FLOOR_PX_PER_MS = 1.25;
 const CAP_STEPS = 6;
-const OUTLINE_SIMPLIFY_PX = 0.55;
+const OUTLINE_SIMPLIFY_PX = 0.35;
 const OUTLINE_SMOOTHING = 0.6;
 const OUTLINE_SMOOTHING_PASSES = 3;
 
@@ -56,6 +56,56 @@ function interpolateSample(a: PointerSample, b: PointerSample, t: number): Point
     };
 }
 
+/** Corner-aware Gaussian filter to eliminate high-frequency digitizer stepping and hand tremors. */
+function smoothRawWithCorners(points: readonly Pair[], radius = 2): Pair[] {
+    const n = points.length;
+    if (n <= 2) return points.slice();
+
+    const isCorner = new Array(n).fill(false);
+    isCorner[0] = true;
+    isCorner[n - 1] = true;
+    for (let i = 1; i < n - 1; i++) {
+        const pPrev = points[i - 1];
+        const pCurr = points[i];
+        const pNext = points[i + 1];
+        const v1 = [pCurr[0] - pPrev[0], pCurr[1] - pPrev[1]];
+        const v2 = [pNext[0] - pCurr[0], pNext[1] - pCurr[1]];
+        const l1 = Math.hypot(v1[0], v1[1]);
+        const l2 = Math.hypot(v2[0], v2[1]);
+        if (l1 > 1e-4 && l2 > 1e-4) {
+            const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2);
+            const angle = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+            if (angle >= 65) isCorner[i] = true;
+        }
+    }
+
+    const out: Pair[] = [];
+    const sigma = Math.max(1, radius / 1.5);
+    for (let i = 0; i < n; i++) {
+        if (isCorner[i]) {
+            out.push(points[i]);
+            continue;
+        }
+        let leftLimit = i;
+        while (leftLimit > 0 && !isCorner[leftLimit]) leftLimit--;
+        let rightLimit = i;
+        while (rightLimit < n - 1 && !isCorner[rightLimit]) rightLimit++;
+
+        const start = Math.max(leftLimit, i - radius);
+        const end = Math.min(rightLimit, i + radius);
+        let sumX = 0, sumY = 0, sumW = 0;
+        for (let j = start; j <= end; j++) {
+            const dist = Math.abs(i - j);
+            const w = Math.exp(-(dist * dist) / (2 * sigma * sigma));
+            sumX += points[j][0] * w;
+            sumY += points[j][1] * w;
+            sumW += w;
+        }
+        out.push([sumX / sumW, sumY / sumW]);
+    }
+    return out;
+}
+
 function prepareSamples(inputs: readonly PointerInput[], spacing: number, smoothing: number): PreparedSample[] {
     const raw = inputs.map((input, index) => pointerSample(input, index * 16));
     const clean: PointerSample[] = [];
@@ -68,8 +118,9 @@ function prepareSamples(inputs: readonly PointerInput[], spacing: number, smooth
     }
     if (clean.length < 2) return [];
 
-    // Smooth raw pointer samples before resampling to eliminate digitizer stepping
-    const cleanPoints = smoothPointsAdaptive(clean.map(({ point }) => point), smoothing);
+    // Eliminate hand tremor and digitizer stepping before resampling
+    const rawSmoothed = smoothRawWithCorners(clean.map(({ point }) => point), 2);
+    const cleanPoints = smoothPointsAdaptive(rawSmoothed, smoothing);
     const smoothedClean = clean.map((sample, index) => ({
         ...sample,
         point: cleanPoints[index],
@@ -135,6 +186,16 @@ function tangentAt(samples: readonly PreparedSample[], index: number): Pair {
     return length <= 1e-9 ? [1, 0] : [dx / length, dy / length];
 }
 
+/** Velocity calculation windowed over multiple samples to filter frame-rate jitter. */
+function velocityAt(samples: readonly PreparedSample[], index: number, sceneUnitsPerPixel: number): number {
+    const window = Math.min(3, Math.max(1, samples.length - 1));
+    const start = Math.max(0, index - window);
+    const end = Math.min(samples.length - 1, index + window);
+    const elapsed = Math.max(1, samples[end].timestamp - samples[start].timestamp);
+    const travelledPx = (samples[end].distance - samples[start].distance) / sceneUnitsPerPixel;
+    return clamp01(1 - travelledPx / elapsed / VELOCITY_FLOOR_PX_PER_MS);
+}
+
 function smoothWidths(values: readonly number[]): number[] {
     if (values.length < 3) return [...values];
     return values.map((value, index) => index === 0 || index === values.length - 1
@@ -190,10 +251,7 @@ export function brushOutline(inputs: readonly PointerInput[], options: BrushOpti
     const radii: number[] = [];
     let filteredPressure = 0.5;
     for (let index = 0; index < samples.length; index++) {
-        const previous = samples[Math.max(0, index - 1)];
-        const elapsed = Math.max(1, samples[index].timestamp - previous.timestamp);
-        const travelledPx = (samples[index].distance - previous.distance) / sceneUnitsPerPixel;
-        const velocityPressure = clamp01(1 - travelledPx / elapsed / VELOCITY_FLOOR_PX_PER_MS);
+        const velocityPressure = velocityAt(samples, index, sceneUnitsPerPixel);
         const hardwarePressure = samples[index].pointerType === "pen" ? samples[index].pressure : undefined;
         const target = hardwarePressure === undefined
             ? velocityPressure
