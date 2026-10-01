@@ -68,17 +68,24 @@ function prepareSamples(inputs: readonly PointerInput[], spacing: number, smooth
     }
     if (clean.length < 2) return [];
 
+    // Smooth raw pointer samples before resampling to eliminate digitizer stepping
+    const cleanPoints = smoothPointsAdaptive(clean.map(({ point }) => point), smoothing);
+    const smoothedClean = clean.map((sample, index) => ({
+        ...sample,
+        point: cleanPoints[index],
+    }));
+
     const resampledPoints = spacing > 0
-        ? resamplePoints(clean.map(({ point }) => point), spacing)
-        : dedupePoints(clean.map(({ point }) => point));
+        ? resamplePoints(smoothedClean.map(({ point }) => point), spacing)
+        : dedupePoints(smoothedClean.map(({ point }) => point));
     const resampled: PointerSample[] = [];
     let sourceIndex = 1;
-    let traversed = 0;
     const sourceDistances = [0];
-    for (let index = 1; index < clean.length; index++) {
+    let traversed = 0;
+    for (let index = 1; index < smoothedClean.length; index++) {
         traversed += Math.hypot(
-            clean[index].point[0] - clean[index - 1].point[0],
-            clean[index].point[1] - clean[index - 1].point[1],
+            smoothedClean[index].point[0] - smoothedClean[index - 1].point[0],
+            smoothedClean[index].point[1] - smoothedClean[index - 1].point[1],
         );
         sourceDistances.push(traversed);
     }
@@ -94,7 +101,7 @@ function prepareSamples(inputs: readonly PointerInput[], spacing: number, smooth
         const beforeIndex = Math.max(0, sourceIndex - 1);
         const span = sourceDistances[sourceIndex] - sourceDistances[beforeIndex];
         const t = span <= 1e-9 ? 0 : (targetDistance - sourceDistances[beforeIndex]) / span;
-        resampled.push({ ...interpolateSample(clean[beforeIndex], clean[sourceIndex], clamp01(t)), point: resampledPoints[index] });
+        resampled.push({ ...interpolateSample(smoothedClean[beforeIndex], smoothedClean[sourceIndex], clamp01(t)), point: resampledPoints[index] });
     }
 
     let points = resampled.map(({ point }) => point);
@@ -128,19 +135,6 @@ function tangentAt(samples: readonly PreparedSample[], index: number): Pair {
     return length <= 1e-9 ? [1, 0] : [dx / length, dy / length];
 }
 
-function cap(center: Pair, normal: Pair, tangent: Pair, radius: number, end: boolean): Pair[] {
-    const points: Pair[] = [];
-    for (let index = 1; index < CAP_STEPS; index++) {
-        const angle = (Math.PI * index) / CAP_STEPS;
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const nx = end ? normal[0] * cos + tangent[0] * sin : -normal[0] * cos - tangent[0] * sin;
-        const ny = end ? normal[1] * cos + tangent[1] * sin : -normal[1] * cos - tangent[1] * sin;
-        points.push([center[0] + nx * radius, center[1] + ny * radius]);
-    }
-    return points;
-}
-
 function smoothWidths(values: readonly number[]): number[] {
     if (values.length < 3) return [...values];
     return values.map((value, index) => index === 0 || index === values.length - 1
@@ -167,6 +161,19 @@ function smoothContour(points: Pair[]): Pair[] {
         smoothed = smoothPointsAdaptive(smoothed, OUTLINE_SMOOTHING);
     }
     return smoothed;
+}
+
+function cap(center: Pair, normal: Pair, tangent: Pair, radius: number, end: boolean): Pair[] {
+    const points: Pair[] = [];
+    for (let index = 1; index < CAP_STEPS; index++) {
+        const angle = (Math.PI * index) / CAP_STEPS;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const nx = end ? normal[0] * cos + tangent[0] * sin : -normal[0] * cos - tangent[0] * sin;
+        const ny = end ? normal[1] * cos + tangent[1] * sin : -normal[1] * cos - tangent[1] * sin;
+        points.push([center[0] + nx * radius, center[1] + ny * radius]);
+    }
+    return points;
 }
 
 /** Convert enriched centerline samples into a balanced, pressure-sensitive filled silhouette. */
@@ -204,10 +211,10 @@ export function brushOutline(inputs: readonly PointerInput[], options: BrushOpti
     // Pressure filtering removes high-frequency thickness noise before the two
     // outline sides are offset from the centerline. Preserve endpoint radii so
     // the rounded caps still meet the contours exactly.
-    const smoothedRadii = smoothWidths(smoothWidths(radii));
+    const smoothedRadii = smoothWidths(radii);
     const tangents = samples.map((_, index) => tangentAt(samples, index));
     const rawNormals = tangents.map(([x, y]) => [-y, x] as Pair);
-    const normals = smoothNormals(smoothNormals(rawNormals));
+    const normals = smoothNormals(rawNormals);
     const left = samples.map((sample, index) => [
         sample.point[0] + normals[index][0] * smoothedRadii[index],
         sample.point[1] + normals[index][1] * smoothedRadii[index],
@@ -232,7 +239,7 @@ export function brushOutline(inputs: readonly PointerInput[], options: BrushOpti
     if (nodes.length < 3) return null;
     return {
         nodes,
-        joins: Array.from({ length: nodes.length }, () => "--" as const),
+        joins: Array.from({ length: nodes.length }, () => ".." as const),
         cyclic: true,
     };
 }
