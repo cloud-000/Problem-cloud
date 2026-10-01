@@ -208,7 +208,7 @@ describe("PenTool", () => {
         expect(committed(tapCommit)).toHaveLength(1);
         expect(committed(tapCommit)[0].kind).toBe("dot");
         expect(committed(strokeCommit)).toHaveLength(1);
-        expect(committed(strokeCommit)[0].kind).toBe("fill");
+        expect(committed(strokeCommit)[0].kind).toBe("path");
     });
 
     test("a tap commit is one undoable history step", () => {
@@ -239,20 +239,20 @@ describe("PenTool", () => {
         ]);
     });
 
-    test("solid freehand commits a finite cyclic brush silhouette", () => {
+    test("solid freehand commits a compact smooth centerline path", () => {
         const tool = createTool("pen");
         let s: Scene = emptyScene();
         tool.onPointerDown(s, [0, 0], ctx);
         for (const x of [1, 2, 3, 4]) tool.onPointerMove(s, [x, 0.01], ctx);
         const up = tool.onPointerUp(s, [5, 0], ctx);
         const el = committed(up.commit)[0];
-        expect(el.kind).toBe("fill");
-        if (el.kind !== "fill") return;
-        expect(el.path.cyclic).toBe(true);
-        expect(el.path.joins).toHaveLength(el.path.nodes.length);
-        expect(el.path.nodes.length).toBeGreaterThan(4);
+        expect(el.kind).toBe("path");
+        if (el.kind !== "path") return;
+        expect(el.path.cyclic).toBe(false);
+        expect(el.path.joins).toHaveLength(el.path.nodes.length - 1);
+        expect(el.path.nodes.length).toBeGreaterThanOrEqual(2);
         expect(el.path.nodes.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
-        expect(el.pen).toEqual({ namedColor: "red", opacity: 1 });
+        expect(el.pen).toEqual(ctx.pen);
     });
 
     test("processes a sample batch into one preview with the same raw geometry", () => {
@@ -269,9 +269,9 @@ describe("PenTool", () => {
 
         const batchedElement = preview?.preview?.elements[0];
         const individualElement = last?.preview?.elements[0];
-        expect(batchedElement).toMatchObject({ kind: "fill" });
-        expect(batchedElement?.kind === "fill" ? batchedElement.path : null).toEqual(
-            individualElement?.kind === "fill" ? individualElement.path : null,
+        expect(batchedElement).toMatchObject({ kind: "path" });
+        expect(batchedElement?.kind === "path" ? batchedElement.path : null).toEqual(
+            individualElement?.kind === "path" ? individualElement.path : null,
         );
     });
 
@@ -286,9 +286,9 @@ describe("PenTool", () => {
         reference.onPointerDown(scene, [0, 0], ctx);
         reference.onPointerMoves?.(scene, [[1, 0.2], [2, 0.1]], ctx);
         const expected = committed(reference.onPointerUp(scene, [3, 1], ctx).commit)[0];
-        expect(committedElement?.kind).toBe("fill");
-        expect(committedElement?.kind === "fill" ? committedElement.path : null).toEqual(
-            expected?.kind === "fill" ? expected.path : null,
+        expect(committedElement?.kind).toBe("path");
+        expect(committedElement?.kind === "path" ? committedElement.path : null).toEqual(
+            expected?.kind === "path" ? expected.path : null,
         );
     });
 
@@ -301,7 +301,7 @@ describe("PenTool", () => {
         expect(tool.onPointerUp(scene, [3, 1], ctx, [[2.5, 1]])).toEqual({});
     });
 
-    test("live and committed solid strokes use the same brush geometry", () => {
+    test("live and committed solid strokes use the same centerline geometry", () => {
         const tool = createTool("pen");
         const scene = emptyScene();
         tool.onPointerDown(scene, [0, 0], ctx);
@@ -312,9 +312,9 @@ describe("PenTool", () => {
         const previewElement = preview.preview?.elements[0];
         const commitElement = committed(commit.commit)[0];
 
-        expect(previewElement?.kind).toBe("fill");
-        expect(commitElement?.kind).toBe("fill");
-        if (previewElement?.kind !== "fill" || commitElement?.kind !== "fill") return;
+        expect(previewElement?.kind).toBe("path");
+        expect(commitElement?.kind).toBe("path");
+        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
         expect(commitElement.id).toBe(previewElement.id);
         expect(commitElement.path).toEqual(previewElement.path);
     });
@@ -341,9 +341,9 @@ describe("PenTool", () => {
         const previewElement = preview?.preview?.elements[0];
         const commitElement = committed(commit.commit)[0];
 
-        expect(previewElement?.kind).toBe("fill");
-        expect(commitElement?.kind).toBe("fill");
-        if (previewElement?.kind !== "fill" || commitElement?.kind !== "fill") return;
+        expect(previewElement?.kind).toBe("path");
+        expect(commitElement?.kind).toBe("path");
+        if (previewElement?.kind !== "path" || commitElement?.kind !== "path") return;
         expect(commitElement.path).toEqual(previewElement.path);
     });
 

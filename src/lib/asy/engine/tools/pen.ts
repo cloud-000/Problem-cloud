@@ -1,7 +1,7 @@
-import type { Pair, Pen, Scene } from "../../scene/types";
+import type { Pair, PathElement, Scene } from "../../scene/types";
 import { createDot, makePath, newId } from "../../scene/factory";
-import { brushOutline } from "../brush";
-import { classifyStrokeJoins, processStroke } from "../simplify";
+import { smoothRawWithCorners } from "../brush";
+import { classifyStrokeJoins, dedupePoints, processStroke } from "../simplify";
 import {
     addElement,
     NO_RESULT,
@@ -14,21 +14,19 @@ import {
 } from "./types";
 
 /**
- * Freehand pen. Solid input becomes a pressure/velocity-sensitive filled
- * silhouette; dashed input retains the processed centerline path pipeline.
+ * Freehand pen. Strokes are stored as compact, smooth centerline paths
+ * (Scene kind "path") with classified joins and native round caps.
  */
 export class PenTool implements Tool {
     readonly kind = "pen" as const;
     private samples: PointerSample[] = [];
     private drawing = false;
     private draftId: string | null = null;
-    private brushSize = 0;
 
     onPointerDown(scene: Scene, input: PointerInput, ctx: ToolContext): ToolResult {
         this.drawing = true;
         this.samples = [pointerSample(input)];
         this.draftId = newId();
-        this.brushSize = Math.max(0, ctx.pen.lineWidth ?? 1.5) * ctx.sceneUnitsPerPixel;
         return { preview: scene };
     }
 
@@ -60,16 +58,13 @@ export class PenTool implements Tool {
         if (isTap) {
             const dot = createDot(tapAt, ctx.pen);
             this.draftId = null;
-            this.brushSize = 0;
             return { commit: { kind: "add", elements: [dot] }, selection: [], preview: null };
         }
         if (!element) {
             this.draftId = null;
-            this.brushSize = 0;
             return { preview: null };
         }
         this.draftId = null;
-        this.brushSize = 0;
         // Freehand is a continuous drawing tool: keep it active and leave the
         // finished stroke unselected so the next stroke can begin cleanly.
         return { commit: { kind: "add", elements: [element] }, selection: [], preview: null };
@@ -79,7 +74,6 @@ export class PenTool implements Tool {
         this.drawing = false;
         this.samples = [];
         this.draftId = null;
-        this.brushSize = 0;
         return { preview: null };
     }
 
@@ -90,32 +84,16 @@ export class PenTool implements Tool {
         }
     }
 
-    private strokeElement(ctx: ToolContext) {
-        if (ctx.pen.dash && ctx.pen.dash !== "solid") {
-            const nodes = processStroke(this.samples.map(({ point }) => point), ctx.strokeProcessing);
-            return nodes.length >= 2 ? this.strokePathFromNodes(nodes, ctx) : null;
-        }
-        const outline = brushOutline(this.samples, {
-            size: this.brushSize,
-            sceneUnitsPerPixel: ctx.sceneUnitsPerPixel,
-            sampleSpacing: ctx.strokeProcessing.sampleSpacing,
-            smoothing: ctx.strokeProcessing.smoothing,
-        });
-        if (!outline) return null;
-        return {
-            id: this.draftId ?? newId(),
-            kind: "fill" as const,
-            path: outline,
-            pen: this.brushPen(ctx.pen),
-        };
-    }
-
-    private brushPen(pen: Pen): Pen {
-        return {
-            ...(pen.namedColor ? { namedColor: pen.namedColor } : {}),
-            ...(pen.color ? { color: pen.color } : {}),
-            opacity: pen.opacity ?? 1,
-        };
+    private strokeElement(ctx: ToolContext): PathElement | null {
+        if (this.samples.length < 2) return null;
+        const rawPoints = dedupePoints(this.samples.map(({ point }) => point));
+        if (rawPoints.length < 2) return null;
+        const shouldPrefilter = ctx.strokeProcessing.sampleSpacing > 0 && ctx.strokeProcessing.smoothing > 0;
+        const prefiltered = shouldPrefilter
+            ? smoothRawWithCorners(rawPoints, 2)
+            : rawPoints;
+        const nodes = processStroke(prefiltered, ctx.strokeProcessing);
+        return nodes.length >= 2 ? this.strokePathFromNodes(nodes, ctx) : null;
     }
 
     /** Largest displacement from pointer-down; tiny coalesced jitter remains a tap. */
@@ -131,7 +109,7 @@ export class PenTool implements Tool {
         );
     }
 
-    private strokePathFromNodes(nodes: Pair[], ctx: ToolContext) {
+    private strokePathFromNodes(nodes: Pair[], ctx: ToolContext): PathElement {
         return {
             id: this.draftId ?? newId(),
             kind: "path" as const,
@@ -141,7 +119,7 @@ export class PenTool implements Tool {
                     ctx.strokeProcessing.cornerThresholdDegrees,
                 ),
             }),
-            pen: ctx.pen,
+            pen: { ...ctx.pen },
         };
     }
 }

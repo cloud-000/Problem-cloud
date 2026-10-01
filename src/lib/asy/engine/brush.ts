@@ -59,7 +59,7 @@ function interpolateSample(a: PointerSample, b: PointerSample, t: number): Point
 }
 
 /** Corner-aware Gaussian filter to eliminate high-frequency digitizer stepping and hand tremors. */
-function smoothRawWithCorners(points: readonly Pair[], radius = 2): Pair[] {
+export function smoothRawWithCorners(points: readonly Pair[], radius = 2): Pair[] {
     const n = points.length;
     if (n <= 2) return points.slice();
 
