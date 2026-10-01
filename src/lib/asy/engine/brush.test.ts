@@ -79,4 +79,34 @@ describe("brushOutline", () => {
         expect(outline.nodes.length).toBeLessThan(30);
         expect(outline.nodes.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
     });
+
+    test("suppresses outline spikes and normal jitter on curved strokes with noise", () => {
+        const curvePoints: [number, number][] = [];
+        for (let i = 0; i <= 40; i++) {
+            const t = i / 40;
+            const x = t * 100;
+            const y = Math.sin(t * Math.PI) * 30 + (i % 2 === 0 ? 0.6 : -0.6);
+            curvePoints.push([x, y]);
+        }
+        const outline = brushOutline(samples(curvePoints), options)!;
+        expect(outline).not.toBeNull();
+        expect(outline.cyclic).toBe(true);
+        expect(outline.nodes.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
+
+        const nodes = outline.nodes;
+        for (let i = 0; i < nodes.length; i++) {
+            const p0 = nodes[(i - 1 + nodes.length) % nodes.length];
+            const p1 = nodes[i];
+            const p2 = nodes[(i + 1) % nodes.length];
+            const v1 = [p1[0] - p0[0], p1[1] - p0[1]];
+            const v2 = [p2[0] - p1[0], p2[1] - p1[1]];
+            const l1 = Math.hypot(v1[0], v1[1]);
+            const l2 = Math.hypot(v2[0], v2[1]);
+            if (l1 > 1e-4 && l2 > 1e-4) {
+                const cos = Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)));
+                const deg = (Math.acos(cos) * 180) / Math.PI;
+                expect(deg).toBeLessThan(60);
+            }
+        }
+    });
 });

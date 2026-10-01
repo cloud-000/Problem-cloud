@@ -22,9 +22,9 @@ const MIN_DIAMETER_RATIO = 0.6;
 const PRESSURE_CARRY = 0.82;
 const VELOCITY_FLOOR_PX_PER_MS = 1.25;
 const CAP_STEPS = 6;
-const OUTLINE_SIMPLIFY_PX = 0.45;
-const OUTLINE_SMOOTHING = 0.55;
-const OUTLINE_SMOOTHING_PASSES = 2;
+const OUTLINE_SIMPLIFY_PX = 0.55;
+const OUTLINE_SMOOTHING = 0.6;
+const OUTLINE_SMOOTHING_PASSES = 3;
 
 function clamp01(value: number): number {
     return Math.max(0, Math.min(1, value));
@@ -97,7 +97,11 @@ function prepareSamples(inputs: readonly PointerInput[], spacing: number, smooth
         resampled.push({ ...interpolateSample(clean[beforeIndex], clean[sourceIndex], clamp01(t)), point: resampledPoints[index] });
     }
 
-    const points = smoothPointsAdaptive(resampled.map(({ point }) => point), smoothing);
+    let points = resampled.map(({ point }) => point);
+    for (let pass = 0; pass < 2; pass++) {
+        points = smoothPointsAdaptive(points, smoothing);
+    }
+
     let distance = 0;
     return resampled.map((sample, index) => {
         if (index > 0) distance += Math.hypot(
@@ -109,10 +113,17 @@ function prepareSamples(inputs: readonly PointerInput[], spacing: number, smooth
 }
 
 function tangentAt(samples: readonly PreparedSample[], index: number): Pair {
-    const before = samples[Math.max(0, index - 1)].point;
-    const after = samples[Math.min(samples.length - 1, index + 1)].point;
-    const dx = after[0] - before[0];
-    const dy = after[1] - before[1];
+    const count = samples.length;
+    let dx = 0;
+    let dy = 0;
+    const maxLook = Math.min(3, Math.max(1, count - 1));
+    for (let offset = 1; offset <= maxLook; offset++) {
+        const before = samples[Math.max(0, index - offset)].point;
+        const after = samples[Math.min(count - 1, index + offset)].point;
+        const weight = (maxLook - offset + 1) / offset;
+        dx += (after[0] - before[0]) * weight;
+        dy += (after[1] - before[1]) * weight;
+    }
     const length = Math.hypot(dx, dy);
     return length <= 1e-9 ? [1, 0] : [dx / length, dy / length];
 }
@@ -135,6 +146,19 @@ function smoothWidths(values: readonly number[]): number[] {
     return values.map((value, index) => index === 0 || index === values.length - 1
         ? value
         : values[index - 1] * 0.25 + value * 0.5 + values[index + 1] * 0.25);
+}
+
+function smoothNormals(normals: readonly Pair[]): Pair[] {
+    if (normals.length < 3) return [...normals];
+    return normals.map((normal, index) => {
+        if (index === 0 || index === normals.length - 1) return normal;
+        const prev = normals[index - 1];
+        const next = normals[index + 1];
+        const nx = prev[0] * 0.25 + normal[0] * 0.5 + next[0] * 0.25;
+        const ny = prev[1] * 0.25 + normal[1] * 0.5 + next[1] * 0.25;
+        const len = Math.hypot(nx, ny);
+        return len <= 1e-9 ? normal : [nx / len, ny / len];
+    });
 }
 
 function smoothContour(points: Pair[]): Pair[] {
@@ -182,7 +206,8 @@ export function brushOutline(inputs: readonly PointerInput[], options: BrushOpti
     // the rounded caps still meet the contours exactly.
     const smoothedRadii = smoothWidths(smoothWidths(radii));
     const tangents = samples.map((_, index) => tangentAt(samples, index));
-    const normals = tangents.map(([x, y]) => [-y, x] as Pair);
+    const rawNormals = tangents.map(([x, y]) => [-y, x] as Pair);
+    const normals = smoothNormals(smoothNormals(rawNormals));
     const left = samples.map((sample, index) => [
         sample.point[0] + normals[index][0] * smoothedRadii[index],
         sample.point[1] + normals[index][1] * smoothedRadii[index],
