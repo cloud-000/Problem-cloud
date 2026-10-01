@@ -2,7 +2,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { HiddenText } from "$lib/components/hidden-text";
-    import { StatusTag } from "$lib/components/status-tag";
+    import { StatusTag, type StatusKind } from "$lib/components/status-tag";
     import { MathStatement } from "$lib/components/math-statement";
     import {
         topicLabel,
@@ -20,12 +20,13 @@
         type PersonalProblemState,
     } from "$lib/progress";
     import { ProblemOrganization } from "$lib/components/problem-organization";
-    import { cn, isMultipleChoice } from "$lib/utils";
+    import { cn, formatElapsed, isMultipleChoice } from "$lib/utils";
     import {
         inputModeFor,
         isReferenceAnswerMissing,
         resolveResponseKind,
     } from "$lib/problem-response";
+    import type { Snippet } from "svelte";
     import ProblemAnswer from "./problem-answer.svelte";
     import ProblemSolution from "./problem-solution.svelte";
 
@@ -35,15 +36,16 @@
      *
      * `"full"` names the problem (test + number) and is right for a card that
      * stands alone. `"number"` keeps only the number when surrounding chrome
-     * already names the test. **Any surface that already names both the test
-     * and problem — a list row, a modal title, a review header — must pass
+     * already names the test. `"review"` renders a unified header with identity,
+     * attempt outcome, and timing for review surfaces. **Any surface that already
+     * names both the test and problem — a list row, a modal title — must pass
      * `"meta"`**, or the identity is rendered twice; that duplication is why
      * this prop exists. `"meta"` keeps everything that is *not* identity
      * (topic/rating/status badges, Ask, Discuss, the details popover), which a
      * wrapper's own header rarely carries. `"none"` drops the header entirely
      * for embeddings that supply all of their own chrome.
      */
-    type ProblemHeader = "full" | "number" | "meta" | "none";
+    type ProblemHeader = "full" | "number" | "meta" | "none" | "review";
     /**
      * The official-solutions disclosure. Hidden by default and never inferred:
      * a solution restates the answer, so revealing one mid-attempt (or under a
@@ -76,6 +78,14 @@
          */
         externalLinks?: boolean;
         class?: string;
+        /** Current submission outcome (e.g. correct, incorrect, skipped). Overrides lifetime status. */
+        attemptStatus?: StatusKind;
+        /** Whether this problem was flagged by the student during the session. */
+        flagged?: boolean;
+        /** Time spent on this problem. Null hides it. */
+        elapsedMs?: number | null;
+        /** Additional action elements rendered in the header nav (e.g. expand modal button). */
+        actions?: Snippet;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
         onOrganizationChange?: (state: PersonalProblemState) => void;
@@ -99,6 +109,10 @@
         showOrganization = false,
         externalLinks = true,
         class: className,
+        attemptStatus,
+        flagged = false,
+        elapsedMs = null,
+        actions,
         onEnter,
         onOrganizationChange,
         onAsk,
@@ -110,8 +124,8 @@
     let detailsOpen = $state(false);
     // Identity can be split when surrounding chrome names the test but not the
     // individual problem — see `ProblemHeader`.
-    let showNumber = $derived(header === "full" || header === "number");
-    let showSource = $derived(header === "full");
+    let showNumber = $derived(header === "full" || header === "number" || header === "review");
+    let showSource = $derived(header === "full" || header === "review");
     let topicName = $derived(topicLabel(problem.topic));
     // The signed-in user's interaction state: "solved" | "attempted" | "unseen".
     let status = $derived(statusFor(problem.progress));
@@ -227,9 +241,7 @@
                 {/if}
 
                 <div class="flex min-w-0 flex-col gap-1.5">
-                    <!-- The source is rendered only under `header="full"`. A caller
-                         that already names the test can use `"number"` to retain the
-                         problem number alongside the metadata without repeating it. -->
+                    <!-- The source is rendered under `header="full"` or `header="review"`. -->
                     {#if showSource}
                         {#if problem.tests?.name}
                             <div class="flex min-w-0 items-center gap-1.5">
@@ -260,12 +272,26 @@
                     <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                         {#if topicName}{@render badge(topicName)}{/if}
                         {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}
-                        {#if status === "solved"}
+                        {#if attemptStatus}
+                            <StatusTag status={attemptStatus} size="sm" />
+                        {:else if status === "solved"}
                             <StatusTag status="solved" size="sm" />
                         {:else if status === "attempted"}
                             <StatusTag status="attempted" size="sm" />
                         {:else if status === "skipped_only"}
                             <StatusTag status="skipped" label="Skipped only" size="sm" />
+                        {/if}
+                        {#if flagged}
+                            <Icon name="flag" class="size-[1.1em] text-unsure" fill />
+                        {/if}
+                        {#if elapsedMs != null}
+                            <span
+                                class="inline-flex shrink-0 items-center gap-1 font-mono tabular-nums text-muted-foreground type-caption"
+                                title="Time spent on this problem"
+                            >
+                                <Icon name="schedule" class="size-[1em]" />
+                                {formatElapsed(elapsedMs)}
+                            </span>
                         {/if}
                         {#if reviewScheduleFor(problem.progress) === "due"}
                             <StatusTag status="review" label="Review due" size="sm" />
@@ -407,6 +433,8 @@
                         </div>
                     </div>
                 </details>
+
+                {@render actions?.()}
             </nav>
         </header>
     {/if}

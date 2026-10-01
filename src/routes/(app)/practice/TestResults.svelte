@@ -366,23 +366,24 @@
         <div class="flex flex-col gap-3">
             {#each history as entry, index (entry.problem.id)}
                 <div id={`test-review-${index}`} class="scroll-mt-4">
-                    <div class="mb-1.5 flex justify-end">
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onclick={() => openProblem(index)}
-                            aria-label={`Open problem ${entry.problem.n + 1} in focused view`}
-                            title="Open in focused view"
-                            class="text-muted-foreground hover:text-primary-foreground"
-                        >
-                            <Icon name="open_in_full" />
-                        </Button>
-                    </div>
                     <ProblemReview
                         {entry}
                         elapsedMs={entry.elapsedMs}
                         showOrganization
-                    />
+                    >
+                        {#snippet actions()}
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onclick={() => openProblem(index)}
+                                aria-label={`Open problem ${entry.problem.n + 1} in focused view`}
+                                title="Open in focused view"
+                                class="text-muted-foreground hover:text-foreground"
+                            >
+                                <Icon name="open_in_full" />
+                            </Button>
+                        {/snippet}
+                    </ProblemReview>
                 </div>
             {/each}
         </div>
