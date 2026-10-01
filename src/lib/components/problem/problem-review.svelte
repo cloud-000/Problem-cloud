@@ -67,11 +67,18 @@
                         href={testHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="inline-flex min-w-0 items-center gap-0.5 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        class="group inline-flex min-w-0 items-center gap-0.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
                         title={`Open ${entry.problem.tests.name} on Art of Problem Solving`}
                     >
-                        <span class="truncate">{entry.problem.tests.name}</span>
-                        <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+                        <span class="truncate underline-offset-2 group-hover:underline">
+                            {entry.problem.tests.name}
+                        </span>
+                        {#if !problemHref}
+                            <Icon
+                                name="open_in_new"
+                                class="size-[0.85em] shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground"
+                            />
+                        {/if}
                     </a>
                 {:else}
                     <span class="truncate font-medium text-muted-foreground">
@@ -85,11 +92,16 @@
                     href={problemHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="inline-flex shrink-0 items-center gap-0.5 font-mono text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    class="group inline-flex shrink-0 items-center gap-0.5 font-mono text-muted-foreground transition-colors hover:text-foreground"
                     title="Open this problem on Art of Problem Solving"
                 >
-                    #{entry.problem.n + 1}
-                    <Icon name="open_in_new" class="size-[0.9em] shrink-0" />
+                    <span class="underline-offset-2 group-hover:underline">
+                        #{entry.problem.n + 1}
+                    </span>
+                    <Icon
+                        name="open_in_new"
+                        class="size-[0.85em] shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground"
+                    />
                 </a>
             {:else}
                 <span class="font-mono text-muted-foreground shrink-0">
