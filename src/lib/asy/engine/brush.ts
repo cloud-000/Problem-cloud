@@ -12,6 +12,8 @@ export interface BrushOptions {
     sampleSpacing: number;
     /** Adaptive centerline smoothing in 0..1. */
     smoothing: number;
+    /** Whether to taper the ends to needle points (calligraphy style). Defaults to false (full round marker caps). */
+    taper?: boolean;
 }
 
 interface PreparedSample extends PointerSample {
@@ -260,10 +262,13 @@ export function brushOutline(inputs: readonly PointerInput[], options: BrushOpti
             ? (hardwarePressure ?? 0.5)
             : PRESSURE_CARRY * filteredPressure + (1 - PRESSURE_CARRY) * target;
         const diameterRatio = MIN_DIAMETER_RATIO + (1 - MIN_DIAMETER_RATIO) * easePressure(filteredPressure);
-        const startTaper = taperLength <= 1e-9 ? 1 : smoothstep(samples[index].distance / taperLength);
-        const endTaper = taperLength <= 1e-9 ? 1 : smoothstep((totalLength - samples[index].distance) / taperLength);
-        const taper = 0.15 + 0.85 * Math.min(startTaper, endTaper);
-        radii.push(Math.max(1e-6, options.size * diameterRatio * taper / 2));
+        let taper = 1;
+        if (options.taper) {
+            const startTaper = taperLength <= 1e-9 ? 1 : smoothstep(samples[index].distance / taperLength);
+            const endTaper = taperLength <= 1e-9 ? 1 : smoothstep((totalLength - samples[index].distance) / taperLength);
+            taper = 0.15 + 0.85 * Math.min(startTaper, endTaper);
+        }
+        radii.push(Math.max(1e-6, (options.size * diameterRatio * taper) / 2));
     }
 
     // Pressure filtering removes high-frequency thickness noise before the two

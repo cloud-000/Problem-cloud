@@ -21,13 +21,18 @@ function samples(
     }));
 }
 
+function strokeHeight(path: NonNullable<ReturnType<typeof brushOutline>>): number {
+    const ys = path.nodes.map(([, y]) => y);
+    return Math.max(...ys) - Math.min(...ys);
+}
+
 function verticalExtent(path: NonNullable<ReturnType<typeof brushOutline>>, nearX: number): number {
     const points = path.nodes.filter(([x]) => Math.abs(x - nearX) < 0.6);
     return Math.max(...points.map(([, y]) => y)) - Math.min(...points.map(([, y]) => y));
 }
 
 describe("brushOutline", () => {
-    test("is deterministic, cyclic, tapered, and finite", () => {
+    test("is deterministic, cyclic, finite, and has full round caps by default", () => {
         const input = samples([[0, 0], [5, 0], [10, 0], [15, 0], [20, 0]]);
         const first = brushOutline(input, options)!;
         const second = brushOutline(input, options)!;
@@ -35,22 +40,30 @@ describe("brushOutline", () => {
         expect(first.cyclic).toBe(true);
         expect(first.joins).toHaveLength(first.nodes.length);
         expect(first.nodes.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
-        expect(verticalExtent(first, 10)).toBeGreaterThan(verticalExtent(first, 0));
-        expect(verticalExtent(first, 10)).toBeGreaterThan(verticalExtent(first, 20));
+        // Full round caps preserve stroke diameter at both endpoints without tapering to needle points
+        expect(verticalExtent(first, 0)).toBeGreaterThan(options.size * 0.5);
+        expect(verticalExtent(first, 20)).toBeGreaterThan(options.size * 0.5);
+    });
+
+    test("supports optional taper when configured", () => {
+        const input = samples([[0, 0], [5, 0], [10, 0], [15, 0], [20, 0]]);
+        const tapered = brushOutline(input, { ...options, taper: true })!;
+        expect(verticalExtent(tapered, 10)).toBeGreaterThan(verticalExtent(tapered, 0));
+        expect(verticalExtent(tapered, 10)).toBeGreaterThan(verticalExtent(tapered, 20));
     });
 
     test("pen pressure changes width", () => {
         const points = [[0, 0], [5, 0], [10, 0], [15, 0], [20, 0]] as const;
         const light = brushOutline(samples(points, { pointerType: "pen", pressure: 0.1 }), options)!;
         const heavy = brushOutline(samples(points, { pointerType: "pen", pressure: 1 }), options)!;
-        expect(verticalExtent(heavy, 10)).toBeGreaterThan(verticalExtent(light, 10));
+        expect(strokeHeight(heavy)).toBeGreaterThan(strokeHeight(light));
     });
 
     test("mouse width responds to speed and ignores constant browser pressure", () => {
         const points = [[0, 0], [5, 0], [10, 0], [15, 0], [20, 0]] as const;
         const slow = brushOutline(samples(points, { pressure: 0.5, stepMs: 20 }), options)!;
         const fast = brushOutline(samples(points, { pressure: 0.5, stepMs: 1 }), options)!;
-        expect(verticalExtent(slow, 10)).toBeGreaterThan(verticalExtent(fast, 10));
+        expect(strokeHeight(slow)).toBeGreaterThan(strokeHeight(fast));
     });
 
     test("handles duplicates, stationary input, and sharp reversals", () => {
