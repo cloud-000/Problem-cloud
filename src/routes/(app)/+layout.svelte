@@ -626,7 +626,7 @@
       {/if}
       <div
          bind:this={appScrollViewport}
-         class="flex-1 overflow-y-auto overscroll-contain p-0"
+         class="flex-1 overflow-y-auto overscroll-contain p-0 [scrollbar-gutter:stable]"
       >
          {#if guestRouteBlocked}
             <main class="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center p-6">
