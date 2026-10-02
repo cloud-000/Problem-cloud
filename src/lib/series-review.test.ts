@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
     applyPersonalProblemState,
     normalizeReviewProblem,
+    reviewRowLabel,
     type SeriesReviewProblem,
+    type SeriesReviewTest,
 } from "./series-review";
 
 describe("series review canonical progress", () => {
@@ -83,5 +85,31 @@ describe("series review canonical progress", () => {
                 engagement: null,
             }),
         ).toBe(problem);
+    });
+
+    test("reviewRowLabel formats division and format, or falls back to test name", () => {
+        const amcTest: SeriesReviewTest = {
+            id: 1,
+            name: "2024 AMC 10A",
+            year: 2024,
+            division: null,
+            division_order: null,
+            format: "A",
+            format_order: 1,
+            problems: [],
+        };
+        expect(reviewRowLabel(amcTest)).toBe("A");
+
+        const mathcountsTest: SeriesReviewTest = {
+            id: 2,
+            name: "2024 Chapter Sprint",
+            year: 2024,
+            division: "Chapter",
+            division_order: 1,
+            format: "Sprint",
+            format_order: 1,
+            problems: [],
+        };
+        expect(reviewRowLabel(mathcountsTest)).toBe("Chapter · Sprint");
     });
 });

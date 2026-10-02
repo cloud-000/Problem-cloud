@@ -126,6 +126,21 @@
         return [...groups.entries()];
     });
     let showTestColumn = $derived(yearGroups.some(([, rows]) => rows.length > 1));
+
+    /**
+     * Compute a consistent column width for all rows in this series based on the
+     * longest label across all tests in the series (e.g. compact for "A"/"B" or "I"/"II",
+     * wider when labels like "Theory", "Sprint", or "Target" appear).
+     */
+    let maxTestLabelLength = $derived(
+        Math.max(0, ...tests.map((test) => reviewRowLabel(test).length)),
+    );
+    let testColumnClass = $derived(
+        maxTestLabelLength <= 3
+            ? { th: "w-12 text-center", cell: "max-w-12 text-center", inner: "max-w-10 text-center" }
+            : { th: "w-28 text-left", cell: "max-w-28 text-left", inner: "max-w-24 text-left" },
+    );
+
     let yearGroupRowStarts = $derived.by(() => {
         let next = 2;
         return yearGroups.map(([, rows]) => {
@@ -200,7 +215,7 @@
         return Math.max(0, $yearGroupVirtualizer.getTotalSize() - renderedEnd);
     });
     let matrixColumnCount = $derived(
-        columns.length + (showTestColumn ? 4 : 3),
+        columns.length + (showTestColumn ? 3 : 2),
     );
 
     function measureYearGroup(node: HTMLElement) {
@@ -341,8 +356,7 @@
             >
                 <thead bind:this={tableHead}><tr>
                     <th scope="col" class="sticky left-0 z-30 w-16 bg-surface-container-low px-2 py-1 text-left type-caption text-muted-foreground">Year</th>
-                    {#if showTestColumn}<th scope="col" class="sticky left-16 z-30 w-32 bg-surface-container-low px-2 py-1 text-left type-caption text-muted-foreground">Test</th>{/if}
-                    <th scope="col" class="w-auto p-0 border-none"></th>
+                    {#if showTestColumn}<th scope="col" class={cn("sticky left-16 z-30 bg-surface-container-low px-2 py-1 type-caption text-muted-foreground", testColumnClass.th)}>Test</th>{/if}
                     {#each columns as column (column)}<th scope="col" class="size-8 min-w-8 text-center type-caption font-mono text-muted-foreground">{column + 1}</th>{/each}
                     <th scope="col" class="w-auto p-0 border-none"></th>
                 </tr></thead>
@@ -367,8 +381,7 @@
                             {@const byNumber = new Map(test.problems.map((problem) => [problem.n, problem]))}
                             <tr aria-rowindex={yearGroupRowStarts[virtualGroup.index] + rowIndex}>
                                 {#if rowIndex === 0}<th scope="rowgroup" rowspan={yearTests.length} class="sticky left-0 z-20 w-16 bg-surface-container-low px-2 text-left align-top type-caption text-foreground">{year ?? "Other"}</th>{/if}
-                                {#if showTestColumn}<th scope="row" class="sticky left-16 z-10 max-w-32 bg-surface-container-low px-2 text-left type-caption text-foreground" title={test.name}><span class="block max-w-28 truncate">{reviewRowLabel(test)}</span></th>{/if}
-                                <td class="p-0 border-none"></td>
+                                {#if showTestColumn}<th scope="row" class={cn("sticky left-16 z-10 bg-surface-container-low px-2 type-caption text-foreground", testColumnClass.cell)} title={test.name}><span class={cn("block truncate", testColumnClass.inner)}>{reviewRowLabel(test)}</span></th>{/if}
                                 {#each columns as column (column)}
                                     {@const problem = byNumber.get(column)}
                                     <td class="size-8 min-w-8 p-0 text-center align-middle">
