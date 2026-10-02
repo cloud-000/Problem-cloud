@@ -17,14 +17,23 @@
     let renderEl: HTMLDivElement | null = null;
     let observer: MutationObserver | null = null;
 
-    // KaTeX rendering configuration matching the legacy app configuration
+    // KaTeX rendering configuration matching the legacy app configuration.
+    // Starred environments (e.g. align*) are listed before unstarred ones so
+    // auto-render matches the longer delimiter prefix.
     const delimiters = [
         { left: "$$", right: "$$", display: true },
         { left: "$", right: "$", display: false },
         { left: "\\(", right: "\\)", display: false },
         { left: "\\[", right: "\\]", display: true },
+        { left: "\\begin{equation*}", right: "\\end{equation*}", display: true },
         { left: "\\begin{equation}", right: "\\end{equation}", display: true },
+        { left: "\\begin{align*}", right: "\\end{align*}", display: true },
         { left: "\\begin{align}", right: "\\end{align}", display: true },
+        { left: "\\begin{alignat*}", right: "\\end{alignat*}", display: true },
+        { left: "\\begin{alignat}", right: "\\end{alignat}", display: true },
+        { left: "\\begin{gather*}", right: "\\end{gather*}", display: true },
+        { left: "\\begin{gather}", right: "\\end{gather}", display: true },
+        { left: "\\begin{CD}", right: "\\end{CD}", display: true },
     ];
 
     const macros = {

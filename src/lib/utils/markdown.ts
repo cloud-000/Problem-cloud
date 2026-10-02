@@ -188,7 +188,27 @@ const FENCE = /^\s*(`{3,}|~{3,})\s*[\w+-]*\s*$/;
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*)$/;
 const RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
-const BULLET = /^(\s*)([-*+])\s+(.*)$/;
+function matchBullet(line: string): RegExpExecArray | null {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    const standard = /^(\s*)([-*+]|•)\s+(.*)$/.exec(line);
+    if (standard) return standard;
+    const unicode = /^(\s*)(•)\s*(.*)$/.exec(line);
+    if (unicode) return unicode;
+    if (trimmed.startsWith("*")) {
+        if (/^\*{3,}\s*$/.test(trimmed)) return null;
+        if (trimmed.startsWith("**")) return null;
+        if (/^\*[^\s*](?:.*[^\s*])?\*$/.test(trimmed)) return null;
+        if (/^\*[A-Za-z0-9_ -]+[:.]?\*\s+/.test(trimmed)) return null;
+        if (trimmed === "*/") return null;
+
+        const indentMatch = /^(\s*)\*(.*)$/.exec(line);
+        if (indentMatch && indentMatch[2].trim().length > 0) {
+            return [line, indentMatch[1], "*", indentMatch[2].trimStart()];
+        }
+    }
+    return null;
+}
 const ORDERED = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const TABLE_DIVIDER = /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/;
@@ -292,7 +312,7 @@ function parseBlocks(text: string): ASTNode[] {
             continue;
         }
 
-        const bullet = BULLET.exec(line);
+        const bullet = matchBullet(line);
         const ordered = ORDERED.exec(line);
         if (bullet || ordered) {
             flushParagraph();
@@ -311,12 +331,12 @@ function parseBlocks(text: string): ASTNode[] {
                 if (!row.trim()) {
                     // A blank line ends the list unless another item follows it.
                     const next = lines[index + 1] ?? "";
-                    const continues = isOrdered ? ORDERED.test(next) : BULLET.test(next);
+                    const continues = isOrdered ? ORDERED.test(next) : matchBullet(next) !== null;
                     if (!continues) break;
                     index += 1;
                     continue;
                 }
-                const item = isOrdered ? ORDERED.exec(row) : BULLET.exec(row);
+                const item = isOrdered ? ORDERED.exec(row) : matchBullet(row);
                 if (item) {
                     flushItem();
                     current.push(item[3]);
@@ -330,7 +350,7 @@ function parseBlocks(text: string): ASTNode[] {
                     FENCE.test(row) ||
                     QUOTE.test(row) ||
                     RULE.test(row) ||
-                    (isOrdered ? BULLET.test(row) : ORDERED.test(row))
+                    (isOrdered ? matchBullet(row) !== null : ORDERED.test(row))
                 ) {
                     break;
                 }

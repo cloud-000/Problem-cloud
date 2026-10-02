@@ -43,7 +43,7 @@
             <!-- `pc-md` styles the block markup only markdown produces. It has to
                  land on LaTeX's render element, because that is the ancestor of
                  the injected HTML in the clone KaTeX actually renders. -->
-            <LaTeX class={format === "markdown" ? "pc-md" : ""}>{@html segment.html}</LaTeX>
+            <LaTeX class={format === "markdown" ? "pc-md" : "pc-statement"}>{@html segment.html}</LaTeX>
         {/if}
     {/each}
 </div>

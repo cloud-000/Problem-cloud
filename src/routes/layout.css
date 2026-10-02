@@ -726,28 +726,50 @@
    component-scoped rules never reach it. Spacing is set with margins between
    siblings rather than on every block, so a reply never opens or closes with a
    stray gap inside its bubble. */
+.pc-statement {
+    white-space: pre-wrap;
+}
+
+.pc-statement ul,
+.pc-statement ol,
+.pc-statement table {
+    white-space: normal;
+}
+
 .pc-md > * + * {
     margin-top: 0.65em;
 }
 
 .pc-md ul,
-.pc-md ol {
+.pc-md ol,
+.pc-statement ul,
+.pc-statement ol {
     padding-left: 1.35em;
 }
 
-.pc-md ul {
+.pc-statement ul,
+.pc-statement ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.pc-md ul,
+.pc-statement ul {
     list-style: disc;
 }
 
-.pc-md ol {
+.pc-md ol,
+.pc-statement ol {
     list-style: decimal;
 }
 
-.pc-md li + li {
+.pc-md li + li,
+.pc-statement li + li {
     margin-top: 0.3em;
 }
 
-.pc-md li::marker {
+.pc-md li::marker,
+.pc-statement li::marker {
     color: var(--color-muted-foreground);
 }
 

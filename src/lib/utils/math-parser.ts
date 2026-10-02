@@ -23,7 +23,7 @@ export type ASTNode =
 
 // A single cell of an allowlisted HTML table. `header` distinguishes <th> from
 // <td>. `children` is the cell's inner content re-parsed through the inline
-// parser, so BBCode and `$…$` math inside cells still work.
+// parser, so BBCode and `$\dots$` math inside cells still work.
 export interface TableCell {
     header: boolean;
     children: ASTNode[];
@@ -262,7 +262,7 @@ function parseBBCode(text: string): ASTNode[] {
 // --- Allowlisted HTML fragments -------------------------------------------
 //
 // Statements may embed a *small* allowlist of HTML fragments used by the
-// source scraper: tables, explicit line breaks, and centered content.
+// source scraper: tables, explicit line breaks, lists, and centered content.
 // Everything else stays escaped exactly as before — this is NOT a general HTML
 // hole. We never re-emit any tag or attribute from the input; the structure is
 // rebuilt from scratch in `astToHtml`, and nested content is parsed again so it
@@ -272,7 +272,7 @@ function parseBBCode(text: string): ASTNode[] {
 // input is authored contest content, and the output is rebuilt from fixed
 // templates below; attributes are only consumed so they can never reach HTML.
 const HTML_FRAGMENT_REGEX =
-    /<table\b[^>]*>|<center\b[^>]*>|<br\b[^>]*\/?>/i;
+    /<table\b[^>]*>|<center\b[^>]*>|<br\b[^>]*\/?>|<(?:ul|ol)\b[^>]*>/i;
 
 // HTML-looking text inside a BBCode verbatim block belongs to the code/asy
 // payload, not to the statement markup. The normal BBCode parser already
@@ -360,6 +360,59 @@ function matchTable(
     return { end: -1, inner: "" };
 }
 
+function matchHtmlList(
+    text: string,
+    startIndex: number,
+    tag: "ul" | "ol",
+): { end: number; inner: string } {
+    const openTag = new RegExp(`<${tag}\\b[^>]*>`, "gi");
+    const closeTag = new RegExp(`</${tag}\\s*>`, "gi");
+    openTag.lastIndex = startIndex;
+    closeTag.lastIndex = startIndex;
+
+    let depth = 1;
+    let pos = startIndex;
+
+    while (depth > 0 && pos < text.length) {
+        openTag.lastIndex = pos;
+        closeTag.lastIndex = pos;
+
+        const nextOpen = openTag.exec(text);
+        const nextClose = closeTag.exec(text);
+
+        if (!nextClose) return { end: -1, inner: "" };
+
+        if (nextOpen && nextOpen.index < nextClose.index) {
+            depth++;
+            pos = nextOpen.index + nextOpen[0].length;
+        } else {
+            depth--;
+            if (depth === 0) {
+                return {
+                    end: nextClose.index + nextClose[0].length,
+                    inner: text.slice(startIndex, nextClose.index),
+                };
+            }
+            pos = nextClose.index + nextClose[0].length;
+        }
+    }
+    return { end: -1, inner: "" };
+}
+
+function parseHtmlListItems(innerHtml: string): ASTNode[][] {
+    const items: ASTNode[][] = [];
+    const liRegex = /<li\b[^>]*>([\s\S]*?)(?:<\/li\s*>|(?=<li\b)|$)/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = liRegex.exec(innerHtml)) !== null) {
+        const itemContent = match[1].trim();
+        if (itemContent) {
+            items.push(parseBlocksAndBBCode(itemContent));
+        }
+    }
+    return items;
+}
+
 // Extract all `<tr>…</tr>` rows from a chunk of table markup, re-parsing each
 // cell's inner content through the BBCode/inline parser. Any stray markup
 // outside a <tr> or outside a <td>/<th> is ignored.
@@ -400,8 +453,235 @@ function parseTable(inner: string): ASTNode | null {
     return { type: "table", head, body };
 }
 
+// --- List and Block detection in authored statements ----------------------
+//
+// Math statements (and forum/wiki scraped content) frequently include lists
+// formatted as standard Markdown bullets (`* `, `- `, `+ `), Unicode bullets
+// (`• `), ordered lists (`1. `, `1) `, `(1) `), or bare MediaWiki bullets (`*Item`).
+// We disambiguate bare `*` from italic labels (`*Note:*`), full-line italics
+// (`*Party of Five*`), dividers (`***`), and markdown bold (`**`).
+export interface ListItemMatch {
+    ordered: boolean;
+    content: string;
+}
+
+export function matchListItem(line: string): ListItemMatch | null {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+
+    // Ordered list: 1. item, 1) item, (1) item
+    const orderedMatch = /^(?:\d{1,9}[.)]|\(\d{1,9}\))\s+(.*)$/.exec(trimmed);
+    if (orderedMatch) {
+        return { ordered: true, content: orderedMatch[1] };
+    }
+
+    // Standard markdown bullet: - item, + item, * item
+    const standardBullet = /^[-+*]\s+(.*)$/.exec(trimmed);
+    if (standardBullet) {
+        return { ordered: false, content: standardBullet[1] };
+    }
+
+    // Unicode bullet: • item or •item
+    const unicodeBullet = /^•\s*(.*)$/.exec(trimmed);
+    if (unicodeBullet) {
+        return { ordered: false, content: unicodeBullet[1] };
+    }
+
+    // MediaWiki bullet starting with "*" without space:
+    if (trimmed.startsWith("*")) {
+        // Exclude dividers: ***
+        if (/^\*{3,}\s*$/.test(trimmed)) return null;
+        // Exclude markdown bold: **...**
+        if (trimmed.startsWith("**")) return null;
+        // Exclude full-line italics: *italic text*
+        if (/^\*[^\s*](?:.*[^\s*])?\*$/.test(trimmed)) return null;
+        // Exclude italic labels/prefixes: *Note:* or *Remark.* or *H1.*
+        if (/^\*[A-Za-z0-9_ -]+[:.]?\*\s+/.test(trimmed)) return null;
+        // Code closing comment: */
+        if (trimmed === "*/") return null;
+
+        const content = trimmed.slice(1).trimStart();
+        if (content.length > 0) {
+            return { ordered: false, content };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Parses a span of statement text, extracting block lists (ordered and unordered)
+ * while handing non-list text to `parseBBCode`. Verbatim tags like `[code]` and
+ * `[asy]`, as well as multiline math blocks, are protected so markers inside
+ * diagrams/code/math are never split.
+ */
+function parseBlocksAndBBCode(text: string): ASTNode[] {
+    if (!text.includes("\n")) {
+        return parseBBCode(text);
+    }
+
+    const lines = text.split("\n");
+    const nodes: ASTNode[] = [];
+    let proseLines: string[] = [];
+
+    const flushProse = () => {
+        if (proseLines.length === 0) return;
+        const chunk = proseLines.join("\n");
+        proseLines = [];
+        nodes.push(...parseBBCode(chunk));
+    };
+
+    let inVerbatim: "code" | "asy" | null = null;
+    let inMathEnv: string | null = null;
+    let inDisplayMath: "$$" | "\\[" | null = null;
+    let i = 0;
+
+    while (i < lines.length) {
+        const line = lines[i];
+        const lower = line.toLowerCase();
+
+        if (inVerbatim) {
+            proseLines.push(line);
+            if (lower.includes(`[/${inVerbatim}]`)) inVerbatim = null;
+            i++;
+            continue;
+        }
+
+        if (inMathEnv) {
+            proseLines.push(line);
+            if (line.includes(`\\end{${inMathEnv}}`)) inMathEnv = null;
+            i++;
+            continue;
+        }
+
+        if (inDisplayMath) {
+            proseLines.push(line);
+            if (line.includes(inDisplayMath === "$$" ? "$$" : "\\]")) inDisplayMath = null;
+            i++;
+            continue;
+        }
+
+        if (lower.includes("[code]")) {
+            inVerbatim = "code";
+            proseLines.push(line);
+            if (lower.includes("[/code]")) inVerbatim = null;
+            i++;
+            continue;
+        }
+
+        if (lower.includes("[asy")) {
+            inVerbatim = "asy";
+            proseLines.push(line);
+            if (lower.includes("[/asy]")) inVerbatim = null;
+            i++;
+            continue;
+        }
+
+        const envMatch = line.match(/\\begin\{(align\*?|alignat\*?|gather\*?|equation\*?|multline\*?|CD)\}/);
+        if (envMatch) {
+            const env = envMatch[1];
+            proseLines.push(line);
+            if (!line.includes(`\\end{${env}}`)) {
+                inMathEnv = env;
+            }
+            i++;
+            continue;
+        }
+
+        if (line.includes("$$")) {
+            const count = (line.match(/\$\$/g) || []).length;
+            if (count % 2 === 1) {
+                inDisplayMath = "$$";
+                proseLines.push(line);
+                i++;
+                continue;
+            }
+        }
+
+        if (line.includes("\\[") && !line.includes("\\]")) {
+            inDisplayMath = "\\[";
+            proseLines.push(line);
+            i++;
+            continue;
+        }
+
+        const match = matchListItem(line);
+        if (match) {
+            flushProse();
+            const isOrdered = match.ordered;
+            const items: ASTNode[][] = [];
+            let currentItemLines: string[] = [match.content];
+
+            const flushItem = () => {
+                if (currentItemLines.length === 0) return;
+                const itemText = currentItemLines.join("\n").trim();
+                currentItemLines = [];
+                if (itemText) {
+                    items.push(parseBlocksAndBBCode(itemText));
+                }
+            };
+
+            i++;
+            while (i < lines.length) {
+                const nextLine = lines[i];
+                const nextTrimmed = nextLine.trim();
+
+                // Blank line handling: continues list if another item of same type follows
+                if (!nextTrimmed) {
+                    let lookahead = i + 1;
+                    while (lookahead < lines.length && !lines[lookahead].trim()) {
+                        lookahead++;
+                    }
+                    if (lookahead < lines.length) {
+                        const lookaheadMatch = matchListItem(lines[lookahead]);
+                        if (lookaheadMatch && lookaheadMatch.ordered === isOrdered) {
+                            i = lookahead;
+                            flushItem();
+                            currentItemLines.push(lookaheadMatch.content);
+                            i++;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
+                const nextMatch = matchListItem(nextLine);
+                if (nextMatch && nextMatch.ordered === isOrdered) {
+                    flushItem();
+                    currentItemLines.push(nextMatch.content);
+                    i++;
+                    continue;
+                }
+
+                if (nextMatch) break;
+
+                // Indented line is a continuation line of the current item
+                if (/^\s{2,}/.test(nextLine)) {
+                    currentItemLines.push(nextLine.trim());
+                    i++;
+                    continue;
+                }
+
+                break;
+            }
+
+            flushItem();
+            if (items.length > 0) {
+                nodes.push({ type: "list", ordered: isOrdered, items });
+            }
+            continue;
+        }
+
+        proseLines.push(line);
+        i++;
+    }
+
+    flushProse();
+    return nodes;
+}
+
 // Split raw statement text into an AST, extracting allowlisted HTML fragments
-// at the top level and handing every other span to the BBCode parser.
+// at the top level and handing every other span to the block/BBCode parser.
 function parseWithHtml(text: string): ASTNode[] {
     const nodes: ASTNode[] = [];
     let rest = text;
@@ -411,7 +691,7 @@ function parseWithHtml(text: string): ASTNode[] {
         if (!open) break;
 
         if (open.index > 0) {
-            nodes.push(...parseBBCode(rest.slice(0, open.index)));
+            nodes.push(...parseBlocksAndBBCode(rest.slice(0, open.index)));
         }
 
         const raw = open[0];
@@ -421,15 +701,29 @@ function parseWithHtml(text: string): ASTNode[] {
             continue;
         }
 
+        const listMatch = /^<(ul|ol)\b/i.exec(raw);
+        if (listMatch) {
+            const tag = listMatch[1].toLowerCase() as "ul" | "ol";
+            const { end, inner } = matchHtmlList(rest, open.index + raw.length, tag);
+            if (end === -1) {
+                nodes.push(...parseBlocksAndBBCode(rest.slice(open.index)));
+                return nodes;
+            }
+            const items = parseHtmlListItems(inner);
+            if (items.length > 0) {
+                nodes.push({ type: "list", ordered: tag === "ol", items });
+            }
+            rest = rest.slice(end);
+            continue;
+        }
+
         if (/^<center\b/i.test(raw)) {
             const { end, inner } = matchCenter(
                 rest,
                 open.index + raw.length,
             );
             if (end === -1) {
-                // An unterminated fragment is not trusted as markup. Keep it
-                // as escaped text, including any later allowlisted-looking tags.
-                nodes.push(...parseBBCode(rest.slice(open.index)));
+                nodes.push(...parseBlocksAndBBCode(rest.slice(open.index)));
                 return nodes;
             }
             nodes.push({ type: "center", children: parseWithHtml(inner) });
@@ -439,9 +733,7 @@ function parseWithHtml(text: string): ASTNode[] {
 
         const { end, inner } = matchTable(rest, open.index + raw.length);
         if (end === -1) {
-            // An unterminated fragment is not trusted as markup. Keep it as
-            // escaped text, including any later allowlisted-looking tags.
-            nodes.push(...parseBBCode(rest.slice(open.index)));
+            nodes.push(...parseBlocksAndBBCode(rest.slice(open.index)));
             return nodes;
         }
 
@@ -449,13 +741,12 @@ function parseWithHtml(text: string): ASTNode[] {
         if (table) {
             nodes.push(table);
         } else {
-            // Malformed/empty table: keep the raw span as (escaped) text.
-            nodes.push(...parseBBCode(rest.slice(open.index, end)));
+            nodes.push(...parseBlocksAndBBCode(rest.slice(open.index, end)));
         }
         rest = rest.slice(end);
     }
 
-    if (rest.length > 0) nodes.push(...parseBBCode(rest));
+    if (rest.length > 0) nodes.push(...parseBlocksAndBBCode(rest));
     return nodes;
 }
 
@@ -466,7 +757,7 @@ function parseWithHtml(text: string): ASTNode[] {
 // swapping the environment name. We only touch text *inside* math delimiters so
 // a literal `\begin{tabular}` appearing as prose is left untouched.
 export const MATH_REGION_REGEX =
-    /\$\$[\s\S]*?\$\$|\$[\s\S]*?\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g;
+    /\$\$[\s\S]*?\$\$|\$[\s\S]*?\$|\\\([\s\S]*?\\\)|\\[[\s\S]*?\\]|\\begin\{(align\*?|alignat\*?|gather\*?|equation\*?|multline\*?|CD)\}[\s\S]*?\\end\{\1\}/g;
 
 export function preprocessTabular(text: string): string {
     if (!text.includes("tabular")) return text;
@@ -478,11 +769,70 @@ export function preprocessTabular(text: string): string {
 }
 
 /**
+ * Normalizes MediaWiki bold (`'''bold'''`), MediaWiki italic (`''italic''`),
+ * markdown bold (`**bold**`), and HTML formatting elements (`<b>`, `<i>`, etc.)
+ * to standard BBCode `[b]` and `[i]`.
+ * Math regions and verbatim blocks (`[code]`, `[asy]`) are masked so prime
+ * derivatives like `$f''(x)$`, symbols, and math comparisons like `$x < y$` are preserved.
+ */
+export function preprocessFormatting(text: string): string {
+    // Unwrap display environments wrapped in single '$' so KaTeX auto-render
+    // processes them in display mode rather than failing with inline-mode error.
+    text = text.replace(
+        /(?<!\$)\$(\s*\\begin\{(?:align\*?|alignat\*?|gather\*?|multline\*?)\}[\s\S]*?\\end\{(?:align\*?|alignat\*?|gather\*?|multline\*?)\}\s*)\$(?!\$)/g,
+        "$1",
+    );
+
+    if (!text.includes("''") && !text.includes("**") && !text.includes("<")) return text;
+
+    const mathMasked: string[] = [];
+    let masked = text.replace(MATH_REGION_REGEX, (m) => {
+        const idx = mathMasked.length;
+        mathMasked.push(m);
+        return `@@MATH_${idx}@@`;
+    });
+
+    const verbatimMasked: string[] = [];
+    masked = masked.replace(/\[(code|asy)\b[^\]]*\][\s\S]*?\[\/\1\]/gi, (m) => {
+        const idx = verbatimMasked.length;
+        verbatimMasked.push(m);
+        return `@@VERBATIM_${idx}@@`;
+    });
+
+    // MediaWiki bold '''text''' -> [b]text[/b]
+    masked = masked.replace(/'''([^\n']+?)'''/g, "[b]$1[/b]");
+    // MediaWiki italic ''text'' -> [i]text[/i]
+    masked = masked.replace(/''([^\n']+?)''/g, "[i]$1[/i]");
+    // Markdown bold **text** -> [b]text[/b]
+    masked = masked.replace(/\*\*([^\s*](?:[\s\S]*?[^\s*])?)\*\*/g, "[b]$1[/b]");
+
+    // HTML inline tags: <b>, <strong>, <i>, <em>, <u>, <s>, <strike>, <del>, <p>
+    masked = masked.replace(/<\/?(?:b|strong)\b[^>]*>/gi, (m) =>
+        m.startsWith("</") ? "[/b]" : "[b]",
+    );
+    masked = masked.replace(/<\/?(?:i|em)\b[^>]*>/gi, (m) =>
+        m.startsWith("</") ? "[/i]" : "[i]",
+    );
+    masked = masked.replace(/<\/?u\b[^>]*>/gi, (m) =>
+        m.startsWith("</") ? "[/u]" : "[u]",
+    );
+    masked = masked.replace(/<\/?(?:s|strike|del)\b[^>]*>/gi, (m) =>
+        m.startsWith("</") ? "[/s]" : "[s]",
+    );
+    masked = masked.replace(/<\/?p\b[^>]*>/gi, "\n\n");
+
+    masked = masked.replace(/@@VERBATIM_(\d+)@@/g, (_, idx) => verbatimMasked[+idx]);
+    masked = masked.replace(/@@MATH_(\d+)@@/g, (_, idx) => mathMasked[+idx]);
+
+    return masked;
+}
+
+/**
  * Parses a statement into an AST: swaps LaTeX `tabular`→`array` inside math,
  * extracts allowlisted HTML fragments, and parses everything else as BBCode.
  */
 export function parseMathStatement(text: string): ASTNode[] {
-    return parseWithHtml(preprocessTabular(text));
+    return parseWithHtml(preprocessFormatting(preprocessTabular(text)));
 }
 
 // --- HTML rendering -------------------------------------------------------

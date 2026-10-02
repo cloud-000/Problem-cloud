@@ -23,6 +23,14 @@ describe("block structure", () => {
         expect(markdownToHtml("- one\n- two")).toBe("<ul><li>one</li><li>two</li></ul>");
     });
 
+    test("bulleted lists with unicode bullet", () => {
+        expect(markdownToHtml("• one\n• two")).toBe("<ul><li>one</li><li>two</li></ul>");
+    });
+
+    test("bulleted lists with bare MediaWiki bullet", () => {
+        expect(markdownToHtml("*one\n*two")).toBe("<ul><li>one</li><li>two</li></ul>");
+    });
+
     test("numbered lists, in either delimiter", () => {
         expect(markdownToHtml("1. one\n2) two")).toBe("<ol><li>one</li><li>two</li></ol>");
     });

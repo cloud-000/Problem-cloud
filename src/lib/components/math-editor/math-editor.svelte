@@ -36,7 +36,7 @@
     let activeFocusId = $state<string | null>(null);
     let activeCursorPos = $state<number | null>(null);
 
-    const MATH_REGEX = /(?<!\\)(\$\$(.*?)(?<!\\)\$\$)|(?<!\\)(\$(.*?)(?<!\\)\$)|(?<!\\)(\\\((.*?)(?<!\\)\\\))|(?<!\\)(\\\[(.*?)(?<!\\)\\\])|(?<!\\)(\\begin\{equation\}([\s\S]*?)(?<!\\)\\end\{equation\})|(?<!\\)(\\begin\{align\}([\s\S]*?)(?<!\\)\\end\{align\})/g;
+    const MATH_REGEX = /(?<!\\)(\$\$(.*?)(?<!\\)\$\$)|(?<!\\)(\$(.*?)(?<!\\)\$)|(?<!\\)(\\\((.*?)(?<!\\)\\\))|(?<!\\)(\\\[(.*?)(?<!\\)\\\])|(?<!\\)(\\begin\{(align\*?|alignat\*?|gather\*?|equation\*?|CD)\}([\s\S]*?)(?<!\\)\\end\{\10\})/g;
     const PLACEHOLDER = "\u200b";
 
     function withoutPlaceholders(text: string) {
@@ -77,9 +77,8 @@
             } else if (match[7] !== undefined) {
                 left = "\\["; right = "\\]"; val = match[8]; display = true;
             } else if (match[9] !== undefined) {
-                left = "\\begin{equation}"; right = "\\end{equation}"; val = match[10]; display = true;
-            } else if (match[11] !== undefined) {
-                left = "\\begin{align}"; right = "\\end{align}"; val = match[12]; display = true;
+                const env = match[10];
+                left = `\\begin{${env}}`; right = `\\end{${env}}`; val = match[11]; display = true;
             }
             
             result.push({
