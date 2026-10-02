@@ -10,6 +10,12 @@
     import { untrack } from "svelte";
     import { cn } from "$lib/utils";
     import { partitionProblemSolutions } from "./problem-solutions";
+    import {
+        fetchVideoMetadata,
+        formatVideoSubtitle,
+        formatVideoTitle,
+        type VideoMetadata,
+    } from "./video-metadata";
 
     type Props = {
         /** The problem's `official_solutions`; the panel self-hides when empty. */
@@ -41,6 +47,18 @@
     // initial-value read is deliberate, not a stale-closure bug.
     let expanded = $state(untrack(() => defaultOpen));
     let selected = $state(0);
+    let videoMetadata = $state<Record<string, VideoMetadata | null>>({});
+
+    $effect(() => {
+        if (!expanded) return;
+
+        for (const link of videoLinks) {
+            if (link in videoMetadata) continue;
+            fetchVideoMetadata(link).then((meta) => {
+                videoMetadata = { ...videoMetadata, [link]: meta };
+            });
+        }
+    });
 
     // Above this count the numbered pills would crowd the header, so the switcher
     // collapses to a compact dropdown instead.
@@ -138,6 +156,7 @@
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         variant="outline"
+                                        title={videoMetadata[link]?.title ?? link}
                                         class="group h-auto w-full min-w-0 justify-start gap-3 bg-background px-3 py-2.5 text-left shadow-xs hover:border-foreground/25 hover:bg-surface-container-low hover:text-foreground"
                                     >
                                         <Icon
@@ -146,14 +165,22 @@
                                             class="shrink-0 text-[1.35em] text-destructive"
                                         />
                                         <span class="flex min-w-0 flex-1 flex-col">
-                                            <span class="font-medium text-foreground">
-                                                Video solution{videoLinks.length > 1
-                                                    ? ` ${i + 1}`
-                                                    : ""}
+                                            <span class="line-clamp-2 text-sm font-medium text-foreground">
+                                                {formatVideoTitle(
+                                                    link,
+                                                    i,
+                                                    videoLinks.length,
+                                                    videoMetadata[link],
+                                                )}
                                             </span>
                                             <span
                                                 class="truncate text-xs font-normal text-muted-foreground"
-                                            >{link}</span>
+                                            >
+                                                {formatVideoSubtitle(
+                                                    link,
+                                                    videoMetadata[link],
+                                                )}
+                                            </span>
                                         </span>
                                         <Icon
                                             name="open_in_new"

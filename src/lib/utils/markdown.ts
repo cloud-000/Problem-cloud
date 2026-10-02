@@ -204,7 +204,7 @@ function matchBullet(line: string): RegExpExecArray | null {
 
         const indentMatch = /^(\s*)\*(.*)$/.exec(line);
         if (indentMatch && indentMatch[2].trim().length > 0) {
-            return [line, indentMatch[1], "*", indentMatch[2].trimStart()];
+            return [line, indentMatch[1], "*", indentMatch[2].trimStart()] as unknown as RegExpExecArray;
         }
     }
     return null;
