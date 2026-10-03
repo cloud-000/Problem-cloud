@@ -40,6 +40,11 @@
         "\\sun": "\\odot",
         "\\mbox": "\\text",
         "\\bigskip": "\\space",
+        // Text-mode-only symbols that scraped content uses inside math
+        // (e.g. `$\textdollar 2.00$`). KaTeX defines these in text mode
+        // alone, so map them to their math-mode equivalents.
+        "\\textdollar": "\\$",
+        "\\textunderscore": "\\_",
     };
 
     // Rebuild the visible output from the pristine source, then let KaTeX
