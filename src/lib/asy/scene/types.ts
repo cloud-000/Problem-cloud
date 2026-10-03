@@ -11,8 +11,13 @@
  *
  * COORDINATES: every position is stored in **asy-space** — y-up, origin
  * arbitrary, floating point, in asy user units. Only the SVG *view* flips y at
- * render time. So `serialize` is a literal dump of these numbers (faithful
- * round-trip) and `parse` stores asy numbers verbatim.
+ * render time. Positions `serialize` as a literal dump of these numbers
+ * (faithful round-trip) and `parse` stores asy numbers verbatim; pen widths
+ * convert between scene units and Asymptote points at that same boundary.
+ *
+ * Stroke dimensions (`Pen.lineWidth`, `Pen.fontSize`) are scene units too, so
+ * ink measures against geometry at every zoom. The codec alone converts
+ * between these and Asymptote's point-based `linewidth`/`fontsize`.
  */
 
 /** A 2D point in asy-space (y-up). */
@@ -51,12 +56,12 @@ export interface Pen {
      * `rgb(1,0,0)`. When set it wins over `color` on serialize.
      */
     namedColor?: string;
-    /** asy `linewidth(pt)`. */
+    /** Stroke width in scene units; paints lineWidth * viewport.scale pixels. */
     lineWidth?: number;
     dash?: Dash;
     /** asy `opacity(a)`, 0..1. */
     opacity?: number;
-    /** For labels: asy `fontsize(pt)`. */
+    /** For labels: font size in scene units (the codec converts pt on parse/serialize). */
     fontSize?: number;
 }
 

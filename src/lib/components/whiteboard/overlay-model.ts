@@ -12,7 +12,9 @@
  * (INVARIANTS §2).
  */
 import {
+    DEFAULT_FONT_SIZE_UNITS,
     elementBounds,
+    strokePadUnits,
     type Bounds,
     type Pair,
     type PathElement,
@@ -142,18 +144,21 @@ export interface WhiteboardOverlay extends WhiteboardRenderOverlay {
     selectedSegmentMarkers: Array<{ label: number; screen: Pair }>;
 }
 
-/** Label font size `render.ts` falls back to when a label carries no pen. */
-const DEFAULT_LABEL_FONT_SIZE = 14;
+/** Label font size the renderer falls back to, in scene units (14px at 100%). */
+const DEFAULT_LABEL_FONT_SIZE = DEFAULT_FONT_SIZE_UNITS;
+/** Reference pixel size the label box math is calibrated against. */
+const REFERENCE_LABEL_FONT_PX = 14;
 /** Narrowest a label's selection box may get, so short labels stay grabbable. */
 const MINIMUM_LABEL_WIDTH = 14;
 
 /**
  * Width of a label when no measurer is injected (SSR, tests). A crude
  * per-character average — `measureLabelWidth` exists precisely because this is
- * wrong for anything but plain ASCII at the default size.
+ * wrong for anything but plain ASCII at the default size. Takes screen pixels,
+ * matching what the renderer paints.
  */
-export function estimateLabelWidth(text: string, fontSize: number): number {
-    return text.length * fontSize * (7.5 / DEFAULT_LABEL_FONT_SIZE);
+export function estimateLabelWidth(text: string, fontSizePx: number): number {
+    return text.length * fontSizePx * (7.5 / REFERENCE_LABEL_FONT_PX);
 }
 
 export interface OverlayInput {
@@ -229,19 +234,20 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
     function elementScreenRect(element: SceneElement, padding = 0): ScreenRect | null {
         if (element.kind === "label") {
             const [x, y] = project(element.at);
-            // `render.ts` draws a label as `fillText(text without "$", …)`,
-            // centred on `at` at `${fontSize}px sans-serif`. Measuring that
-            // exact string against that exact font makes the box match the ink
+            // The renderer paints this label at fontPx pixels; measuring that
+            // exact string against that exact size makes the box match the ink
             // instead of approximating it.
             const text = element.text.replaceAll("$", "");
-            const fontSize = element.pen?.fontSize ?? DEFAULT_LABEL_FONT_SIZE;
+            const fontPx = input.toScreenLength(
+                element.pen?.fontSize ?? DEFAULT_LABEL_FONT_SIZE,
+            );
             const labelWidth = Math.max(
                 MINIMUM_LABEL_WIDTH,
-                input.measureLabelWidth?.(text, fontSize) ?? estimateLabelWidth(text, fontSize),
+                input.measureLabelWidth?.(text, fontPx) ?? estimateLabelWidth(text, fontPx),
             );
-            // Half-height scales with the font, reproducing the historical
+            // Half-height tracks the painted size, reproducing the historical
             // 9px/18px box at the default size.
-            const halfHeight = (fontSize / DEFAULT_LABEL_FONT_SIZE) * 9;
+            const halfHeight = (fontPx / REFERENCE_LABEL_FONT_PX) * 9;
             return {
                 x: x - labelWidth / 2 - padding,
                 y: y - halfHeight - padding,
@@ -250,7 +256,10 @@ export function buildOverlay(input: OverlayInput): WhiteboardOverlay {
             };
         }
         const bounds = elementBounds(element);
-        return bounds ? screenRect(bounds, padding) : null;
+        // Pad past the centerline bounds by the ink extent so the box clears
+        // thick strokes at any zoom; `padding` stays the fixed chrome margin.
+        const inkPad = input.toScreenLength(strokePadUnits(element));
+        return bounds ? screenRect(bounds, padding + inkPad) : null;
     }
 
     const {

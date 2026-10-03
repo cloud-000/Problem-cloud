@@ -15,7 +15,7 @@ const snapshot: WhiteboardRenderSnapshot = {
                 id: "filled-rectangle",
                 kind: "path",
                 path: { nodes: [[-2, -1], [-1, -1], [-1, 0], [-2, 0]], joins: ["--", "--", "--", "--"], cyclic: true },
-                pen: { namedColor: "blue", lineWidth: 2 },
+                pen: { namedColor: "blue", lineWidth: 0.05 },
                 fillPen: { namedColor: "orange", opacity: 0.25 },
             },
             {
@@ -32,7 +32,7 @@ const snapshot: WhiteboardRenderSnapshot = {
                 id: "tap",
                 kind: "dot",
                 at: [2, 1],
-                pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
+                pen: { namedColor: "blue", lineWidth: 0.15, opacity: 0.4 },
             },
             { id: "label", kind: "label", at: [0, 0], text: "$A&B<$" },
             { id: "ellipse", kind: "ellipse", center: [0, 0], axisX: [2, 0], axisY: [0, 1] },
@@ -66,6 +66,17 @@ describe("whiteboard export", () => {
         expect(svg).toContain('d="M 240,90 L');
         expect(svg).not.toContain("selection");
         expect(svg).not.toContain("<image");
+    });
+
+    test("exports identical ink from different zooms around the same center", () => {
+        const atReference = {} as HTMLCanvasElement;
+        registerCanvasSnapshot(atReference, snapshot);
+        const zoomed = {} as HTMLCanvasElement;
+        registerCanvasSnapshot(zoomed, {
+            ...snapshot,
+            viewport: { ...snapshot.viewport, scale: 80 },
+        });
+        expect(toSvgString(zoomed)).toBe(toSvgString(atReference));
     });
 
     test("rejects PNG export when an offscreen 2D context is unavailable", async () => {

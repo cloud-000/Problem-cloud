@@ -111,25 +111,31 @@ describe("projected geometry", () => {
 
 describe("adaptive pen styles", () => {
     test("default and black ink use the theme foreground", () => {
-        expect(penStroke(undefined, palette).color).toBe("#111");
-        expect(penStroke({ namedColor: "black" }, palette).color).toBe("#111");
+        expect(penStroke(undefined, palette, 40).color).toBe("#111");
+        expect(penStroke({ namedColor: "black" }, palette, 40).color).toBe("#111");
     });
 
     test("white ink becomes dark ink only in dark mode and colors remain authored", () => {
         const dark = { ...palette, isDark: true, foreground: "#eee" };
-        expect(penStroke({ namedColor: "white" }, dark).color).toBe("#191c1e");
-        expect(penStroke({ namedColor: "red" }, dark).color).toBe("rgb(255,0,0)");
-        expect(penStroke({ dash: "dashed", opacity: 0.5, lineWidth: 3 }, dark)).toMatchObject({
+        expect(penStroke({ namedColor: "white" }, dark, 40).color).toBe("#191c1e");
+        expect(penStroke({ namedColor: "red" }, dark, 40).color).toBe("rgb(255,0,0)");
+        expect(penStroke({ dash: "dashed", opacity: 0.5, lineWidth: 0.075 }, dark, 40)).toMatchObject({
             dash: [6, 4],
             opacity: 0.5,
-            width: 3,
         });
+        expect(penStroke({ lineWidth: 0.075 }, dark, 40).width).toBeCloseTo(3, 9);
     });
 
-    test("dots scale linearly from the size-1 pen baseline", () => {
-        expect(dotRadius(penStroke({ lineWidth: 1 }, palette))).toBe(3.5);
-        expect(dotRadius(penStroke({ lineWidth: 2 }, palette))).toBe(7);
-        expect(dotRadius(penStroke({ lineWidth: 4 }, palette))).toBe(14);
+    test("stroke widths scale with the viewport around the 100% reference", () => {
+        expect(penStroke({ lineWidth: 0.075 }, palette, 40).width).toBeCloseTo(3, 9);
+        expect(penStroke({ lineWidth: 0.075 }, palette, 80).width).toBeCloseTo(6, 9);
+        expect(penStroke({ lineWidth: 0.075 }, palette, 8).width).toBeCloseTo(0.6, 9);
+    });
+
+    test("dots scale linearly from the default pen baseline", () => {
+        expect(dotRadius(penStroke({ lineWidth: 0.025 }, palette, 40))).toBe(3.5);
+        expect(dotRadius(penStroke({ lineWidth: 0.05 }, palette, 40))).toBe(7);
+        expect(dotRadius(penStroke({ lineWidth: 0.1 }, palette, 40))).toBe(14);
     });
 });
 
@@ -252,7 +258,7 @@ describe("Canvas 2D rendering", () => {
                     id: "tap",
                     kind: "dot",
                     at: [0, 0],
-                    pen: { namedColor: "blue", lineWidth: 6, opacity: 0.4 },
+                    pen: { namedColor: "blue", lineWidth: 0.15, opacity: 0.4 },
                 }],
             },
             viewport: { width: 200, height: 200, scale: 40, origin: [100, 100] },

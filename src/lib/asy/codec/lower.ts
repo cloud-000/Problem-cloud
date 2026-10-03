@@ -226,6 +226,8 @@ function resolvePath(expr: PathExpr, syms: SymbolTable): Path {
     return { nodes, joins: [...expr.joins], cyclic: expr.cyclic };
 }
 
+import { ptToSceneUnits } from "../scene/pen";
+
 function clonePath(p: Path): Path {
     return { nodes: p.nodes.map((n) => [n[0], n[1]] as Pair), joins: [...p.joins], cyclic: p.cyclic };
 }
@@ -235,9 +237,10 @@ function lowerPen(expr: PenExpr | undefined): Pen | undefined {
     const pen: Pen = {};
     if (expr.namedColor !== undefined) pen.namedColor = expr.namedColor;
     if (expr.rgb !== undefined) pen.color = expr.rgb;
-    if (expr.lineWidth !== undefined) pen.lineWidth = expr.lineWidth;
+    // Asymptote spells widths in points; the Scene stores scene units.
+    if (expr.lineWidth !== undefined) pen.lineWidth = ptToSceneUnits(expr.lineWidth);
     if (expr.dash !== undefined) pen.dash = expr.dash as Pen["dash"];
     if (expr.opacity !== undefined) pen.opacity = expr.opacity;
-    if (expr.fontSize !== undefined) pen.fontSize = expr.fontSize;
+    if (expr.fontSize !== undefined) pen.fontSize = ptToSceneUnits(expr.fontSize);
     return Object.keys(pen).length ? pen : undefined;
 }

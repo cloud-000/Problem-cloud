@@ -1,9 +1,12 @@
 import {
     circlePointAt,
+    DEFAULT_FONT_SIZE_UNITS,
+    DEFAULT_LINE_WIDTH_UNITS,
     ellipsePointAt,
     pathCommands,
     positiveArcSweep,
     resolvePenColor,
+    unitsToScreenPx,
     type Pair,
     type Path,
     type PathCommand,
@@ -172,9 +175,11 @@ export interface StrokeStyle {
 }
 
 const DASH: Record<string, number[]> = {
-    dashed: [6, 4],
-    dotted: [1, 4],
-    longdashed: [12, 6],
+    // Stored in scene units (6px / 1px / 4px / 12px / 6px at 100%) so dashes
+    // measure against geometry like stroke widths do.
+    dashed: [0.15, 0.1],
+    dotted: [0.025, 0.1],
+    longdashed: [0.3, 0.15],
 };
 
 const canvasSnapshots = new WeakMap<HTMLCanvasElement, WhiteboardRenderSnapshot>();
@@ -250,7 +255,7 @@ export function projectedEllipseArc(
     return points;
 }
 
-export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette): StrokeStyle {
+export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette, scale: number): StrokeStyle {
     const rgb = resolvePenColor(pen);
     let color = palette.foreground;
     if (rgb) {
@@ -262,17 +267,17 @@ export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette): Str
     }
 
     const dash = typeof pen?.dash === "string" && pen.dash !== "solid"
-        ? (DASH[pen.dash] ?? [])
+        ? (DASH[pen.dash] ?? []).map((segment) => unitsToScreenPx(segment, scale))
         : [];
     return {
         color,
-        width: pen?.lineWidth ?? 1.5,
+        width: unitsToScreenPx(pen?.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS, scale),
         dash,
         opacity: pen?.opacity ?? 1,
     };
 }
 
-/** Use the size-1 pen's 7 px dot as the baseline and scale linearly with pen width. */
+/** A dot paints 3.5 line widths in radius, so it tracks zoom with the stroke. */
 export function dotRadius(style: StrokeStyle): number {
     return Math.max(0, style.width) * 3.5;
 }
@@ -387,14 +392,14 @@ export function drawSceneElement(
     selected = false,
 ): void {
     const project = (point: Pair) => projectPoint(point, viewport);
-    const style = penStroke(element.pen, palette);
+    const style = penStroke(element.pen, palette, viewport.scale);
     context.save();
 
     if (element.kind === "path") {
         const path = cachedPath(element.id, element.path, viewport, project);
         if (!path) tracePath(context, projectedPath(element.path, project));
         if (element.fillPen && element.path.cyclic) {
-            const fill = penStroke(element.fillPen, palette);
+            const fill = penStroke(element.fillPen, palette, viewport.scale);
             context.fillStyle = fill.color;
             context.globalAlpha = fill.opacity;
             if (path) context.fill(path);
@@ -421,7 +426,7 @@ export function drawSceneElement(
         if (path) context.fill(path);
         else context.fill();
         if (element.drawPen) {
-            applyStroke(context, penStroke(element.drawPen, palette));
+            applyStroke(context, penStroke(element.drawPen, palette, viewport.scale));
             if (path) context.stroke(path);
             else context.stroke();
         }
@@ -430,7 +435,7 @@ export function drawSceneElement(
         context.beginPath();
         context.arc(center[0], center[1], Math.abs(element.radius * viewport.scale), 0, Math.PI * 2);
         if (element.fillPen) {
-            const fill = penStroke(element.fillPen, palette);
+            const fill = penStroke(element.fillPen, palette, viewport.scale);
             context.fillStyle = fill.color;
             context.globalAlpha = fill.opacity;
             context.fill();
@@ -457,7 +462,7 @@ export function drawSceneElement(
             project,
         ));
         if (element.kind === "ellipse" && element.fillPen) {
-            const fill = penStroke(element.fillPen, palette);
+            const fill = penStroke(element.fillPen, palette, viewport.scale);
             context.fillStyle = fill.color;
             context.globalAlpha = fill.opacity;
             context.fill();
@@ -478,7 +483,7 @@ export function drawSceneElement(
         const point = project(element.at);
         context.fillStyle = selected ? palette.primary : style.color;
         context.globalAlpha = style.opacity;
-        context.font = `${element.pen?.fontSize ?? 14}px sans-serif`;
+        context.font = `${unitsToScreenPx(element.pen?.fontSize ?? DEFAULT_FONT_SIZE_UNITS, viewport.scale)}px sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
         context.fillText(element.text.replaceAll("$", ""), point[0], point[1]);

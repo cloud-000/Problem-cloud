@@ -1,5 +1,12 @@
 import type { Dash, Pen, RGB, SceneElement } from "./scene/types";
-import { resolvePenColor, rgbToNamedColor } from "./scene/pen";
+import {
+    DEFAULT_FONT_SIZE_UNITS,
+    DEFAULT_LINE_WIDTH_UNITS,
+    ptToSceneUnits,
+    resolvePenColor,
+    rgbToNamedColor,
+    sceneUnitsToPt,
+} from "./scene/pen";
 import { positiveArcSweep, principalEllipseGeometry } from "./scene/ellipse-geometry";
 import type { ToolKind } from "./engine/tools/types";
 
@@ -183,13 +190,19 @@ export function readElementProperty(element: SceneElement, id: EditorPropertyId)
         case "strokeColor": return penColorHex(stroke);
         case "fillEnabled": return fill !== undefined;
         case "fillColor": return penColorHex(fill ?? { namedColor: "gray" });
-        case "lineWidth": return stroke?.lineWidth ?? 3;
+        case "lineWidth": return sceneUnitsToPt(stroke?.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS);
         case "dash": return typeof stroke?.dash === "string" ? stroke.dash : "solid";
         case "strokeOpacity": return stroke?.opacity ?? 1;
         case "fillOpacity": return fill?.opacity ?? 0.2;
         case "labelText": return element.kind === "label" ? element.text : "";
-        case "fontSize": return element.kind === "label" ? (element.pen?.fontSize ?? 14) : 14;
-        case "pointSize": return element.kind === "dot" ? (element.pen?.lineWidth ?? 3) : 3;
+        case "fontSize":
+            return element.kind === "label"
+                ? sceneUnitsToPt(element.pen?.fontSize ?? DEFAULT_FONT_SIZE_UNITS)
+                : sceneUnitsToPt(DEFAULT_FONT_SIZE_UNITS);
+        case "pointSize":
+            return element.kind === "dot"
+                ? sceneUnitsToPt(element.pen?.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS)
+                : sceneUnitsToPt(DEFAULT_LINE_WIDTH_UNITS);
         case "eraserSize": return 8;
         case "radius": return element.kind === "arc" ? Math.abs(element.radius) : 0;
         case "semiMajorAxis":
@@ -291,13 +304,20 @@ export function writeElementProperty(
             const pen = penWithColor(fillPen(element), String(value));
             return patchFill(element, { color: pen.color, namedColor: pen.namedColor });
         }
-        case "lineWidth": return patchStroke(element, { lineWidth: Number(value) });
+        // Width properties edit in display points (matching the inspector
+        // ranges) and convert to scene units on write.
+        case "lineWidth":
+            return patchStroke(element, {
+                lineWidth: ptToSceneUnits(finiteClamped(value, 1, 24)),
+            });
         case "dash": return patchStroke(element, { dash: value as Dash });
         case "strokeOpacity": return patchStroke(element, { opacity: Number(value) });
         case "fillOpacity": return patchFill(element, { opacity: Number(value) });
         case "labelText": return element.kind === "label" ? { ...element, text: String(value) } : element;
-        case "fontSize": return patchStroke(element, { fontSize: Number(value) });
-        case "pointSize": return patchStroke(element, { lineWidth: Number(value) });
+        case "fontSize":
+            return patchStroke(element, { fontSize: ptToSceneUnits(finiteClamped(value, 8, 48)) });
+        case "pointSize":
+            return patchStroke(element, { lineWidth: ptToSceneUnits(finiteClamped(value, 1, 12)) });
         case "eraserSize": return element;
         case "radius":
             return element.kind === "arc"

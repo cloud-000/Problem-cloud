@@ -70,12 +70,13 @@ describe("serialize", () => {
     });
 
     test("pen: named color + linewidth + dashed", () => {
+        // Scene units convert back to points on the way out.
         expect(
             serialize(
                 scene(
                     createPath(makePath([[0, 0], [1, 1]]), {
                         namedColor: "red",
-                        lineWidth: 1.5,
+                        lineWidth: 1.5 / 40,
                         dash: "dashed",
                     })
                 )

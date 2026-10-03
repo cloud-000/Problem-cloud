@@ -1,5 +1,9 @@
 import type { Scene } from "../../asy/scene/types";
-import { migrateSceneToWhiteboardDocument, migrateV2WhiteboardDocument } from "./document";
+import {
+    migrateV1Scene,
+    migrateV2WhiteboardDocument,
+    migrateV3WhiteboardDocument,
+} from "./document";
 import {
     WHITEBOARD_SCHEMA_VERSION,
     type PointFeatureRef,
@@ -430,16 +434,18 @@ export function validateWhiteboardDocument(value: unknown): ValidationResult {
     return { valid: errors.length === 0, errors };
 }
 
-/** Parse current V3 JSON, migrate V2 documents, or migrate an unversioned V1 Scene. */
+/** Parse current V4 JSON, migrate V2/V3 documents, or migrate an unversioned V1 Scene. */
 export function parsePersistedWhiteboardDocument(value: unknown): WhiteboardDocument | null {
     if (record(value) && value.schemaVersion !== undefined) {
         const candidate = value.schemaVersion === 2
             ? migrateV2WhiteboardDocument(value as unknown as Parameters<typeof migrateV2WhiteboardDocument>[0])
-            : value;
+            : value.schemaVersion === 3
+              ? migrateV3WhiteboardDocument(value as unknown as Parameters<typeof migrateV3WhiteboardDocument>[0])
+              : value;
         return validateWhiteboardDocument(candidate).valid
             ? candidate as unknown as WhiteboardDocument
             : null;
     }
     if (!validateScene(value).valid) return null;
-    return migrateSceneToWhiteboardDocument(value as Scene);
+    return migrateV1Scene(value as Scene);
 }

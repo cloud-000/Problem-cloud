@@ -7,7 +7,65 @@
  * and human-readable.
  */
 
-import type { Pen, RGB } from "./types";
+import type { Pen, RGB, SceneElement } from "./types";
+
+/**
+ * Screen pixels per scene unit at 100% zoom. This is the reference that ties
+ * stroke dimensions to document scale: a stored lineWidth of `w` scene units
+ * paints `w * viewport.scale` pixels, so it measures exactly `w` against
+ * geometry at every zoom. The camera, the codec, the inspector facade, and
+ * document migrations all share this constant — do not restate 40 elsewhere.
+ */
+export const REFERENCE_PX_PER_UNIT = 40;
+
+/** Default stroke width and label size, in scene units (3px / 14px at 100%). */
+export const DEFAULT_LINE_WIDTH_UNITS = 3 / REFERENCE_PX_PER_UNIT;
+export const DEFAULT_FONT_SIZE_UNITS = 14 / REFERENCE_PX_PER_UNIT;
+
+/** Scene-unit width expressed in screen pixels at the given viewport scale. */
+export function unitsToScreenPx(units: number, scale: number): number {
+    return units * scale;
+}
+
+/**
+ * Asymptote `linewidth(pt)` / `fontsize(pt)` to stored scene units. The codec
+ * divides on parse; the 100% view then paints back the same pixel count, on
+ * the assumption that one reference pixel stands in for one point.
+ */
+export function ptToSceneUnits(pt: number): number {
+    return pt / REFERENCE_PX_PER_UNIT;
+}
+
+/** Stored scene units back to Asymptote points for serialization. */
+export function sceneUnitsToPt(units: number): number {
+    return units * REFERENCE_PX_PER_UNIT;
+}
+
+/** The stroke half-width of a pen in scene units (0 for no pen). */
+function penHalfWidthUnits(pen: Pen | undefined): number {
+    return Math.max(0, pen?.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS) / 2;
+}
+
+/**
+ * How far an element's ink extends past its centerline geometry, in scene
+ * units. Stroked kinds report half the line width; a dot reports its full
+ * radius (width * 3.5, mirroring the renderer's dot sizing); labels report 0
+ * because their text box already matches the ink; fills without an outline
+ * and raw elements report 0.
+ */
+export function strokePadUnits(element: SceneElement): number {
+    switch (element.kind) {
+        case "dot":
+            return Math.max(0, element.pen?.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS) * 3.5;
+        case "label":
+        case "raw":
+            return 0;
+        case "fill":
+            return element.drawPen ? penHalfWidthUnits(element.drawPen) : 0;
+        default:
+            return element.strokeEnabled === false ? 0 : penHalfWidthUnits(element.pen);
+    }
+}
 
 /** Canonical asy named colors (subset covering the common palette). */
 const NAMED_COLORS: Record<string, RGB> = {

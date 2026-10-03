@@ -16,6 +16,7 @@
 import {
     elementBounds,
     isStraightPathVertexEditable,
+    strokePadUnits,
     type Bounds,
     type Pair,
     type PathElement,
@@ -200,6 +201,21 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
     })();
 
     /**
+     * Widest ink extent past centerline geometry across the selection, in
+     * screen pixels. Aggregate boxes (the oriented quad, the multi-element
+     * bounds) pad by this so thick ink never pokes outside the chrome.
+     * Per-element boxes get it inside elementScreenRect instead.
+     */
+    const selectionStrokePadPx = ((): number => {
+        let pad = 0;
+        for (const element of input.displayScene.elements) {
+            if (!selectedIds.has(element.id)) continue;
+            pad = Math.max(pad, input.toScreenLength(strokePadUnits(element)));
+        }
+        return pad;
+    })();
+
+    /**
      * A single selected, *rotated* smart rectangle whose selection box should
      * hug its orientation. Restricted to smart selections (the rectangle tool's
      * output), whose solver-owned perpendicular relations give local width and
@@ -227,7 +243,10 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
             project(corners[2]),
             project(corners[3]),
         ] as [Pair, Pair, Pair, Pair];
-        return { cornersAsy: corners, inflated: inflateScreenRectangle(screenCorners, 6) };
+        return {
+            cornersAsy: corners,
+            inflated: inflateScreenRectangle(screenCorners, 6 + selectionStrokePadPx),
+        };
     })();
 
     const selectionRect = ((): ScreenRect | null => {
@@ -238,7 +257,7 @@ export function buildSelectionTransform(params: SelectionTransformInput): Select
             input.selectionPreview === null
         ) return null;
         if (selectionGeometryBounds && hasTransformExtent) {
-            return screenRect(selectionGeometryBounds, 6);
+            return screenRect(selectionGeometryBounds, 6 + selectionStrokePadPx);
         }
         let minX = Infinity;
         let minY = Infinity;

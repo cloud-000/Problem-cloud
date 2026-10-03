@@ -110,7 +110,10 @@ The Scene answers *"what geometry?"*, but the editor also has to draw things tha
 are **not geometry**: the selection box, resize/rotation/vertex handles, the arc
 construction guide, snap proposals, constraint glyphs, and dimension labels.
 Those are *presentation geometry* — they exist in **screen space**, at pixel
-sizes that must not scale with zoom, and they belong to no document.
+sizes that must not scale with zoom, and they belong to no document. Scene ink
+is the opposite: stroke widths, dashes, dot sizes, and label sizes are
+document-scale (scene units × zoom), so they grow with the geometry they sit
+on while the chrome around them stays fixed.
 
 The chain is:
 

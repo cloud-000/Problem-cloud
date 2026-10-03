@@ -59,17 +59,19 @@ describe("selection box", () => {
         expect(overlay.selectionIsPreview).toBe(false);
     });
 
-    test("single selection pads the projected element bounds by 6px", () => {
-        const circle = createCircle([1, 1], 1);
+    test("single selection pads the projected element bounds by ink plus 6px", () => {
+        // 0.2 scene units of width pad 1px at the test scale, on top of the
+        // fixed 6px chrome margin.
+        const circle = createCircle([1, 1], 1, { lineWidth: 0.2 });
         const overlay = buildOverlay(
             input({ displayScene: scene(circle), selection: [circle.id] }),
         );
 
         expect(overlay.selectionGeometryBounds).toEqual({ min: [0, 0], max: [2, 2] });
-        expect(overlay.selectionRect).toEqual({ x: 94, y: 74, width: 32, height: 32 });
+        expect(overlay.selectionRect).toEqual({ x: 93, y: 73, width: 34, height: 34 });
         expect(overlay.rotationControl).toEqual({
-            stemStart: [110, 74],
-            screen: [110, 50],
+            stemStart: [110, 73],
+            screen: [110, 49],
             pivot: [1, 1],
         });
     });
@@ -135,7 +137,12 @@ describe("selection box", () => {
         );
 
         expect(overlay.selectionGeometryBounds).toEqual({ min: [0, 0], max: [3, 2] });
-        expect(overlay.selectionRect).toEqual({ x: 94, y: 74, width: 42, height: 32 });
+        // Aggregate box pads the widest ink (the dot's radius) plus chrome.
+        const pad = 6 + 3.5 * (3 / 40) * 10;
+        expect(overlay.selectionRect?.x).toBeCloseTo(100 - pad, 9);
+        expect(overlay.selectionRect?.y).toBeCloseTo(80 - pad, 9);
+        expect(overlay.selectionRect?.width).toBeCloseTo(30 + pad * 2, 9);
+        expect(overlay.selectionRect?.height).toBeCloseTo(20 + pad * 2, 9);
     });
 
     test("mixed selection folds zero-extent elements into the geometry bounds", () => {
@@ -146,7 +153,9 @@ describe("selection box", () => {
         );
 
         expect(overlay.selectionGeometryBounds).toEqual({ min: [0, 0], max: [3, 3] });
-        expect(overlay.selectionRect).toEqual({ x: 94, y: 64, width: 42, height: 42 });
+        // Labels add no ink pad (their text box already matches); the circle's
+        // default half-width pads 0.375px at the test scale.
+        expect(overlay.selectionRect).toEqual({ x: 93.625, y: 63.625, width: 42.75, height: 42.75 });
     });
 
     test("a preview selection swaps in the preview ids and marks the rects", () => {
@@ -160,7 +169,7 @@ describe("selection box", () => {
         );
 
         expect(overlay.selectionIsPreview).toBe(true);
-        expect(overlay.previewElementRects).toEqual([{ x: 96, y: 76, width: 28, height: 28 }]);
+        expect(overlay.previewElementRects).toEqual([{ x: 95.625, y: 75.625, width: 28.75, height: 28.75 }]);
         // A preview suppresses every transform affordance.
         expect(overlay.resizeHandles).toEqual([]);
         expect(overlay.rotationControl).toBeNull();
@@ -180,23 +189,23 @@ describe("resize handles", () => {
         );
         expect(byPosition.get("nw")).toMatchObject({
             position: "nw",
-            screen: [94, 74],
+            screen: [93.625, 73.625],
             handle: [0, 2],
             anchor: [2, 0],
             axes: { x: true, y: true },
             cursor: "nwse-resize",
         });
         expect(byPosition.get("se")).toMatchObject({
-            screen: [126, 106],
+            screen: [126.375, 106.375],
             handle: [2, 0],
             anchor: [0, 2],
             cursor: "nwse-resize",
         });
-        expect(byPosition.get("ne")).toMatchObject({ screen: [126, 74], cursor: "nesw-resize" });
-        expect(byPosition.get("sw")).toMatchObject({ screen: [94, 106], cursor: "nesw-resize" });
+        expect(byPosition.get("ne")).toMatchObject({ screen: [126.375, 73.625], cursor: "nesw-resize" });
+        expect(byPosition.get("sw")).toMatchObject({ screen: [93.625, 106.375], cursor: "nesw-resize" });
         expect(byPosition.get("n")).toMatchObject({
             position: "n",
-            screen: [110, 74],
+            screen: [110, 73.625],
             handle: [1, 2],
             anchor: [1, 0],
             axes: { x: false, y: true },
@@ -204,7 +213,7 @@ describe("resize handles", () => {
         });
         expect(byPosition.get("e")).toMatchObject({
             position: "e",
-            screen: [126, 90],
+            screen: [126.375, 90],
             handle: [2, 1],
             anchor: [0, 1],
             axes: { x: true, y: false },
@@ -226,7 +235,7 @@ describe("resize handles", () => {
             input({ displayScene: scene(flat), selection: [flat.id] }),
         );
 
-        expect(overlay.selectionRect).toEqual({ x: 94, y: 94, width: 32, height: 12 });
+        expect(overlay.selectionRect).toEqual({ x: 93.625, y: 93.625, width: 32.75, height: 12.75 });
         expect(overlay.resizeHandles.map((h) => h.position)).toEqual(
             ["nw", "ne", "se", "sw", "e", "w"],
         );
@@ -264,7 +273,7 @@ describe("vertex handles", () => {
             "default",
         ]);
         // Two segments, so the whole-object box and its handles stay available.
-        expect(overlay.selectionRect).toEqual({ x: 94, y: 84, width: 22, height: 22 });
+        expect(overlay.selectionRect).toEqual({ x: 93.625, y: 83.625, width: 22.75, height: 22.75 });
         expect(overlay.resizeHandles.length).toBe(8);
     });
 
@@ -427,8 +436,13 @@ describe("elements with no extent", () => {
             input({ displayScene: scene(label), selection: [label.id] }),
         );
 
-        // No measurer injected → estimateLabelWidth: "AB" is 2 * 7.5 = 15px.
-        expect(overlay.selectionRect).toEqual({ x: 96.5, y: 75, width: 27, height: 30 });
+        // No measurer injected → estimateLabelWidth on the 3.5px default font
+        // at the test scale: "AB" estimates below the 14px minimum, so the
+        // width is exact while the height carries float dust.
+        expect(overlay.selectionRect?.x).toBe(97);
+        expect(overlay.selectionRect?.width).toBe(26);
+        expect(overlay.selectionRect?.y).toBeCloseTo(81.75, 9);
+        expect(overlay.selectionRect?.height).toBeCloseTo(16.5, 9);
         expect(overlay.selectionGeometryBounds).toEqual({ min: [1, 1], max: [1, 1] });
         expect(overlay.resizeHandles).toEqual([]);
         expect(overlay.rotationControl).toBeNull();
@@ -447,13 +461,26 @@ describe("elements with no extent", () => {
             }),
         );
 
-        // The `$`s never reach the measurer, and the default font size is 14.
-        expect(seen).toEqual([["AB", 14]]);
-        expect(overlay.selectionRect).toEqual({ x: 84, y: 75, width: 52, height: 30 });
+        // The `$`s never reach the measurer, and it receives painted pixels:
+        // the default 0.35-unit font at the 10px test scale.
+        expect(seen[0][0]).toBe("AB");
+        expect(seen[0][1]).toBeCloseTo(3.5, 9);
+        expect(overlay.selectionRect?.x).toBe(84);
+        expect(overlay.selectionRect?.width).toBe(52);
+        expect(overlay.selectionRect?.y).toBeCloseTo(81.75, 9);
+        expect(overlay.selectionRect?.height).toBeCloseTo(16.5, 9);
     });
 
     test("a LaTeX-heavy label is no longer over-boxed by the per-character guess", () => {
-        const alpha: SceneElement = { id: "l", kind: "label", text: "$\\alpha$", at: [1, 1] };
+        // A 3.5-unit font paints 35px at the test scale, where the crude
+        // 7.5px-per-character guess overshoots real ink.
+        const alpha: SceneElement = {
+            id: "l",
+            kind: "label",
+            text: "$\\alpha$",
+            at: [1, 1],
+            pen: { fontSize: 3.5 },
+        };
         const estimated = buildOverlay(
             input({ displayScene: scene(alpha), selection: [alpha.id] }),
         ).selectionRect;
@@ -465,28 +492,30 @@ describe("elements with no extent", () => {
             }),
         ).selectionRect;
 
-        // "\alpha" is 6 chars → the estimate claims 45px for 30px of ink.
-        expect(estimated?.width).toBe(45 + 12);
+        // "\alpha" is 6 chars → the estimate claims 112.5px for 30px of ink.
+        expect(estimated?.width).toBeCloseTo(112.5 + 12, 9);
         expect(measured?.width).toBe(30 + 12);
     });
 
     test("the box scales with a label's font size", () => {
+        // 0.7 units paint 28px at the reference scale: double the default.
         const big: SceneElement = {
             id: "l",
             kind: "label",
             text: "$A$",
             at: [1, 1],
-            pen: { fontSize: 28 },
+            pen: { fontSize: 0.7 },
         };
         const overlay = buildOverlay(
             input({
                 displayScene: scene(big),
                 selection: [big.id],
+                toScreenLength: (units) => units * 40,
                 measureLabelWidth: (_text, fontSize) => fontSize,
             }),
         );
 
-        // Double the font → double the 9px half-height, so 36px + padding.
+        // Double the default font → double the 9px half-height reference.
         expect(overlay.selectionRect).toEqual({ x: 90, y: 66, width: 40, height: 48 });
     });
 
@@ -502,10 +531,15 @@ describe("elements with no extent", () => {
         expect(overlay.selectionRect?.width).toBe(14 + 12);
     });
 
-    test("a point collapses to a zero-size box and offers no transform", () => {
+    test("a point pads its ink radius and offers no transform", () => {
         const overlay = buildOverlay(input({ displayScene: scene(dot), selection: [dot.id] }));
 
-        expect(overlay.selectionRect).toEqual({ x: 104, y: 84, width: 12, height: 12 });
+        // Default dot radius (3.5 widths) plus the 6px chrome margin.
+        const pad = 6 + 3.5 * (3 / 40) * 10;
+        expect(overlay.selectionRect?.x).toBeCloseTo(110 - pad, 9);
+        expect(overlay.selectionRect?.y).toBeCloseTo(90 - pad, 9);
+        expect(overlay.selectionRect?.width).toBeCloseTo(pad * 2, 9);
+        expect(overlay.selectionRect?.height).toBeCloseTo(pad * 2, 9);
         expect(overlay.resizeHandles).toEqual([]);
         expect(overlay.rotationControl).toBeNull();
     });

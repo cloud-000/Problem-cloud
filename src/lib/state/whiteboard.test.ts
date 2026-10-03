@@ -463,7 +463,8 @@ describe("WhiteboardStore selection gestures", () => {
         store.beginPropertyEdit();
         store.setInspectorProperty("lineWidth", 9);
         store.commitPropertyEdit();
-        expect(store.document.items[0]).toMatchObject({ kind: "sketch-path", pen: { lineWidth: 9 } });
+        // The inspector edits display points; the document stores scene units.
+        expect(store.document.items[0]).toMatchObject({ kind: "sketch-path", pen: { lineWidth: 9 / 40 } });
         expect("path" in store.document.items[0]).toBe(false);
         store.undo();
         expect(store.document.items[0]).not.toHaveProperty("pen");

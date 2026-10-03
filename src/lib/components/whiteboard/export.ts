@@ -1,4 +1,5 @@
 import type { Pair, SceneElement } from "$lib/asy/scene";
+import { DEFAULT_FONT_SIZE_UNITS, REFERENCE_PX_PER_UNIT } from "$lib/asy/scene";
 import {
     canvasSnapshot,
     dotRadius,
@@ -11,6 +12,7 @@ import {
     renderWhiteboard,
     type ProjectedPathCommand,
     type WhiteboardRenderSnapshot,
+    type WhiteboardViewport,
 } from "./render";
 
 function escapeXml(value: string): string {
@@ -48,13 +50,13 @@ function dashAttribute(dash: number[]): string {
 function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): string {
     const { viewport, palette } = snapshot;
     const project = (value: Pair) => projectPoint(value, viewport);
-    const style = penStroke(element.pen, palette);
+    const style = penStroke(element.pen, palette, viewport.scale);
     const stroke = `stroke="${escapeXml(style.color)}" stroke-width="${number(style.width)}"` +
         `${dashAttribute(style.dash)} stroke-opacity="${number(style.opacity)}"`;
     const strokeAttributes = element.strokeEnabled === false ? 'stroke="none"' : stroke;
     const fillAttributes = "fillPen" in element && element.fillPen
         ? (() => {
-              const fill = penStroke(element.fillPen, palette);
+              const fill = penStroke(element.fillPen, palette, viewport.scale);
               return `fill="${escapeXml(fill.color)}" fill-opacity="${number(fill.opacity)}"`;
           })()
         : 'fill="none"';
@@ -64,7 +66,7 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
             'stroke-linejoin="round" stroke-linecap="round"/>';
     }
     if (element.kind === "fill") {
-        const draw = element.drawPen ? penStroke(element.drawPen, palette) : null;
+        const draw = element.drawPen ? penStroke(element.drawPen, palette, viewport.scale) : null;
         const drawAttributes = draw
             ? ` stroke="${escapeXml(draw.color)}" stroke-width="${number(draw.width)}"` +
                 `${dashAttribute(draw.dash)} stroke-opacity="${number(draw.opacity)}"`
@@ -110,9 +112,10 @@ function elementSvg(element: SceneElement, snapshot: WhiteboardRenderSnapshot): 
     }
     if (element.kind === "label") {
         const at = project(element.at);
+        const fontPx = (element.pen?.fontSize ?? DEFAULT_FONT_SIZE_UNITS) * viewport.scale;
         return `<text x="${number(at[0])}" y="${number(at[1])}" ` +
             `fill="${escapeXml(style.color)}" opacity="${number(style.opacity)}" ` +
-            `font-family="sans-serif" font-size="${number(element.pen?.fontSize ?? 14)}" ` +
+            `font-family="sans-serif" font-size="${number(fontPx)}" ` +
             `text-anchor="middle" dominant-baseline="middle">` +
             `${escapeXml(element.text.replaceAll("$", ""))}</text>`;
     }
@@ -136,9 +139,9 @@ function gridSvg(snapshot: WhiteboardRenderSnapshot): string {
     return `<g stroke="${escapeXml(palette.border)}" stroke-width="1">${vertical.join("")}${horizontal.join("")}</g>`;
 }
 
-/** Serialize the committed scene at the canvas's current viewport as vector SVG. */
+/** Serialize the committed scene as vector SVG at the reference zoom. */
 export function toSvgString(surface: HTMLCanvasElement): string {
-    const snapshot = canvasSnapshot(surface);
+    const snapshot = normalizedSnapshot(surface);
     if (!snapshot) throw new Error("whiteboard canvas has not rendered");
     const { width, height } = snapshot.viewport;
     const elements = snapshot.scene.elements.map((element) => elementSvg(element, snapshot)).join("");
@@ -148,9 +151,34 @@ export function toSvgString(surface: HTMLCanvasElement): string {
         `${gridSvg(snapshot)}${elements}</svg>`;
 }
 
+/**
+ * The committed scene re-projected at the reference zoom, keeping the current
+ * view center. Exports then carry document dimensions — the same scene always
+ * exports the same ink — instead of baking whatever zoom the canvas happens
+ * to sit at.
+ */
+function normalizedSnapshot(surface: HTMLCanvasElement): WhiteboardRenderSnapshot | null {
+    const snapshot = canvasSnapshot(surface);
+    if (!snapshot) return null;
+    const { viewport } = snapshot;
+    if (viewport.scale === REFERENCE_PX_PER_UNIT) return snapshot;
+    const centerX = (viewport.width / 2 - viewport.origin[0]) / viewport.scale;
+    const centerY = (viewport.origin[1] - viewport.height / 2) / viewport.scale;
+    const viewportAtReference: WhiteboardViewport = {
+        width: viewport.width,
+        height: viewport.height,
+        scale: REFERENCE_PX_PER_UNIT,
+        origin: [
+            viewport.width / 2 - centerX * REFERENCE_PX_PER_UNIT,
+            viewport.height / 2 + centerY * REFERENCE_PX_PER_UNIT,
+        ],
+    };
+    return { ...snapshot, viewport: viewportAtReference };
+}
+
 /** Re-render the committed scene to an opaque PNG at `scale`x CSS resolution. */
 export function toPngBlob(surface: HTMLCanvasElement, scale = 2): Promise<Blob> {
-    const snapshot = canvasSnapshot(surface);
+    const snapshot = normalizedSnapshot(surface);
     if (!snapshot) return Promise.reject(new Error("whiteboard canvas has not rendered"));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(snapshot.viewport.width * scale));

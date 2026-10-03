@@ -1,6 +1,6 @@
 import type { Pair, Pen, SceneElement, SceneMeta } from "../../asy/scene/types";
 
-export const WHITEBOARD_SCHEMA_VERSION = 3 as const;
+export const WHITEBOARD_SCHEMA_VERSION = 4 as const;
 
 export type PointId = string;
 export type ParameterId = string;

@@ -89,7 +89,10 @@ Everything below is a consequence of these four.
 
 - **Coordinates are asy-space (y-up) everywhere below the view.** Only the view
   flips y at render time. Do not bake screen coordinates into the Document or
-  Scene. (See `asy/scene/types.ts` header.)
+  Scene. (See `asy/scene/types.ts` header.) Stroke dimensions are asy-space
+  too: `Pen.lineWidth` / `Pen.fontSize` are scene units that the view
+  multiplies by `scale`, so ink measures against geometry at every zoom. The
+  codec alone converts between those and Asymptote points.
 - **Element and item ids are stable and unique.** Mint them via the factory
   (`asy/scene/factory.ts` `newId`), never by array index or content hash.
   Transactions preserve ids so history, selection, and glyphs stay anchored.
@@ -105,8 +108,9 @@ Everything below is a consequence of these four.
   returns the input Document unchanged (atomic), never a half-applied one.
 - **Schema changes bump `WHITEBOARD_SCHEMA_VERSION`** and stay
   backward-compatible via optional fields + a migration in `model/document.ts`
-  (`migrateSceneToWhiteboardDocument` and friends). Persisted V1/V2 docs must
-  still load.
+  (`migrateSceneToWhiteboardDocument` and friends). Persisted V1/V2/V3 docs must
+  still load — V1 scenes and V3 documents additionally rescale their
+  point-flavored pen widths into scene units on the way in.
 
 ---
 

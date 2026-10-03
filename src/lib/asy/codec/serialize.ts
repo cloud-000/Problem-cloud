@@ -21,7 +21,7 @@ import type {
     Scene,
     SceneElement,
 } from "../scene/types";
-import { isDefaultPen, rgbToNamedColor } from "../scene/pen";
+import { isDefaultPen, rgbToNamedColor, sceneUnitsToPt } from "../scene/pen";
 
 export interface SerializeOptions {
     /**
@@ -98,7 +98,7 @@ function emitPen(pen: Pen | undefined, ctx: Ctx): string | null {
         );
     }
 
-    if (pen.lineWidth !== undefined) parts.push(`linewidth(${num(pen.lineWidth, ctx)})`);
+    if (pen.lineWidth !== undefined) parts.push(`linewidth(${num(sceneUnitsToPt(pen.lineWidth), ctx)})`);
 
     if (pen.dash !== undefined && pen.dash !== "solid") {
         if (typeof pen.dash === "string") parts.push(pen.dash);
@@ -106,7 +106,7 @@ function emitPen(pen: Pen | undefined, ctx: Ctx): string | null {
     }
 
     if (pen.opacity !== undefined) parts.push(`opacity(${num(pen.opacity, ctx)})`);
-    if (pen.fontSize !== undefined) parts.push(`fontsize(${num(pen.fontSize, ctx)})`);
+    if (pen.fontSize !== undefined) parts.push(`fontsize(${num(sceneUnitsToPt(pen.fontSize), ctx)})`);
 
     return parts.length ? parts.join("+") : null;
 }

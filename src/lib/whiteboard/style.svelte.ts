@@ -17,6 +17,12 @@
 
 import type { Pen, Scene } from "$lib/asy/scene/types";
 import {
+    DEFAULT_FONT_SIZE_UNITS,
+    DEFAULT_LINE_WIDTH_UNITS,
+    ptToSceneUnits,
+    sceneUnitsToPt,
+} from "$lib/asy/scene/pen";
+import {
     EDITOR_PROPERTY_DEFINITIONS,
     penColorHex,
     penWithColor,
@@ -39,12 +45,13 @@ export type WhiteboardToolKind = ToolKind | "pan";
 export type StyledToolKind = Exclude<ToolKind, "select" | "eraser">;
 
 const DEFAULT_TOOL_PENS: Record<StyledToolKind, Pen> = {
-    pen: { lineWidth: 3, dash: "solid", opacity: 1 },
-    line: { lineWidth: 3, dash: "solid", opacity: 1 },
-    rectangle: { lineWidth: 3, dash: "solid", opacity: 1 },
-    arc: { lineWidth: 3, dash: "solid", opacity: 1 },
-    point: { lineWidth: 3, opacity: 1 },
-    label: { fontSize: 14, opacity: 1 },
+    // Scene units: these paint 3px strokes and 14px labels at 100%.
+    pen: { lineWidth: DEFAULT_LINE_WIDTH_UNITS, dash: "solid", opacity: 1 },
+    line: { lineWidth: DEFAULT_LINE_WIDTH_UNITS, dash: "solid", opacity: 1 },
+    rectangle: { lineWidth: DEFAULT_LINE_WIDTH_UNITS, dash: "solid", opacity: 1 },
+    arc: { lineWidth: DEFAULT_LINE_WIDTH_UNITS, dash: "solid", opacity: 1 },
+    point: { lineWidth: DEFAULT_LINE_WIDTH_UNITS, opacity: 1 },
+    label: { fontSize: DEFAULT_FONT_SIZE_UNITS, opacity: 1 },
 };
 
 /** Plain, serializable tool-default style — mirrors the store's former fields. */
@@ -95,12 +102,12 @@ export function readToolProperty(
         case "strokeColor": return state.strokeColor;
         case "fillEnabled": return state.rectangleFillEnabled;
         case "fillColor": return penColorHex(state.rectangleFillPen);
-        case "lineWidth": return pen.lineWidth ?? 3;
+        case "lineWidth": return sceneUnitsToPt(pen.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS);
         case "dash": return typeof pen.dash === "string" ? pen.dash : "solid";
         case "strokeOpacity": return pen.opacity ?? 1;
         case "fillOpacity": return state.rectangleFillPen.opacity ?? 0.2;
-        case "fontSize": return pen.fontSize ?? 14;
-        case "pointSize": return pen.lineWidth ?? 3;
+        case "fontSize": return sceneUnitsToPt(pen.fontSize ?? DEFAULT_FONT_SIZE_UNITS);
+        case "pointSize": return sceneUnitsToPt(pen.lineWidth ?? DEFAULT_LINE_WIDTH_UNITS);
         case "eraserSize": return state.eraserSize;
         case "labelText": return "";
         case "radius":
@@ -147,14 +154,16 @@ export function writeToolProperty(
         id === "arcAngle"
     ) return;
     if (!isStyledTool(toolKind)) return;
+    // Width properties arrive in display points (matching the inspector
+    // ranges) and convert to scene units on write.
     const patch: Partial<Pen> = id === "lineWidth" || id === "pointSize"
-        ? { lineWidth: Number(value) }
+        ? { lineWidth: ptToSceneUnits(Number(value)) }
         : id === "dash"
           ? { dash: value as Pen["dash"] }
           : id === "strokeOpacity"
             ? { opacity: Number(value) }
             : id === "fontSize"
-              ? { fontSize: Number(value) }
+              ? { fontSize: ptToSceneUnits(Number(value)) }
               : {};
     state.toolPens[toolKind] = { ...state.toolPens[toolKind], ...patch };
 }

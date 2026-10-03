@@ -5,6 +5,7 @@
  */
 
 import type { Pair, Path, Scene, SceneElement } from "../scene/types";
+import { strokePadUnits } from "../scene/pen";
 import { ellipsePointAt, positiveArcSweep } from "../scene/ellipse-geometry";
 import {
     distance,
@@ -76,7 +77,9 @@ export function distanceToElement(p: Pair, el: SceneElement, flattenTolerance = 
 
 /**
  * Return the topmost element within `tolerance` of `p`, or null. `tolerance` is
- * in asy-space (the view derives it from its px->asy scale).
+ * in asy-space (the view derives it from its px->asy scale). Stroked elements
+ * widen their threshold by their own ink extent, so a click on visibly thick
+ * ink always lands even when the centerline is further than `tolerance` away.
  */
 export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement | null {
     // First pass: check if any dot/label is within tolerance - if so, prefer it
@@ -86,7 +89,7 @@ export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement 
         if (el.kind === "dot" || el.kind === "label") {
             const d = distance(p, el.at);
             console.log(`[hit-test] dot/label ${el.id} at ${el.at}, click at ${p}, distance: ${d}, tolerance: ${d <= tolerance}`);
-            if (d <= tolerance) return el;
+            if (d <= tolerance + strokePadUnits(el)) return el;
         }
     }
 
@@ -95,8 +98,9 @@ export function hitTest(scene: Scene, p: Pair, tolerance: number): SceneElement 
     let bestDist = Infinity;
     for (let i = scene.elements.length - 1; i >= 0; i--) {
         const el = scene.elements[i];
+        const threshold = tolerance + strokePadUnits(el);
         const d = distanceToElement(p, el, Math.max(tolerance / 4, 1e-4));
-        if (d <= tolerance && d < bestDist) {
+        if (d <= threshold && d < bestDist) {
             best = el;
             bestDist = d;
         }

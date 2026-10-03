@@ -66,11 +66,12 @@ describe("parse", () => {
     });
 
     test("pens: named color, linewidth, dashed", () => {
+        // Asymptote points convert to scene units on the way in.
         expect(bare(parse("draw((0,0)--(1,1), red+linewidth(1.5)+dashed);").scene)).toEqual([
             {
                 kind: "path",
                 path: { nodes: [[0, 0], [1, 1]], joins: ["--"], cyclic: false },
-                pen: { namedColor: "red", lineWidth: 1.5, dash: "dashed" },
+                pen: { namedColor: "red", lineWidth: 1.5 / 40, dash: "dashed" },
             },
         ]);
     });

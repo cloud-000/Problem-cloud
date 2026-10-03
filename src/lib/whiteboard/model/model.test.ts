@@ -65,14 +65,38 @@ describe("whiteboard document foundation", () => {
         expect(validateWhiteboardDocument(document)).toEqual({ valid: true, errors: [] });
     });
 
-    test("parses V3 deterministically and migrates V2 documents and unversioned V1 scenes", () => {
+    test("parses V4 deterministically and migrates V1/V2/V3 payloads to scene units", () => {
         const document = migrateSceneToWhiteboardDocument(EVERY_ELEMENT_SCENE);
         const json = JSON.stringify(document);
 
         expect(parsePersistedWhiteboardDocument(JSON.parse(json))).toEqual(document);
         expect(JSON.stringify(parsePersistedWhiteboardDocument(JSON.parse(json)))).toBe(json);
-        expect(parsePersistedWhiteboardDocument({ ...document, schemaVersion: 2 })).toEqual(document);
-        expect(parsePersistedWhiteboardDocument(JSON.parse(JSON.stringify(EVERY_ELEMENT_SCENE)))).toEqual(document);
+
+        // Legacy payloads carry point-flavored widths; migration divides them
+        // into scene units (the dot's 4pt becomes 0.1 units, the label's
+        // 16pt becomes 0.4).
+        const legacyScene = JSON.parse(JSON.stringify(EVERY_ELEMENT_SCENE));
+        const v1 = parsePersistedWhiteboardDocument(legacyScene);
+        expect(v1?.schemaVersion).toBe(WHITEBOARD_SCHEMA_VERSION);
+        expect(v1 && resolveWhiteboardDocument(v1).elements[0]).toMatchObject({
+            kind: "dot",
+            pen: { namedColor: "red", lineWidth: 4 / 40 },
+        });
+        const v3 = parsePersistedWhiteboardDocument({ ...document, schemaVersion: 3 });
+        expect(v3?.schemaVersion).toBe(WHITEBOARD_SCHEMA_VERSION);
+        expect(v3 && resolveWhiteboardDocument(v3).elements[0]).toMatchObject({
+            kind: "dot",
+            pen: { namedColor: "red", lineWidth: 4 / 40 },
+        });
+        expect(v3 && resolveWhiteboardDocument(v3).elements[6]).toMatchObject({
+            kind: "label",
+            pen: { fontSize: 16 / 40 },
+        });
+        const v2 = parsePersistedWhiteboardDocument({ ...document, schemaVersion: 2 });
+        expect(v2 && resolveWhiteboardDocument(v2).elements[0]).toMatchObject({
+            kind: "dot",
+            pen: { namedColor: "red", lineWidth: 4 / 40 },
+        });
     });
 
     test("rejects invalid schema and dangling smart references", () => {
