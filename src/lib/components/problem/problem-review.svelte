@@ -8,7 +8,7 @@
     let {
         entry,
         showHeader = true,
-        autoRevealSolution = true,
+        autoRevealSolution = false,
         showOrganization = false,
         elapsedMs = null,
         class: className,
@@ -19,8 +19,9 @@
          * history row, the focused test-review modal) that already name the
          * problem themselves, rendering `header="meta"` to avoid repeating identity. */
         showHeader?: boolean;
-        /** Auto-open the solution on a wrong answer (trainer post-test review).
-         * Off in long lists so solutions start collapsed. */
+        /** Opt-in auto-open of the solution on a wrong answer. Off by
+         * default — solutions start collapsed everywhere unless a caller
+         * explicitly opts in. */
         autoRevealSolution?: boolean;
         /** Show the problem's mastery and future-plan controls. */
         showOrganization?: boolean;
@@ -41,6 +42,22 @@
     let attemptStatus = $derived(
         submissionOutcome({ skipped, is_correct: entry.correct }),
     );
+
+    // Self-check playground (Library-like): drafts start from the graded
+    // response but never write back to `entry` or the DB. Persistent
+    // correct/incorrect styling stays pinned to the recorded attempt (via
+    // `gradedResponse`) while the rest of the choices stay clickable with
+    // ephemeral instant-feedback; the header keeps the graded record.
+    // Synced in `$effect.pre` (before paint) so a reused card (e.g. the
+    // test-review modal stepping between problems) re-seeds without flashing.
+    let draftAnswer = $state("");
+    let draftChoice = $state<number | null>(null);
+    let draftEliminated = $state<number[]>([]);
+    $effect.pre(() => {
+        draftAnswer = entry.answer ?? "";
+        draftChoice = entry.selectedChoice ?? null;
+        draftEliminated = [];
+    });
 </script>
 
 <Problem
@@ -51,10 +68,16 @@
     elapsedMs={showHeader ? elapsedMs : null}
     mastery={entry.progress?.mastery}
     engagement={entry.progress?.engagement}
-    selectedChoice={entry.selectedChoice}
-    answer={entry.answer}
+    bind:answer={draftAnswer}
+    bind:selectedChoice={draftChoice}
+    bind:eliminated={draftEliminated}
+    gradedResponse={{
+        selectedChoice: entry.selectedChoice,
+        answer: entry.answer,
+    }}
     showAnswerState={true}
-    disabled={true}
+    disabled={false}
+    isInstantFeedback={true}
     solution={autoRevealSolution && entry.correct === false
         ? "open"
         : "collapsed"}

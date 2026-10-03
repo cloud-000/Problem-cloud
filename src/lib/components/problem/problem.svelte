@@ -88,6 +88,16 @@
         actions?: Snippet;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
+        /**
+         * Pinned graded response for review self-check (see `ProblemAnswer`).
+         * Persistent correct/incorrect styling follows this recorded attempt
+         * while the bound draft stays freely editable. `null` (default)
+         * styles the live draft.
+         */
+        gradedResponse?: {
+            selectedChoice: number | null;
+            answer: string;
+        } | null;
         onOrganizationChange?: (state: PersonalProblemState) => void;
         onAsk?: (invoker: HTMLElement) => void;
     };
@@ -114,6 +124,7 @@
         elapsedMs = null,
         actions,
         onEnter,
+        gradedResponse = null,
         onOrganizationChange,
         onAsk,
     }: Props = $props();
@@ -497,6 +508,7 @@
                         {showAnswerState}
                         {disabled}
                         {isInstantFeedback}
+                        {gradedResponse}
                         {onEnter}
                     />
                 {/key}

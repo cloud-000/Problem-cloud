@@ -29,6 +29,18 @@
         isInstantFeedback?: boolean;
         /** Fired when the user presses Enter in the free-response input. */
         onEnter?: () => void;
+        /**
+         * Pinned graded response for review self-check. When provided,
+         * persistent correct/incorrect styling (highlights, rings, status
+         * tag) is computed from this recorded attempt instead of the live
+         * draft, so the original outcome stays put while the user
+         * experiments. Ephemeral instant-feedback still grades the live
+         * draft. `null` (default) keeps styling the live draft.
+         */
+        gradedResponse?: {
+            selectedChoice: number | null;
+            answer: string;
+        } | null;
     };
 
     let {
@@ -43,6 +55,7 @@
         disabled = false,
         isInstantFeedback = false,
         onEnter,
+        gradedResponse = null,
     }: Props = $props();
 
     const CHOICE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -68,8 +81,18 @@
                 answer_index: answerIndex,
             }),
     );
+    // Persistent styling follows the pinned graded response when one is
+    // provided (review self-check keeps the original correct/incorrect
+    // look); ephemeral instant-feedback always grades the live draft.
     let answerResult = $derived(
-        canShowAnswerState ? checkAnswer() : null,
+        canShowAnswerState ? checkDisplayAnswer() : null,
+    );
+    // The choice wearing the persistent incorrect highlight: the recorded
+    // attempt when one is pinned (an unchanging record of what the user
+    // did), otherwise the live draft. Selection (blue) always follows the
+    // live draft so the current pick stays visible while experimenting.
+    let displayChoice = $derived(
+        gradedResponse != null ? gradedResponse.selectedChoice : selectedChoice,
     );
     let hasOutcome = $derived(answerResult !== null);
     let isCorrect = $derived(answerResult === true);
@@ -178,7 +201,7 @@
         );
     }
 
-    function checkAnswer(): boolean | null {
+    function checkLive(): boolean | null {
         if (!validAnswerIndex()) return null;
 
         if (isMcq) {
@@ -193,6 +216,28 @@
         if (expected == null) return null;
 
         return answersMatch(response, expected);
+    }
+
+    function checkGraded(): boolean | null {
+        if (gradedResponse == null || !validAnswerIndex()) return null;
+
+        if (isMcq) {
+            if (gradedResponse.selectedChoice == null) return null;
+            return gradedResponse.selectedChoice === answerIndex;
+        }
+
+        const response = gradedResponse.answer.trim();
+        if (!response) return null;
+
+        const expected = normalizedChoices[answerIndex as number];
+        if (expected == null) return null;
+
+        return answersMatch(response, expected);
+    }
+
+    function checkDisplayAnswer(): boolean | null {
+        if (gradedResponse != null) return checkGraded();
+        return checkLive();
     }
 
     function feedbackMessage(result: boolean | null) {
@@ -219,7 +264,7 @@
     }
 
     export function trigger(useAnimation: boolean): boolean | null {
-        const result = checkAnswer();
+        const result = checkLive();
         if (useAnimation) playFeedback(result);
         return result;
     }
@@ -248,7 +293,7 @@
             {@const selected = selectedChoice === i}
             {@const correct = correctAnswerVisible && answerIndex === i}
             {@const incorrect =
-                hasOutcome && selected && answerIndex !== i}
+                hasOutcome && displayChoice === i && answerIndex !== i}
             {@const feedbackActive = feedback?.target === i}
             {@const struck = eliminated.includes(i)}
             <div class="group/choice relative">
