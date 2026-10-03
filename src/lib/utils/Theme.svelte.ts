@@ -1,7 +1,11 @@
 import { browser } from "$app/environment";
 import { defaultThemeConfigs } from "./theme-presets.js";
 
-let currentThemeName = $state<string>("light");
+let currentThemeName = $state<string>(
+    browser
+        ? (document.documentElement.getAttribute("data-theme") || "light")
+        : "light",
+);
 
 export class Theme {
     static #a = new Map<string, Theme>();
@@ -83,12 +87,43 @@ export class Theme {
         this.isDark = isDark;
     }
 
+    getCssText(): string {
+        return Object.entries(this.theme)
+            .map(([t, val]) => `${Theme.toCss(t)}: ${val};`)
+            .join(" ");
+    }
+
     activate(_doc: Document = document) {
         const root = _doc.documentElement;
         root.setAttribute("data-theme", this.name);
-        Object.keys(this.theme).forEach((t) => {
-            root.style.setProperty(Theme.toCss(t), this.theme[t] ?? "");
-        });
+
+        if (this.name === "light") {
+            root.style.cssText = "";
+            if (browser && _doc === document) {
+                try {
+                    localStorage.removeItem("theme:style");
+                } catch (_) {}
+            }
+        } else {
+            const cssText = this.getCssText();
+            root.style.cssText = cssText;
+            if (browser && _doc === document) {
+                try {
+                    localStorage.setItem("theme:style", cssText);
+                } catch (_) {}
+            }
+        }
+
+        if (browser && _doc === document) {
+            const meta = _doc.querySelector('meta[name="theme-color"]');
+            if (meta && this.theme["background"]) {
+                meta.setAttribute("content", this.theme["background"]);
+            }
+            const preloadStyle = _doc.getElementById("theme-preload-fallback");
+            if (preloadStyle) {
+                requestAnimationFrame(() => preloadStyle.remove());
+            }
+        }
     }
 
     toString() {
@@ -104,4 +139,3 @@ export class Theme {
 defaultThemeConfigs.forEach((cfg) => {
     Theme.storeTheme(new Theme(cfg.name, cfg.theme, cfg.isDark ?? false));
 });
-

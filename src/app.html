@@ -7,7 +7,43 @@
             content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
         <meta name="text-scale" content="scale" />
+        <meta name="theme-color" content="#f8fafc" />
         <title>ProblemCloud</title>
+        <script>
+            (function () {
+                try {
+                    var theme = localStorage.getItem("theme");
+                    if (!theme) {
+                        var ua = navigator.userAgent || "";
+                        if (
+                            /kindle|silk|kftt|kfot|kfjwa|kfjwi|kfsowi|kfthwi|kfapwi|kobo|nook|paperwhite|eink|boox|onyx|remarkable/i.test(
+                                ua,
+                            )
+                        ) {
+                            theme = "kindle";
+                        }
+                    }
+                    if (theme) {
+                        document.documentElement.setAttribute("data-theme", theme);
+                    }
+                    var style = localStorage.getItem("theme:style");
+                    if (style && theme && theme !== "light") {
+                        document.documentElement.style.cssText = style;
+                    } else if (theme && theme !== "light") {
+                        var css = document.createElement("style");
+                        css.id = "theme-preload-fallback";
+                        css.textContent = "*, *::before, *::after { transition: none !important; }";
+                        document.head.appendChild(css);
+                    }
+                    var meta = document.querySelector('meta[name="theme-color"]');
+                    if (meta && theme) {
+                        if (theme === "dark") meta.setAttribute("content", "#0b0f19");
+                        else if (theme === "kindle") meta.setAttribute("content", "#ffffff");
+                        else meta.setAttribute("content", "#f8fafc");
+                    }
+                } catch (_) {}
+            })();
+        </script>
         <!-- Every rendering asset below is same-origin on purpose. A downloaded
              problem has to render with no network (docs/offline.md §4), and the
              service worker can only precache same-origin build/static files, so
@@ -62,7 +98,6 @@
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <!-- Web App Manifest & Theme -->
         <link rel="manifest" href="/manifest.webmanifest" />
-        <meta name="theme-color" content="#f8fafc" />
         %sveltekit.head%
     </head>
     <body data-sveltekit-preload-data="hover">
