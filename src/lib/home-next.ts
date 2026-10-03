@@ -84,7 +84,7 @@ function workFromSession(session: NextUpSession | null): NextUpWork {
 
 function reviewWork(reviewDue: number): NextUpWork {
     return {
-        title: `${reviewDue} ${plural(reviewDue, "problem")} ${reviewDue === 1 ? "is" : "are"} ready to revisit.`,
+        title: `Review due (${reviewDue})`,
         detail: null,
         lastActiveAt: null,
     };
@@ -93,19 +93,16 @@ function reviewWork(reviewDue: number): NextUpWork {
 function reviewAction(reviewDue: number): NextUpAction {
     return {
         kind: "review_due",
-        label:
-            reviewDue === 1
-                ? "Open Review"
-                : `Open Review · ${reviewDue} problems`,
+        label: "Open Review",
     };
 }
 
 function generalAction(session: NextUpSession | null, reviewDue: number): NextUpAction {
     if (session) {
-        return { kind: "continue_session", label: "Continue", sessionId: session.id };
+        return { kind: "continue_session", label: "Resume", sessionId: session.id };
     }
     if (reviewDue > 0) return reviewAction(reviewDue);
-    return { kind: "start_practice", label: "Start practicing" };
+    return { kind: "start_practice", label: "Choose settings" };
 }
 
 function generalWork(session: NextUpSession | null, reviewDue: number): NextUpWork {

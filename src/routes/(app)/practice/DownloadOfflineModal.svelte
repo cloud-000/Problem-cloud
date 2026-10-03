@@ -90,7 +90,7 @@
     <div class="space-y-3 text-sm">
         <p>
             Choose how many problems from this session's filters to store on this
-            device. The online practice session remains unlimited.
+            device.
         </p>
         <label class="flex flex-col gap-1">
             <span class="font-medium">Problems to download</span>
@@ -112,7 +112,7 @@
     </div>
 {:else if estimate && resolveConfirmation}
     <div class="space-y-3 text-sm">
-        <p>{estimate.problemCount} problems and {estimate.assetCount} required images will use about {formatBytes(requiredBytes)} including the refresh safety copy.</p>
+        <p>{estimate.problemCount} problems and {estimate.assetCount} required images will use about {formatBytes(requiredBytes)}.</p>
         <p class="text-muted-foreground">Scope: {scope.topic.length ? scope.topic.join(", ") : "all topics"}{scope.seriesIds.length ? ` · ${scope.seriesIds.length} series` : ""}.</p>
         <p class="text-warning-foreground">Answer keys are included in local browser storage so grading works without a connection.</p>
         {#if persistent === false}<p class="text-warning-foreground">This browser did not grant persistent storage, so it may evict the download when space is low.</p>{/if}
@@ -130,7 +130,7 @@
         <Button variant="ghost" onclick={() => controller.abort()}>Cancel</Button>
     </div>
 {:else if progress.state === "ready"}
-    <div class="space-y-3 text-sm"><p>Downloaded and ready for offline use.</p><Button onclick={() => modal.close()}>Done</Button></div>
+    <div class="space-y-3 text-sm"><Button onclick={() => modal.close()}>Done</Button></div>
 {:else}
     <div class="space-y-3 text-sm"><p class="text-destructive">{progress.message}</p><p>Your previous ready download and pending work were preserved.</p><Button onclick={() => modal.close()}>Close</Button></div>
 {/if}

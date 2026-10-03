@@ -147,7 +147,7 @@
             strict
             max={MAX_FOCUSED_SERIES}
             bind:value={selected}
-            placeholder="Focus a series"
+            placeholder="Type to search series…"
             onchange={previewSelection}
         />
     </div>

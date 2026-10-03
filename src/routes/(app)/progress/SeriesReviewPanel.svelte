@@ -238,7 +238,6 @@
 
 <Page.Section
     title="Series matrix"
-    description="See activity, mastery, plans, and review status across every problem in a series."
 >
     <div class="space-y-6">
         <div class="border-b border-border pb-5">

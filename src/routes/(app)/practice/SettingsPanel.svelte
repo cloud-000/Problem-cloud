@@ -20,7 +20,7 @@
         {
             value: "new",
             label: "New",
-            hint: "Problems you've never attempted.",
+            hint: "",
             needsAuth: false,
         },
         {
@@ -32,7 +32,7 @@
         {
             value: "skipped",
             label: "Skipped, unsolved",
-            hint: "Problems you've skipped at least once and haven't solved yet.",
+            hint: "",
             needsAuth: true,
         },
         {
@@ -91,7 +91,6 @@
     import {
         Switch,
         TriStateSwitch,
-        type TriState,
     } from "$lib/components/toggle";
     import { ADAPTIVE_RANGE_BOUNDS } from "$lib/trainer";
     import { formatDuration, type Pacing } from "$lib/test-timing";
@@ -158,24 +157,6 @@
     // (which stays nested inside it) — two intentional levels, not flattened.
     let mechanicsOpen = $state(false);
 
-    function computationalLabel(value: TriState) {
-        if (value === "on") return "Computational";
-        if (value === "off") return "Not computational";
-        return "Any";
-    }
-
-    function answerAvailabilityLabel(value: TriState) {
-        if (value === "on") return "Known";
-        if (value === "off") return "Missing (help add it)";
-        return "Any";
-    }
-
-    function solutionAvailabilityLabel(value: TriState) {
-        if (value === "on") return "With solution";
-        if (value === "off") return "Without solution";
-        return "Any";
-    }
-
     function toggleFocusMode() {
         form.focusMode = !form.focusMode;
         onFocusModeChange?.(form.focusMode);
@@ -206,11 +187,6 @@
                 <h2 class="text-sm font-semibold">
                     {isTest ? "Test" : "Settings"}
                 </h2>
-                {#if isTest}
-                    <p class="text-xxs text-muted-foreground">
-                        Locked for the duration of the test.
-                    </p>
-                {/if}
             </div>
             <Button
                 variant="ghost"
@@ -345,10 +321,12 @@
                                     </button>
                                 {/each}
                             </div>
-                            <span class="text-xs text-muted-foreground">
-                                {MODES.find((m) => m.value === form.mode)
-                                    ?.hint}
-                            </span>
+                            {#if MODES.find((m) => m.value === form.mode)?.hint}
+                                <span class="text-xs text-muted-foreground">
+                                    {MODES.find((m) => m.value === form.mode)
+                                        ?.hint}
+                                </span>
+                            {/if}
                             {#if form.mode === "list"}
                                 <Select
                                     options={PLAN_OPTIONS}
@@ -386,11 +364,6 @@
                                     >
                                         Adaptive difficulty
                                     </span>
-                                    {#if form.adaptive}
-                                        <span class="text-xs text-muted-foreground">
-                                            Near your rating (±{form.adaptiveRange})
-                                        </span>
-                                    {/if}
                                 </div>
                                 <Switch bind:checked={form.adaptive} size="sm" />
                             </div>
@@ -510,9 +483,6 @@
                                 >
                                     Verified only
                                 </span>
-                                <span class="text-xs text-muted-foreground">
-                                    {form.verifiedOnly ? "Verified" : "Any"}
-                                </span>
                             </div>
                             <Switch bind:checked={form.verifiedOnly} size="sm" />
                         </div>
@@ -523,9 +493,6 @@
                                     class="text-xs font-medium text-muted-foreground"
                                 >
                                     Computational
-                                </span>
-                                <span class="text-xs text-muted-foreground">
-                                    {computationalLabel(form.computational)}
                                 </span>
                             </div>
                             <TriStateSwitch
@@ -541,11 +508,6 @@
                                 >
                                     Reference answer
                                 </span>
-                                <span class="text-xs text-muted-foreground">
-                                    {answerAvailabilityLabel(
-                                        form.answerAvailability,
-                                    )}
-                                </span>
                             </div>
                             <TriStateSwitch
                                 bind:value={form.answerAvailability}
@@ -559,11 +521,6 @@
                                     class="text-xs font-medium text-muted-foreground"
                                 >
                                     Solution availability
-                                </span>
-                                <span class="text-xs text-muted-foreground">
-                                    {solutionAvailabilityLabel(
-                                        form.solutionAvailability,
-                                    )}
                                 </span>
                             </div>
                             <TriStateSwitch

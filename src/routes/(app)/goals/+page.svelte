@@ -332,7 +332,6 @@
     <Page.Root width="standard">
         <Page.Header
             title="Goals"
-            description="Commit to a finish line on a slice of the catalog, and see what already counts toward it."
         />
         <div class="flex flex-col items-start gap-4 border-t border-border/60 py-10">
             <p class="type-secondary text-muted-foreground">
@@ -360,7 +359,6 @@
     <Page.Root width="standard">
         <Page.Header
             title="Goals"
-            description="A commitment to reach a stated finish line on a defined slice of the catalog."
         >
             {#snippet actions()}
                 <Button size="lg" onclick={openCreate} disabled={busy}>
@@ -404,10 +402,7 @@
                         {archivedCount > 0 ? "No active goals" : "No goals yet"}
                     </h2>
                     <p class="mt-1 type-secondary text-muted-foreground">
-                        A goal is a finish line on a slice of the catalog — 80% of
-                        AMC 10 geometry, 100 problems this month, a two-week
-                        streak. Everything you have already done counts toward it
-                        from the moment you set it.
+                        e.g. 80% of AMC 10 geometry, 100 problems this month, a two-week streak.
                     </p>
                 </div>
                 <Button onclick={openCreate}>Set your first goal</Button>

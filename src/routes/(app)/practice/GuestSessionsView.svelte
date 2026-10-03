@@ -65,5 +65,4 @@
             </div>
         {/if}
     </Page.Section>
-    <p class="type-secondary text-muted-foreground">Want progress across browsers and devices? <a class="underline" href="/auth/signup">Create an account</a>.</p>
 </Page.Root>

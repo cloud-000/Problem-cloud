@@ -321,7 +321,6 @@
 <Page.Root width="standard">
     <Page.Header
         title="Progress"
-        description="Understand what needs attention, review your work, and follow your development over time."
     >
         {#snippet actions()}
             <Button href="/practice" size="lg">Start targeted practice</Button>
@@ -350,7 +349,6 @@
     {:else if activeView === "review"}
         <Page.Section
             title="Review due"
-            description="Work through problems scheduled for review across your series."
         >
             {#snippet actions()}
                 <Button onclick={startReview} disabled={startingReview || dueReviews.length === 0}>
@@ -592,7 +590,6 @@
             {#if stateSummary}
                 <Page.Section
                     title="Problem state"
-                    description="Current all-time organization, independent of the selected activity range."
                 >
                     <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
                         <div class="py-4 pr-4">
@@ -623,7 +620,6 @@
 
             <Page.Section
                 title="By topic"
-                description="Performance across all practiced topics in the selected range."
             >
                 <div class="border-t border-border">
                     {#each topicRows as topic (topic.bucket_key)}

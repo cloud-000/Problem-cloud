@@ -67,9 +67,9 @@ export type ContextualTipCopy = {
 
 const TIP_COPY: Record<ContextualTipId, string> = {
     [CONTEXTUAL_TIP.firstProgress]:
-        "Each graded attempt is counted on Progress, so you can see what still needs work.",
+        "Each graded attempt is counted on Progress.",
     [CONTEXTUAL_TIP.firstReview]:
-        "A problem comes back when it is due, so you see it again before it fades.",
+        "A problem comes back when it is due.",
     [CONTEXTUAL_TIP.firstMatrix]:
         "Each cell is one problem. Color is how it went; select a cell to open it.",
     [CONTEXTUAL_TIP.firstGoal]:

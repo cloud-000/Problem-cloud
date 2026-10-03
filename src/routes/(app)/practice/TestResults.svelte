@@ -228,9 +228,6 @@
                 {@render statChip(summary.incorrect, "var(--color-destructive)", "incorrect")}
                 {@render statChip(summary.ungraded, "var(--color-muted-foreground)", "ungraded")}
                 {@render statChip(summary.skipped, "var(--color-unsure)", "skipped")}
-                <span class="hidden sm:inline ml-1 text-muted-foreground">
-                    {summary.correct} correct · {summary.incorrect} incorrect · {summary.ungraded} submitted, ungraded · {summary.skipped} skipped
-                </span>
                 <span class="inline sm:hidden ml-1 text-muted-foreground/90 font-medium">
                     {summary.correct}/{history.length} score
                 </span>

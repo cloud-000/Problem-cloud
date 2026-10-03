@@ -925,7 +925,6 @@
             {#if step === 1}
                 <div class="flex flex-col gap-2">
                     <h3 class="type-section-title">What do you want to do?</h3>
-                    <p class="type-secondary text-muted-foreground">Choose the kind of commitment you want to make.</p>
                     {#each INTENTS as choice (choice.value)}
                         <button
                             type="button"
@@ -946,7 +945,6 @@
             {:else if step === 2}
                 <div class="flex flex-col gap-3">
                     <h3 class="type-section-title">Choose the material</h3>
-                    <p class="type-secondary text-muted-foreground">This is the material that will count toward your goal.</p>
                     <div class="grid gap-2 sm:grid-cols-2">
                         <Button variant={materialChoice === "all" ? "primary" : "outline"} onclick={() => chooseMaterial("all")}>Everything eligible</Button>
                         <Button variant={materialChoice === "series" ? "primary" : "outline"} onclick={() => chooseMaterial("series")}>A competition series</Button>

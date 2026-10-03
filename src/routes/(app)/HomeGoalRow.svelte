@@ -101,7 +101,7 @@
         <div class="shrink-0">
             {#if entry.reason === "achieved"}
                 <Button href={resolve(`/goals?goal=${goal.id}`)} variant="ghost" size="sm">
-                    See it
+                    Open goal
                     <Icon name="arrow_forward" />
                 </Button>
             {:else}

@@ -119,7 +119,6 @@
     <div class="flex flex-col gap-4">
         <Page.Header
             title="Help"
-            description="What each part of ProblemCloud is for, and where to open it."
         />
         <nav aria-label="Help sections" class="flex flex-wrap gap-x-4 gap-y-1">
             <a href="#start" class={sectionLinkClass}>Quick start</a>
@@ -215,7 +214,6 @@
     <Page.Section
         id="goals"
         title="Goals"
-        description="An optional finish line on a slice of the catalog."
     >
         <div class="flex flex-col gap-4 border-t border-border/60 py-4">
             <p class="type-secondary text-muted-foreground">
@@ -233,7 +231,6 @@
     <Page.Section
         id="tools"
         title="Coach, Whiteboard, and offline"
-        description="Optional tools around the same problems."
     >
         <div class="flex flex-col gap-6 border-t border-border/60 py-4">
             {#if aiCoachEnabled}

@@ -359,7 +359,7 @@
 <Page.Root width="wide">
     <Page.Header
         title="Product roadmap"
-        description="Follow what is planned, in progress, and complete. Vote for the work that matters most to you."
+        description="Vote for the work that matters most to you."
     >
         {#snippet actions()}
             {#if isAdmin}
@@ -541,7 +541,6 @@
 <Modal
     bind:open={showAddModal}
     title="Create Roadmap Goal"
-    description="Add a new goal or feature request to the application roadmap."
     size="md"
 >
     <form
@@ -623,7 +622,6 @@
 <Modal
     bind:open={showEditModal}
     title="Edit Roadmap Goal"
-    description="Update the details, status, or date of this goal."
     size="md"
 >
     {#if selectedGoal}
@@ -711,7 +709,7 @@
 <Modal
     bind:open={showDeleteConfirmModal}
     title="Delete Roadmap Goal"
-    description="Are you absolutely sure you want to delete this roadmap goal? This action cannot be undone and will delete all associated votes."
+    description="This action cannot be undone and will delete all associated votes."
     size="sm"
 >
     {#if selectedGoal}

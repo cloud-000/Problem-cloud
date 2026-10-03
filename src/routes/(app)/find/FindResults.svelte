@@ -34,7 +34,7 @@
     {#if error}
         <p class="text-sm text-destructive">{error}</p>
     {:else if !loading && results.length === 0}
-        <p class="text-sm text-muted-foreground">No results.</p>
+        <p class="text-sm text-muted-foreground">No results for this search.</p>
     {/if}
 
     {#if level === "series"}

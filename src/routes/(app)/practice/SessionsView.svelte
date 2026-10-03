@@ -358,7 +358,6 @@
 <Page.Root width="standard">
     <Page.Header
         title="Practice"
-        description="Build skill with focused problems, review, or a timed mock test."
     />
 
     {#if !user}
@@ -397,11 +396,26 @@
                 </Button>
             </div>
         {:else}
+            <Page.Section
+                title="Quick practice"
+            >
+                {#snippet actions()}
+                    <Button
+                        variant={activeSession ? "outline" : "primary"}
+                        onclick={practiceFreely}
+                        class="shrink-0 gap-1.5"
+                    >
+                        Start practice
+                        <Icon name="arrow_forward" />
+                    </Button>
+                {/snippet}
+            </Page.Section>
+
             {#if activeSession}
                 <Page.Section
                     title="Continue"
-                    description="Pick up where you left off."
                 >
+                    <div class="border-y border-border/60">
                     <SessionCard
                         userId={user!.id}
                         session={activeSession}
@@ -412,31 +426,12 @@
                         onRename={(name) => saveRename(activeSession, name)}
                         onDelete={() => removeSession(activeSession)}
                     />
+                    </div>
                 </Page.Section>
             {/if}
 
             <Page.Section
-                title="Quick practice"
-                description="Start immediately with your current practice settings."
-            >
-                <div class="flex items-center justify-between gap-6 border-y border-border/60 py-4">
-                    <p class="type-secondary text-muted-foreground">
-                        Jump into an ungrouped problem session.
-                    </p>
-                    <Button
-                        variant={activeSession ? "outline" : "primary"}
-                        onclick={practiceFreely}
-                        class="shrink-0 gap-1.5"
-                    >
-                        Start practice
-                        <Icon name="arrow_forward" />
-                    </Button>
-                </div>
-            </Page.Section>
-
-            <Page.Section
                 title="Saved sessions"
-                description="Resume a practice session or review completed work."
             >
                 {#if savedSessions.length === 0}
                     <p class="border-y border-border/60 py-5 type-secondary text-muted-foreground">
@@ -594,9 +589,6 @@
                     <span class="text-xs font-medium text-muted-foreground"
                         >Unlimited time</span
                     >
-                    <span class="text-xxs text-muted-foreground">
-                        {unlimited ? "No time limit" : "Timed"}
-                    </span>
                 </div>
                 <Switch bind:checked={unlimited} size="sm" />
             </div>
@@ -658,11 +650,6 @@
                     <span class="text-xs font-medium text-muted-foreground"
                         >Allow pausing</span
                     >
-                    {#if allowPause}
-                        <span class="text-xxs text-muted-foreground">
-                            You can pause the clock mid-test
-                        </span>
-                    {/if}
                 </div>
                 <Switch bind:checked={allowPause} size="sm" />
             </div>

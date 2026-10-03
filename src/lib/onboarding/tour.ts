@@ -35,31 +35,31 @@ export const TOUR_STEPS: TourStep[] = [
     {
         id: "hello",
         title: "Hi.",
-        body: "A short look at how ProblemCloud is put together. Skip anytime.",
+        body: "Includes practice, library, progress, and goals.",
         nav: "home",
     },
     {
         id: "trainer",
         title: "Practice",
-        body: "The loop. Coach sits where the answer box does — switch with Answer / Coach. Whiteboard and settings live in the top bar.",
+        body: "Coach sits where the answer box does — switch with Answer / Coach. Whiteboard and settings live in the top bar.",
         nav: "practice",
     },
     {
         id: "library",
         title: "Library",
-        body: "Problems, tests, and whole series. Switch the tabs.",
+        body: "Find problems by topic, test, or series.",
         nav: "library",
     },
     {
         id: "progress",
         title: "Progress",
-        body: "Your rating climb and a series matrix — tap a cell to see mastery across a competition.",
+        body: "Your rating chart and a series matrix — tap a cell to see mastery across a competition.",
         nav: "progress",
     },
     {
         id: "goals",
         title: "Goals",
-        body: "A destination for practice. Home follows one lead goal.",
+        body: "Home follows one lead goal.",
         nav: "goals",
     },
 ];

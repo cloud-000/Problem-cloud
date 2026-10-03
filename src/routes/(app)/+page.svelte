@@ -404,10 +404,9 @@
 
 {#if !user}
     <Page.Root width="standard">
-        <Page.Header title="Practice as a guest" description="Start solving now. Guest practice is saved in this browser only." />
+        <Page.Header title="Practice as a guest" description="Guest practice is saved in this browser only." />
         <section class="rounded-xl border border-border bg-surface-container-lowest p-6">
-            <h2 class="type-section-title">Ready for a problem?</h2>
-            <p class="mt-2 max-w-prose type-secondary text-muted-foreground">Create a free account to keep your progress, goals, and sessions across browsers and devices.</p>
+            <p class="max-w-prose type-secondary text-muted-foreground">Create a free account to keep your progress, goals, and sessions across browsers and devices.</p>
             <div class="mt-5 flex flex-wrap gap-2">
                 <Button href={resolve("/auth/signup")}>Create free account <Icon name="arrow_forward" /></Button>
                 <Button href={resolve("/practice")} variant="outline">Practice as a guest</Button>
@@ -486,8 +485,7 @@
                             class="text-foreground underline decoration-border underline-offset-4 hover:text-foreground"
                         >
                             Set a direction
-                        </a>
-                        when you are ready
+                        </a>.
                     </p>
                 {/if}
 
@@ -544,6 +542,7 @@
                             now={goalsNow}
                             busy={startingGoal}
                             onpractice={practiceGoal}
+                            hideFallbackCaption
                             class="py-4"
                         />
                     </div>

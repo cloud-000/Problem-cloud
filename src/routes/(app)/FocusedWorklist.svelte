@@ -14,7 +14,8 @@
 
     function problemTitle(item: WorklistItem) {
         const problem = item.problem;
-        return `${problem.tests?.name ?? "Practice problem"} · Problem ${problem.n + 1}`;
+        const name = problem.tests?.name?.trim();
+        return name ? `${name} · Problem ${problem.n + 1}` : `Problem ${problem.n + 1}`;
     }
 
     function reasonLabel(item: WorklistItem) {

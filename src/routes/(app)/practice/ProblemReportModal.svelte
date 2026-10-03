@@ -72,11 +72,11 @@
 </script>
 
 <form onsubmit={handleSubmit} class="space-y-4">
-    <p class="text-xs text-muted-foreground">
-        Report anything wrong with this problem.{allowAnswerSuggestion
-            ? " You can also suggest the missing reference answer."
-            : ""}
-    </p>
+    {#if allowAnswerSuggestion}
+        <p class="text-xs text-muted-foreground">
+            You can also suggest the missing reference answer.
+        </p>
+    {/if}
 
     {#if allowAnswerSuggestion}
       <fieldset class="space-y-1.5">

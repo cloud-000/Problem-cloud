@@ -148,10 +148,6 @@
                 <span class="block">Every problem in one place.</span>
                 <span class="text-primary-foreground block">With free AI.</span>
             </h1>
-            <p class="type-lead text-muted-foreground mt-md max-w-[40ch]">
-                Complete papers and a review grid. Bring your own key if you
-                prefer.
-            </p>
 
             <div class="mt-lg flex flex-wrap items-center gap-sm">
                 <Button
@@ -214,13 +210,6 @@
         >
             Free AI coach and review grid.
         </h2>
-        <ul
-            class="type-secondary text-muted-foreground mt-md flex flex-wrap gap-x-lg gap-y-1"
-        >
-            <li>Free AI coach</li>
-            <li>Review grid</li>
-            <li>Complete papers</li>
-        </ul>
 
         <div class="mt-xl grid gap-lg lg:grid-cols-2">
             <figure class="min-w-0">
@@ -412,14 +401,10 @@
             Custom filters.
         </h2>
         <p class="type-secondary text-muted-foreground mt-md max-w-[48ch]">
-            Topic, series, division, problem numbers, years. Practice the slice
-            you want.
+            Practice the slice you want.
         </p>
         <figure class="mt-xl min-w-0">
             <WelcomeFilters />
-            <figcaption class="type-caption text-muted-foreground mt-md">
-                Same filters as practice.
-            </figcaption>
         </figure>
     </section>
 

@@ -317,9 +317,6 @@
             <h2 id="library-filters-title" class="type-section-title text-foreground">
                 Filters
             </h2>
-            <p class="mt-0.5 type-caption text-muted-foreground">
-                Refine the current {store.current.level} view.
-            </p>
         </div>
         <div class="flex items-center gap-1">
             <Button
@@ -366,7 +363,6 @@
 <Page.Root bind:ref={pageRoot} width="unbounded" class="gap-0">
     <Page.Header
         title="Library"
-        description="Search the collection, explore competition archives, and choose what to practice next."
         class="mb-8"
     />
 

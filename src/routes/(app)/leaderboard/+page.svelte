@@ -38,7 +38,6 @@
 <Page.Root width="standard">
     <Page.Header
         title="Leaderboard"
-        description="See how players compare across graded problems."
     />
 
     <section aria-label="Ranked players">

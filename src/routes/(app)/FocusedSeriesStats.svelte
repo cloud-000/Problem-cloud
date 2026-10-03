@@ -34,10 +34,10 @@
             label={entry.name}
             sublabel={`${entry.summary.total} ${plural(entry.summary.total, "problem")}`}
             score={masteryScore(entry.summary)}
-            scoreLabel="confident"
+            scoreLabel="confident of attempted"
             metrics={[
-                { label: "due", value: String(entry.summary.review_due) },
-                { label: "needs work", value: String(entry.summary.needs_work) },
+                { label: "review due", value: String(entry.summary.review_due) },
+                { label: "to review", value: String(entry.summary.needs_work) },
             ]}
         >
             {#snippet action()}

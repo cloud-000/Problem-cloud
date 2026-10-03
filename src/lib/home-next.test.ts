@@ -90,7 +90,7 @@ describe("Next up without a goal", () => {
         });
         expect(decision.action).toEqual({
             kind: "continue_session",
-            label: "Continue",
+            label: "Resume",
             sessionId: 11,
         });
         expect(decision.work.title).toBe("Continue Mixed practice");
@@ -107,9 +107,9 @@ describe("Next up without a goal", () => {
         });
         expect(decision.action).toEqual({
             kind: "review_due",
-            label: "Open Review · 4 problems",
+            label: "Open Review",
         });
-        expect(decision.work.title).toBe("4 problems are ready to revisit.");
+        expect(decision.work.title).toBe("Review due (4)");
         expect(decision.work.detail).toBeNull();
     });
 
@@ -122,7 +122,7 @@ describe("Next up without a goal", () => {
         });
         expect(decision.action).toEqual({
             kind: "start_practice",
-            label: "Start practicing",
+            label: "Choose settings",
         });
         expect(decision.work.title).toBe("Start practicing");
         expect(decision.commitment).toEqual({ kind: "invitation" });

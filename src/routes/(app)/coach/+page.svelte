@@ -214,7 +214,6 @@
                 conversationLabel="Coach conversation"
                 placeholder="Ask Coach…"
                 emptyTitle="How can I help?"
-                emptyDescription="Ask a math question, explore a study idea, or use one of these starting points."
                 quickActions={actions}
                 class="h-auto min-h-0 w-full flex-1"
                 transcriptClass="[scrollbar-gutter:stable_both-edges]"

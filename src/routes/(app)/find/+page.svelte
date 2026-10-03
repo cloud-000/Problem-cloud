@@ -93,7 +93,7 @@
         <Input
             class="flex-1"
             bind:value={idsInput}
-            placeholder="Enter ids, e.g. 1, 2, 3"
+            placeholder="1, 2, 3"
             {onkeydown}
         />
         <Button onclick={search} disabled={loading}>

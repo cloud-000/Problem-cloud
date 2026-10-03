@@ -2185,9 +2185,6 @@
                   <h2 class="text-sm font-semibold">
                      This test has no answerable problems
                   </h2>
-                  <p class="text-xs text-muted-foreground">
-                     None of its problems have a statement and choices yet.
-                  </p>
                </div>
                <Button size="sm" variant="outline" href="/practice">
                   Back to sessions
@@ -2602,8 +2599,7 @@
                </div>
                <p class="text-xs text-muted-foreground">
                   This package keeps the New-mode settings chosen when it was downloaded.
-                  List, Skipped, Review, Mixed, and Test need additional offline contracts
-                  and cannot be selected yet.
+                  List, Skipped, Review, Mixed, and Test aren't available offline yet.
                </p>
             </div>
          {/if}
@@ -2694,7 +2690,6 @@
                      still unanswered. Submit anyway, or go back and finish
                      {unansweredCount === 1 ? "it" : "them"}.
                   {:else}
-                     All problems are answered and there is still time remaining.
                      Are you ready to submit your test?
                   {/if}
                {/if}

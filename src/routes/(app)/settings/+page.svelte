@@ -53,7 +53,6 @@
     <div class="flex flex-col gap-4">
         <Page.Header
             title="Settings"
-            description="Manage your interface, account, and connected services."
         />
         <nav aria-label="Settings sections" class="flex flex-wrap gap-x-4 gap-y-1">
             <a href="#appearance" class={sectionLinkClass}>Appearance</a>
@@ -70,7 +69,7 @@
     <Page.Section
         id="appearance"
         title="Appearance"
-        description="Choose how ProblemCloud looks on this device. Asymptote diagrams adjust their contrast automatically."
+        description="Asymptote diagrams adjust their contrast automatically."
     >
         <div class="border-y border-border/60">
             <div
@@ -151,7 +150,6 @@
     <Page.Section
         id="developer"
         title="Developer"
-        description="Inspect what ProblemCloud is doing under the hood on this device."
     >
         <div class="border-y border-border/60">
             <div class="flex items-center justify-between gap-6 py-4">
@@ -177,7 +175,6 @@
     <Page.Section
         id="account"
         title="Account"
-        description="Details associated with your current ProblemCloud account."
     >
         {#if session && profile}
             <dl class="border-y border-border/60 divide-y divide-border/60">
@@ -229,7 +226,6 @@
         <Page.Section
             id="feedback"
             title="Feedback"
-            description="Report a bug, suggest a feature, or share an idea with the team."
         >
             <div
                 class="flex flex-col gap-4 border-y border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8"

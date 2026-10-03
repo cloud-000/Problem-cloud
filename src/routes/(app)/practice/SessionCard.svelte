@@ -54,7 +54,6 @@
             onclick: () => {
                 modal.show(DownloadOfflineModal, { userId, session }, {
                     title: "Download for offline",
-                    description: "A dedicated New-mode copy stays on this device.",
                     size: "sm",
                 });
             },

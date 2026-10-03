@@ -276,8 +276,7 @@
 
 <Page.Root width="standard">
     <Page.Header
-        title="Progress"
-        description="Understand what needs attention, review your work, and follow your development over time."
+        title="History"
     >
         {#snippet actions()}
             <Button href="/practice" size="lg">Start targeted practice</Button>
@@ -297,10 +296,7 @@
             <Button href="/auth/login">Log in</Button>
         </div>
     {:else}
-        <Page.Section
-            title="History"
-            description="Review past submissions and reopen the problem and solution."
-        >
+        <Page.Section>
             <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
                 <div class="py-4 pr-4">
                     <div class="type-code text-foreground">{stats.total}</div>
