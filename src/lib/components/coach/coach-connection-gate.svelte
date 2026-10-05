@@ -11,7 +11,7 @@
         <Icon name="link_off" fontsize={20} />
     </div>
     <h3 class="mt-3.5 text-base font-semibold tracking-tight text-foreground">Connect Coach</h3>
-    <p class="mt-1.5 max-w-5md text-sm leading-5 text-muted-foreground">
+    <p class="mt-1.5 max-w-md text-sm leading-5 text-muted-foreground">
         {coach.blockingMessage ??
             coach.error?.message ??
             "Add your API key in settings to start using the Coach."}

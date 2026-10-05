@@ -19,7 +19,7 @@
 </script>
 
 <div
-    class="border-border bg-background w-full max-w-[32rem] overflow-visible rounded-xl border"
+    class="border-border bg-background w-full max-w-lg overflow-visible rounded-xl border"
     role="region"
     aria-label="Sample catalog filters"
 >

@@ -361,6 +361,25 @@
     --spacing-xl: var(--spacing-xl);
     --spacing-gutter: var(--spacing-gutter);
     --spacing-margin: var(--spacing-margin);
+
+    /* Container Widths (Restore standard container widths shadowed by --spacing-*) */
+    --max-width-xs: 20rem;
+    --max-width-sm: 24rem;
+    --max-width-md: 28rem;
+    --max-width-lg: 32rem;
+    --max-width-xl: 36rem;
+
+    --min-width-xs: 20rem;
+    --min-width-sm: 24rem;
+    --min-width-md: 28rem;
+    --min-width-lg: 32rem;
+    --min-width-xl: 36rem;
+
+    --width-xs: 20rem;
+    --width-sm: 24rem;
+    --width-md: 28rem;
+    --width-lg: 32rem;
+    --width-xl: 36rem;
 }
 
 /* ==========================================================================

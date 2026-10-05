@@ -34,7 +34,7 @@
             <Icon name={icon} fontsize={20} fill />
         </div>
         <h3 class="mt-3.5 text-base font-semibold tracking-tight text-foreground">{title}</h3>
-        <p class="mt-1.5 max-w-4xl text-xs leading-5 text-muted-foreground">
+        <p class="mt-1.5 max-w-sm text-xs leading-5 text-muted-foreground">
             {description}
         </p>
         <AIChatQuickActions
