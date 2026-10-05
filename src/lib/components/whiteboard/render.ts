@@ -17,14 +17,12 @@ import {
 
 export type Project = (point: Pair) => Pair;
 
-export interface WhiteboardPalette {
-    background: string;
-    foreground: string;
-    inverseInk: string;
-    border: string;
-    primary: string;
-    isDark: boolean;
-}
+import {
+    resolveInkColor,
+    type WhiteboardPalette,
+} from "./palette";
+
+export type { WhiteboardPalette } from "./palette";
 
 export interface WhiteboardViewport {
     width: number;
@@ -256,15 +254,9 @@ export function projectedEllipseArc(
 }
 
 export function penStroke(pen: Pen | undefined, palette: WhiteboardPalette, scale: number): StrokeStyle {
-    const rgb = resolvePenColor(pen);
-    let color = palette.foreground;
-    if (rgb) {
-        const black = rgb.r <= 1e-4 && rgb.g <= 1e-4 && rgb.b <= 1e-4;
-        const white = rgb.r >= 1 - 1e-4 && rgb.g >= 1 - 1e-4 && rgb.b >= 1 - 1e-4;
-        if (black) color = palette.foreground;
-        else if (white && palette.isDark) color = palette.inverseInk;
-        else color = `rgb(${Math.round(rgb.r * 255)},${Math.round(rgb.g * 255)},${Math.round(rgb.b * 255)})`;
-    }
+    // Ink inversion lives in `palette.ts` (`resolveInkColor`) so the canvas
+    // and the swatch previews share the one rule.
+    const color = resolveInkColor(resolvePenColor(pen), palette);
 
     const dash = typeof pen?.dash === "string" && pen.dash !== "solid"
         ? (DASH[pen.dash] ?? []).map((segment) => unitsToScreenPx(segment, scale))

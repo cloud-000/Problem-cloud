@@ -18,8 +18,10 @@
     import { cn } from "$lib/utils.js";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
+    import { Theme } from "$lib/utils/Theme.svelte";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { hasWhiteboardInspector } from "./control-policy";
+    import { previewSwatchColor, themeInk } from "./palette";
 
     let {
         store,
@@ -38,6 +40,12 @@
     } = $props();
 
     const propertiesAvailable = $derived(hasWhiteboardInspector(store));
+    // Preview the stroke color through the same ink rule the canvas paints
+    // with, so the dot matches the board in both themes.
+    const strokePreview = $derived(previewSwatchColor(
+        store.strokeColor,
+        themeInk(Theme.currentTheme?.theme, Theme.themes.get("light")?.theme, Theme.isDark),
+    ));
 </script>
 
 <div
@@ -79,7 +87,7 @@
                 <Icon name="tune" />
                 <span
                     class="absolute -bottom-1 -right-1 size-2 rounded-full border border-surface-container-lowest"
-                    style:background-color={store.strokeColor}
+                    style:background-color={strokePreview}
                 ></span>
             </span>
         </Button>

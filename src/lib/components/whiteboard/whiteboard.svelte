@@ -26,6 +26,7 @@
     import { sceneBounds, type Pair, type Scene } from "$lib/asy/scene";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
     import { Theme } from "$lib/utils/Theme.svelte";
+    import { themePalette } from "./palette";
     import {
         registerCanvasSnapshot,
         renderWhiteboard,
@@ -237,16 +238,13 @@
     }
 
     function currentPalette(): WhiteboardPalette {
-        const current = Theme.currentTheme;
-        const light = Theme.themes.get("light");
-        return {
-            background: current?.theme["surface-container-lowest"] ?? "#ffffff",
-            foreground: current?.theme.foreground ?? "#191c1e",
-            inverseInk: light?.theme.foreground ?? "#191c1e",
-            border: current?.theme.border ?? "#e2e8f0",
-            primary: current?.theme["primary-foreground"] ?? "#326cec",
-            isDark: Theme.isDark,
-        };
+        // The Theme → palette token mapping lives in `palette.ts` so the
+        // canvas, swatches, and previews share it.
+        return themePalette(
+            Theme.currentTheme?.theme,
+            Theme.themes.get("light")?.theme,
+            Theme.isDark,
+        );
     }
 
     $effect(() => {

@@ -22,7 +22,10 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { Input } from "$lib/components/input";
+    import { RangeSlider } from "$lib/components/range-slider";
     import { Switch } from "$lib/components/toggle";
+    import { Theme } from "$lib/utils/Theme.svelte";
+    import { previewSwatchColor, themeInk } from "./palette";
     import type { EditorPropertyId, EditorPropertyValue, ResolvedEditorProperty } from "$lib/asy/editor-properties";
     import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
 
@@ -39,6 +42,14 @@
     } = $props();
 
     const properties = $derived(store.inspectorProperties);
+    // The ink theme the canvas paints with — swatches preview through the
+    // same rule (`palette.ts`), so the picker matches the canvas in both
+    // themes instead of showing raw authored hex.
+    const ink = $derived(themeInk(
+        Theme.currentTheme?.theme,
+        Theme.themes.get("light")?.theme,
+        Theme.isDark,
+    ));
     const fillEnabled = $derived(properties.find(({ id }) => id === "fillEnabled"));
     const dimension = $derived(store.selectedDimensionId
         ? store.dimensionGlyphs.find(({ id }) => id === store.selectedDimensionId)
@@ -167,7 +178,7 @@
                                             "size-5 rounded-full border border-border/70 outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
                                             !property.mixed && property.value === color.value && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                                         )}
-                                        style:background-color={color.value}
+                                        style:background-color={previewSwatchColor(color.value, ink)}
                                         onclick={() => update(property.id, color.value)}
                                         onkeydown={moveSwatchFocus}
                                     ></button>
@@ -253,22 +264,19 @@
                                 </div>
                             {/if}
                             <div class="grid grid-cols-[1fr_3.75rem] items-center gap-2">
-                                <input
-                                    id={`whiteboard-${property.id}`}
-                                    class="h-2 w-full cursor-pointer accent-primary"
-                                    type="range"
+                                <RangeSlider
+                                    single
+                                    singleValue={Number(property.value)}
                                     min={property.min}
                                     max={property.max}
                                     step={property.step}
-                                    value={Number(property.value)}
-                                    onpointerdown={begin}
-                                    oninput={(event) => update(property.id, numberFrom(event))}
-                                    onchange={commit}
-                                    onkeydown={(event) => {
-                                        begin();
-                                        if (event.key === "Escape") cancel();
-                                        else queueMicrotask(commit);
-                                    }}
+                                    showBounds={false}
+                                    showTooltip={false}
+                                    label={property.label}
+                                    onBegin={begin}
+                                    onCommit={commit}
+                                    onCancel={cancel}
+                                    onSingleInput={(value) => update(property.id, value)}
                                 />
                                 <Input
                                     type="number"

@@ -50,10 +50,29 @@
         disabled?: boolean;
         /** Show a value bubble above the active/focused handle. */
         showTooltip?: boolean;
+        /** Show the min/max bound labels beneath the track. */
+        showBounds?: boolean;
         /** Format a value for the tooltip, bound labels, and `aria-valuetext`. */
         formatValue?: (v: number) => string;
         /** Accessible name prefix for the handles (e.g. "Difficulty"). */
         label?: string;
+        /**
+         * Fired when a drag or track tap starts (before the first value
+         * change). Pair with `onCommit` to coalesce a gesture into one
+         * undo step.
+         */
+        onBegin?: () => void;
+        /** Fired when a drag ends or a keyboard step lands. */
+        onCommit?: () => void;
+        /** Fired when the focused handle receives Escape. */
+        onCancel?: () => void;
+        /**
+         * Fired with the new value on every single-mode change (pointer or
+         * keyboard), alongside the `singleValue` bindable — the controlled
+         * escape hatch for callers that mirror the value in a store instead
+         * of binding local state.
+         */
+        onSingleInput?: (value: number) => void;
     };
 </script>
 
@@ -69,8 +88,13 @@
         value = $bindable([min, max]),
         disabled = false,
         showTooltip = true,
+        showBounds = true,
         formatValue = (v: number) => String(v),
         label = "Range",
+        onBegin,
+        onCommit,
+        onCancel,
+        onSingleInput,
         class: className,
         ...restProps
     }: RangeSliderProps = $props();
@@ -105,6 +129,7 @@
     function setThumb(i: 0 | 1, v: number) {
         if (single) {
             singleValue = clamp(v, min, max);
+            onSingleInput?.(singleValue);
             return;
         }
         const next: RangeValue = i === 0 ? [v, value[1]] : [value[0], v];
@@ -116,6 +141,7 @@
     function onTrackPointerDown(e: PointerEvent) {
         if (disabled || !trackEl) return;
         e.preventDefault();
+        onBegin?.();
         const v = clientXToValue(e.clientX);
         const i: 0 | 1 = single
             ? 1
@@ -132,6 +158,7 @@
         if (disabled || !trackEl) return;
         e.preventDefault();
         e.stopPropagation();
+        onBegin?.();
         trackEl.setPointerCapture(e.pointerId);
         dragMode = "thumb";
         activeThumb = i;
@@ -146,6 +173,7 @@
         }
         e.preventDefault();
         e.stopPropagation();
+        onBegin?.();
         trackEl.setPointerCapture(e.pointerId);
         dragMode = "bar";
         activeThumb = null;
@@ -175,12 +203,18 @@
         if (trackEl?.hasPointerCapture(e.pointerId)) {
             trackEl.releasePointerCapture(e.pointerId);
         }
+        if (dragMode !== null) onCommit?.();
         dragMode = null;
         activeThumb = null;
     }
 
     function onThumbKeyDown(e: KeyboardEvent, i: 0 | 1) {
         if (disabled) return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel?.();
+            return;
+        }
         const fine = step > 0 ? step : (max - min) / 100;
         const coarse = step > 0 ? step * 10 : (max - min) / 10;
         let v = pair[i];
@@ -209,7 +243,9 @@
                 return;
         }
         e.preventDefault();
+        onBegin?.();
         setThumb(i, snapToStep(v, min, max, step));
+        onCommit?.();
     }
 
     function tooltipVisible(i: 0 | 1): boolean {
@@ -287,6 +323,7 @@
     </div>
     <div
         class="mt-xs flex justify-between text-label-caps text-muted-foreground"
+        hidden={!showBounds}
     >
         <span>{formatValue(min)}</span>
         <span>{formatValue(max)}</span>
