@@ -9,9 +9,11 @@
     import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu/index.js";
     import {
         fetchSessionSubmissions,
+        reconcileSessionSubmissions,
         reviewEntryFromSubmission,
         type RecentSubmissionRow,
     } from "$lib/progress";
+    import { fetchTestProblems } from "$lib/trainer";
     import { modal } from "$lib/state/modal.svelte";
     import DownloadOfflineModal from "./DownloadOfflineModal.svelte";
 
@@ -90,10 +92,21 @@
         if (submissions === undefined) {
             submissions = null; // mark loading
             try {
-                submissions = await fetchSessionSubmissions(
+                const rows = await fetchSessionSubmissions(
                     supabase,
                     session.id,
                 );
+                const testId = (session.settings as { testId?: number } | null)?.testId;
+                if (testId != null) {
+                    try {
+                        const testProblems = await fetchTestProblems(supabase, testId);
+                        submissions = reconcileSessionSubmissions(testProblems, rows);
+                    } catch {
+                        submissions = rows;
+                    }
+                } else {
+                    submissions = rows;
+                }
             } catch {
                 submissions = [];
             }

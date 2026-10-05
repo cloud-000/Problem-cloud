@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+    reconcileSessionSubmissions,
     reviewEntryFromSubmission,
     reviewScheduleFor,
     statusFor,
@@ -112,5 +113,61 @@ describe("reviewEntryFromSubmission", () => {
             reviewEntryFromSubmission(submission({ skipped: true }), problem)
                 .skipped,
         ).toBe(true);
+    });
+});
+
+describe("reconcileSessionSubmissions", () => {
+    test("reconciles test submissions with canonical problem IDs to test problems", () => {
+        const testProblems: ProblemRow[] = [
+            { id: 10, n: 0, test_id: 1 } as unknown as ProblemRow,
+            { id: 20, n: 1, canonical_id: 999, test_id: 1 } as unknown as ProblemRow,
+        ];
+        const submissions: RecentSubmissionRow[] = [
+            {
+                id: 1,
+                user_id: "u1",
+                problem_id: 999,
+                selected_choice: 3,
+                is_correct: true,
+                skipped: false,
+                flagged: false,
+                elapsed_ms: 12000,
+                source: "test",
+                session_id: 5,
+                created_at: "2026-10-04T00:00:00Z",
+                problems: { id: 999, n: 5 } as unknown as ProblemRow,
+            },
+            {
+                id: 2,
+                user_id: "u1",
+                problem_id: 10,
+                selected_choice: 0,
+                is_correct: true,
+                skipped: false,
+                flagged: false,
+                elapsed_ms: 8000,
+                source: "test",
+                session_id: 5,
+                created_at: "2026-10-04T00:00:00Z",
+                problems: { id: 10, n: 0 } as unknown as ProblemRow,
+            },
+        ];
+
+        const reconciled = reconcileSessionSubmissions(testProblems, submissions);
+        expect(reconciled).toHaveLength(2);
+        // Order should match testProblems order (Problem id 10, then id 20)
+        expect(reconciled[0].problem_id).toBe(10);
+        expect(reconciled[0].problems?.id).toBe(10);
+
+        expect(reconciled[1].problem_id).toBe(999);
+        expect(reconciled[1].problems?.id).toBe(20);
+        expect(reconciled[1].problems?.n).toBe(1);
+    });
+
+    test("falls back cleanly when testProblems is empty", () => {
+        const submissions: RecentSubmissionRow[] = [
+            { id: 1, problem_id: 10 } as unknown as RecentSubmissionRow,
+        ];
+        expect(reconcileSessionSubmissions([], submissions)).toBe(submissions);
     });
 });

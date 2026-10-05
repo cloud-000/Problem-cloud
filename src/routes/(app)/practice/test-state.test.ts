@@ -7,6 +7,7 @@ import {
     loadTestDraft,
     parseTestDraft,
     restoreTestDraft,
+    reconcileTestHistory,
     summarizeTestResults,
     testOutcome,
     writeTestDraft,
@@ -212,5 +213,112 @@ describe("test grading", () => {
             ungraded: 1,
             skipped: 1,
         });
+    });
+});
+
+describe("reconcileTestHistory", () => {
+    test("reconciles aliased problems to the test's problem placement and order", () => {
+        // Mock AMC 10 test problems where Problem 5 (id 105) is an alias of AMC 12 Problem 4 (canonical_id 204)
+        const testProblems: ProblemRow[] = [
+            { id: 101, n: 0, test_id: 10, tests: { name: "AMC 10" } } as unknown as ProblemRow,
+            { id: 102, n: 1, test_id: 10, tests: { name: "AMC 10" } } as unknown as ProblemRow,
+            { id: 105, n: 4, canonical_id: 204, test_id: 10, tests: { name: "AMC 10" } } as unknown as ProblemRow,
+        ];
+
+        // Submissions stored in the database:
+        // Problem 1 was not aliased -> problem.id = 101
+        // Problem 2 was not aliased -> problem.id = 102
+        // Problem 5 was aliased -> canonicalized to AMC 12 problem (id = 204, n = 3)
+        const submissions = [
+            {
+                problem: { id: 204, n: 3, test_id: 12, tests: { name: "AMC 12" } } as unknown as ProblemRow,
+                progress: null,
+                source: "test",
+                selectedChoice: 2,
+                answer: "",
+                isCorrect: true,
+                skipped: false,
+                flagged: true,
+                elapsedMs: 45000,
+            },
+            {
+                problem: { id: 101, n: 0, test_id: 10, tests: { name: "AMC 10" } } as unknown as ProblemRow,
+                progress: null,
+                source: "test",
+                selectedChoice: 0,
+                answer: "",
+                isCorrect: true,
+                skipped: false,
+                flagged: false,
+                elapsedMs: 30000,
+            },
+            {
+                problem: { id: 102, n: 1, test_id: 10, tests: { name: "AMC 10" } } as unknown as ProblemRow,
+                progress: null,
+                source: "test",
+                selectedChoice: null,
+                answer: "",
+                isCorrect: null,
+                skipped: true,
+                flagged: false,
+                elapsedMs: 5000,
+            },
+        ];
+
+        const history = reconcileTestHistory(testProblems, submissions);
+
+        expect(history).toHaveLength(3);
+        // Correct test problem order: n = 0, n = 1, n = 4
+        expect(history[0].problem.id).toBe(101);
+        expect(history[0].problem.n).toBe(0);
+        expect(history[0].problem.tests?.name).toBe("AMC 10");
+        expect(history[0].selectedChoice).toBe(0);
+        expect(history[0].correct).toBe(true);
+
+        expect(history[1].problem.id).toBe(102);
+        expect(history[1].problem.n).toBe(1);
+        expect(history[1].skipped).toBe(true);
+
+        // Problem 5 is correctly restored as AMC 10 Problem #5 (n = 4) instead of AMC 12 #4 (n = 3)
+        expect(history[2].problem.id).toBe(105);
+        expect(history[2].problem.n).toBe(4);
+        expect(history[2].problem.tests?.name).toBe("AMC 10");
+        expect(history[2].selectedChoice).toBe(2);
+        expect(history[2].correct).toBe(true);
+        expect(history[2].flagged).toBe(true);
+        expect(history[2].elapsedMs).toBe(45000);
+    });
+
+    test("handles unattempted test problems and falls back gracefully when testProblems is empty", () => {
+        const testProblems: ProblemRow[] = [
+            { id: 1, n: 0, test_id: 1 } as unknown as ProblemRow,
+            { id: 2, n: 1, test_id: 1 } as unknown as ProblemRow,
+        ];
+        const submissions = [
+            {
+                problem: { id: 1, n: 0, test_id: 1 } as unknown as ProblemRow,
+                progress: null,
+                source: "test",
+                selectedChoice: 1,
+                answer: "",
+                isCorrect: true,
+                skipped: false,
+                flagged: false,
+                elapsedMs: 10000,
+            },
+        ];
+
+        const history = reconcileTestHistory(testProblems, submissions);
+        expect(history).toHaveLength(2);
+        expect(history[0].problem.id).toBe(1);
+        expect(history[0].correct).toBe(true);
+        expect(history[1].problem.id).toBe(2);
+        expect(history[1].skipped).toBe(true);
+        expect(history[1].submitted).toBe(false);
+
+        // Empty testProblems fallback
+        const fallback = reconcileTestHistory([], submissions);
+        expect(fallback).toHaveLength(1);
+        expect(fallback[0].problem.id).toBe(1);
     });
 });

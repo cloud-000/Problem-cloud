@@ -1,10 +1,18 @@
-import type { PracticeHistoryEntry, PracticeAnswerState } from "./practice-state";
+import {
+    createPracticeHistoryEntry,
+    practiceHistoryEntryFromSubmission,
+    type PracticeHistoryEntry,
+    type PracticeAnswerState,
+    type PracticeSource,
+} from "./practice-state";
 import { answersMatch } from "$lib/utils/answer-matcher";
 import {
     hasComparableAnswer,
     inputModeFor,
     resolveResponseKind,
 } from "$lib/problem-response";
+import type { ProblemRow } from "$lib/library";
+import type { SessionHistoryEntry } from "$lib/sessions";
 
 export type TestDraftAnswer = {
     problemId: number;
@@ -216,4 +224,65 @@ export function summarizeTestResults(
         ).length,
         skipped: history.filter((entry) => !entry.submitted).length,
     };
+}
+
+/**
+ * Reconcile a completed test's session history entries with the test's authoritative problem set.
+ * In the database, submissions on alias problems have their `problem_id` canonicalized to a shared
+ * canonical problem from another test (e.g. an AMC 10 question rewritten to an AMC 12 question).
+ * This reconstructs the test review history so each entry reflects the test's actual problem
+ * placement (ordered 1..N, correct test name and problem number) while retaining all recorded
+ * submission outcomes (answers, correctness, skip status, elapsed time, mastery/progress).
+ */
+export function reconcileTestHistory(
+    testProblems: ProblemRow[],
+    submissions: SessionHistoryEntry[],
+): PracticeHistoryEntry[] {
+    if (!testProblems.length) {
+        return submissions.map(practiceHistoryEntryFromSubmission);
+    }
+
+    const remaining = [...submissions];
+    const history: PracticeHistoryEntry[] = testProblems.map((p) => {
+        let idx = remaining.findIndex((s) => s.problem.id === p.id);
+        if (idx === -1 && p.canonical_id != null) {
+            idx = remaining.findIndex((s) => s.problem.id === p.canonical_id);
+        }
+
+        if (idx !== -1) {
+            const [sub] = remaining.splice(idx, 1);
+            return createPracticeHistoryEntry({
+                problem: p,
+                source: (sub.source as PracticeSource) ?? "test",
+                progress: sub.progress,
+                selectedChoice: sub.selectedChoice,
+                answer: sub.answer ?? "",
+                submitted: !sub.skipped,
+                correct: sub.isCorrect,
+                flagged: sub.flagged,
+                elapsedMs: sub.elapsedMs,
+                submissionId: (sub as { submissionId?: number }).submissionId,
+                skipped: sub.skipped,
+            });
+        }
+
+        return createPracticeHistoryEntry({
+            problem: p,
+            source: "test",
+            progress: null,
+            selectedChoice: null,
+            answer: "",
+            submitted: false,
+            correct: null,
+            flagged: false,
+            elapsedMs: 0,
+            skipped: true,
+        });
+    });
+
+    for (const extra of remaining) {
+        history.push(practiceHistoryEntryFromSubmission(extra));
+    }
+
+    return history;
 }

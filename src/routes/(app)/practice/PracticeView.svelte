@@ -104,6 +104,7 @@
       clearTestDraft as clearStoredTestDraft,
       createTestDraft,
       loadTestDraft as loadStoredTestDraft,
+      reconcileTestHistory,
       restoreTestDraft,
       summarizeTestResults,
       writeTestDraft as writeStoredTestDraft,
@@ -305,14 +306,14 @@
          // submissions themselves, not just status, and render the results.
          const graded = await trainerSource.getSessionHistory();
          if (s.status === "ended" || graded.length > 0) {
-            // fetchSessionHistory orders by created_at, but a test's rows are
-            // batch-inserted with identical timestamps, so that order is
-            // arbitrary. Re-sort into problem order for the review list.
-            const ordered = [...graded].sort(
-               (x, y) =>
-                  x.problem.n - y.problem.n || x.problem.id - y.problem.id,
-            );
-            history = ordered.map(practiceHistoryEntryFromSubmission);
+            // Test review: reconcile the recorded submissions against the
+            // test's authoritative problem set. Database deduplication may have
+            // rewritten alias problems to canonical problems from another test,
+            // so we match submissions by either problem.id or canonical_id.
+            // This ensures all problems appear in the test's original order (1..N)
+            // with the correct test title and problem numbers.
+            const problems = await trainerSource.getTestProblems(settingsForm.testId);
+            history = reconcileTestHistory(problems, graded);
             historyIndex = history.length - 1;
             testFinished = true;
             // Reconcile a session left active by a submit whose end-of-session

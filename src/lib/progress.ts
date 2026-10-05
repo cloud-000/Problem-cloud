@@ -342,3 +342,37 @@ export async function fetchSessionSubmissions(
         problems: collapseProblemEmbeds(row.problems as RawEmbeddedProblem | null),
     }));
 }
+
+/**
+ * Reconcile a test session's submission rows against the test's authoritative problem set.
+ * In the database, submissions on alias problems have their `problem_id` canonicalized to a shared
+ * canonical problem from another test (e.g. an AMC 10 question rewritten to an AMC 12 question).
+ * This aligns each submission with its placement on the test so that the session breakdown
+ * shows the test's correct problem numbers and names in order.
+ */
+export function reconcileSessionSubmissions(
+    testProblems: ProblemRow[],
+    submissions: RecentSubmissionRow[],
+): RecentSubmissionRow[] {
+    if (!testProblems.length) return submissions;
+
+    const remaining = [...submissions];
+    const result: RecentSubmissionRow[] = [];
+
+    for (const problem of testProblems) {
+        let idx = remaining.findIndex((s) => s.problem_id === problem.id);
+        if (idx === -1 && problem.canonical_id != null) {
+            idx = remaining.findIndex((s) => s.problem_id === problem.canonical_id);
+        }
+        if (idx !== -1) {
+            const [sub] = remaining.splice(idx, 1);
+            result.push({
+                ...sub,
+                problems: problem,
+            });
+        }
+    }
+
+    result.push(...remaining);
+    return result;
+}
