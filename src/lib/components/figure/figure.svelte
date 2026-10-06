@@ -25,6 +25,54 @@
 
     let view = $state<"image" | "code">("image");
     let expanded = $state(false);
+    // An error stays visible until a load succeeds or the source changes.
+    let imageFailed = $derived.by(() => {
+        void imageSrc;
+        return false;
+    });
+    let retrying = $derived.by(() => {
+        void imageSrc;
+        return false;
+    });
+    let retryAttempt = $state(0);
+    let externalImage = $derived.by(() => {
+        try {
+            const source = imageSrc.startsWith("/_offline/media?")
+                ? new URLSearchParams(imageSrc.split("?")[1]).get("url")
+                : imageSrc;
+            if (!source) return null;
+            const url = new URL(source);
+            if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+            return {
+                href: url.href,
+                label: url.hostname === "artofproblemsolving.com" ||
+                    url.hostname.endsWith(".artofproblemsolving.com")
+                    ? "Open image on AoPS"
+                    : "Open image",
+            };
+        } catch {
+            return null;
+        }
+    });
+
+    function handleImageError(event: Event & { currentTarget: Element }) {
+        if (event.currentTarget.getAttribute("src") !== imageSrc) return;
+        imageFailed = true;
+        retrying = false;
+        expanded = false;
+    }
+
+    function handleImageLoad(event: Event & { currentTarget: Element }) {
+        if (event.currentTarget.getAttribute("src") !== imageSrc) return;
+        imageFailed = false;
+        retrying = false;
+    }
+
+    function retryImage() {
+        // Recreate the image without removing the fallback while it loads.
+        retrying = true;
+        retryAttempt += 1;
+    }
 
     function annotationKey(source: string): string {
         // Keep data/blob URLs out of the localStorage key while making the
@@ -135,19 +183,43 @@
 
 <div class={cn("group relative my-3", className)}>
     {#if view === "image"}
+        {#if imageFailed}
+            <div class="rounded-lg border border-border bg-surface-container-low p-4 text-center" role="status">
+                <p class="text-sm text-muted-foreground">Image couldn’t load.</p>
+                <div class="mt-3 flex flex-wrap justify-center gap-2">
+                    <Button variant="outline" size="sm" disabled={retrying} onclick={retryImage}>
+                        <span class="grid">
+                            <span class="col-start-1 row-start-1" class:invisible={retrying} aria-hidden={retrying}>Retry</span>
+                            <span class="col-start-1 row-start-1" class:invisible={!retrying} aria-hidden={!retrying}>Retrying…</span>
+                        </span>
+                    </Button>
+                    {#if externalImage}
+                        <Button variant="outline" size="sm" href={externalImage.href} target="_blank" rel="noopener noreferrer">
+                            {externalImage.label}
+                        </Button>
+                    {/if}
+                </div>
+            </div>
+        {/if}
         <button
             type="button"
-            class="block w-full cursor-zoom-in"
+            class={imageFailed ? "invisible absolute inset-0 w-full pointer-events-none" : "block w-full cursor-zoom-in"}
+            disabled={imageFailed}
+            aria-hidden={imageFailed}
             title="Click to expand"
             onclick={openLightbox}
         >
             <span class="relative mx-auto block w-fit max-w-full">
-                <img
-                    src={imageSrc}
-                    {alt}
-                    style={inverted ? INVERT_STYLE : ""}
-                    class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
-                />
+                {#key `${imageSrc}:${retryAttempt}`}
+                    <img
+                        src={imageSrc}
+                        onerror={handleImageError}
+                        onload={handleImageLoad}
+                        {alt}
+                        style={inverted ? INVERT_STYLE : ""}
+                        class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
+                    />
+                {/key}
                 {#if wb && board && board.scene.elements.length > 0}
                     {@const Whiteboard = wb.Whiteboard}
                     <span class="pointer-events-none absolute inset-0" inert>
@@ -183,7 +255,7 @@
                 <Icon name={view === "image" ? "code" : "image"} />
             </Button>
         {/if}
-        {#if view === "image"}
+        {#if view === "image" && !imageFailed}
             <Button
                 variant="ghost"
                 size="icon-xs"
@@ -219,6 +291,7 @@
         >
             <img
                 src={imageSrc}
+                onerror={handleImageError}
                 {alt}
                 style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale / 40});`}
                 class="block max-h-full max-w-full rounded-lg object-contain select-none"

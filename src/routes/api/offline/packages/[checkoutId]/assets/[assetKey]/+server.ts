@@ -2,7 +2,7 @@ import type { RequestHandler } from "./$types";
 import { assetKey } from "$lib/offline/checksum";
 import type { OfflineAssetV1, OfflinePackageRecordsV1 } from "$lib/offline/types";
 import {
-    fetchOfflineAssetSource,
+    assetResponse,
     offlineAssetSource,
 } from "$lib/server/offline/assets";
 import {
@@ -10,7 +10,7 @@ import {
     requireOfflineUser,
 } from "$lib/server/offline/http";
 
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, fetch }) => {
     await requireOfflineUser(locals);
     try {
         // RLS proves this checkout belongs to the authenticated user.
@@ -40,14 +40,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
         }
         const source = offlineAssetSource(matched.url);
         if (!source) throw new Error("OFFLINE_OPERATION_INVALID:asset origin");
-        const fetched = await fetchOfflineAssetSource(source);
-        return new Response(fetched.body, {
-            headers: {
-                "content-type": fetched.contentType,
-                "cache-control": "private, no-store",
-                "x-content-type-options": "nosniff",
-            },
-        });
+        return await assetResponse(source, "private, no-store", fetch);
     } catch (cause) {
         return offlineErrorResponse(cause);
     }
