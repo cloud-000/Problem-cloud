@@ -302,7 +302,7 @@
                     {disabled}
                     aria-pressed={selected}
                     class={cn(
-                        "flex min-h-10 w-full items-start gap-2.5 rounded-md border border-border bg-background py-2.5 pr-10 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
+                        "flex min-h-10 w-full items-start gap-2.5 rounded-md border border-border bg-background py-2.5 pr-12 pl-3 text-left text-base shadow-xs transition-all duration-200 ease-in-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/30 hover:border-muted-foreground/30 active:scale-[0.98]",
                         selected &&
                             "border-primary bg-primary/30 hover:bg-primary/40 hover:border-primary-foreground/40",
                         correct && "border-correct bg-correct/10",
@@ -346,7 +346,7 @@
                     <!-- Interactive strike-through line that animates from left to right -->
                     <div
                         class={cn(
-                            "absolute left-[46px] right-[44px] top-[calc(50%-1px)] z-5 h-[1.5px] bg-muted-foreground/35 -translate-y-1/2 pointer-events-none transition-transform duration-300 ease-out origin-left scale-x-0",
+                            "absolute left-[46px] right-[48px] top-[calc(50%-1px)] z-5 h-[1.5px] bg-muted-foreground/35 -translate-y-1/2 pointer-events-none transition-transform duration-300 ease-out origin-left scale-x-0",
                             struck && "scale-x-100 bg-muted-foreground/30"
                         )}
                     ></div>
@@ -358,17 +358,24 @@
                     aria-label={struck ? "Restore choice" : "Eliminate choice"}
                     title={struck ? "Restore choice" : "Eliminate choice"}
                     class={cn(
-                        "absolute top-1/2 right-1.5 z-10 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md transition-all focus-visible:opacity-100 disabled:pointer-events-none [@media(hover:none)]:opacity-100",
-                        struck
-                            ? "text-muted-foreground/60 opacity-80 group-hover/choice:opacity-100 group-hover/choice:text-primary-foreground hover:scale-110 hover:bg-primary/20!"
-                            : "text-muted-foreground opacity-0 group-hover/choice:opacity-100 hover:bg-muted hover:text-foreground"
+                        "absolute top-1/2 right-0.5 z-10 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-md outline-none disabled:pointer-events-none",
+                        "[&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-ring [&:focus-visible>span]:ring-offset-1 [&:focus-visible>span]:opacity-100",
                     )}
                     onclick={() => toggleEliminated(i)}
                 >
-                    <Icon
-                        name={struck ? "undo" : "close"}
-                        class="size-[1.1em]"
-                    />
+                    <span
+                        class={cn(
+                            "flex size-6 items-center justify-center rounded-md transition-all duration-150",
+                            struck
+                                ? "text-muted-foreground/60 opacity-60 group-hover/choice:opacity-90 hover:bg-muted/60 hover:text-foreground active:scale-95 [@media(hover:none)]:opacity-70"
+                                : "text-muted-foreground/50 opacity-0 group-hover/choice:opacity-50 hover:bg-muted/60 hover:text-foreground hover:opacity-100 active:scale-95 [@media(hover:none)]:opacity-35",
+                        )}
+                    >
+                        <Icon
+                            name={struck ? "undo" : "close"}
+                            fontsize="0.875rem"
+                        />
+                    </span>
                 </button>
             </div>
         {/each}
