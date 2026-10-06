@@ -34,6 +34,7 @@
    import { resolve } from "$app/paths";
    import { MediaQuery } from "svelte/reactivity";
    import { onMount } from "svelte";
+   import { browser } from "$app/environment";
    import { setAppScrollViewport } from "$lib/components/virtual-list";
    import {
       loadSidebarExpanded,
@@ -138,11 +139,10 @@
       return routeMatches(page.url.pathname, href);
    }
    // Sidebar state
-   let expanded = $state(true);
-   let sidebarPreferenceLoaded = false;
+   let expanded = $state(browser ? loadSidebarExpanded(localStorage) : true);
+   let sidebarPreferenceLoaded = browser;
 
    onMount(() => {
-      expanded = loadSidebarExpanded(localStorage);
       sidebarPreferenceLoaded = true;
       if (!user) return;
       return startForegroundOfflineSync({
@@ -154,9 +154,7 @@
 
    function setSidebarExpanded(value: boolean) {
       expanded = value;
-      if (sidebarPreferenceLoaded) {
-         saveSidebarExpanded(localStorage, value);
-      }
+      saveSidebarExpanded(localStorage, value);
    }
 
    const portraitQuery = new MediaQuery("(orientation: portrait)", false);

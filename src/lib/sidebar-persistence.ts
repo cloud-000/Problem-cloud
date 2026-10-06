@@ -29,6 +29,13 @@ export function saveSidebarExpanded(
 ): void {
     try {
         storage?.setItem(SIDEBAR_EXPANDED_STORAGE_KEY, String(expanded));
+        if (typeof document !== "undefined") {
+            if (expanded) {
+                document.documentElement.removeAttribute("data-sidebar-expanded");
+            } else {
+                document.documentElement.setAttribute("data-sidebar-expanded", "false");
+            }
+        }
     } catch {
         // Storage can be unavailable in privacy-restricted browser contexts.
     }
@@ -60,6 +67,16 @@ export function saveSidebarWidth(
         const serialized = serializePanelSize({ width });
         if (serialized) {
             storage?.setItem(SIDEBAR_WIDTH_STORAGE_KEY, serialized);
+            if (typeof document !== "undefined") {
+                document.documentElement.style.setProperty(
+                    "--sidebar-initial-width",
+                    `${width}px`,
+                );
+                document.documentElement.setAttribute(
+                    "data-sidebar-width",
+                    String(width),
+                );
+            }
         }
     } catch {
         // Storage can be unavailable in privacy-restricted browser contexts.

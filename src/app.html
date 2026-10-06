@@ -41,9 +41,72 @@
                         else if (theme === "kindle") meta.setAttribute("content", "#ffffff");
                         else meta.setAttribute("content", "#f8fafc");
                     }
+
+                    var sidebarExpanded = localStorage.getItem("layout:sidebar-expanded");
+                    if (sidebarExpanded === "false") {
+                        document.documentElement.setAttribute("data-sidebar-expanded", "false");
+                    }
+                    var sidebarWidth = localStorage.getItem("layout:sidebar-width");
+                    if (sidebarWidth) {
+                        try {
+                            var parsedWidth = JSON.parse(sidebarWidth);
+                            if (parsedWidth && typeof parsedWidth.width === "number") {
+                                document.documentElement.style.setProperty(
+                                    "--sidebar-initial-width",
+                                    parsedWidth.width + "px",
+                                );
+                                document.documentElement.setAttribute(
+                                    "data-sidebar-width",
+                                    String(parsedWidth.width),
+                                );
+                            }
+                        } catch (_) {}
+                    }
                 } catch (_) {}
             })();
         </script>
+        <style id="sidebar-preload">
+            @media (min-width: 768px) {
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-root"] {
+                    width: 4rem !important;
+                    transition: none !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-header"] > a {
+                    display: none !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-header"] {
+                    justify-content: center !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-group"] [data-slot="sidebar-item"] > a {
+                    justify-content: center !important;
+                    padding-left: 0 !important;
+                    padding-right: 0 !important;
+                    width: 2.5rem !important;
+                    height: 2.5rem !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-group"] [data-slot="sidebar-item"] span.truncate {
+                    display: none !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-group"] [data-slot="sidebar-item"] button > span:nth-of-type(2) {
+                    display: none !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button {
+                    justify-content: center !important;
+                }
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button > span.min-w-0,
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button > span.material-symbols-rounded:last-child {
+                    display: none !important;
+                }
+                html[data-sidebar-width]:not([data-sidebar-expanded="false"]) [data-slot="sidebar-root"]:not([data-ready="true"]) {
+                    width: var(--sidebar-initial-width) !important;
+                    transition: none !important;
+                }
+            }
+            [data-slot="sidebar-root"]:not([data-ready="true"]),
+            [data-slot="sidebar-root"]:not([data-ready="true"]) * {
+                transition: none !important;
+            }
+        </style>
         <!-- Every rendering asset below is same-origin on purpose. A downloaded
              problem has to render with no network (docs/offline.md §4), and the
              service worker can only precache same-origin build/static files, so

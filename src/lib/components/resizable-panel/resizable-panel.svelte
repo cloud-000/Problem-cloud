@@ -64,7 +64,6 @@
         ...restProps
     }: ResizablePanelProps = $props();
 
-    let storedSize = $state<PanelSize>({});
     let mounted = $state(false);
     let ready = $state(false);
     let activeEdges = $state<ResizeEdge[]>([]);
@@ -90,6 +89,28 @@
         height: collapseHeightBelowMin,
         thresholdRatio: collapseThresholdRatio,
     });
+
+    function getInitialStoredSize(): PanelSize {
+        if (typeof window === "undefined" || !storageKey) return {};
+        try {
+            const fallback = { width: initialWidth, height: initialHeight };
+            return parsePersistedPanelSize(
+                localStorage.getItem(storageKey),
+                fallback,
+                {
+                    minWidth: edges.some((e) => e === "left" || e === "right") ? minWidth : undefined,
+                    maxWidth: edges.some((e) => e === "left" || e === "right") ? maxWidth : undefined,
+                    minHeight: edges.some((e) => e === "top" || e === "bottom") ? minHeight : undefined,
+                    maxHeight: edges.some((e) => e === "top" || e === "bottom") ? maxHeight : undefined,
+                },
+            );
+        } catch {
+            return {};
+        }
+    }
+
+    let storedSize = $state<PanelSize>(getInitialStoredSize());
+
     let size = $derived.by(() => {
         const requested = {
             width: horizontalEnabled ? (storedSize.width ?? initialWidth) : undefined,
@@ -131,6 +152,9 @@
 
     onMount(() => {
         mounted = true;
+        requestAnimationFrame(() => {
+            ready = true;
+        });
         return cleanupDrag;
     });
 
@@ -212,8 +236,25 @@
         if (!storageKey) return;
         const serialized = serializePanelSize(mergePanelSize(storedSize, size));
         try {
-            if (serialized) localStorage.setItem(storageKey, serialized);
-            else localStorage.removeItem(storageKey);
+            if (serialized) {
+                localStorage.setItem(storageKey, serialized);
+                if (typeof document !== "undefined" && size.width !== undefined) {
+                    document.documentElement.style.setProperty(
+                        "--sidebar-initial-width",
+                        `${size.width}px`,
+                    );
+                    document.documentElement.setAttribute(
+                        "data-sidebar-width",
+                        String(size.width),
+                    );
+                }
+            } else {
+                localStorage.removeItem(storageKey);
+                if (typeof document !== "undefined") {
+                    document.documentElement.style.removeProperty("--sidebar-initial-width");
+                    document.documentElement.removeAttribute("data-sidebar-width");
+                }
+            }
         } catch {
             // Storage can be unavailable in privacy-restricted browser contexts.
         }
@@ -336,26 +377,26 @@
         bind:this={ref}
         data-slot={restProps["data-slot"] ?? "resizable-panel"}
         data-resizing={dragging}
-        class={cn("relative", !ready && !revealAxis && "transition-none", className)}
+        data-ready={ready}
+        class={cn("relative", className, !ready && !revealAxis && "!transition-none")}
         style:width={size.width === undefined ? undefined : `${size.width}px`}
         style:height={size.height === undefined ? undefined : `${size.height}px`}
         transition:resizeReveal|global={{ axis: revealAxis }}
         {...restProps}
     >
         {@render children?.()}
-
         {#each edges as edge (edge)}
             <button
                 type="button"
-                aria-label={handleAriaLabel?.(edge) ?? `Resize panel from ${edge} edge`}
-                title={handleAriaLabel?.(edge) ?? `Resize from ${edge} edge`}
+                aria-label={handleAriaLabel?.(edge) ?? `Resize ${edge}`}
+                title={handleAriaLabel?.(edge) ?? `Resize ${edge}`}
                 class={cn(
                     "group absolute z-50 touch-none select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60",
                     edgeClass(edge),
                 )}
                 onpointerdown={(event) => beginResize(event, [edge])}
-                onkeydown={(event) => keyboardResize(event, [edge])}
                 ondblclick={() => resetEdge(edge)}
+                onkeydown={(event) => keyboardResize(event, [edge])}
             >
                 <span
                     class={cn(
@@ -363,23 +404,26 @@
                         edge === "left" || edge === "right"
                             ? "left-1/2 top-1/2 h-8 w-0.5 -translate-x-1/2 -translate-y-1/2 group-hover:h-12"
                             : "left-1/2 top-1/2 h-0.5 w-8 -translate-x-1/2 -translate-y-1/2 group-hover:w-12",
-                        dragging && "bg-primary-foreground",
                     )}
                 ></span>
             </button>
         {/each}
-
         {#each horizontalEdges as horizontal (horizontal)}
-            {#each verticalEdges as vertical (`${horizontal}-${vertical}`)}
+            {#each verticalEdges as vertical (vertical)}
                 <button
                     type="button"
-                    aria-label={`Resize panel from ${vertical} ${horizontal} corner`}
+                    aria-label={`Resize ${horizontal} ${vertical}`}
+                    title={`Resize ${horizontal} ${vertical}`}
                     class={cn(
-                        "absolute z-60 size-4 touch-none rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground/60",
-                        cursorFor([horizontal, vertical]),
+                        "group absolute z-50 size-4 touch-none select-none",
                         cornerClass(horizontal, vertical),
+                        cursorFor([horizontal, vertical]),
                     )}
                     onpointerdown={(event) => beginResize(event, [horizontal, vertical])}
+                    ondblclick={() => {
+                        resetEdge(horizontal);
+                        resetEdge(vertical);
+                    }}
                     onkeydown={(event) => keyboardResize(event, [horizontal, vertical])}
                 ></button>
             {/each}
