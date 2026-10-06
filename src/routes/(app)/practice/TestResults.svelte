@@ -2,12 +2,20 @@
     import { onMount } from "svelte";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { Modal } from "$lib/components/modal";
-    import { ProblemReview } from "$lib/components/problem";
+    import { StatusTag } from "$lib/components/status-tag";
+    import { ProblemReview, ProblemAnswer, ProblemSolution } from "$lib/components/problem";
+    import { MathStatement } from "$lib/components/math-statement";
+    import { ProblemOrganization } from "$lib/components/problem-organization";
+    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
     import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
     import { SegmentBar } from "$lib/components/segment-bar";
     import { Graph } from "$lib/components/graph";
-    import { formatElapsed, isMultipleChoice } from "$lib/utils";
+    import { formatElapsed, isMultipleChoice, cn, formatProblemText } from "$lib/utils";
+    import { aopsProblemUrl, topicLabel } from "$lib/library";
+    import { coach } from "$lib/state/coach.svelte";
+    import { anchorFor } from "$lib/ai/session/anchor";
+    import { problemContextLayer } from "$lib/ai/context/surfaces";
+    import { PROBLEM_QUICK_ACTIONS } from "$lib/ai/quick-actions";
     import type { PracticeHistoryEntry } from "./practice-state";
     import type { TestResultSummary } from "./test-state";
     import { submissionOutcome } from "$lib/problem-response";
@@ -16,10 +24,12 @@
         history,
         summary,
         elapsedMs,
+        sessionId = null,
     }: {
         history: PracticeHistoryEntry[];
         summary: TestResultSummary;
         elapsedMs: number;
+        sessionId?: number | null;
     } = $props();
 
     let activeProblemIndex = $state<number | null>(null);
@@ -42,41 +52,97 @@
             : !isSmallScreen,
     );
 
+    function outcomeFor(entry: PracticeHistoryEntry) {
+        const mcq = isMultipleChoice(entry.problem.choices);
+        const skipped =
+            entry.skipped ??
+            (mcq
+                ? entry.selectedChoice == null
+                : !entry.answer || !entry.answer.trim());
+        return submissionOutcome({ skipped, is_correct: entry.correct });
+    }
+
     let cells = $derived<ProblemGridCell[]>(
-        history.map((entry, index) => {
-            const mcq = isMultipleChoice(entry.problem.choices);
-            const skipped =
-                entry.skipped ??
-                (mcq ? entry.selectedChoice == null : !entry.answer.trim());
-            const state: ProblemGridCell["state"] = submissionOutcome({
-                skipped,
-                is_correct: entry.correct,
-            });
-            return {
-                label: entry.problem.n + 1,
-                state,
-                flagged: entry.flagged,
-                current: activeProblemIndex === index,
-            };
-        }),
+        history.map((entry, index) => ({
+            label: entry.problem.n + 1,
+            state: outcomeFor(entry),
+            flagged: entry.flagged,
+            current: activeProblemIndex === index,
+        })),
     );
 
     let focusedIndex = $state(0);
     let reviewOpen = $state(false);
     let focusedEntry = $derived(history[focusedIndex]);
-    // The focused problem's test and time spent. This is the modal's one
-    // identity line, which is why the review inside it renders no header.
-    let focusedDescription = $derived.by(() => {
-        if (!focusedEntry) return "Test review";
-        const parts: string[] = [];
-        if (focusedEntry.problem.tests?.name) {
-            parts.push(focusedEntry.problem.tests.name);
-        }
-        if (focusedEntry.elapsedMs != null) {
-            parts.push(formatElapsed(focusedEntry.elapsedMs));
-        }
-        return parts.length ? parts.join(" · ") : "Test review";
+    let focusedOutcome = $derived(focusedEntry ? outcomeFor(focusedEntry) : null);
+
+    let coachComposer = $state<HTMLTextAreaElement | null>(null);
+    let coachExpanded = $derived(coach.enabled && coach.messages.length > 0);
+
+    let draftAnswer = $state("");
+    let draftChoice = $state<number | null>(null);
+    let draftEliminated = $state<number[]>([]);
+
+    $effect.pre(() => {
+        draftAnswer = focusedEntry?.answer ?? "";
+        draftChoice = focusedEntry?.selectedChoice ?? null;
+        draftEliminated = [];
     });
+
+    let aopsProblemHref = $derived(
+        focusedEntry ? aopsProblemUrl(focusedEntry.problem.aops_id) : null,
+    );
+    let topicName = $derived(
+        focusedEntry ? topicLabel(focusedEntry.problem.topic) : null,
+    );
+
+    function openProblem(index: number) {
+        showProblem(index);
+        reviewOpen = true;
+    }
+
+    function closeReview() {
+        reviewOpen = false;
+    }
+
+    function showProblem(index: number) {
+        if (index < 0 || index >= history.length) return;
+        focusedIndex = index;
+        const entry = history[index];
+        if (entry && coach.enabled) {
+            void coach.openWorkThread(anchorFor(entry.problem, sessionId), {
+                submitted: true,
+                skipped: Boolean(entry.skipped),
+            });
+            void coach.initialize();
+        }
+    }
+
+    function handleReviewKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeReview();
+            return;
+        }
+        const target = event.target as HTMLElement | null;
+        const isInput =
+            target &&
+            (target.tagName === "INPUT" ||
+                target.tagName === "TEXTAREA" ||
+                target.isContentEditable);
+        if (!isInput) {
+            if (event.key === "ArrowLeft" && focusedIndex > 0) {
+                event.preventDefault();
+                showProblem(focusedIndex - 1);
+            } else if (
+                event.key === "ArrowRight" &&
+                focusedIndex < history.length - 1
+            ) {
+                event.preventDefault();
+                showProblem(focusedIndex + 1);
+            }
+        }
+    }
 
     // Graph states
     let graphHoverIndex = $state<number | null>(null);
@@ -164,16 +230,6 @@
                 }
             }
         });
-    }
-
-    function openProblem(index: number) {
-        focusedIndex = index;
-        reviewOpen = true;
-    }
-
-    function showProblem(index: number) {
-        if (index < 0 || index >= history.length) return;
-        focusedIndex = index;
     }
 </script>
 
@@ -373,8 +429,8 @@
                                 variant="ghost"
                                 size="icon-sm"
                                 onclick={() => openProblem(index)}
-                                aria-label={`Open problem ${entry.problem.n + 1} in focused view`}
-                                title="Open in focused view"
+                                aria-label={`Open problem ${entry.problem.n + 1} in fullscreen review`}
+                                title="Open in fullscreen review"
                                 class="text-muted-foreground hover:text-foreground"
                             >
                                 <Icon name="open_in_full" />
@@ -390,47 +446,223 @@
     </div>
 </div>
 
-<Modal
-    bind:open={reviewOpen}
-    size="xl"
-    title={focusedEntry ? `Problem ${focusedEntry.problem.n + 1}` : "Problem review"}
-    description={focusedDescription}
-    onClose={() => (reviewOpen = false)}
->
-    {#if focusedEntry}
-        <!-- The modal's own title and description already name the problem, its
-             test, and the time spent, so the review header would be the second
-             telling. `elapsedMs` rides in the description for the same reason. -->
-        <ProblemReview
-            entry={focusedEntry}
-            showHeader={false}
-            showOrganization
-            class="border-0 bg-transparent p-0"
-        />
-    {/if}
+{#if reviewOpen && focusedEntry}
+    <div
+        class="fixed inset-0 z-50 flex flex-col bg-background"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Problem ${focusedEntry.problem.n + 1} review`}
+        tabindex="-1"
+        onkeydown={handleReviewKeydown}
+    >
+        <!-- Header -->
+        <header
+            class="flex shrink-0 items-center justify-between border-b border-border/60 bg-surface-container-low/95 px-3 py-2 sm:px-6 backdrop-blur-xs gap-3"
+        >
+            <div class="flex items-center gap-2 min-w-0">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="gap-1.5 -ml-1 text-muted-foreground hover:text-foreground shrink-0"
+                    onclick={closeReview}
+                    aria-label="Back to test results"
+                >
+                    <Icon name="arrow_back" />
+                    <span class="font-medium text-xs sm:text-sm">Back to Results</span>
+                </Button>
 
-    {#snippet footer()}
-        <div class="mr-auto text-xs font-mono tabular-nums text-muted-foreground">
-            {focusedIndex + 1} of {history.length}
+                <div class="hidden sm:block h-4 w-px bg-border/60 shrink-0"></div>
+
+                <span
+                    class="inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-surface-container-lowest px-2 py-0.5 font-mono type-caption font-semibold tabular-nums text-foreground shadow-xs"
+                    aria-label={`Problem ${focusedEntry.problem.n + 1}`}
+                >
+                    #{focusedEntry.problem.n + 1}
+                </span>
+
+                {#if focusedOutcome}
+                    <StatusTag status={focusedOutcome} size="sm" />
+                {/if}
+
+                {#if focusedEntry.flagged}
+                    <Icon name="flag" class="size-[1.1em] text-unsure shrink-0" fill />
+                {/if}
+
+                {#if focusedEntry.elapsedMs != null}
+                    <span
+                        class="hidden sm:inline-flex shrink-0 items-center gap-1 font-mono tabular-nums text-muted-foreground type-caption"
+                        title="Time spent on this problem"
+                    >
+                        <Icon name="schedule" class="size-[1em]" />
+                        {formatElapsed(focusedEntry.elapsedMs)}
+                    </span>
+                {/if}
+
+                {#if focusedEntry.problem.tests?.name}
+                    <span class="hidden md:inline text-xs text-muted-foreground truncate">
+                        · {focusedEntry.problem.tests.name}
+                    </span>
+                {/if}
+
+                {#if topicName}
+                    <span
+                        class="hidden sm:inline-flex items-center rounded-full border border-border/60 bg-surface-container-lowest px-2 py-0.5 type-caption text-muted-foreground"
+                    >
+                        {topicName}
+                    </span>
+                {/if}
+
+                {#if aopsProblemHref}
+                    <Button
+                        href={aopsProblemHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="ghost"
+                        size="xs"
+                        class="hidden md:inline-flex gap-1 px-2 text-muted-foreground hover:text-foreground"
+                        title="Open problem discussion on Art of Problem Solving"
+                    >
+                        <Icon name="forum" class="size-3.5" />
+                        <span class="text-xs">Discuss</span>
+                    </Button>
+                {/if}
+            </div>
+
+            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+                <span class="hidden sm:inline text-xs font-mono tabular-nums text-muted-foreground mr-1">
+                    {focusedIndex + 1} of {history.length}
+                </span>
+
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={focusedIndex === 0}
+                    onclick={() => showProblem(focusedIndex - 1)}
+                    aria-label="Previous problem"
+                    title="Previous problem (←)"
+                >
+                    <Icon name="chevron_left" />
+                </Button>
+
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={focusedIndex === history.length - 1}
+                    onclick={() => showProblem(focusedIndex + 1)}
+                    aria-label="Next problem"
+                    title="Next problem (→)"
+                >
+                    <Icon name="chevron_right" />
+                </Button>
+
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onclick={closeReview}
+                    aria-label="Close review"
+                    title="Close review (Esc)"
+                    class="rounded-full text-muted-foreground hover:text-foreground ml-1"
+                >
+                    <Icon name="close" />
+                </Button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <CoachContextRegister
+            {...problemContextLayer({
+                ownerId: "test-results.focused",
+                source: "route",
+                problem: focusedEntry.problem,
+                policy: "coaching",
+            })}
+        />
+
+        <div class="relative flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+            <!-- Problem Statement & Solutions Shelf (Unboxed, Dynamic Height) -->
+            <div
+                class={cn(
+                    "flex w-full flex-col overflow-y-auto px-4 sm:px-6 transition-all duration-300 ease-out",
+                    coachExpanded
+                        ? "flex-1 min-h-[30%] border-b border-border/60"
+                        : "flex-1 min-h-0",
+                )}
+            >
+                <div class="mx-auto flex w-full max-w-[48rem] flex-col gap-6 py-6">
+                    <!-- Problem Statement -->
+                    <MathStatement
+                        text={formatProblemText(
+                            focusedEntry.problem.statement ?? "",
+                            isMultipleChoice(focusedEntry.problem.choices),
+                        )}
+                        class="type-problem w-full text-left font-serif text-foreground leading-relaxed"
+                    />
+
+                    <!-- Graded Response / Choices -->
+                    <div class="flex flex-col gap-2.5 border-t border-border/60 pt-4" aria-label="Your response">
+                        <ProblemAnswer
+                            choices={focusedEntry.problem.choices}
+                            answerIndex={focusedEntry.problem.answer_index}
+                            responseKind={focusedEntry.problem.response_kind}
+                            answerStatus={focusedEntry.problem.answer_status}
+                            bind:answer={draftAnswer}
+                            bind:selectedChoice={draftChoice}
+                            bind:eliminated={draftEliminated}
+                            showAnswerState={true}
+                            disabled={false}
+                            isInstantFeedback={true}
+                            gradedResponse={{
+                                selectedChoice: focusedEntry.selectedChoice,
+                                answer: focusedEntry.answer ?? "",
+                            }}
+                        />
+                    </div>
+
+                    <!-- Organization (Familiarity / Mastery) -->
+                    <div class="border-t border-border/60 pt-4">
+                        <ProblemOrganization
+                            problemId={focusedEntry.problem.id}
+                            mastery={focusedEntry.progress?.mastery ?? null}
+                            engagement={focusedEntry.progress?.engagement ?? null}
+                            promptPresentation="persistent"
+                            onchange={(state) => {
+                                if (focusedEntry.progress) {
+                                    focusedEntry.progress.mastery = state.mastery;
+                                    focusedEntry.progress.engagement = state.engagement;
+                                }
+                            }}
+                        />
+                    </div>
+
+                    <!-- Worked Solutions -->
+                    {#if focusedEntry.problem.official_solutions && focusedEntry.problem.official_solutions.length > 0}
+                        <div class="border-t border-border/60 pt-4">
+                            <ProblemSolution
+                                solutions={focusedEntry.problem.official_solutions}
+                                defaultOpen={focusedEntry.correct === false}
+                            />
+                        </div>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- Integrated CoachInline -->
+            {#if coach.enabled}
+                <div
+                    class={cn(
+                        "flex w-full flex-col transition-all duration-300 ease-out",
+                        coachExpanded
+                            ? "flex-1 min-h-[30%] overflow-hidden"
+                            : "shrink-0 justify-end",
+                    )}
+                >
+                    <CoachInline
+                        compact={!coachExpanded}
+                        quickActions={PROBLEM_QUICK_ACTIONS}
+                        bind:composerRef={coachComposer}
+                    />
+                </div>
+            {/if}
         </div>
-        <Button
-            variant="outline"
-            size="sm"
-            disabled={focusedIndex === 0}
-            onclick={() => showProblem(focusedIndex - 1)}
-            aria-label="Previous problem"
-        >
-            <Icon name="arrow_back" />
-            Previous
-        </Button>
-        <Button
-            size="sm"
-            disabled={focusedIndex === history.length - 1}
-            onclick={() => showProblem(focusedIndex + 1)}
-            aria-label="Next problem"
-        >
-            Next
-            <Icon name="arrow_forward" />
-        </Button>
-    {/snippet}
-</Modal>
+    </div>
+{/if}

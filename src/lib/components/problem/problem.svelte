@@ -234,52 +234,57 @@
                     : "rounded-t-xl border-b border-border/60 bg-surface-container-low px-3 py-3 sm:px-4",
             )}
         >
-            <div class="flex min-w-0 items-start gap-3">
-                {#if showNumber}
-                    {#if appearance === "row"}
-                        <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
-                            #{problem.n + 1}
-                        </span>
-                    {:else}
-                        <div
-                            class="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border/70 bg-surface-container-lowest shadow-xs"
-                            aria-label={`Problem ${problem.n + 1}`}
-                        >
-                            <span class="type-caption text-muted-foreground">No.</span>
-                            <span class="-mt-0.5 type-body font-semibold tabular-nums text-foreground">{problem.n + 1}</span>
+            <div class="flex min-w-0 flex-1 items-start gap-2.5">
+                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <!-- Line 1: Number badge + Source/Test name -->
+                    {#if showNumber || showSource}
+                        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                            {#if showNumber}
+                                {#if appearance === "row"}
+                                    <span class="shrink-0 pt-0.5 type-caption tabular-nums text-muted-foreground">
+                                        #{problem.n + 1}
+                                    </span>
+                                {:else}
+                                    <span
+                                        class="inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-surface-container-lowest px-2 py-0.5 font-mono type-caption font-semibold tabular-nums text-foreground shadow-xs"
+                                        aria-label={`Problem ${problem.n + 1}`}
+                                    >
+                                        #{problem.n + 1}
+                                    </span>
+                                {/if}
+                            {/if}
+
+                            <!-- The source is rendered under `header="full"` or `header="review"`. -->
+                            {#if showSource}
+                                {#if problem.tests?.name}
+                                    <div class="flex min-w-0 items-center gap-1.5">
+                                        {#if aopsTestHref}
+                                            <Button
+                                                href={aopsTestHref}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                variant="link"
+                                                size="xs"
+                                                class="h-auto min-w-0 justify-start p-0 type-secondary font-semibold text-foreground"
+                                                title={`Open ${problem.tests.name} on Art of Problem Solving`}
+                                            >
+                                                <span class="truncate">{problem.tests.name}</span>
+                                            </Button>
+                                        {:else}
+                                            <span class="min-w-0 truncate type-secondary font-semibold text-foreground">{problem.tests.name}</span>
+                                        {/if}
+                                        {#if problem.verified}
+                                            <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
+                                        {/if}
+                                    </div>
+                                {:else if !showNumber}
+                                    <span class="type-secondary font-semibold text-foreground">Problem {problem.n + 1}</span>
+                                {/if}
+                            {/if}
                         </div>
                     {/if}
-                {/if}
 
-                <div class="flex min-w-0 flex-col gap-1.5">
-                    <!-- The source is rendered under `header="full"` or `header="review"`. -->
-                    {#if showSource}
-                        {#if problem.tests?.name}
-                            <div class="flex min-w-0 items-center gap-1.5">
-                                {#if aopsTestHref}
-                                    <Button
-                                        href={aopsTestHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        variant="link"
-                                        size="xs"
-                                        class="h-auto min-w-0 justify-start p-0 type-secondary font-semibold text-foreground"
-                                        title={`Open ${problem.tests.name} on Art of Problem Solving`}
-                                    >
-                                        <span class="truncate">{problem.tests.name}</span>
-                                    </Button>
-                                {:else}
-                                    <span class="min-w-0 truncate type-secondary font-semibold text-foreground">{problem.tests.name}</span>
-                                {/if}
-                                {#if problem.verified}
-                                    <Icon name="verified" class="shrink-0 text-correct" fontsize="1rem" fill />
-                                {/if}
-                            </div>
-                        {:else}
-                            <span class="type-secondary font-semibold text-foreground">Problem {problem.n + 1}</span>
-                        {/if}
-                    {/if}
-
+                    <!-- Line 2: Topic, rating, status tag, flag, elapsed time -->
                     <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                         {#if topicName}{@render badge(topicName)}{/if}
                         {#if problem.rating}{@render ratingBadge(problem.rating)}{/if}

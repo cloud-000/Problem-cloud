@@ -2172,6 +2172,7 @@
                {history}
                summary={testSummary}
                elapsedMs={testElapsedTotalMs}
+               sessionId={currentSessionId}
             />
          {:else if isTest && history.length === 0}
             <div
