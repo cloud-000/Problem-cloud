@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import type { Attachment } from "svelte/attachments";
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { StatusTag } from "$lib/components/status-tag";
@@ -13,6 +14,7 @@
     import { formatElapsed, isMultipleChoice, cn, formatProblemText } from "$lib/utils";
     import { aopsProblemUrl, topicLabel } from "$lib/library";
     import { coach } from "$lib/state/coach.svelte";
+    import { shell } from "$lib/state/shell.svelte";
     import { anchorFor } from "$lib/ai/session/anchor";
     import { problemContextLayer } from "$lib/ai/context/surfaces";
     import { PROBLEM_QUICK_ACTIONS } from "$lib/ai/quick-actions";
@@ -95,6 +97,23 @@
     let topicName = $derived(
         focusedEntry ? topicLabel(focusedEntry.problem.topic) : null,
     );
+
+    const portal: Attachment<HTMLDivElement> = (node) => {
+        document.body.appendChild(node);
+        return () => node.remove();
+    };
+
+    $effect(() => {
+        if (reviewOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+            const releaseNav = shell.suppressMobileNav();
+            return () => {
+                document.body.style.overflow = originalOverflow;
+                releaseNav();
+            };
+        }
+    });
 
     function openProblem(index: number) {
         showProblem(index);
@@ -448,7 +467,8 @@
 
 {#if reviewOpen && focusedEntry}
     <div
-        class="fixed inset-0 z-50 flex flex-col bg-background"
+        {@attach portal}
+        class="fixed inset-0 z-80 flex flex-col bg-background pb-[env(safe-area-inset-bottom,0px)]"
         role="dialog"
         aria-modal="true"
         aria-label={`Problem ${focusedEntry.problem.n + 1} review`}
@@ -457,24 +477,25 @@
     >
         <!-- Header -->
         <header
-            class="flex shrink-0 items-center justify-between border-b border-border/60 bg-surface-container-low/95 px-3 py-2 sm:px-6 backdrop-blur-xs gap-3"
+            class="flex shrink-0 items-center justify-between border-b border-border/60 bg-surface-container-low/95 px-3 pb-2 pt-[max(0.5rem,var(--safe-area-top))] sm:px-6 sm:py-2 backdrop-blur-xs gap-2"
         >
-            <div class="flex items-center gap-2 min-w-0">
+            <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="gap-1.5 -ml-1 text-muted-foreground hover:text-foreground shrink-0"
+                    class="gap-1 sm:gap-1.5 -ml-1 text-muted-foreground hover:text-foreground shrink-0"
                     onclick={closeReview}
                     aria-label="Back to test results"
                 >
                     <Icon name="arrow_back" />
-                    <span class="font-medium text-xs sm:text-sm">Back to Results</span>
+                    <span class="font-medium text-xs sm:text-sm hidden sm:inline">Back to Results</span>
+                    <span class="font-medium text-xs sm:hidden">Back</span>
                 </Button>
 
                 <div class="hidden sm:block h-4 w-px bg-border/60 shrink-0"></div>
 
                 <span
-                    class="inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-surface-container-lowest px-2 py-0.5 font-mono type-caption font-semibold tabular-nums text-foreground shadow-xs"
+                    class="inline-flex shrink-0 items-center justify-center rounded-md border border-border/70 bg-surface-container-lowest px-1.5 py-0.5 sm:px-2 font-mono type-caption font-semibold tabular-nums text-foreground shadow-xs"
                     aria-label={`Problem ${focusedEntry.problem.n + 1}`}
                 >
                     #{focusedEntry.problem.n + 1}
