@@ -123,6 +123,12 @@
             name: "Whiteboard",
             description: "A geometric whiteboard",
             href: "/testing-features/whiteboard"
+        },
+        {
+            icon: "pending",
+            name: "Skeleton",
+            description: "Calm, layout-preserving loading placeholder primitives.",
+            href: "/testing-features/skeleton",
         }
     ];
 </script>
