@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import { StatusTag } from "$lib/components/status-tag";
+    import { Skeleton } from "$lib/components/skeleton";
     import { Combobox } from "$lib/components/combobox";
     import { Select } from "$lib/components/select";
     import { DatePicker } from "$lib/components/date-picker";
@@ -377,9 +378,24 @@
         </Page.Toolbar>
 
         {#if loading && submissions.length === 0}
-            <div class="flex items-center justify-center gap-2 py-16 type-secondary text-muted-foreground">
-                <Icon name="progress_activity" class="animate-spin" />
-                Loading history…
+            <div class="space-y-8" role="status" aria-label="Loading history">
+                <section>
+                    <Skeleton class="h-6 w-32 rounded-md" />
+                    <div class="mt-3 border-t border-border divide-y divide-border">
+                        {#each Array(5) as _, i (i)}
+                            <div class="grid min-h-16 w-full gap-3 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5 sm:px-2">
+                                <Skeleton class="h-6 w-16 rounded-full shrink-0" />
+                                <div class="min-w-0 space-y-1">
+                                    <Skeleton class="h-4 w-48 rounded-sm" />
+                                    <Skeleton class="h-3 w-32 rounded-sm" />
+                                </div>
+                                <Skeleton class="h-4 w-12 rounded-sm" />
+                                <Skeleton class="size-6 rounded-md shrink-0" />
+                            </div>
+                        {/each}
+                    </div>
+                </section>
+                <span class="sr-only">Loading history…</span>
             </div>
         {:else if errorMsg}
             <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">{errorMsg}</p>

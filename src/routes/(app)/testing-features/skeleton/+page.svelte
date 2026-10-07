@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { Skeleton, ProblemSkeleton } from "$lib/components/skeleton";
+    import { Skeleton, ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
     import { StatusTag } from "$lib/components/status-tag";
     import { Switch } from "$lib/components/toggle";
 
@@ -282,6 +282,94 @@
                             <p class="text-xs text-muted-foreground line-clamp-1">
                                 For how many positive integers $n$ is $n^2 - 3n + 2$ a prime number?
                             </p>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- Simulated Goal Card -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-medium text-muted-foreground px-1">
+                    <span>Goal / Metric Card (Zero-CLS)</span>
+                    <span class="font-mono">{isLoading ? "State: SKELETON" : "State: LOADED"}</span>
+                </div>
+
+                <div class="rounded-xl border border-border/80 bg-surface-container-lowest p-5 shadow-xs">
+                    {#if isLoading}
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0 flex-1 space-y-1.5">
+                                    <Skeleton class="h-5 w-48 rounded-sm" />
+                                    <Skeleton class="h-4 w-32 rounded-sm" />
+                                </div>
+                                <Skeleton class="h-8 w-20 rounded-md shrink-0" />
+                            </div>
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between items-center">
+                                    <Skeleton class="h-3 w-28 rounded-sm" />
+                                    <Skeleton class="h-3 w-10 rounded-sm" />
+                                </div>
+                                <Skeleton class="h-2 w-full rounded-full" />
+                            </div>
+                        </div>
+                    {:else}
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0 flex-1">
+                                    <span class="type-section-title block truncate text-foreground">Solve 50 AMC 10 Geometry</span>
+                                    <span class="mt-0.5 block truncate type-secondary text-muted-foreground">AMC 10 · Geometry</span>
+                                </div>
+                                <Button size="sm" variant="outline">Practice</Button>
+                            </div>
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between items-center text-xs text-muted-foreground font-mono">
+                                    <span>32 / 50 solved</span>
+                                    <span>64%</span>
+                                </div>
+                                <div class="h-2 w-full rounded-full bg-surface-container overflow-hidden">
+                                    <div class="h-full bg-primary rounded-full" style="width: 64%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- Simulated Library / Test List Rows -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-medium text-muted-foreground px-1">
+                    <span>Library Series / Test Rows (ListRowSkeleton)</span>
+                    <span class="font-mono">{isLoading ? "State: SKELETON" : "State: LOADED"}</span>
+                </div>
+
+                <div class="rounded-xl border border-border/80 bg-surface-container-lowest px-5 shadow-xs divide-y divide-border/60">
+                    {#if isLoading}
+                        <ListRowSkeleton />
+                        <ListRowSkeleton />
+                    {:else}
+                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div class="flex min-w-0 flex-1 flex-col gap-1">
+                                <span class="text-sm font-semibold text-foreground">American Mathematics Competitions 10</span>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">Official</span>
+                                    <span class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">Series 1</span>
+                                </div>
+                            </div>
+                            <Button size="sm" variant="outline" class="shrink-0 gap-1">
+                                <Icon name="play_arrow" /> Mock test
+                            </Button>
+                        </div>
+                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div class="flex min-w-0 flex-1 flex-col gap-1">
+                                <span class="text-sm font-semibold text-foreground">American Invitational Mathematics Examination</span>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">Official</span>
+                                    <span class="inline-flex items-center rounded-full bg-surface-container px-2 py-0.5 text-xs text-muted-foreground">Series 2</span>
+                                </div>
+                            </div>
+                            <Button size="sm" variant="outline" class="shrink-0 gap-1">
+                                <Icon name="play_arrow" /> Mock test
+                            </Button>
                         </div>
                     {/if}
                 </div>

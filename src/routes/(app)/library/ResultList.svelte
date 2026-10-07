@@ -5,6 +5,7 @@
     import { resolve } from "$app/paths";
     import { LinkMenu } from "$lib/components/link-menu";
     import { Problem } from "$lib/components/problem";
+    import { ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
     import { VirtualList } from "$lib/components/virtual-list";
     import {
         aopsCommunityUrl,
@@ -325,6 +326,19 @@
     <div class="flex flex-col items-start gap-3 py-8">
         <p class="type-secondary text-destructive">{error}</p>
         {#if onRetry}<Button size="sm" variant="outline" onclick={onRetry}>Retry</Button>{/if}
+    </div>
+{:else if loading && displayedResults.length === 0}
+    <div class="flex flex-col" role="status" aria-label={`Loading ${level}`}>
+        {#if level === "problems"}
+            {#each Array(4) as _, i (i)}
+                <ProblemSkeleton appearance="row" />
+            {/each}
+        {:else}
+            {#each Array(5) as _, i (i)}
+                <ListRowSkeleton />
+            {/each}
+        {/if}
+        <span class="sr-only">Loading results…</span>
     </div>
 {:else if !loading && displayedResults.length === 0}
     <p class="py-12 text-center type-secondary text-muted-foreground">

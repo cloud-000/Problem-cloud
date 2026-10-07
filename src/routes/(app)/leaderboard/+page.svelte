@@ -3,6 +3,7 @@
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
+    import { Skeleton } from "$lib/components/skeleton";
     import { fetchLeaderboard, type LeaderboardEntry } from "$lib/leaderboard";
     import { playerRatingIsProvisional } from "$lib/library";
 
@@ -42,12 +43,21 @@
 
     <section aria-label="Ranked players">
         {#if loading && entries.length === 0}
-            <div
-                class="flex min-h-40 items-center justify-center gap-2 type-secondary text-muted-foreground"
-                aria-live="polite"
-            >
-                <Icon name="progress_activity" class="animate-spin" />
-                Loading leaderboard…
+            <div class="border-y border-border/60 divide-y divide-border/60" role="status" aria-label="Loading leaderboard">
+                {#each Array(6) as _, i (i)}
+                    <div class="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-4 sm:grid-cols-[3rem_minmax(0,1fr)_auto] sm:gap-x-4">
+                        <Skeleton class="h-5 w-6 rounded-sm" />
+                        <div class="min-w-0 space-y-1">
+                            <Skeleton class="h-4 w-32 rounded-sm" />
+                            <Skeleton class="h-3 w-20 rounded-sm" />
+                        </div>
+                        <div class="space-y-1 text-right">
+                            <Skeleton class="h-5 w-14 ml-auto rounded-sm" />
+                            <Skeleton class="h-3 w-10 ml-auto rounded-sm" />
+                        </div>
+                    </div>
+                {/each}
+                <span class="sr-only">Loading leaderboard…</span>
             </div>
         {:else if errorMsg}
             <div

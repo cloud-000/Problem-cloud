@@ -2,6 +2,9 @@ import Skeleton from "./skeleton.svelte";
 import ProblemSkeleton, {
     type ProblemSkeletonProps,
 } from "./problem-skeleton.svelte";
+import ListRowSkeleton, {
+    type ListRowSkeletonProps,
+} from "./list-row-skeleton.svelte";
 import {
     skeletonVariants,
     type SkeletonProps,
@@ -17,6 +20,8 @@ export {
     type SkeletonRounded,
     ProblemSkeleton,
     type ProblemSkeletonProps,
+    ListRowSkeleton,
+    type ListRowSkeletonProps,
 };
 
 export default Skeleton;

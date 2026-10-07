@@ -12,6 +12,7 @@
     import { RangeSlider } from "$lib/components/range-slider";
     import { Select, type SelectOption } from "$lib/components/select";
     import { Switch } from "$lib/components/toggle";
+    import { Skeleton } from "$lib/components/skeleton";
     import { fetchAllSeries, fetchTestsForSeries, type TestSummary } from "$lib/library";
     import {
         fetchSessions,
@@ -384,9 +385,21 @@
         </div>
     {:else}
         {#if loading && sessions.length === 0}
-            <div class="flex min-h-28 items-center gap-3 text-muted-foreground">
-                <Icon name="progress_activity" class="animate-spin" />
-                <p class="type-secondary">Loading sessions…</p>
+            <div class="border-y border-border/60 divide-y divide-border/60" role="status" aria-label="Loading sessions">
+                {#each Array(3) as _, i (i)}
+                    <div class="flex min-h-16 items-center gap-3 px-3 py-3 sm:px-4">
+                        <Skeleton class="size-8 rounded-full shrink-0" />
+                        <div class="min-w-0 flex-1 space-y-1.5">
+                            <div class="flex items-center gap-2">
+                                <Skeleton class="h-4 w-32 rounded-sm" />
+                                <Skeleton class="h-4 w-12 rounded-full" />
+                            </div>
+                            <Skeleton class="h-3 w-48 rounded-sm" />
+                        </div>
+                        <Skeleton class="size-7 rounded-md shrink-0" />
+                    </div>
+                {/each}
+                <span class="sr-only">Loading sessions…</span>
             </div>
         {:else if errorMsg}
             <div class="border-l-2 border-destructive py-2 pl-4 text-sm text-destructive">

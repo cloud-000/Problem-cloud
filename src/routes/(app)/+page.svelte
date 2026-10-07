@@ -68,6 +68,7 @@
     import { restoreDocument } from "$lib/whiteboard/persistence";
     import { cn } from "$lib/utils";
     import HomeGoalRow from "./HomeGoalRow.svelte";
+    import { Skeleton } from "$lib/components/skeleton";
     import TourView from "./TourView.svelte";
     import ContextualTip from "./ContextualTip.svelte";
 
@@ -417,12 +418,47 @@
     </Page.Root>
 {:else if loading}
     <Page.Root width="standard">
-        <div
-            class="flex min-h-40 items-center justify-center gap-2 type-secondary text-muted-foreground"
-            aria-live="polite"
-        >
-            <Icon name="progress_activity" class="animate-spin" />
-            Loading your next step…
+        <div class="space-y-2 pb-2">
+            <Skeleton class="h-8 w-48 rounded-md" />
+        </div>
+        <div class="flex flex-col gap-10" role="status" aria-label="Loading your dashboard">
+            <section
+                class="flex flex-col gap-5 rounded-xl border border-border bg-surface-container-lowest p-5 sm:p-6"
+            >
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="space-y-2">
+                        <Skeleton class="h-6 w-36 rounded-md" />
+                        <Skeleton class="h-4 w-64 rounded-sm" />
+                    </div>
+                    <Skeleton class="h-4 w-24 rounded-sm" />
+                </div>
+                <div class="border-t border-border/60 pt-5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <Skeleton class="h-4 w-40 rounded-sm" />
+                        <Skeleton class="h-4 w-16 rounded-sm" />
+                    </div>
+                    <Skeleton class="h-2 w-full rounded-full" />
+                </div>
+                <div>
+                    <Skeleton class="h-10 w-36 rounded-md" />
+                </div>
+            </section>
+
+            <section class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <Skeleton class="h-6 w-28 rounded-md" />
+                    <Skeleton class="h-8 w-24 rounded-md" />
+                </div>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {#each Array(4) as _, i (i)}
+                        <div class="rounded-xl border border-border bg-surface-container-lowest p-4 space-y-2">
+                            <Skeleton class="h-3 w-16 rounded-sm" />
+                            <Skeleton class="h-6 w-20 rounded-md" />
+                        </div>
+                    {/each}
+                </div>
+            </section>
+            <span class="sr-only">Loading your next step…</span>
         </div>
     </Page.Root>
 {:else if presentation === "introduction"}

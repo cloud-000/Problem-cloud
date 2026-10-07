@@ -8,6 +8,7 @@
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import { Select } from "$lib/components/select";
+    import { Skeleton } from "$lib/components/skeleton";
     import {
         fetchProgressBreakdown,
         rankWeaknesses,
@@ -364,9 +365,20 @@
             {/if}
 
             {#if dueLoading}
-                <div class="flex items-center justify-center gap-2 py-12 type-secondary text-muted-foreground">
-                    <Icon name="progress_activity" class="animate-spin" />
-                    Loading reviews…
+                <div class="border-t border-border divide-y divide-border" role="status" aria-label="Loading reviews">
+                    {#each Array(3) as _, i (i)}
+                        <div
+                            class="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
+                        >
+                            <div class="min-w-0 space-y-1.5">
+                                <Skeleton class="h-5 w-44 rounded-sm" />
+                                <Skeleton class="h-3 w-28 rounded-sm" />
+                            </div>
+                            <Skeleton class="h-4 w-12 rounded-sm" />
+                            <Skeleton class="h-8 w-18 rounded-md shrink-0" />
+                        </div>
+                    {/each}
+                    <span class="sr-only">Loading reviews…</span>
                 </div>
             {:else if dueError}
                 <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
@@ -439,9 +451,59 @@
         </Page.Toolbar>
 
         {#if loading && rows.length === 0}
-            <div class="flex items-center justify-center gap-2 py-16 type-secondary text-muted-foreground">
-                <Icon name="progress_activity" class="animate-spin" />
-                Loading progress…
+            <div class="space-y-8" role="status" aria-label="Loading progress">
+                <section
+                    class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                >
+                    <div class="space-y-2">
+                        <Skeleton class="h-3 w-32 rounded-sm" />
+                        <Skeleton class="h-6 w-64 rounded-md" />
+                        <Skeleton class="h-4 w-96 max-w-full rounded-sm" />
+                    </div>
+                    <div class="sm:text-right space-y-1">
+                        <Skeleton class="h-10 w-16 ml-auto rounded-md" />
+                        <Skeleton class="h-3 w-20 ml-auto rounded-sm" />
+                    </div>
+                </section>
+
+                <div class="grid gap-10 lg:grid-cols-[1.08fr_0.92fr]">
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <Skeleton class="h-5 w-28 rounded-md" />
+                            <Skeleton class="h-4 w-20 rounded-sm" />
+                        </div>
+                        <div class="border-t border-border divide-y divide-border">
+                            {#each Array(3) as _, i (i)}
+                                <div class="py-4 space-y-3">
+                                    <div class="flex justify-between items-baseline">
+                                        <div class="space-y-1">
+                                            <Skeleton class="h-4 w-36 rounded-sm" />
+                                            <Skeleton class="h-3 w-24 rounded-sm" />
+                                        </div>
+                                        <Skeleton class="h-4 w-12 rounded-sm" />
+                                    </div>
+                                    <Skeleton class="h-1.5 w-full rounded-full" />
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <Skeleton class="h-5 w-32 rounded-md" />
+                        <div class="rounded-xl border border-border bg-surface-container-lowest p-5 space-y-4">
+                            {#each Array(4) as _, i (i)}
+                                <div class="space-y-2">
+                                    <div class="flex justify-between">
+                                        <Skeleton class="h-3 w-24 rounded-sm" />
+                                        <Skeleton class="h-3 w-12 rounded-sm" />
+                                    </div>
+                                    <Skeleton class="h-2 w-full rounded-full" />
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                </div>
+                <span class="sr-only">Loading progress…</span>
             </div>
         {:else if errorMsg}
             <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">

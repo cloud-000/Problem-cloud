@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { cn } from "$lib/utils";
-import { skeletonVariants, Skeleton, ProblemSkeleton } from "./index";
+import { skeletonVariants, Skeleton, ProblemSkeleton, ListRowSkeleton } from "./index";
 
 describe("Skeleton component variants & exports", () => {
-    test("exports Skeleton and ProblemSkeleton from index barrel", () => {
+    test("exports Skeleton, ProblemSkeleton, and ListRowSkeleton from index barrel", () => {
         expect(Skeleton).toBeDefined();
         expect(ProblemSkeleton).toBeDefined();
+        expect(ListRowSkeleton).toBeDefined();
     });
 
     test("skeletonVariants includes base animation and theme token classes", () => {

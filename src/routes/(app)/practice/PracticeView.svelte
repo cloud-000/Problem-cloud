@@ -10,6 +10,7 @@
    import { ProblemOrganization } from "$lib/components/problem-organization";
    import { Modal } from "$lib/components/modal";
    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
+   import { Skeleton } from "$lib/components/skeleton";
    import { UtilityPanelRegister } from "$lib/components/utility-panel";
    import { WhiteboardPanel } from "$lib/components/whiteboard";
    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
@@ -2131,16 +2132,49 @@
          {/if}
          {#if loading}
             <div
-               class="flex-1 flex flex-col items-center justify-center gap-3 text-center"
+               class="mx-auto flex min-h-0 w-full flex-1 flex-col"
+               role="status"
+               aria-label={isTest ? "Loading test..." : "Generating problem..."}
             >
-               <Icon
-                  name="progress_activity"
-                  class="animate-spin text-muted-foreground"
-                  fontsize={24}
-               />
-               <p class="text-xs text-muted-foreground">
-                  {isTest ? "Loading test..." : "Generating problem..."}
-               </p>
+               <div
+                  bind:clientHeight={problemRegionHeight}
+                  class="relative flex-1 flex flex-col min-h-0 w-full"
+               >
+                  <div
+                     style="height: {statementShelfHeight};"
+                     class="flex w-full shrink-0 flex-col items-center gap-5 overflow-y-auto px-4 pb-6 sm:px-6"
+                  >
+                     <div class="flex w-full max-w-[48rem] items-center justify-between py-2">
+                        <div class="flex items-center gap-2">
+                           <Skeleton class="h-6 w-24 rounded-full" />
+                           <Skeleton class="h-5 w-16 rounded-md" />
+                        </div>
+                        <Skeleton class="h-5 w-20 rounded-md" />
+                     </div>
+
+                     <div class="my-auto flex min-h-fit w-full flex-none items-start justify-center">
+                        <div class="w-full max-w-[48rem] space-y-3 py-4">
+                           <Skeleton class="h-4 w-11/12 rounded-sm" />
+                           <Skeleton class="h-4 w-full rounded-sm" />
+                           <Skeleton class="h-4 w-4/5 rounded-sm" />
+                           <Skeleton class="h-4 w-2/3 rounded-sm" />
+                        </div>
+                     </div>
+
+                     <div class="flex w-full max-w-[48rem] flex-col gap-2">
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-5">
+                           <Skeleton class="h-10 rounded-md" />
+                           <Skeleton class="h-10 rounded-md" />
+                           <Skeleton class="h-10 rounded-md" />
+                           <Skeleton class="h-10 rounded-md" />
+                           <Skeleton class="h-10 rounded-md" />
+                        </div>
+                        <span class="sr-only">
+                           {isTest ? "Loading test..." : "Generating problem..."}
+                        </span>
+                     </div>
+                  </div>
+               </div>
             </div>
          {:else if error}
             <div

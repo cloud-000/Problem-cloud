@@ -27,6 +27,7 @@
     import { LibraryStore } from "$lib/state/library.svelte";
     import Filters from "./Filters.svelte";
     import ResultList from "./ResultList.svelte";
+    import { ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
     import { offlineMode } from "$lib/state/offline-mode.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -542,8 +543,13 @@
                 {/key}
 
                 {#if loadingMore}
-                    <div class="flex h-12 items-center justify-center type-secondary text-muted-foreground">
-                        Loading more…
+                    <div class="py-2" role="status" aria-label="Loading more results">
+                        {#if resultsLevel === "problems"}
+                            <ProblemSkeleton appearance="row" />
+                        {:else}
+                            <ListRowSkeleton />
+                        {/if}
+                        <span class="sr-only">Loading more results…</span>
                     </div>
                 {:else if !loading && results.length > 0 && !hasMore}
                     <div class="flex h-12 items-center justify-center type-caption text-muted-foreground">

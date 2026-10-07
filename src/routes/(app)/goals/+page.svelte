@@ -7,6 +7,7 @@
     import { Icon } from "$lib/components/icon";
     import * as Page from "$lib/components/page";
     import { Switch } from "$lib/components/toggle";
+    import { Skeleton } from "$lib/components/skeleton";
     import {
         archiveGoal,
         dataForGoal,
@@ -386,11 +387,26 @@
         {/if}
 
         {#if loading}
-            <div
-                class="flex items-center justify-center gap-2 py-16 type-secondary text-muted-foreground"
-            >
-                <Icon name="progress_activity" class="animate-spin" />
-                Loading goals…
+            <div class="border-t border-border/60 divide-y divide-border/60" role="status" aria-label="Loading goals">
+                {#each Array(3) as _, i (i)}
+                    <div class="flex flex-col gap-3 py-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1 space-y-1.5">
+                                <Skeleton class="h-5 w-48 rounded-sm" />
+                                <Skeleton class="h-4 w-32 rounded-sm" />
+                            </div>
+                            <Skeleton class="h-8 w-20 rounded-md shrink-0" />
+                        </div>
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between items-center">
+                                <Skeleton class="h-3 w-28 rounded-sm" />
+                                <Skeleton class="h-3 w-10 rounded-sm" />
+                            </div>
+                            <Skeleton class="h-2 w-full rounded-full" />
+                        </div>
+                    </div>
+                {/each}
+                <span class="sr-only">Loading goals…</span>
             </div>
         {:else if visible.length === 0}
             <div class="flex flex-col items-start gap-4 border-t border-border/60 py-12">
