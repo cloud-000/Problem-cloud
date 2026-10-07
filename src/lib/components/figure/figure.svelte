@@ -55,6 +55,34 @@
         }
     });
 
+    let naturalWidth = $state(0);
+    let naturalHeight = $state(0);
+    let thumbImgEl = $state<HTMLImageElement | null>(null);
+    let thumbWidth = $state(0);
+    let thumbHeight = $state(0);
+    let lightboxWidth = $state(0);
+    let lightboxHeight = $state(0);
+
+    function updateNaturalDimensions(img: HTMLImageElement | null) {
+        if (!img) return;
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            naturalWidth = img.naturalWidth;
+            naturalHeight = img.naturalHeight;
+        }
+    }
+
+    $effect(() => {
+        if (thumbImgEl) {
+            updateNaturalDimensions(thumbImgEl);
+        }
+    });
+
+    $effect(() => {
+        void imageSrc;
+        naturalWidth = 0;
+        naturalHeight = 0;
+    });
+
     function handleImageError(event: Event & { currentTarget: Element }) {
         if (event.currentTarget.getAttribute("src") !== imageSrc) return;
         imageFailed = true;
@@ -66,6 +94,7 @@
         if (event.currentTarget.getAttribute("src") !== imageSrc) return;
         imageFailed = false;
         retrying = false;
+        updateNaturalDimensions(event.currentTarget as HTMLImageElement);
     }
 
     function retryImage() {
@@ -87,10 +116,36 @@
 
     // MathStatement keys image segments, so a changed source remounts Figure.
     const persistKey = annotationKey(untrack(() => imageSrc));
+
+    let thumbnailScale = $derived.by(() => {
+        if (naturalWidth > 0 && thumbWidth > 0) {
+            return 40 * (thumbWidth / naturalWidth);
+        }
+        return 40;
+    });
+
+    let lightboxBaseScale = $derived.by(() => {
+        if (naturalWidth <= 0 || naturalHeight <= 0) return 40;
+        const availableW = lightboxWidth > 0 ? lightboxWidth : (browser ? window.innerWidth : 800);
+        const availableH = lightboxHeight > 0 ? lightboxHeight : (browser ? window.innerHeight : 600);
+        const fitScale = Math.min(1, availableW / naturalWidth, availableH / naturalHeight);
+        return 40 * fitScale;
+    });
+
     let lightboxScale = $state(40);
     let lightboxPanX = $state(0);
     let lightboxPanY = $state(0);
+    let prevLightboxBaseScale = $state(40);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+    $effect(() => {
+        const currentBase = lightboxBaseScale;
+        const prevBase = prevLightboxBaseScale;
+        prevLightboxBaseScale = currentBase;
+        if (expanded && prevBase > 0 && currentBase !== prevBase) {
+            lightboxScale = (lightboxScale / prevBase) * currentBase;
+        }
+    });
 
     /**
      * The whiteboard drags in the sketch engine and constraint solver — ~180 KB
@@ -156,7 +211,11 @@
     });
 
     function openLightbox() {
-        lightboxScale = 40;
+        if (thumbImgEl && thumbImgEl.naturalWidth > 0) {
+            updateNaturalDimensions(thumbImgEl);
+        }
+        lightboxScale = lightboxBaseScale;
+        prevLightboxBaseScale = lightboxBaseScale;
         lightboxPanX = 0;
         lightboxPanY = 0;
         // Open now, draw when the engine lands — a first click should not wait
@@ -209,9 +268,14 @@
             title="Click to expand"
             onclick={openLightbox}
         >
-            <span class="relative mx-auto block w-fit max-w-full">
+            <span
+                class="relative mx-auto block w-fit max-w-full"
+                bind:clientWidth={thumbWidth}
+                bind:clientHeight={thumbHeight}
+            >
                 {#key `${imageSrc}:${retryAttempt}`}
                     <img
+                        bind:this={thumbImgEl}
                         src={imageSrc}
                         onerror={handleImageError}
                         onload={handleImageLoad}
@@ -228,6 +292,8 @@
                             showGrid={false}
                             transparent
                             navigation={false}
+                            scale={thumbnailScale}
+                            baseScale={thumbnailScale}
                             class="absolute inset-0"
                         />
                     </span>
@@ -284,7 +350,11 @@
     class="p-0"
     aria-label="Annotate expanded image"
 >
-    <div class="relative h-full w-full overflow-hidden">
+    <div
+        class="relative h-full w-full overflow-hidden"
+        bind:clientWidth={lightboxWidth}
+        bind:clientHeight={lightboxHeight}
+    >
         <div
             class="pointer-events-none absolute inset-0 flex items-center justify-center"
             transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
@@ -292,8 +362,9 @@
             <img
                 src={imageSrc}
                 onerror={handleImageError}
+                onload={handleImageLoad}
                 {alt}
-                style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxScale / 40});`}
+                style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxBaseScale > 0 ? lightboxScale / lightboxBaseScale : 1});`}
                 class="block max-h-full max-w-full rounded-lg object-contain select-none"
             />
         </div>
@@ -308,6 +379,7 @@
                 navigation
                 minimumZoom={50}
                 resetViewportControl
+                baseScale={lightboxBaseScale}
                 bind:scale={lightboxScale}
                 bind:panX={lightboxPanX}
                 bind:panY={lightboxPanY}

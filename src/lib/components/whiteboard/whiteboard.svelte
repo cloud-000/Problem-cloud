@@ -53,6 +53,7 @@
         navigation = true,
         shortcutsAlwaysActive = false,
         surface = $bindable(null),
+        baseScale = 40,
         scale = $bindable(40),
         panX = $bindable(0),
         panY = $bindable(0),
@@ -71,6 +72,8 @@
         shortcutsAlwaysActive?: boolean;
         /** Bindable ref to the underlying canvas (for SVG/PNG export). */
         surface?: HTMLCanvasElement | null;
+        /** Intrinsic / reference scale in pixels per scene unit at 100% (defaults to 40). */
+        baseScale?: number;
         /** Bindable viewport scale in pixels per scene unit. */
         scale?: number;
         /** Bindable horizontal viewport offset in pixels. */
@@ -92,6 +95,7 @@
         set scale(value: number) {
             scale = value;
         },
+        baseScale,
         get panX() {
             return panX;
         },

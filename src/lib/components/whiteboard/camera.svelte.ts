@@ -17,6 +17,8 @@ export interface CameraHost {
     set panX(value: number);
     get panY(): number;
     set panY(value: number);
+    /** Intrinsic / reference scale in screen pixels per scene unit at 100% (defaults to 40). */
+    baseScale?: number;
     /** Minimum viewport zoom percentage. */
     get minimumZoom(): number;
     /** The canvas, for client → local coordinate mapping. */
@@ -63,16 +65,20 @@ export class Camera {
         this.#host.panY = value;
     }
 
+    get baseScale(): number {
+        return this.#host.baseScale ?? BASE_SCALE;
+    }
+
     get origin(): Pair {
         return [this.width / 2 + this.panX, this.height / 2 + this.panY];
     }
 
     get minimumScale(): number {
-        return Math.max(8, Math.min(MAX_SCALE, (this.#host.minimumZoom / 100) * BASE_SCALE));
+        return Math.max(1, Math.min(MAX_SCALE, (this.#host.minimumZoom / 100) * this.baseScale));
     }
 
     get zoomPercentage(): number {
-        return Math.round((this.scale / BASE_SCALE) * 100);
+        return Math.round((this.scale / this.baseScale) * 100);
     }
 
     get viewport(): WhiteboardViewport {
@@ -88,7 +94,7 @@ export class Camera {
     /** Client (event) coordinates → canvas-local pixels. */
     localPoint(clientX: number, clientY: number): Pair {
         const rect = this.#host.surface?.getBoundingClientRect();
-        return rect ? [clientX - rect.left, clientY - rect.top] : [0, 0];
+        return rect ? [clientX - rect.left, clientY - rect.top] : [clientX, clientY];
     }
 
     /** Client (event) coordinates → asy-space point. */
@@ -124,11 +130,15 @@ export class Camera {
     /** Zoom by `factor` about the canvas centre. */
     zoomBy(factor: number) {
         const rect = this.#host.surface?.getBoundingClientRect();
-        if (rect) this.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+        if (rect) {
+            this.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+        } else if (this.width > 0 && this.height > 0) {
+            this.zoomAt(this.width / 2, this.height / 2, factor);
+        }
     }
 
     zoomTo(percentage: number) {
-        this.zoomBy(this.#clampScale((percentage / 100) * BASE_SCALE) / this.scale);
+        this.zoomBy(this.#clampScale((percentage / 100) * this.baseScale) / this.scale);
     }
 
     fitScene(bounds: Bounds | null) {
@@ -142,7 +152,7 @@ export class Camera {
         const heightScale = sceneHeight > 1e-9 ? availableHeight / sceneHeight : Infinity;
         const fittedScale = Math.min(widthScale, heightScale);
 
-        this.scale = Number.isFinite(fittedScale) ? this.#clampScale(fittedScale) : BASE_SCALE;
+        this.scale = Number.isFinite(fittedScale) ? this.#clampScale(fittedScale) : this.baseScale;
         const centerX = (bounds.min[0] + bounds.max[0]) / 2;
         const centerY = (bounds.min[1] + bounds.max[1]) / 2;
         this.panX = -centerX * this.scale;
@@ -150,7 +160,7 @@ export class Camera {
     }
 
     resetViewport() {
-        this.scale = BASE_SCALE;
+        this.scale = this.baseScale;
         this.panX = 0;
         this.panY = 0;
     }
