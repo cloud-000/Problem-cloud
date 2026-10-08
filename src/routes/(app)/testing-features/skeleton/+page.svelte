@@ -1,13 +1,20 @@
 <script lang="ts">
     import { Button } from "$lib/components/button";
     import { Icon } from "$lib/components/icon";
-    import { Skeleton, ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
+    import {
+        Skeleton,
+        ProblemSkeleton,
+        ListRowSkeleton,
+        DeferredLoading,
+        type SkeletonEffect,
+    } from "$lib/components/skeleton";
     import { StatusTag } from "$lib/components/status-tag";
     import { Switch } from "$lib/components/toggle";
 
     // Controls
     let isLoading = $state(true);
     let isSimulating = $state(false);
+    let effectStyle = $state<SkeletonEffect>("shimmer");
     let simulateTimeout: ReturnType<typeof setTimeout> | null = null;
 
     function simulateFetch() {
@@ -18,6 +25,33 @@
             isLoading = false;
             isSimulating = false;
         }, 1600);
+    }
+
+    // Anti-Flicker Interactive Lab State
+    let labQueryActive = $state(false);
+    let labQueryResult = $state<string | null>("Initial query result from cache");
+    const deferredLab = new DeferredLoading(false, { delayMs: 120, minDurationMs: 200 });
+
+    function runFastQuery() {
+        labQueryActive = true;
+        deferredLab.setLoading(true);
+        labQueryResult = null;
+        setTimeout(() => {
+            labQueryActive = false;
+            deferredLab.setLoading(false);
+            labQueryResult = `Fast result fetched at ${new Date().toLocaleTimeString()} (50ms cache hit - skipped skeleton!)`;
+        }, 50);
+    }
+
+    function runSlowQuery() {
+        labQueryActive = true;
+        deferredLab.setLoading(true);
+        labQueryResult = null;
+        setTimeout(() => {
+            labQueryActive = false;
+            deferredLab.setLoading(false);
+            labQueryResult = `Full network result fetched at ${new Date().toLocaleTimeString()} (750ms server roundtrip)`;
+        }, 750);
     }
 </script>
 
@@ -39,7 +73,7 @@
             Skeleton Primitives
         </h1>
         <p class="mt-1 text-sm text-muted-foreground">
-            Calm, layout-preserving loading placeholder primitives built with Svelte 5 runes and Tailwind CSS v4 semantic tokens.
+            Calm, layout-preserving loading placeholder primitives with directional shimmer, anti-flicker deferred loading, and smooth fade-in transitions.
         </p>
     </div>
 
@@ -48,17 +82,14 @@
         class="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/80 bg-surface-container-lowest/95 p-4 shadow-sm backdrop-blur-md"
         aria-label="Interactive Controls"
     >
-        <div class="flex items-center gap-3">
-            <span class="text-sm font-medium text-foreground">
-                Display State:
-            </span>
+        <div class="flex flex-wrap items-center gap-6">
             <div class="flex items-center gap-2.5">
                 <span
                     class="text-xs font-semibold {isLoading
                         ? 'text-primary-foreground font-bold'
                         : 'text-muted-foreground'}"
                 >
-                    Loading (Skeleton)
+                    Skeleton View
                 </span>
                 <Switch
                     checked={!isLoading}
@@ -70,8 +101,26 @@
                         ? 'text-primary-foreground font-bold'
                         : 'text-muted-foreground'}"
                 >
-                    Loaded (Content)
+                    Loaded View
                 </span>
+            </div>
+
+            <div class="flex items-center gap-2 border-l border-border/60 pl-4">
+                <span class="text-xs font-medium text-muted-foreground">Effect:</span>
+                <button
+                    type="button"
+                    class="rounded-md px-2 py-1 text-xs font-medium transition-colors {effectStyle === 'shimmer' ? 'bg-primary text-primary-foreground font-semibold' : 'bg-surface-container text-muted-foreground hover:text-foreground'}"
+                    onclick={() => (effectStyle = "shimmer")}
+                >
+                    Shimmer (Sweep)
+                </button>
+                <button
+                    type="button"
+                    class="rounded-md px-2 py-1 text-xs font-medium transition-colors {effectStyle === 'pulse' ? 'bg-primary text-primary-foreground font-semibold' : 'bg-surface-container text-muted-foreground hover:text-foreground'}"
+                    onclick={() => (effectStyle = "pulse")}
+                >
+                    Pulse (Breathe)
+                </button>
             </div>
         </div>
 
@@ -96,15 +145,70 @@
         </div>
     </section>
 
-    <!-- SECTION 1: Zero Cumulative Layout Shift (CLS) Playground -->
+    <!-- SECTION 1: Anti-Flicker & Transition Showcase -->
+    <section class="space-y-4">
+        <div>
+            <h2 class="text-xl font-semibold text-foreground flex items-center gap-2">
+                <Icon name="bolt" class="text-primary-foreground" />
+                Anti-Flicker Deferred Loading Lab
+            </h2>
+            <p class="text-sm text-muted-foreground mt-0.5">
+                Fast queries (&lt;120ms) bypass skeletons completely to eliminate sub-second visual flashes (FOIC). Slower queries display a calm shimmer and dissolve smoothly via <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">animate-fade-in</code>.
+            </p>
+        </div>
+
+        <div class="rounded-xl border border-border/80 bg-surface-container-lowest p-5 shadow-xs space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                <div class="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onclick={runFastQuery} disabled={labQueryActive}>
+                        <Icon name="bolt" /> Fast Cache Hit (50ms)
+                    </Button>
+                    <Button size="sm" variant="outline" onclick={runSlowQuery} disabled={labQueryActive}>
+                        <Icon name="download" /> Network Fetch (750ms)
+                    </Button>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-mono text-muted-foreground">
+                    <span>Active Query: {labQueryActive ? "FETCHING" : "IDLE"}</span>
+                    <span>Skeleton Rendered: <strong class={deferredLab.showSkeleton ? "text-primary-foreground" : "text-muted-foreground"}>{deferredLab.showSkeleton ? "YES" : "NO"}</strong></span>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="min-h-24 flex items-center">
+                {#if deferredLab.showSkeleton}
+                    <div class="w-full space-y-2.5 py-2">
+                        <Skeleton class="h-5 w-48 rounded-sm" effect={effectStyle} />
+                        <Skeleton class="h-4 w-full rounded-sm" effect={effectStyle} />
+                        <Skeleton class="h-4 w-2/3 rounded-sm" effect={effectStyle} />
+                    </div>
+                {:else if labQueryResult}
+                    <div class="w-full rounded-lg border border-border/70 bg-surface-container-low/40 p-4 animate-fade-in">
+                        <div class="flex items-center gap-2">
+                            <Icon name="check_circle" class="text-correct size-4 shrink-0" fill />
+                            <span class="text-sm font-semibold text-foreground">Content Loaded Smoothly</span>
+                        </div>
+                        <p class="mt-1 text-xs text-muted-foreground font-mono">
+                            {labQueryResult}
+                        </p>
+                    </div>
+                {:else}
+                    <div class="w-full text-xs text-muted-foreground font-mono italic">
+                        Evaluating request (under 120ms debounce threshold)...
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: Zero Cumulative Layout Shift (CLS) Playground -->
     <section class="space-y-4">
         <div>
             <h2 class="text-xl font-semibold text-foreground flex items-center gap-2">
                 <Icon name="layers" class="text-primary-foreground" />
-                Zero-CLS Composite Cards
+                Zero-CLS Composite Cards & Soft Fade-In
             </h2>
             <p class="text-sm text-muted-foreground mt-0.5">
-                Toggle the switch above to compare placeholder geometry with real content. Skeletons occupy exact dimensions to prevent Cumulative Layout Shift.
+                Toggle the switch above to compare placeholder geometry with real content. Skeletons occupy exact dimensions to prevent Cumulative Layout Shift, fading in seamlessly upon arrival.
             </p>
         </div>
 
@@ -120,7 +224,7 @@
                     <ProblemSkeleton appearance="card" />
                 {:else}
                     <div
-                        class="rounded-lg border border-border bg-surface-container-lowest p-6 shadow-xs flex flex-col gap-4 transition-opacity duration-150"
+                        class="rounded-lg border border-border bg-surface-container-lowest p-6 shadow-xs flex flex-col gap-4 animate-fade-in"
                     >
                         <!-- Header -->
                         <div class="flex items-start justify-between gap-4">
@@ -149,103 +253,41 @@
                                 </div>
                             </div>
 
-                            <!-- Right side action buttons -->
+                            <!-- Actions -->
                             <div class="flex shrink-0 items-center gap-1.5">
-                                <Button variant="ghost" size="icon-sm" title="Bookmark">
-                                    <Icon name="bookmark" class="size-4" />
+                                <Button variant="ghost" size="icon" class="size-7">
+                                    <Icon name="bookmark" />
                                 </Button>
-                                <Button variant="ghost" size="icon-sm" title="Discuss">
-                                    <Icon name="chat" class="size-4" />
+                                <Button variant="ghost" size="icon" class="size-7">
+                                    <Icon name="share" />
                                 </Button>
                             </div>
                         </div>
 
                         <!-- Statement -->
-                        <div class="space-y-2 py-1">
-                            <p class="text-sm text-foreground leading-relaxed">
-                                A regular octagon has vertices $A, B, C, D, E, F, G, H$ in counterclockwise order. What is the ratio of the area of trapezoid $ABDE$ to the area of the octagon?
-                            </p>
-                        </div>
+                        <p class="text-sm text-foreground leading-relaxed">
+                            A regular hexagon has area $120$. What is the area of the rectangle whose vertices are four of the vertices of the hexagon?
+                        </p>
 
-                        <!-- MCQ options -->
+                        <!-- Choices -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 pt-2">
-                            {#each [
-                                { label: "A", val: "3 / 8" },
-                                { label: "B", val: "1 / 2" },
-                                { label: "C", val: "(3√2 - 2) / 4" },
-                                { label: "D", val: "(1 + √2) / 4" },
-                                { label: "E", val: "√2 / 2" },
-                            ] as opt (opt.label)}
-                                <div class="flex items-center gap-2.5 rounded-lg border border-border/60 bg-surface-container-lowest p-2.5 text-sm hover:border-border transition-colors">
-                                    <span class="size-6 rounded-full bg-surface-container flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
-                                        {opt.label}
+                            {#each ["40", "60", "80", "40√3", "60√3"] as choice, i (i)}
+                                <button
+                                    type="button"
+                                    class="flex items-center gap-2.5 rounded-lg border border-border/70 bg-surface-container-lowest p-2.5 text-left text-xs font-medium text-foreground hover:bg-surface-container/50 transition-colors"
+                                >
+                                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-[11px] font-semibold text-muted-foreground font-mono">
+                                        {String.fromCharCode(65 + i)}
                                     </span>
-                                    <span class="font-mono text-xs text-foreground truncate">{opt.val}</span>
-                                </div>
+                                    <span>{choice}</span>
+                                </button>
                             {/each}
                         </div>
                     </div>
                 {/if}
             </div>
 
-            <!-- Simulated Goal Card -->
-            <div class="space-y-2">
-                <div class="flex items-center justify-between text-xs font-medium text-muted-foreground px-1">
-                    <span>Goal Card</span>
-                    <span class="font-mono">{isLoading ? "State: SKELETON" : "State: LOADED"}</span>
-                </div>
-
-                <div class="rounded-xl border border-border/80 bg-surface-container-lowest p-5 shadow-xs">
-                    {#if isLoading}
-                        <div class="flex flex-col gap-4">
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="space-y-2 flex-1">
-                                    <Skeleton class="h-5 w-48 rounded-sm" />
-                                    <Skeleton class="h-4 w-72 rounded-sm" />
-                                </div>
-                                <Skeleton class="h-8 w-24 rounded-md shrink-0" />
-                            </div>
-                            <div class="space-y-2 pt-1">
-                                <div class="flex justify-between items-center">
-                                    <Skeleton class="h-3.5 w-24 rounded-sm" />
-                                    <Skeleton class="h-3.5 w-16 rounded-sm" />
-                                </div>
-                                <Skeleton class="h-2.5 w-full rounded-full" />
-                            </div>
-                        </div>
-                    {:else}
-                        <div class="flex flex-col gap-4 transition-opacity duration-150">
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="space-y-1 flex-1">
-                                    <h3 class="text-base font-semibold text-foreground">
-                                        Master AMC 10 Geometry
-                                    </h3>
-                                    <p class="text-xs text-muted-foreground">
-                                        Solve 25 geometry problems from past official tests with ≥80% accuracy.
-                                    </p>
-                                </div>
-                                <Button size="sm" variant="default" class="shrink-0">
-                                    Practice
-                                </Button>
-                            </div>
-                            <div class="space-y-1.5 pt-1">
-                                <div class="flex justify-between items-center text-xs">
-                                    <span class="font-medium text-foreground">16 / 25 completed</span>
-                                    <span class="font-mono text-muted-foreground">64%</span>
-                                </div>
-                                <div class="h-2.5 w-full rounded-full bg-surface-container overflow-hidden">
-                                    <div
-                                        class="h-full bg-primary-foreground rounded-full transition-all duration-300"
-                                        style="width: 64%"
-                                    ></div>
-                                </div>
-                            </div>
-                        </div>
-                    {/if}
-                </div>
-            </div>
-
-            <!-- Simulated Problem Row Collection -->
+            <!-- Simulated Problem Row in continuous list -->
             <div class="space-y-2">
                 <div class="flex items-center justify-between text-xs font-medium text-muted-foreground px-1">
                     <span>Problem Row (Continuous List Appearance)</span>
@@ -257,7 +299,7 @@
                         <ProblemSkeleton appearance="row" showChoices={false} />
                         <ProblemSkeleton appearance="row" showChoices={false} />
                     {:else}
-                        <div class="py-4 flex flex-col gap-2">
+                        <div class="py-4 flex flex-col gap-2 animate-fade-in">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2">
                                     <span class="type-caption tabular-nums text-muted-foreground font-mono">#1</span>
@@ -270,7 +312,7 @@
                                 What is the value of $(2022+2020)/(2022-2020)$?
                             </p>
                         </div>
-                        <div class="py-4 flex flex-col gap-2">
+                        <div class="py-4 flex flex-col gap-2 animate-fade-in">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2">
                                     <span class="type-caption tabular-nums text-muted-foreground font-mono">#2</span>
@@ -299,21 +341,21 @@
                         <div class="flex flex-col gap-3">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0 flex-1 space-y-1.5">
-                                    <Skeleton class="h-5 w-48 rounded-sm" />
-                                    <Skeleton class="h-4 w-32 rounded-sm" />
+                                    <Skeleton class="h-5 w-48 rounded-sm" effect={effectStyle} />
+                                    <Skeleton class="h-4 w-32 rounded-sm" effect={effectStyle} />
                                 </div>
-                                <Skeleton class="h-8 w-20 rounded-md shrink-0" />
+                                <Skeleton class="h-8 w-20 rounded-md shrink-0" effect={effectStyle} />
                             </div>
                             <div class="space-y-1.5">
                                 <div class="flex justify-between items-center">
-                                    <Skeleton class="h-3 w-28 rounded-sm" />
-                                    <Skeleton class="h-3 w-10 rounded-sm" />
+                                    <Skeleton class="h-3 w-28 rounded-sm" effect={effectStyle} />
+                                    <Skeleton class="h-3 w-10 rounded-sm" effect={effectStyle} />
                                 </div>
-                                <Skeleton class="h-2 w-full rounded-full" />
+                                <Skeleton class="h-2 w-full rounded-full" effect={effectStyle} />
                             </div>
                         </div>
                     {:else}
-                        <div class="flex flex-col gap-3">
+                        <div class="flex flex-col gap-3 animate-fade-in">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0 flex-1">
                                     <span class="type-section-title block truncate text-foreground">Solve 50 AMC 10 Geometry</span>
@@ -347,7 +389,7 @@
                         <ListRowSkeleton />
                         <ListRowSkeleton />
                     {:else}
-                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center animate-fade-in">
                             <div class="flex min-w-0 flex-1 flex-col gap-1">
                                 <span class="text-sm font-semibold text-foreground">American Mathematics Competitions 10</span>
                                 <div class="flex flex-wrap items-center gap-1.5">
@@ -359,7 +401,7 @@
                                 <Icon name="play_arrow" /> Mock test
                             </Button>
                         </div>
-                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center animate-fade-in">
                             <div class="flex min-w-0 flex-1 flex-col gap-1">
                                 <span class="text-sm font-semibold text-foreground">American Invitational Mathematics Examination</span>
                                 <div class="flex flex-wrap items-center gap-1.5">
@@ -377,7 +419,7 @@
         </div>
     </section>
 
-    <!-- SECTION 2: Primitive Shapes & Sizing Library -->
+    <!-- SECTION 3: Primitive Shapes & Sizing Library -->
     <section class="space-y-4">
         <div>
             <h2 class="text-xl font-semibold text-foreground flex items-center gap-2">
@@ -399,20 +441,20 @@
                 <div class="space-y-3 p-4 rounded-lg bg-surface-container-low/60 border border-border/40">
                     <div class="space-y-1">
                         <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">Display / Heading (h-6, h-7)</span>
-                        <Skeleton class="h-7 w-2/3" />
+                        <Skeleton class="h-7 w-2/3" effect={effectStyle} />
                     </div>
                     <div class="space-y-1">
                         <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">Paragraph Body (h-4, varying widths)</span>
                         <div class="space-y-2">
-                            <Skeleton class="h-4 w-full" />
-                            <Skeleton class="h-4 w-11/12" />
-                            <Skeleton class="h-4 w-4/5" />
-                            <Skeleton class="h-4 w-2/3" />
+                            <Skeleton class="h-4 w-full" effect={effectStyle} />
+                            <Skeleton class="h-4 w-11/12" effect={effectStyle} />
+                            <Skeleton class="h-4 w-4/5" effect={effectStyle} />
+                            <Skeleton class="h-4 w-2/3" effect={effectStyle} />
                         </div>
                     </div>
                     <div class="space-y-1">
                         <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">Caption / Metadata (h-3, w-1/3)</span>
-                        <Skeleton class="h-3 w-1/3 rounded-sm" />
+                        <Skeleton class="h-3 w-1/3 rounded-sm" effect={effectStyle} />
                     </div>
                 </div>
             </div>
@@ -425,35 +467,35 @@
                 </h3>
                 <div class="p-4 rounded-lg bg-surface-container-low/60 border border-border/40 flex flex-wrap items-center gap-6">
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-8" rounded="full" />
+                        <Skeleton class="size-8" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">size-8</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-10" rounded="full" />
+                        <Skeleton class="size-10" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">size-10</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="full" />
+                        <Skeleton class="size-12" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">size-12</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-16" rounded="full" />
+                        <Skeleton class="size-16" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">size-16</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-20" rounded="full" />
+                        <Skeleton class="size-20" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">size-20</span>
                     </div>
                 </div>
 
                 <!-- Combined Avatar + Meta Mockup -->
                 <div class="flex items-center gap-3 p-3 rounded-lg border border-border/50 bg-surface-container-lowest">
-                    <Skeleton class="size-10 shrink-0" rounded="full" />
+                    <Skeleton class="size-10 shrink-0" rounded="full" effect={effectStyle} />
                     <div class="space-y-1.5 flex-1 min-w-0">
-                        <Skeleton class="h-4 w-32 rounded-sm" />
-                        <Skeleton class="h-3 w-48 rounded-sm" />
+                        <Skeleton class="h-4 w-32 rounded-sm" effect={effectStyle} />
+                        <Skeleton class="h-3 w-48 rounded-sm" effect={effectStyle} />
                     </div>
-                    <Skeleton class="h-7 w-16 rounded-md shrink-0" />
+                    <Skeleton class="h-7 w-16 rounded-md shrink-0" effect={effectStyle} />
                 </div>
             </div>
 
@@ -464,12 +506,12 @@
                     Buttons & Status Pill Placeholders
                 </h3>
                 <div class="p-4 rounded-lg bg-surface-container-low/60 border border-border/40 flex flex-wrap items-center gap-3">
-                    <Skeleton class="h-9 w-28 rounded-md" />
-                    <Skeleton class="h-8 w-24 rounded-full" />
-                    <Skeleton class="h-7 w-20 rounded-md" />
-                    <Skeleton class="size-9 rounded-md" />
-                    <Skeleton class="size-8 rounded-full" />
-                    <Skeleton class="h-6 w-16 rounded-full" />
+                    <Skeleton class="h-9 w-28 rounded-md" effect={effectStyle} />
+                    <Skeleton class="h-8 w-24 rounded-full" effect={effectStyle} />
+                    <Skeleton class="h-7 w-20 rounded-md" effect={effectStyle} />
+                    <Skeleton class="size-9 rounded-md" effect={effectStyle} />
+                    <Skeleton class="size-8 rounded-full" effect={effectStyle} />
+                    <Skeleton class="h-6 w-16 rounded-full" effect={effectStyle} />
                 </div>
             </div>
 
@@ -481,27 +523,27 @@
                 </h3>
                 <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 p-4 rounded-lg bg-surface-container-low/60 border border-border/40 text-center">
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="none" />
+                        <Skeleton class="size-12" rounded="none" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">none</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="sm" />
+                        <Skeleton class="size-12" rounded="sm" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">sm</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="md" />
+                        <Skeleton class="size-12" rounded="md" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">md (def)</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="lg" />
+                        <Skeleton class="size-12" rounded="lg" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">lg</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12" rounded="full" />
+                        <Skeleton class="size-12" rounded="full" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">full</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5">
-                        <Skeleton class="size-12 rounded-2xl" />
+                        <Skeleton class="size-12 rounded-2xl" effect={effectStyle} />
                         <span class="text-[10px] font-mono text-muted-foreground">class 2xl</span>
                     </div>
                 </div>
@@ -509,7 +551,7 @@
         </div>
     </section>
 
-    <!-- SECTION 3: Accessibility & Design Tokens -->
+    <!-- SECTION 4: Accessibility & Motion Tokens -->
     <section
         class="rounded-xl border border-border/80 bg-surface-container-lowest p-6 shadow-xs space-y-3"
     >
@@ -519,13 +561,19 @@
         </h2>
         <ul class="text-sm text-muted-foreground space-y-2 list-disc list-inside">
             <li>
+                <strong class="text-foreground">Anti-Flicker Thresholds:</strong> Uses <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">createDeferredLoading()</code> to ignore queries completing faster than 120ms, protecting user focus from FOIC flashes.
+            </li>
+            <li>
+                <strong class="text-foreground">Smooth Entrance:</strong> Uses CSS <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">animate-fade-in</code> (180ms ease-out) so content eases into place rather than abruptly snapping in.
+            </li>
+            <li>
                 <strong class="text-foreground">Screen Reader Calmness:</strong> Carries <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">aria-hidden="true"</code> by default so assistive technology does not announce noisy empty content.
             </li>
             <li>
-                <strong class="text-foreground">Reduced Motion:</strong> Uses <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">motion-reduce:animate-none</code> so users who request reduced motion at the OS level receive static, non-pulsing placeholders.
+                <strong class="text-foreground">Reduced Motion:</strong> Uses <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">motion-reduce:animate-none</code> so users who request reduced motion receive static, non-animated placeholders.
             </li>
             <li>
-                <strong class="text-foreground">Theme Token Harmonization:</strong> Rendered with <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">bg-surface-container-high/60</code>, naturally matching both light and dark theme contrast levels without harsh pure grays.
+                <strong class="text-foreground">Kindle / E-Ink:</strong> Keyframe animations and transitions are automatically disabled under <code class="font-mono text-xs bg-surface-container px-1 py-0.5 rounded">html[data-theme="kindle"]</code> to prevent ghosting on e-ink displays.
             </li>
         </ul>
     </section>

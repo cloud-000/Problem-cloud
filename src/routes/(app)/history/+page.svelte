@@ -416,7 +416,7 @@
                 {/if}
             </div>
         {:else}
-            <div class="space-y-8">
+            <div class="space-y-8 animate-fade-in">
                 {#each groupedSubmissions as group (group.dayLabel)}
                     <section aria-labelledby={`history-${group.dayLabel.replaceAll(" ", "-")}`}>
                         <h2

@@ -1,27 +1,13 @@
-import Skeleton from "./skeleton.svelte";
-import ProblemSkeleton, {
-    type ProblemSkeletonProps,
-} from "./problem-skeleton.svelte";
-import ListRowSkeleton, {
-    type ListRowSkeletonProps,
-} from "./list-row-skeleton.svelte";
-import {
-    skeletonVariants,
-    type SkeletonProps,
-    type SkeletonRounded,
-} from "./skeleton.js";
-
+export { default as Skeleton } from "./skeleton.svelte";
+export { default as ProblemSkeleton } from "./problem-skeleton.svelte";
+export { default as ListRowSkeleton } from "./list-row-skeleton.svelte";
 export {
-    Skeleton,
-    Skeleton as Root,
     skeletonVariants,
     type SkeletonProps,
-    type SkeletonProps as Props,
-    type SkeletonRounded,
-    ProblemSkeleton,
-    type ProblemSkeletonProps,
-    ListRowSkeleton,
-    type ListRowSkeletonProps,
-};
-
-export default Skeleton;
+    type SkeletonEffect,
+} from "./skeleton.js";
+export {
+    DeferredLoading,
+    createDeferredLoading,
+    type DeferredLoadingOptions,
+} from "./deferred-loading.svelte.js";

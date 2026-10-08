@@ -409,6 +409,7 @@
                 </Button>
             </div>
         {:else}
+            <div class="space-y-12 animate-fade-in">
             <Page.Section
                 title="Quick practice"
             >
@@ -500,6 +501,7 @@
                     </Button>
                 </div>
             </Page.Section>
+            </div>
         {/if}
     {/if}
 </Page.Root>

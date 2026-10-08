@@ -430,7 +430,7 @@
                     ondismiss={dismissGoalTip}
                 />
             {/if}
-            <div class="border-t border-border/60">
+            <div class="border-t border-border/60 animate-fade-in">
                 {#if mainGoal}
                     <section class="border-b border-border/60 py-5">
                         <h2 class="type-section-title text-foreground">Your main goal</h2>

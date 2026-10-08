@@ -392,7 +392,7 @@
                     </p>
                 </div>
             {:else}
-                <div class="border-t border-border">
+                <div class="border-t border-border animate-fade-in">
                     {#each dueReviews as problem (problem.id)}
                         <div
                             class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
@@ -520,6 +520,7 @@
                 <Button href="/practice">Start practicing</Button>
             </div>
         {:else}
+            <div class="space-y-8 animate-fade-in">
             <section
                 class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 aria-labelledby="next-step-heading"
@@ -714,6 +715,7 @@
                     {/each}
                 </div>
             </Page.Section>
+            </div>
         {/if}
     {/if}
 </Page.Root>

@@ -470,7 +470,7 @@
         onfinish={finishTour}
     />
 {:else}
-    <Page.Root width="standard">
+    <Page.Root width="standard" class="animate-fade-in">
         <Page.Header
             title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
         />

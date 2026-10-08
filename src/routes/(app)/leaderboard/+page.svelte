@@ -80,7 +80,7 @@
                 <Button href="/practice">Go to practice</Button>
             </div>
         {:else}
-            <ol class="border-y border-border/60 divide-y divide-border/60">
+            <ol class="border-y border-border/60 divide-y divide-border/60 animate-fade-in">
                 {#each entries as entry, index (entry.user_id)}
                     {@const rank = index + 1}
                     {@const provisional = playerRatingIsProvisional(entry)}

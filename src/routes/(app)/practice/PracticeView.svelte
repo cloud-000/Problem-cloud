@@ -2271,7 +2271,7 @@
             </div>
          {:else}
             {@const displayedProblemId = problem.id}
-            <div class="mx-auto flex min-h-0 w-full flex-1 flex-col">
+            <div class="mx-auto flex min-h-0 w-full flex-1 flex-col animate-fade-in">
                <div
                   bind:clientHeight={problemRegionHeight}
                   class="relative flex-1 flex flex-col min-h-0 w-full"
