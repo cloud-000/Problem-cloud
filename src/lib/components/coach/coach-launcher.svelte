@@ -45,10 +45,10 @@
 {/if}
 
 <style>
-    /* Clear the mobile bottom bar (56px + the home-indicator inset). */
+    /* Share the navigation's total height, including standalone clearance. */
     @media (max-width: 767px) and (orientation: portrait) {
         :global(.coach-fab) {
-            bottom: calc(56px + var(--safe-area-bottom) + 1rem);
+            bottom: calc(var(--mobile-nav-height) + 1rem);
         }
     }
 </style>

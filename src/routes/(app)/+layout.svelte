@@ -678,6 +678,14 @@
 </div>
 
 <style>
+   @media (display-mode: standalone) {
+      /* iOS standalone dynamic viewport sizing can omit the status inset.
+         Use the full screen height; the shell reserves the top inset below. */
+      .app-container {
+         height: 100vh;
+      }
+   }
+
    @media (min-width: 1280px) {
       :global(.utility-panel-toast-offset) {
          right: calc(var(--utility-panel-width) + 1rem);
@@ -713,12 +721,12 @@
             flex-direction: row !important;
             align-items: center !important;
             width: 100% !important;
-            height: 56px !important;
+            height: var(--mobile-nav-height) !important;
             border-right-width: 0px !important;
             border-top: 1px solid var(--color-border) !important;
             overflow-x: auto !important;
             scrollbar-width: none !important;
-            padding: 0 8px !important;
+            padding: 0 8px calc(var(--safe-area-bottom) + var(--mobile-nav-bottom-space)) !important;
             background-color: var(--color-surface-container-low) !important;
          }
 

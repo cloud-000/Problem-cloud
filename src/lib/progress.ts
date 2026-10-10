@@ -180,7 +180,7 @@ export async function fetchProblemStateSummary(
     }) as ProblemStateSummary;
 }
 
-export type SubmissionSource = "practice" | "library" | "review";
+export type SubmissionSource = "practice" | "library" | "review" | "test";
 
 export type SubmissionInput = {
     problemId: number;

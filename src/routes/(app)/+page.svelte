@@ -421,7 +421,7 @@
         <div class="space-y-2 pb-2">
             <Skeleton class="h-8 w-48 rounded-md" />
         </div>
-        <div class="flex flex-col gap-10" role="status" aria-label="Loading your dashboard">
+        <div class="relative flex flex-col gap-10" role="status" aria-label="Loading your dashboard">
             <section
                 class="flex flex-col gap-5 rounded-xl border border-border bg-surface-container-lowest p-5 sm:p-6"
             >

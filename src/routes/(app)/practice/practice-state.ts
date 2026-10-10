@@ -1,10 +1,12 @@
 import type { ProblemRow } from "$lib/library";
 import type {
     PracticeAttempt,
-    PracticeSource,
+    PracticeSource as TrainerPracticeSource,
     ProblemProgress,
 } from "$lib/trainer";
 import type { SessionHistoryEntry } from "$lib/sessions";
+
+export type PracticeSource = TrainerPracticeSource | "test";
 
 export type PracticeAnswerState = {
     selectedChoice: number | null;

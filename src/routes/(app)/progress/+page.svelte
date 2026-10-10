@@ -365,7 +365,7 @@
             {/if}
 
             {#if dueLoading}
-                <div class="border-t border-border divide-y divide-border" role="status" aria-label="Loading reviews">
+                <div class="relative border-t border-border divide-y divide-border" role="status" aria-label="Loading reviews">
                     {#each Array(3) as _, i (i)}
                         <div
                             class="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
@@ -451,11 +451,11 @@
         </Page.Toolbar>
 
         {#if loading && rows.length === 0}
-            <div class="space-y-8" role="status" aria-label="Loading progress">
+            <div class="relative space-y-8" role="status" aria-label="Loading progress">
                 <section
                     class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
-                    <div class="space-y-2">
+                    <div class="min-w-0 space-y-2">
                         <Skeleton class="h-3 w-32 rounded-sm" />
                         <Skeleton class="h-6 w-64 rounded-md" />
                         <Skeleton class="h-4 w-96 max-w-full rounded-sm" />

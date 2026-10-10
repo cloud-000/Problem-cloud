@@ -218,7 +218,7 @@
       const result = await submissionWrites.get(problemId);
       return result?.operationId ? [result.operationId] : undefined;
    }
-   let currentSource = $state<PracticeSource>("practice");
+   let currentSource = $state<PracticeHistoryEntry["source"]>("practice");
    let currentProgress = $state<ProblemProgress | null>(null);
 
    // The DB-backed session this view is filing work into. null = root

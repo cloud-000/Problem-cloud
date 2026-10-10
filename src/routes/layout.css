@@ -12,6 +12,8 @@
        toolbar height there, which turns into a large phantom bottom band. */
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-bottom: 0px;
+    --mobile-nav-bottom-space: 0px;
+    --mobile-nav-height: calc(56px + var(--safe-area-bottom) + var(--mobile-nav-bottom-space));
 
     /* ==========================================================================
        1. COLOR SYSTEM (Semantic & DESIGN.md Mapping)
@@ -380,6 +382,14 @@
     --width-md: 28rem;
     --width-lg: 32rem;
     --width-xl: 36rem;
+}
+
+/* Keep standalone navigation clear of the screen edge without trusting the
+   stale toolbar-sized bottom inset some iOS Home Screen apps report. */
+@media (display-mode: standalone) {
+    :root {
+        --mobile-nav-bottom-space: 10px;
+    }
 }
 
 /* ==========================================================================

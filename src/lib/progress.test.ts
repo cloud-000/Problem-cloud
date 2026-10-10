@@ -125,6 +125,13 @@ describe("reconcileSessionSubmissions", () => {
         const submissions: RecentSubmissionRow[] = [
             {
                 id: 1,
+                answer: null,
+                attempt: null,
+                client_key: null,
+                encounter: null,
+                encounter_ms: null,
+                occurred_at: null,
+                tries_used: 1,
                 user_id: "u1",
                 problem_id: 999,
                 selected_choice: 3,
@@ -139,6 +146,13 @@ describe("reconcileSessionSubmissions", () => {
             },
             {
                 id: 2,
+                answer: null,
+                attempt: null,
+                client_key: null,
+                encounter: null,
+                encounter_ms: null,
+                occurred_at: null,
+                tries_used: 1,
                 user_id: "u1",
                 problem_id: 10,
                 selected_choice: 0,
