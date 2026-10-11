@@ -181,6 +181,10 @@ security definer
 set search_path = ''
 as $$
 begin
+  if current_setting('mathapp.skip_problem_triggers', true) = 'true' then
+    return null;
+  end if;
+
   if TG_OP = 'INSERT' or TG_OP = 'UPDATE' then
     if NEW.test_id is not null then
       perform public.recalculate_test_answers(NEW.test_id);

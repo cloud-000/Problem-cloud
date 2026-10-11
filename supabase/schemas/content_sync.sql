@@ -325,6 +325,9 @@ declare
   v_unmatched     integer := 0;
   v_bad           integer;
 begin
+  -- Bypass row-level problem triggers for the duration of this sync transaction.
+  perform set_config('mathapp.skip_problem_triggers', 'true', true);
+
   perform public.backfill_content_sync_keys();
 
   -- series: match on name; aops_id / is_official are scraper-owned.
@@ -335,6 +338,8 @@ begin
     on conflict (name) do update
       set aops_id     = excluded.aops_id,
           is_official = excluded.is_official
+      where series.aops_id is distinct from excluded.aops_id
+         or series.is_official is distinct from excluded.is_official
     returning (xmax = 0) as inserted
   )
   select
@@ -386,6 +391,17 @@ begin
           is_computational = excluded.is_computational,
           response_kind    = excluded.response_kind,
           answer_status    = excluded.answer_status
+      where tests.series_id        is distinct from excluded.series_id
+         or tests.name             is distinct from excluded.name
+         or tests.year             is distinct from excluded.year
+         or tests.type             is distinct from excluded.type
+         or tests.division         is distinct from excluded.division
+         or tests.division_order   is distinct from excluded.division_order
+         or tests.format           is distinct from excluded.format
+         or tests.format_order     is distinct from excluded.format_order
+         or tests.is_computational is distinct from excluded.is_computational
+         or tests.response_kind    is distinct from excluded.response_kind
+         or tests.answer_status    is distinct from excluded.answer_status
     returning (xmax = 0) as inserted
   )
   select
@@ -454,6 +470,16 @@ begin
           is_computational   = excluded.is_computational,
           response_kind      = excluded.response_kind,
           answer_status      = excluded.answer_status
+      where problems.aops_id            is distinct from excluded.aops_id
+         or problems.statement          is distinct from excluded.statement
+         or problems.choices            is distinct from excluded.choices
+         or problems.answer_index       is distinct from excluded.answer_index
+         or problems.official_solutions is distinct from excluded.official_solutions
+         or problems.topic              is distinct from excluded.topic
+         or problems.tags               is distinct from excluded.tags
+         or problems.is_computational   is distinct from excluded.is_computational
+         or problems.response_kind      is distinct from excluded.response_kind
+         or problems.answer_status      is distinct from excluded.answer_status
     returning (xmax = 0) as inserted
   )
   select
@@ -462,27 +488,46 @@ begin
   into v_problems_ins, v_problems_upd
   from ins;
 
-  -- Resolve duplicate pointers (canonical_sync_key -> canonical_id). A SECOND
-  -- pass, because an alias's canonical may have been inserted in this same batch.
-  -- canonical_id is scraper-owned structural state (not seed-then-lock), so we
-  -- reset every staged problem's pointer first — a removed/renamed alias link
-  -- must never leave a stale pointer — then set it for the aliases whose
-  -- canonical resolves. Only rows in THIS import are touched (p.sync_key = ip.*),
-  -- so untouched series are unaffected. The scraper collapses link chains, so a
-  -- canonical_sync_key always names a true canonical (never itself an alias).
-  update public.problems p
-  set canonical_id = null
-  from public._import_problems ip
-  where p.sync_key = ip.sync_key
-    and p.canonical_id is not null;
-
+  -- Resolve duplicate pointers (canonical_sync_key -> canonical_id).
+  -- Scraper-owned structural state. Updates in a single pass and only touches
+  -- rows whose canonical_id actually changed.
   update public.problems p
   set canonical_id = c.id
   from public._import_problems ip
-  join public.problems c on c.sync_key = ip.canonical_sync_key
+  left join public.problems c on c.sync_key = ip.canonical_sync_key
+                             and ip.canonical_sync_key <> ip.sync_key
   where p.sync_key = ip.sync_key
-    and ip.canonical_sync_key is not null
-    and ip.canonical_sync_key <> ip.sync_key;
+    and p.canonical_id is distinct from c.id;
+
+  -- Set-based recalculation of test answer metrics for all tests touched by this import.
+  with touched_tests as (
+    select distinct t.id
+    from public.tests t
+    join public._import_tests it on it.sync_key = t.sync_key
+  ),
+  counts as (
+    select tt.id as test_id,
+           pg_catalog.count(p.id) filter (
+             where coalesce(p.answer_status, '') <> 'not_applicable'
+           ) as graded_total,
+           pg_catalog.count(p.id) filter (
+             where coalesce(p.answer_status, '') <> 'not_applicable'
+               and (p.answer_index = -1 or p.answer_index is null)
+           ) as missing_answers
+    from touched_tests tt
+    left join public.problems p on p.test_id = tt.id
+    group by tt.id
+  )
+  update public.tests t
+  set
+    has_all_answers = (c.graded_total > 0 and c.missing_answers = 0),
+    missing_answers_count = c.missing_answers::integer
+  from counts c
+  where t.id = c.test_id
+    and (
+      t.has_all_answers is distinct from (c.graded_total > 0 and c.missing_answers = 0)
+      or t.missing_answers_count is distinct from c.missing_answers::integer
+    );
 
   -- Unmatched: live problems whose test is part of THIS import (so a partial
   -- scrape never flags untouched series) but whose sync_key is absent from the
