@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import type { Pair } from "$lib/asy/scene";
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import type { RelationKind } from "$lib/whiteboard/model";
+    import { cn } from "#lib/utils.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { Pair } from "#lib/asy/scene/index.js";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
+    import type { RelationKind } from "#lib/whiteboard/model/index.js";
     import {
         autoToolbarPlacement,
         clampToolbarPosition,

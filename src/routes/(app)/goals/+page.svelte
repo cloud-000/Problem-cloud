@@ -1,13 +1,13 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { afterNavigate, goto, replaceState } from "$app/navigation";
+    import { afterNavigate, goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { Switch } from "$lib/components/toggle";
-    import { Skeleton } from "$lib/components/skeleton";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
     import {
         archiveGoal,
         dataForGoal,
@@ -24,17 +24,17 @@
         type GoalProgressResult,
         type GoalRequestPlan,
         type GoalProgressData,
-    } from "$lib/goals";
-    import { fetchAllSeries } from "$lib/library";
-    import { startSession } from "$lib/sessions";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { modal } from "$lib/state/modal.svelte";
+    } from "#lib/goals/index.js";
+    import { fetchAllSeries } from "#lib/library.js";
+    import { startSession } from "#lib/sessions.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { modal } from "#lib/state/modal.svelte.js";
     import GoalCard from "./GoalCard.svelte";
     import GoalDetail from "./GoalDetail.svelte";
     import GoalForm from "./GoalForm.svelte";
-    import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
-    import { sortGoals, type SeriesNames } from "$lib/goals/presentation";
-    import { attentionGoal, primaryGoal, type GoalSnapshot } from "$lib/goals/promote";
+    import { practiceSessionName, practiceSettingsForGoal } from "#lib/goals/practice.js";
+    import { sortGoals, type SeriesNames } from "#lib/goals/presentation.js";
+    import { attentionGoal, primaryGoal, type GoalSnapshot } from "#lib/goals/promote.js";
     import {
         CONTEXTUAL_TIP,
         acknowledgeTip,
@@ -44,7 +44,7 @@
         fetchOnboarding,
         shouldShowTip,
         type OnboardingState,
-    } from "$lib/onboarding";
+    } from "#lib/onboarding/index.js";
     import ContextualTip from "../ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -105,32 +105,21 @@
     let mainGoal = $derived(primaryGoal(goals));
     let goalSnapshots = $derived.by<GoalSnapshot[]>(() =>
         goals.map((goal) => {
-            const slot = evaluation?.plan.slots.get(goal.id);
-            return {
-                goal,
-                result: progress.get(goal.id) ?? null,
-                familyData: familyDataFor(goal),
-                period:
-                    slot?.family === "period"
-                        ? (evaluation?.results.period?.[slot.index] ?? null)
-                        : null,
-            };
+        const slot = evaluation?.plan.slots.get(goal.id);
+        return {
+            goal,
+            result: progress.get(goal.id) ?? null,
+            familyData: familyDataFor(goal),
+            period: slot?.family === "period"
+                ? evaluation?.results.period?.[slot.index] ?? null
+                : null
+        };
         }),
     );
     let attention = $derived(attentionGoal(goalSnapshots, now));
-    let attentionGoalId = $derived(
-        attention?.goal.id !== mainGoal?.id ? (attention?.goal.id ?? null) : null,
-    );
-    let otherVisible = $derived(
-        visible.filter((goal) => goal.id !== mainGoal?.id && goal.id !== attentionGoalId),
-    );
-    let showGoalTip = $derived(
-        shouldShowTip(
-            onboarding.acknowledgedTips,
-            CONTEXTUAL_TIP.firstGoal,
-            !loading && goals.length > 0,
-        ),
-    );
+    let attentionGoalId = $derived(attention?.goal.id !== mainGoal?.id ? attention?.goal.id ?? null : null);
+    let otherVisible = $derived(visible.filter((goal) => goal.id !== mainGoal?.id && goal.id !== attentionGoalId));
+    let showGoalTip = $derived(shouldShowTip(onboarding.acknowledgedTips, CONTEXTUAL_TIP.firstGoal, !loading && goals.length > 0));
 
     async function load() {
         if (!user) {
@@ -209,27 +198,26 @@
     // to open the dialog, so consume it and replace the history entry with a
     // clean URL — otherwise Back, or a reload, re-opens the dialog forever.
     // (Same treatment the trainer gives its launch params.)
-    afterNavigate(() => {
+    afterNavigate(({ shallow, type }) => {
+        if (shallow && type === 'goto') return;
         if (page.url.searchParams.get("new") !== "1") return;
-        const cleaned = new URL(page.url);
+        const cleaned = new URL(page.url.href);
         cleaned.searchParams.delete("new");
-        replaceState(
-            resolve(
-                cleaned.search
-                    ? (`/goals${cleaned.search}` as `/goals?${string}`)
-                    : "/goals",
-            ),
-            page.state,
+        goto(
+            resolve(cleaned.search
+                ? `goals${cleaned.search}` as `goals?${string}`
+                : "goals"),
+            { shallow: true, replace: true, state: page.state }
         );
         openCreate();
     });
 
     function openGoal(goal: Goal) {
-        void goto(resolve(`/goals?goal=${goal.id}`));
+        void goto(resolve(`goals?goal=${goal.id}`));
     }
 
     function closeGoal() {
-        void goto(resolve("/goals"));
+        void goto(resolve('goals'));
     }
 
     function openCreate() {
@@ -259,7 +247,7 @@
 
     /**
      * The handoff: the goal's scope, handed to the trainer unchanged, filtered
-     * to what the goal still needs (`$lib/goals/practice`). Same session-creation
+     * to what the goal still needs (`#lib/goals/practice.js`). Same session-creation
      * path as every other surface — `startSession` then `/practice?session=<id>`.
      */
     async function practiceGoal(goal: Goal) {
@@ -270,8 +258,8 @@
                 name: practiceSessionName(goal),
                 settings: practiceSettingsForGoal(goal),
             });
-            await goto(resolve(`/practice?session=${session.id}`));
-        } catch (error) {
+            await goto(resolve(`practice?session=${session.id}`));
+        } catch(error) {
             errorMsg = (error as Error).message || "Failed to start practice";
             busy = false;
         }
@@ -305,19 +293,18 @@
 
     async function removeGoal(goal: Goal) {
         if (busy) return;
-        if (
-            !(await modal.confirm({
-                title: "Delete goal",
-                message: `Delete "${goal.title}"? This is permanent — archiving keeps it readable instead.`,
-                confirmLabel: "Delete",
-                confirmVariant: "destructive",
-            }))
-        )
-            return;
+
+        if (!await modal.confirm({
+            title: "Delete goal",
+            message: `Delete "${goal.title}"? This is permanent — archiving keeps it readable instead.`,
+            confirmLabel: "Delete",
+            confirmVariant: "destructive"
+        })) return;
+
         busy = true;
         try {
             await deleteGoal(supabase, goal.id);
-            if (selectedId === goal.id) await goto(resolve("/goals"));
+            if (selectedId === goal.id) await goto(resolve('goals'));
             await load();
         } catch (error) {
             errorMsg = (error as Error).message || "Failed to delete the goal";
@@ -346,9 +333,9 @@
         goal={selected}
         result={progress.get(selected.id) ?? null}
         data={familyDataFor(selected)}
-        {seriesNames}
-        {now}
-        {busy}
+        seriesNames={seriesNames}
+        now={now}
+        busy={busy}
         onback={closeGoal}
         onpractice={practiceGoal}
         onedit={openEdit}
@@ -438,9 +425,9 @@
                             goal={mainGoal}
                             result={progress.get(mainGoal.id) ?? null}
                             data={familyDataFor(mainGoal)}
-                            {seriesNames}
-                            {now}
-                            {busy}
+                            seriesNames={seriesNames}
+                            now={now}
+                            busy={busy}
                             onopen={openGoal}
                             onpractice={practiceGoal}
                         />
@@ -453,9 +440,9 @@
                             goal={attention.goal}
                             result={attention.result}
                             data={attention.familyData}
-                            {seriesNames}
-                            {now}
-                            {busy}
+                            seriesNames={seriesNames}
+                            now={now}
+                            busy={busy}
                             onopen={openGoal}
                             onpractice={practiceGoal}
                         />
@@ -467,12 +454,12 @@
                     {/if}
                     {#each otherVisible as goal (goal.id)}
                         <GoalCard
-                            {goal}
+                            goal={goal}
                             result={progress.get(goal.id) ?? null}
                             data={familyDataFor(goal)}
-                            {seriesNames}
-                            {now}
-                            {busy}
+                            seriesNames={seriesNames}
+                            now={now}
+                            busy={busy}
                             onopen={openGoal}
                             onpractice={practiceGoal}
                         />
@@ -495,10 +482,10 @@
 {#if user}
     <GoalForm
         bind:open={formOpen}
-        {supabase}
+        supabase={supabase}
         userId={user.id}
-        {seriesOptions}
-        {seriesNames}
+        seriesOptions={seriesOptions}
+        seriesNames={seriesNames}
         goal={editing}
         onsaved={onSaved}
         onstart={practiceGoal}

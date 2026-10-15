@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn } from "#lib/utils.js";
 
     type Props = {
         /** Whether the protected content is currently concealed. */

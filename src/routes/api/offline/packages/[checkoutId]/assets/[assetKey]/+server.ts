@@ -1,14 +1,14 @@
 import type { RequestHandler } from "./$types";
-import { assetKey } from "$lib/offline/checksum";
-import type { OfflineAssetV1, OfflinePackageRecordsV1 } from "$lib/offline/types";
+import { assetKey } from "#lib/offline/checksum.js";
+import type { OfflineAssetV1, OfflinePackageRecordsV1 } from "#lib/offline/types.js";
 import {
     assetResponse,
     offlineAssetSource,
-} from "$lib/server/offline/assets";
+} from "#lib/server/offline/assets.js";
 import {
     offlineErrorResponse,
     requireOfflineUser,
-} from "$lib/server/offline/http";
+} from "#lib/server/offline/http.js";
 
 export const GET: RequestHandler = async ({ locals, params, fetch }) => {
     await requireOfflineUser(locals);

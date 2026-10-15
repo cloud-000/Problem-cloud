@@ -41,7 +41,7 @@ const goal = (target: GoalTargetData, goalScope = scope()): Goal => ({
 });
 
 /**
- * `GoalScope` is re-declared in `$lib` rather than imported from the route
+ * `GoalScope` is re-declared in `#lib` rather than imported from the route
  * module, so this is the assertion that keeps the two honest: scope ≡ Track is
  * what makes "practice what remains" free, and if they drift the trainer would
  * silently draw from a different pool than the goal measures.

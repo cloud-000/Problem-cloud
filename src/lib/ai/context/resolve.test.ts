@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
+import type { Database } from "#lib/types/database.types.js";
 import type { ContextSnapshot } from "./facts";
 import type { Policy } from "./policy";
 import type { NormalizedAIMessage } from "../types";

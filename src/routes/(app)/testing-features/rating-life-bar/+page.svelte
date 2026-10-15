@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
-    import { RatingLifeBar } from "$lib/components/rating-life-bar";
-    import { RatingCounter } from "$lib/components/rating-counter";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { RatingLifeBar } from "#lib/components/rating-life-bar/index.js";
+    import { RatingCounter } from "#lib/components/rating-counter/index.js";
     import { untrack } from "svelte";
-    import { glickoMatchPreview, type PlayerRating, type ProblemRating } from "$lib/library";
+    import { glickoMatchPreview, type PlayerRating, type ProblemRating } from "#lib/library.js";
 
     // Setup initial mock states
     let initialRating = $state(1550);

@@ -1,12 +1,12 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { presetFor } from "$lib/ai/presets";
-    import { aiCredentials } from "$lib/state/ai-credentials.svelte";
-    import { coach } from "$lib/state/coach.svelte";
-    import { modal } from "$lib/state/modal.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { presetFor } from "#lib/ai/presets.js";
+    import { aiCredentials } from "#lib/state/ai-credentials.svelte.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
     import AIConnectionModal from "./AIConnectionModal.svelte";
     import { testConnection } from "./test-connection";
 

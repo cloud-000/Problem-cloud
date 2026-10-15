@@ -5,12 +5,12 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { buildSystemMessage } from "$lib/ai/prompt";
-    import type { AIProviderMessage } from "$lib/ai/types";
-    import { coach } from "$lib/state/coach.svelte";
-    import { settings } from "$lib/state/settings.svelte";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { buildSystemMessage } from "#lib/ai/prompt.js";
+    import type { AIProviderMessage } from "#lib/ai/types.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { settings } from "#lib/state/settings.svelte.js";
+    import { cn } from "#lib/utils.js";
 
     let { class: className }: CoachRequestInspectorProps = $props();
 

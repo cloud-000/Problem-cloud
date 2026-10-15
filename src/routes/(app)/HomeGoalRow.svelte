@@ -1,17 +1,17 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { GoalProgress } from "$lib/components/goal-progress";
-    import { Icon } from "$lib/components/icon";
-    import { type Goal } from "$lib/goals";
-    import { practiceActionLabel } from "$lib/goals/practice";
+    import { Button } from "#lib/components/button/index.js";
+    import { GoalProgress } from "#lib/components/goal-progress/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { type Goal } from "#lib/goals/index.js";
+    import { practiceActionLabel } from "#lib/goals/practice.js";
     import {
         describeScope,
         promotionLine,
         type SeriesNames,
-    } from "$lib/goals/presentation";
-    import type { PromotedGoal } from "$lib/goals/promote";
-    import { cn } from "$lib/utils";
+    } from "#lib/goals/presentation.js";
+    import type { PromotedGoal } from "#lib/goals/promote.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         entry,
@@ -22,34 +22,31 @@
         class: className,
         label,
         showAction = true,
-        hideFallbackCaption = false,
-    }: {
+        hideFallbackCaption = false
+
+        /** Stable presentation labels (such as the main destination) must not
+         * be re-derived from urgency. */
+        /** The primary card owns the next action; Needs attention still has one. */
+        /** Urgency is worth a caption; a scope restatement is not. */
+    }: { 
         entry: PromotedGoal;
         seriesNames: SeriesNames;
         now: Date;
         busy?: boolean;
         onpractice: (goal: Goal) => void;
         class?: string;
-        /** Stable presentation labels (such as the main destination) must not
-         * be re-derived from urgency. */
         label?: string;
-        /** The primary card owns the next action; Needs attention still has one. */
         showAction?: boolean;
-        /** Urgency is worth a caption; a scope restatement is not. */
-        hideFallbackCaption?: boolean;
-    } = $props();
+        hideFallbackCaption?: boolean
+     } = $props();
 
     let goal = $derived(entry.goal);
     // The reason it was promoted, in words — never re-derived here, so the hero
     // and the list below it cannot disagree about what is urgent about it.
     let lead = $derived(promotionLine(entry));
-    let caption = $derived(
-        label ?? lead ?? (hideFallbackCaption ? null : describeScope(goal.scope, seriesNames)),
-    );
-    let urgent = $derived(
-        entry.reason === "streak_today" ||
-            (entry.reason === "deadline" && (entry.daysLeft ?? 0) <= 1),
-    );
+
+    let caption = $derived(label ?? lead ?? (hideFallbackCaption ? null : describeScope(goal.scope, seriesNames)));
+    let urgent = $derived(entry.reason === "streak_today" || entry.reason === "deadline" && (entry.daysLeft ?? 0) <= 1);
 </script>
 
 <div
@@ -60,7 +57,7 @@
     )}
 >
     <a
-        href={resolve(`/goals?goal=${goal.id}`)}
+        href={resolve(`goals?goal=${goal.id}`)}
         class="group min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
         {#if caption}
@@ -87,10 +84,10 @@
         </p>
         {#if entry.result}
             <GoalProgress
-                {goal}
+                goal={goal}
                 result={entry.result}
                 data={entry.familyData}
-                {now}
+                now={now}
                 compact
                 class="mt-2 w-full"
             />
@@ -100,10 +97,11 @@
     {#if showAction}
         <div class="shrink-0">
             {#if entry.reason === "achieved"}
-                <Button href={resolve(`/goals?goal=${goal.id}`)} variant="ghost" size="sm">
-                    Open goal
-                    <Icon name="arrow_forward" />
-                </Button>
+                <Button
+                    href={resolve(`goals?goal=${goal.id}`)}
+                    variant="ghost"
+                    size="sm"
+                >Open goal <Icon name="arrow_forward" /></Button>
             {:else}
                 <Button
                     variant="outline"

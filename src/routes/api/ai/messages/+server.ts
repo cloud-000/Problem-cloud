@@ -1,15 +1,15 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { AISchemaError, parsePersistTurnRequest } from "$lib/ai/schemas";
-import { aiCoachEnabled } from "$lib/server/ai/config";
+import { AISchemaError, parsePersistTurnRequest } from "#lib/ai/schemas.js";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
 import {
     AIWorkAnchorConflict,
     ensureConversation,
     preferencesFor,
     saveAssistantMessage,
     saveUserMessage,
-} from "$lib/server/ai/persistence";
-import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+} from "#lib/server/ai/persistence.js";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 /**
  * Saves a turn the browser streamed itself from the user's own provider.

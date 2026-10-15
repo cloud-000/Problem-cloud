@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { coach } from "$lib/state/coach.svelte";
-    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
     import { resolve } from "$app/paths";
 
     let moreOpen = $state(false);
@@ -41,7 +41,10 @@
     }
 </script>
 
-<svelte:window onkeydown={handleKeydown} onclick={handleWindowClick} />
+<svelte:window
+    onkeydown={handleKeydown}
+    onclick={handleWindowClick}
+></svelte:window>
 
 <header class="relative flex h-12 shrink-0 items-center gap-1 border-b border-border/40 px-3">
     <div class="mr-auto flex items-center gap-2">
@@ -65,7 +68,9 @@
         <Button
             variant="ghost"
             size="icon-sm"
-            onclick={() => (coach.historyViewOpen ? coach.closeConversationList() : coach.openConversationList())}
+            onclick={() => coach.historyViewOpen
+                ? coach.closeConversationList()
+                : coach.openConversationList()}
             aria-label="Conversation history"
             aria-expanded={coach.historyViewOpen}
             class={coach.historyViewOpen ? "bg-surface-container text-foreground" : undefined}
@@ -89,7 +94,7 @@
         <Button
             variant="ghost"
             size="icon-sm"
-            onclick={() => (moreOpen = !moreOpen)}
+            onclick={() => moreOpen = !moreOpen}
             aria-label="More Coach options"
             aria-expanded={moreOpen}
         >
@@ -128,10 +133,8 @@
             <div class="mt-3 border-t border-border/40 pt-2 text-right">
                 <a
                     class="inline-flex text-xs font-medium text-primary hover:underline"
-                    href={resolve("/settings#ai")}
-                >
-                    AI settings →
-                </a>
+                    href={resolve('settings#ai')}
+                >AI settings →</a>
             </div>
         </div>
     {/if}

@@ -1,13 +1,13 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { DatePicker } from "$lib/components/date-picker";
-    import { Input } from "$lib/components/input";
-    import { Modal } from "$lib/components/modal";
-    import { modal } from "$lib/state/modal.svelte";
-    import { Select, type SelectOption } from "$lib/components/select";
-    import { TOPICS } from "$lib/library";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { DatePicker } from "#lib/components/date-picker/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { Select, type SelectOption } from "#lib/components/select/index.js";
+    import { TOPICS } from "#lib/library.js";
     import {
         createGoal,
         describeTarget,
@@ -25,8 +25,8 @@
         type GoalTargetType,
         type GoalProgressResult,
         type VolumePeriod,
-    } from "$lib/goals";
-    import { acknowledgeSetGoal } from "$lib/onboarding";
+    } from "#lib/goals/index.js";
+    import { acknowledgeSetGoal } from "#lib/onboarding/index.js";
     import Track from "../practice/Track.svelte";
     import { createTrackValue, type TrackValue } from "../practice/practice-settings";
     import {
@@ -35,7 +35,7 @@
         isMaterialEdit,
         progressSummary,
         type SeriesNames,
-    } from "$lib/goals/presentation";
+    } from "#lib/goals/presentation.js";
 
     type Supabase = SupabaseClient<Database>;
 

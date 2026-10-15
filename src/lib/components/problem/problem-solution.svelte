@@ -1,14 +1,14 @@
 <script lang="ts">
-    import { MathStatement } from "$lib/components/math-statement";
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
     import {
         DropdownMenu,
         type DropdownOption,
-    } from "$lib/components/dropdown-menu";
+    } from "#lib/components/dropdown-menu/index.js";
     import { slide } from "svelte/transition";
     import { untrack } from "svelte";
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
     import { partitionProblemSolutions } from "./problem-solutions";
     import {
         fetchVideoMetadata,

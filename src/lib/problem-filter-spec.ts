@@ -1,5 +1,5 @@
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import type { OfflinePlacementV1, OfflineProblemRatingV1, OfflineProblemV1 } from "$lib/offline/types";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import type { OfflinePlacementV1, OfflineProblemRatingV1, OfflineProblemV1 } from "#lib/offline/types.js";
 
 export type ProblemFilterValues = {
     search?: string;

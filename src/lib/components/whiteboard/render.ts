@@ -13,7 +13,7 @@ import {
     type Pen,
     type Scene,
     type SceneElement,
-} from "$lib/asy/scene";
+} from "#lib/asy/scene/index.js";
 
 export type Project = (point: Pair) => Pair;
 

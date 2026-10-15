@@ -1,16 +1,12 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Icon } from "$lib/components/icon";
-    import type { WorklistItem } from "$lib/home";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { WorklistItem } from "#lib/home.js";
 
-    let {
-        items,
-        seriesNames,
-    }: {
-        items: WorklistItem[];
-        /** Series id -> name, for the trailing series badge. */
-        seriesNames: Map<number, string>;
-    } = $props();
+    let { items, seriesNames
+
+    /** Series id -> name, for the trailing series badge. */
+     }: { items: WorklistItem[]; seriesNames: Map<number, string> } = $props();
 
     function problemTitle(item: WorklistItem) {
         const problem = item.problem;
@@ -31,7 +27,7 @@
     }
 
     function href(item: WorklistItem) {
-        return `${resolve("/library")}?search=${item.problem.id}`;
+        return `${resolve('library')}?search=${item.problem.id}`;
     }
 </script>
 

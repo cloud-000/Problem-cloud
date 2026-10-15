@@ -1,5 +1,5 @@
 <script lang="ts">
-    import OfflineShell from "$lib/offline/OfflineShell.svelte";
+    import OfflineShell from "#lib/offline/OfflineShell.svelte";
 </script>
 
 <svelte:head>

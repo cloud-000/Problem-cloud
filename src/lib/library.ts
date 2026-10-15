@@ -1,11 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
-import type { TriState } from "$lib/components/toggle";
-import type { Option } from "$lib/components/combobox";
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
-import { applyRemoteProblemFilters, parseProblemSearchIds } from "$lib/problem-filter-spec";
-import { BROWSE_INTENT, type BrowseQueryV1, type OfflineBrowseProblemV1 } from "$lib/offline/types";
+import type { Database, Tables } from "#lib/types/database.types.js";
+import type { TriState } from "#lib/components/toggle/index.js";
+import type { Option } from "#lib/components/combobox/index.js";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import { catalogReadRuntime } from "#lib/offline/read-mode-runtime.js";
+import { applyRemoteProblemFilters, parseProblemSearchIds } from "#lib/problem-filter-spec.js";
+import { BROWSE_INTENT, type BrowseQueryV1, type OfflineBrowseProblemV1 } from "#lib/offline/types.js";
 
 type Supabase = SupabaseClient<Database>;
 const isBrowser = () => typeof window !== "undefined";
@@ -706,7 +706,7 @@ export class LocalCatalogUnavailable extends Error {
 
 async function localBrowse(filters: Filters, page: number, limit = PAGE_SIZE) {
     try {
-        const { offlineRepository } = await import("$lib/offline/browser");
+        const { offlineRepository } = await import("#lib/offline/browser.js");
         const repository = await offlineRepository();
         const marker = await repository.getAccountMarker();
         if (!marker) throw new LocalCatalogUnavailable("signed-out");

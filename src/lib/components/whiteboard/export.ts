@@ -1,5 +1,5 @@
-import type { Pair, SceneElement } from "$lib/asy/scene";
-import { DEFAULT_FONT_SIZE_UNITS, REFERENCE_PX_PER_UNIT } from "$lib/asy/scene";
+import type { Pair, SceneElement } from "#lib/asy/scene/index.js";
+import { DEFAULT_FONT_SIZE_UNITS, REFERENCE_PX_PER_UNIT } from "#lib/asy/scene/index.js";
 import {
     canvasSnapshot,
     dotRadius,

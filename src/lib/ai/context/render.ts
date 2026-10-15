@@ -6,7 +6,7 @@ import { fit, minChars } from "./fit";
 /**
  * How much context is affordable — and nothing else.
  *
- * What the model reads lives in `$lib/ai/prompt.ts`; how a document is made to fit lives
+ * What the model reads lives in `#lib/ai/prompt.ts`; how a document is made to fit lives
  * in `./fit.ts`. This module only picks the numbers, which is why it is short: the
  * arithmetic that used to be spread through it is now one algorithm the fitter applies
  * to whatever shape the prompt declares.

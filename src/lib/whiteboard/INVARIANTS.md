@@ -52,7 +52,7 @@ Everything below is a consequence of these four.
 ## 1. Layer boundaries
 
 - **`src/lib/asy/**` and `src/lib/whiteboard/model|solver/**` are pure TS.**
-  Zero imports of Svelte, `$app/*`, `$lib` runes state, or the DOM. They must
+  Zero imports of Svelte, `$app/*`, `#lib` runes state, or the DOM. They must
   stay runnable under `bun test` with no browser. A `import ... from "svelte"`
   in these trees is a build-the-wrong-thing signal.
 - **`asy/` must not import `whiteboard/`.** The interchange core does not know

@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { ProblemOrganization } from "$lib/components/problem-organization";
-    import { Select } from "$lib/components/select";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
+    import { Select } from "#lib/components/select/index.js";
     import {
         ENGAGEMENT_LABELS,
         MASTERY_LABELS,
@@ -10,7 +10,7 @@
         type Engagement,
         type Mastery,
         type PersonalProblemState,
-    } from "$lib/progress";
+    } from "#lib/progress.js";
     import {
         applyPersonalProblemState,
         reviewIsDue,
@@ -20,15 +20,15 @@
         type SeriesReviewProblem,
         type SeriesReviewStatus,
         type SeriesReviewTest,
-    } from "$lib/series-review";
-    import { cn } from "$lib/utils";
+    } from "#lib/series-review.js";
+    import { cn } from "#lib/utils.js";
     import { SvelteMap } from "svelte/reactivity";
     import { createVirtualizer } from "@tanstack/svelte-virtual";
     import { get } from "svelte/store";
     import {
         getAppScrollViewport,
         observeScrollOffset,
-    } from "$lib/components/virtual-list/context";
+    } from "#lib/components/virtual-list/context.js";
     import SeriesReviewDetailCard from "./SeriesReviewDetailCard.svelte";
 
     let {

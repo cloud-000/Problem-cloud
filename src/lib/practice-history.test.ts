@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import type { Database } from "#lib/types/database.types.js";
+import type { ProblemRow } from "#lib/library.js";
 import {
     MAX_HISTORY_COUNT, applyPracticeHistoryFilters, createSession, defaultPracticeSettings,
     defaultReviewSettings, nextPracticeProblem, normalizePracticeHistory,
-} from "$lib/trainer";
+} from "#lib/trainer.js";
 
 function recordedFilters() {
     const calls: unknown[][] = [];

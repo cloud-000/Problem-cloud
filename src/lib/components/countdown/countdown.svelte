@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { cn, formatElapsed } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn, formatElapsed } from "#lib/utils.js";
 
     let {
         remainingMs,

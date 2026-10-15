@@ -10,9 +10,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import { hasComparableAnswer } from "$lib/problem-response";
-import { isMultipleChoice } from "$lib/utils";
+import type { Database } from "#lib/types/database.types.js";
+import { hasComparableAnswer } from "#lib/problem-response.js";
+import { isMultipleChoice } from "#lib/utils.js";
 
 export const WELCOME_PREFERRED_SERIES = "AMC 10";
 export const WELCOME_TRAINER_LIMIT = 5;

@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { modal } from "$lib/state/modal.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
-    import type { Database } from "$lib/types/database.types";
-    import type { GeneralFeedbackType } from "$lib/admin";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import type { Database } from "#lib/types/database.types.js";
+    import type { GeneralFeedbackType } from "#lib/admin.js";
+    import { cn } from "#lib/utils.js";
     import type { SupabaseClient, User } from "@supabase/supabase-js";
 
     let {

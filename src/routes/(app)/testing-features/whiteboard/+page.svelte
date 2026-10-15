@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Whiteboard, WhiteboardToolbar, WhiteboardPropertyCard, WhiteboardCommandCard } from "$lib/components/whiteboard";
-    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { Whiteboard, WhiteboardToolbar, WhiteboardPropertyCard, WhiteboardCommandCard } from "#lib/components/whiteboard/index.js";
+    import { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
 
     const store = new WhiteboardStore();
 

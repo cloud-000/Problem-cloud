@@ -18,7 +18,7 @@ requests going straight from the browser to the provider.
 Every Coach conversation is one of three tiers. The tier is decided by *where the
 Coach was summoned and whether it was escalated*, never by a user-facing toggle.
 
-The tier itself lives in `$lib/ai/session/tier.ts` (pure) and on `coach.tier`; a
+The tier itself lives in `#lib/ai/session/tier.ts` (pure) and on `coach.tier`; a
 surface that owns a thread declares itself with
 `coach.present("panel" | "inline" | "page")`, which is the only thing that promotes a
 one-shot.
@@ -719,7 +719,7 @@ clean — retiring released the anchor slot, it did not hide the thread.
 
 ### Where phase 2 lives
 
-The pure rules are `$lib/ai/session/{anchor,lifecycle}.ts`; everything else is
+The pure rules are `#lib/ai/session/{anchor,lifecycle}.ts`; everything else is
 plumbing around them.
 
 | Seam | Code |

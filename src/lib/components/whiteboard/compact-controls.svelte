@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { cn } from "#lib/utils.js";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
     import Toolbar from "./toolbar.svelte";
     import CommandCard from "./command-card.svelte";
     import PropertyCard from "./property-card.svelte";

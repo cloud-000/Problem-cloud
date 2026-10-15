@@ -31,7 +31,7 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
     import { placeFloating } from "./place-floating";
 
     let {

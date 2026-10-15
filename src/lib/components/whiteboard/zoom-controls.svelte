@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
 
     let {
         percentage,

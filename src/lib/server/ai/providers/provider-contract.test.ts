@@ -4,11 +4,11 @@ import type {
     NormalizedAIEvent,
     NormalizedAIMessage,
     NormalizedAIRequest,
-} from "$lib/ai/types";
-import { OpenAICompatAdapter } from "$lib/ai/providers/openai-compat";
+} from "#lib/ai/types.js";
+import { OpenAICompatAdapter } from "#lib/ai/providers/openai-compat.js";
 import { MockProviderAdapter } from "./mock";
-import type { FetchFunction } from "$lib/ai/providers/openai-models";
-import type { AIProviderAdapter } from "$lib/ai/providers/types";
+import type { FetchFunction } from "#lib/ai/providers/openai-models.js";
+import type { AIProviderAdapter } from "#lib/ai/providers/types.js";
 
 const request = (overrides: Partial<NormalizedAIRequest> = {}): NormalizedAIRequest => ({
     requestId: "request-1",

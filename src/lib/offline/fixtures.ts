@@ -14,8 +14,8 @@
 
 import { pageChecksum } from "./checksum";
 import { problemAssets } from "./assets";
-import { defaultPracticeSettings } from "$lib/trainer";
-import type { PracticeSessionRow } from "$lib/sessions";
+import { defaultPracticeSettings } from "#lib/trainer.js";
+import type { PracticeSessionRow } from "#lib/sessions.js";
 import type { OfflineRepository } from "./repository";
 import type {
     OfflineAssetV1,
@@ -28,7 +28,7 @@ import type {
     OfflineProblemV1,
     OfflineScope,
 } from "./types";
-import type { ProblemProgress } from "$lib/progress";
+import type { ProblemProgress } from "#lib/progress.js";
 
 /** A deterministic, correctly-shaped UUID. Fixtures must be reproducible. */
 export function fixtureUuid(seed: string): string {

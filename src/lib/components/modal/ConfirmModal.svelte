@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Button, type ButtonVariant } from "$lib/components/button";
+    import { Button, type ButtonVariant } from "#lib/components/button/index.js";
 
     let {
         message,

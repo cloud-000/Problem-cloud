@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ProblemRow } from "$lib/library";
-import type { ProblemProgress } from "$lib/progress";
+import type { ProblemRow } from "#lib/library.js";
+import type { ProblemProgress } from "#lib/progress.js";
 import {
     commitPracticeHistoryEntry,
     createPracticeAnswerState,

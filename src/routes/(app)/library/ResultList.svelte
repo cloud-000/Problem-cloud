@@ -1,28 +1,28 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
     import { resolve } from "$app/paths";
-    import { LinkMenu } from "$lib/components/link-menu";
-    import { Problem } from "$lib/components/problem";
-    import { ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
-    import { VirtualList } from "$lib/components/virtual-list";
+    import { LinkMenu } from "#lib/components/link-menu/index.js";
+    import { Problem } from "#lib/components/problem/index.js";
+    import { ProblemSkeleton, ListRowSkeleton } from "#lib/components/skeleton/index.js";
+    import { VirtualList } from "#lib/components/virtual-list/index.js";
     import {
         aopsCommunityUrl,
         type Level,
         type ProblemRow,
         type SeriesRow,
         type TestRow,
-    } from "$lib/library";
-    import type { Engagement, Mastery, PersonalProblemState } from "$lib/progress";
-    import type { LibraryStore } from "$lib/state/library.svelte";
-    import { practiceLaunchHref } from "$lib/practice-launch";
-    import { problemContextLayer } from "$lib/ai/context/surfaces";
-    import { anchorFor } from "$lib/ai/session/anchor";
-    import { CoachContextRegister } from "$lib/components/coach";
-    import { coach } from "$lib/state/coach.svelte";
-    import { utilityPanel } from "$lib/state/utility-panel.svelte";
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    } from "#lib/library.js";
+    import type { Engagement, Mastery, PersonalProblemState } from "#lib/progress.js";
+    import type { LibraryStore } from "#lib/state/library.svelte.js";
+    import { practiceLaunchHref } from "#lib/practice-launch.js";
+    import { problemContextLayer } from "#lib/ai/context/surfaces.js";
+    import { anchorFor } from "#lib/ai/session/anchor.js";
+    import { CoachContextRegister } from "#lib/components/coach/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
 
     type ResultRow = SeriesRow | TestRow | ProblemRow;
     class ProblemDraft {
@@ -48,18 +48,19 @@
         contained = false,
         onEndReached,
         resetKey,
-        onRetry,
-    }: {
+        onRetry
+
+        /**
+         * Stay on this surface: no practice launch, AoPS menus, or Coach Ask.
+         * The tour's Library mock uses this so the real rows cannot leave the tour.
+         */
+    }: { 
         store: LibraryStore;
         results: ResultRow[];
         resultsLevel: Level | null;
         loading: boolean;
         error: string | null;
         isInstantFeedback?: boolean;
-        /**
-         * Stay on this surface: no practice launch, AoPS menus, or Coach Ask.
-         * The tour's Library mock uses this so the real rows cannot leave the tour.
-         */
         contained?: boolean;
         onEndReached?: () => void;
         resetKey?: unknown;
@@ -262,14 +263,7 @@
                 <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
                     {#if test.series_id != null}
                         <Button
-                            href={practiceLaunchHref(
-                                {
-                                    kind: "mock-test",
-                                    testId: test.id,
-                                    seriesId: test.series_id,
-                                },
-                                resolve("/practice"),
-                            )}
+                            href={practiceLaunchHref({ kind: "mock-test", testId: test.id, seriesId: test.series_id }, resolve('practice'))}
                             variant="outline"
                             size="sm"
                             class="flex-1 gap-1.5 sm:flex-none"
@@ -292,11 +286,11 @@
         {@const problem = row as ProblemRow}
         {@const draft = problemDraft(problem)}
         <Problem
-            {problem}
+            problem={problem}
             header={problemHeader}
             appearance="row"
             solution="collapsed"
-            {isInstantFeedback}
+            isInstantFeedback={isInstantFeedback}
             externalLinks={!contained}
             bind:answer={draft.answer}
             bind:selectedChoice={draft.selectedChoice}
@@ -355,8 +349,8 @@
         estimateSize={estimateRowSize}
         overscan={overscanForLevel()}
         gap={0}
-        {onEndReached}
-        {resetKey}
+        onEndReached={onEndReached}
+        resetKey={resetKey}
         ariaLabel={`${level} results`}
         item={resultRow}
     />

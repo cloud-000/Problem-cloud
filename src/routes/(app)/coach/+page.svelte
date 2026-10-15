@@ -1,23 +1,23 @@
 <script lang="ts">
     import { onMount, untrack } from "svelte";
     import { MediaQuery } from "svelte/reactivity";
-    import { replaceState } from "$app/navigation";
+    import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import { COACH_FALLBACK_QUICK_ACTIONS } from "$lib/ai/quick-actions";
-    import { AIChat } from "$lib/components/ai-chat";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { COACH_FALLBACK_QUICK_ACTIONS } from "#lib/ai/quick-actions.js";
+    import { AIChat } from "#lib/components/ai-chat/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         CoachConnectionGate,
         CoachContextTray,
         CoachConversationList,
         CoachDebugToggle,
         CoachRequestInspector,
-    } from "$lib/components/coach";
-    import { coach } from "$lib/state/coach.svelte";
-    import { shell } from "$lib/state/shell.svelte";
-    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+    } from "#lib/components/coach/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { shell } from "#lib/state/shell.svelte.js";
+    import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
 
     /**
      * Which chat this page is showing. Identity is minted in the browser before the
@@ -101,15 +101,14 @@
         const id = coach.conversationId;
         const current = page.url.searchParams.get(CHAT_PARAM);
         if (!adopted || (id ?? null) === current) return;
-        const url = new URL(page.url);
+        const url = new URL(page.url.href);
         if (id) url.searchParams.set(CHAT_PARAM, id);
         else url.searchParams.delete(CHAT_PARAM);
         const route = url.search
-            ? (`/coach${url.search}${url.hash}` as `/coach?${string}`)
-            : url.hash
-              ? (`/coach${url.hash}` as `/coach#${string}`)
-              : "/coach";
-        untrack(() => replaceState(resolve(route), page.state));
+            ? `coach${url.search}${url.hash}` as `coach?${string}`
+            : url.hash ? `coach${url.hash}` as `coach#${string}` : "coach";
+
+        untrack(() => goto(resolve(route), { shallow: true, replace: true, state: page.state }));
     });
 </script>
 

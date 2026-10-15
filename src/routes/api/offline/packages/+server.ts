@@ -1,26 +1,26 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { problemAssets } from "$lib/offline/assets";
-import { canonicalByteLength, pageChecksum } from "$lib/offline/checksum";
+import { problemAssets } from "#lib/offline/assets.js";
+import { canonicalByteLength, pageChecksum } from "#lib/offline/checksum.js";
 import {
     normalizeScope,
     parsePackageCreateRequest,
     parsePackageCreated,
     parseRecords,
-} from "$lib/offline/contracts";
-import { PAGE_MAX_DECODED_BYTES } from "$lib/offline/limits";
+} from "#lib/offline/contracts.js";
+import { PAGE_MAX_DECODED_BYTES } from "#lib/offline/limits.js";
 import type {
     OfflineAssetV1,
     OfflinePackageRecordsV1,
     OfflineProblemV1,
-} from "$lib/offline/types";
-import { OfflineParseError } from "$lib/offline/parse";
+} from "#lib/offline/types.js";
+import { OfflineParseError } from "#lib/offline/parse.js";
 import {
     assertBodyLimit,
     assertOfflineOrigin,
     offlineErrorResponse,
     requireOfflineUser,
-} from "$lib/server/offline/http";
+} from "#lib/server/offline/http.js";
 
 type MaterializingPage = {
     page_index: number;

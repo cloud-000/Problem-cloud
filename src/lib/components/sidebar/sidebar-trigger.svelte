@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
     import { useSidebar } from "./sidebar.svelte";
-    import { Button } from "$lib/components/button/.";
-    import type { ButtonProps } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon/.";
+    import { Button } from "#lib/components/button/index.js";
+    import type { ButtonProps } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     type Props = ButtonProps;
 

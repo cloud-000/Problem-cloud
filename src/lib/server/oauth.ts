@@ -1,5 +1,5 @@
 import { redirect, type Cookies } from "@sveltejs/kit";
-import { authFailureMessage } from "$lib/auth";
+import { authFailureMessage } from "#lib/auth.js";
 
 export const OAUTH_PROVIDER = "google" as const;
 export const OAUTH_SIGNUP_COOKIE = "pc_oauth_signup";

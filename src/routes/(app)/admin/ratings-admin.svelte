@@ -1,10 +1,10 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { recomputeRatings, type RecomputeRatingsResult } from "$lib/admin";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { recomputeRatings, type RecomputeRatingsResult } from "#lib/admin.js";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
 

@@ -1,4 +1,4 @@
-import type { WhiteboardToolKind } from "$lib/state/whiteboard.svelte";
+import type { WhiteboardToolKind } from "#lib/state/whiteboard.svelte.js";
 
 export interface WhiteboardInspectorContext {
     toolKind: WhiteboardToolKind;

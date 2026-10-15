@@ -1,15 +1,15 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { parseSyncRequest, parseSyncResponse } from "$lib/offline/contracts";
-import { SYNC_MAX_ANSWER_BYTES, SYNC_MAX_REQUEST_BYTES } from "$lib/offline/limits";
-import { OfflineParseError } from "$lib/offline/parse";
+import { parseSyncRequest, parseSyncResponse } from "#lib/offline/contracts.js";
+import { SYNC_MAX_ANSWER_BYTES, SYNC_MAX_REQUEST_BYTES } from "#lib/offline/limits.js";
+import { OfflineParseError } from "#lib/offline/parse.js";
 import {
     assertBodyLimit,
     assertOfflineOrigin,
     offlineErrorResponse,
     parseErrorOperationId,
     requireOfflineUser,
-} from "$lib/server/offline/http";
+} from "#lib/server/offline/http.js";
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
     await requireOfflineUser(locals);

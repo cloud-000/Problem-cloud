@@ -1,18 +1,18 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Select } from "$lib/components/select";
-    import { StatusTag } from "$lib/components/status-tag";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
     import {
         fetchGeneralFeedback,
         resolveFeedback,
         type GeneralFeedbackRow,
         type GeneralFeedbackStatusFilter,
         type GeneralFeedbackType,
-    } from "$lib/admin";
-    import { toasts } from "$lib/state/toast.svelte";
+    } from "#lib/admin.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
 

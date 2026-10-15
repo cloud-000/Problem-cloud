@@ -1,6 +1,6 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
 import {
     AIPersistenceError,
     archiveConversation,
@@ -8,8 +8,8 @@ import {
     conversationById,
     preferencesFor,
     retireConversation,
-} from "$lib/server/ai/persistence";
-import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+} from "#lib/server/ai/persistence.js";
+import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 export const GET: RequestHandler = async ({ locals, params }) => {
     const user = await requireAIUser(locals);

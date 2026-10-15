@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import { useSidebar } from "./sidebar.svelte";
-    import { deviceDetails } from "$lib/mobile.svelte";
+    import { deviceDetails } from "#lib/mobile.svelte.js";
     type Props = WithElementRef<HTMLAttributes<HTMLDivElement>> & {
         heading?: string;
     };

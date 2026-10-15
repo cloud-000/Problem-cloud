@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hexToRGB } from "$lib/asy/editor-properties";
+import { hexToRGB } from "#lib/asy/editor-properties.js";
 import { penStroke } from "./render";
 import {
     previewSwatchColor,

@@ -5,10 +5,10 @@ import type {
     NormalizedAIEvent,
     NormalizedAIModel,
     NormalizedAIRequest,
-} from "$lib/ai/types";
-import { MOCK_PROVIDER_ID } from "$lib/ai/types";
-import type { AIProviderAdapter } from "$lib/ai/providers/types";
-import { buildProviderMessages } from "$lib/ai/providers/messages";
+} from "#lib/ai/types.js";
+import { MOCK_PROVIDER_ID } from "#lib/ai/types.js";
+import type { AIProviderAdapter } from "#lib/ai/providers/types.js";
+import { buildProviderMessages } from "#lib/ai/providers/messages.js";
 
 const MOCK_PROVIDER_CAPABILITIES: AIProviderCapabilities = {
     chat: true,

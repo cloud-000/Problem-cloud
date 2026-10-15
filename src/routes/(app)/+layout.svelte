@@ -1,51 +1,51 @@
 <script lang="ts">
-   import * as Sidebar from "$lib/components/sidebar";
-   import { Button } from "$lib/components/button";
-   import { ToastContainer } from "$lib/components/toast";
-   import { ModalContainer } from "$lib/components/modal";
+   import * as Sidebar from "#lib/components/sidebar/index.js";
+   import { Button } from "#lib/components/button/index.js";
+   import { ToastContainer } from "#lib/components/toast/index.js";
+   import { ModalContainer } from "#lib/components/modal/index.js";
    import { page } from "$app/state";
    import { enhance } from "$app/forms";
-   import { Icon } from "$lib/components/icon/.";
-   import { cn } from "$lib/utils.js";
-   import { toasts, type Toast } from "$lib/state/toast.svelte";
+   import { Icon } from "#lib/components/icon/index.js";
+   import { cn } from "#lib/utils.js";
+   import { toasts, type Toast } from "#lib/state/toast.svelte.js";
    import {
       fetchUnread,
       subscribeToNotifications,
       markRead,
       toToast,
-   } from "$lib/notifications";
+   } from "#lib/notifications.js";
    import {
       DropdownMenu,
       type DropdownOption,
-   } from "$lib/components/dropdown-menu";
-   import { deviceDetails } from "$lib/mobile.svelte";
+   } from "#lib/components/dropdown-menu/index.js";
+   import { deviceDetails } from "#lib/mobile.svelte.js";
    import { goto } from "$app/navigation";
-   import { topbar } from "$lib/state/topbar.svelte";
-   import { shell } from "$lib/state/shell.svelte";
-   import { settings } from "$lib/state/settings.svelte";
-   import { CoachLauncher, CoachPanel, CoachQuickAsk } from "$lib/components/coach";
+   import { topbar } from "#lib/state/topbar.svelte.js";
+   import { shell } from "#lib/state/shell.svelte.js";
+   import { settings } from "#lib/state/settings.svelte.js";
+   import { CoachLauncher, CoachPanel, CoachQuickAsk } from "#lib/components/coach/index.js";
    import {
       UtilityPanel,
       UtilityPanelRegister,
-   } from "$lib/components/utility-panel";
-   import { coach } from "$lib/state/coach.svelte";
-   import { configureOnboardingAck } from "$lib/onboarding";
-   import { utilityPanel } from "$lib/state/utility-panel.svelte";
+   } from "#lib/components/utility-panel/index.js";
+   import { coach } from "#lib/state/coach.svelte.js";
+   import { configureOnboardingAck } from "#lib/onboarding/index.js";
+   import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
    import { resolve } from "$app/paths";
    import { MediaQuery } from "svelte/reactivity";
    import { onMount } from "svelte";
-   import { browser } from "$app/environment";
-   import { setAppScrollViewport } from "$lib/components/virtual-list";
+   import { browser } from '$app/env';
+   import { setAppScrollViewport } from "#lib/components/virtual-list/index.js";
    import {
       loadSidebarExpanded,
       saveSidebarExpanded,
-   } from "$lib/sidebar-persistence";
-   import { modal } from "$lib/state/modal.svelte";
+   } from "#lib/sidebar-persistence.js";
+   import { modal } from "#lib/state/modal.svelte.js";
    import FeedbackModal from "./settings/FeedbackModal.svelte";
-   import { offlineSyncStatus, startForegroundOfflineSync } from "$lib/offline/sync";
-   import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
-   import { offlineMode } from "$lib/state/offline-mode.svelte";
-   import { hostedUsageMenuLabel } from "$lib/ai/hosted-allowance";
+   import { offlineSyncStatus, startForegroundOfflineSync } from "#lib/offline/sync.js";
+   import OfflineModeChip from "#lib/offline/OfflineModeChip.svelte";
+   import { offlineMode } from "#lib/state/offline-mode.svelte.js";
+   import { hostedUsageMenuLabel } from "#lib/ai/hosted-allowance.js";
 
    let { data, children } = $props();
    let { supabase, session, user, profile } = $derived(data);
@@ -95,46 +95,41 @@
    }
 
    const basePrimaryTabs = [
-      { href: "/", icon: "home", label: "Home" },
-      { href: "/practice", icon: "sprint", label: "Practice" },
-      { href: "/library", icon: "book_5", label: "Library" },
-      { href: "/progress", icon: "insights", label: "Progress" },
-      { href: "/goals", icon: "flag", label: "Goals" },
+      { href: "", icon: "home", label: "Home" },
+      { href: "practice", icon: "sprint", label: "Practice" },
+      { href: "library", icon: "book_5", label: "Library" },
+      { href: "progress", icon: "insights", label: "Progress" },
+      { href: "goals", icon: "flag", label: "Goals" },
    ] as const;
 
    // The Coach's full-screen surface. Deliberately the *only* way in: nothing
    // inside the app escalates into the route, so if Coach is disabled the tab is
    // absent rather than landing on an explanation.
-   const coachTab = { href: "/coach", icon: "auto_awesome", label: "Coach" } as const;
+   const coachTab = { href: "coach", icon: "auto_awesome", label: "Coach" } as const;
 
    let primaryTabs = $derived(
       aiCoachEnabled ? [...basePrimaryTabs, coachTab] : [...basePrimaryTabs],
    );
 
    const secondaryTabs = [
-      { href: "/whiteboard", icon: "draw", label: "Whiteboard" },
-      { href: "/leaderboard", icon: "leaderboard", label: "Leaderboard" },
-      { href: "/roadmap", icon: "map", label: "Product roadmap" },
+      { href: "whiteboard", icon: "draw", label: "Whiteboard" },
+      { href: "leaderboard", icon: "leaderboard", label: "Leaderboard" },
+      { href: "roadmap", icon: "map", label: "Product roadmap" },
    ] as const;
 
    function routeMatches(pathname: string, href: string) {
-      return href === "/"
+      const normalizedHref = href === "" ? "/" : (href.startsWith("/") ? href : `/${href}`);
+      return normalizedHref === "/"
          ? pathname === "/"
-         : pathname === href || pathname.startsWith(`${href}/`);
+         : pathname === normalizedHref || pathname.startsWith(`${normalizedHref}/`);
    }
 
    function primaryIsActive(href: string) {
-      if (href === "/progress") {
-         return (
-            routeMatches(page.url.pathname, href) ||
-            routeMatches(page.url.pathname, "/history")
-         );
+      if (href === "progress" || href === "/progress") {
+         return routeMatches(page.url.pathname, href) || routeMatches(page.url.pathname, "/history");
       }
-      if (href === "/library") {
-         return (
-            routeMatches(page.url.pathname, href) ||
-            routeMatches(page.url.pathname, "/find")
-         );
+      if (href === "library" || href === "/library") {
+         return routeMatches(page.url.pathname, href) || routeMatches(page.url.pathname, "/find");
       }
       return routeMatches(page.url.pathname, href);
    }
@@ -190,25 +185,25 @@
       list.push({
          label: "Settings",
          icon: "settings",
-         onclick: () => goto(resolve("/settings")),
+         onclick: () => goto(resolve('settings'))
       });
       if (hostedAllowance) {
          list.push({
             label: hostedUsageMenuLabel(hostedAllowance.remainingPct),
             icon: "data_usage",
             color: hostedAllowance.remainingPct === 0 ? "text-destructive" : undefined,
-            onclick: () => goto(resolve("/usage")),
+            onclick: () => goto(resolve('usage'))
          });
       }
       list.push({
          label: "Help",
          icon: "help",
-         onclick: () => goto(resolve("/help")),
+         onclick: () => goto(resolve('help'))
       });
       list.push({
          label: "Downloaded content",
          icon: "download",
-         onclick: () => goto(resolve("/offline")),
+         onclick: () => goto(resolve('offline'))
       });
       if (user) {
          list.push({
@@ -222,14 +217,14 @@
          list.push({
             label: "Admin tools",
             icon: "admin_panel_settings",
-            onclick: () => goto(resolve("/admin")),
+            onclick: () => goto(resolve('admin'))
          });
       }
       if (settings.showBetaFeatures) {
          list.push({
             label: "Developer tools",
             icon: "labs",
-            onclick: () => goto(resolve("/testing-features")),
+            onclick: () => goto(resolve('testing-features'))
          });
       }
       if (session) {
@@ -288,7 +283,7 @@
       list.push({
          label: "Log in",
          icon: "login",
-         onclick: () => goto(resolve("/auth/login")),
+         onclick: () => goto(resolve('auth/login'))
       });
       return list;
    });
@@ -329,7 +324,7 @@
    });
 </script>
 
-<svelte:window onkeydown={handleCoachShortcut} />
+<svelte:window onkeydown={handleCoachShortcut}></svelte:window>
 
 {#if $syncStatus.state === "auth-required" || $syncStatus.state === "overlap" || $syncStatus.state === "failed"}
    <div class="pointer-events-none fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-xl rounded-lg bg-surface-container-high px-4 py-2 text-center text-xs shadow-sm" role="status">
@@ -343,16 +338,11 @@
    </div>
 {/if}
 
-{#snippet sidebarLink(
-   href: string,
-   icon: string,
-   label: string,
-   isActive: boolean,
-)}
-   <Sidebar.Item active={isActive} activeClass="" {label}>
+{#snippet sidebarLink(href: string, icon: string, label: string, isActive: boolean)}
+   <Sidebar.Item active={isActive} activeClass="" label={label}>
       {#snippet child({ props })}
          <a
-            href={resolve(href as "/")}
+            href={resolve(href as "")}
             {...props}
             aria-current={isActive ? "page" : undefined}
             class={cn(
@@ -398,7 +388,7 @@
          >
             {#if expanded}
                <a
-                  href={resolve("/")}
+                  href={resolve("")}
                   class="type-secondary flex min-h-10 items-center gap-2 rounded-md px-1 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="ProblemCloud home"
                >
@@ -599,7 +589,7 @@
                <div class="flex items-center gap-2">
                   {#if topbar.backHref}
                      <a
-                        href={resolve(topbar.backHref as "/")}
+                        href={resolve(topbar.backHref.replace(/^\//, "") as "")}
                         class="inline-flex items-center rounded-md h-8 px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                         aria-label={topbar.backLabel || "Back"}
                      >

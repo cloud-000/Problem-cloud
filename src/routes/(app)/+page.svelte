@@ -2,21 +2,15 @@
     import type { PageData } from "./$types";
     import { onMount } from "svelte";
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Checklist } from "$lib/components/checklist";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { fetchAllSeries, fetchPlayerRating, type PlayerRating } from "$lib/library";
-    import {
-        fetchProblemStateSummary,
-        type ProblemStateSummary,
-    } from "$lib/progress";
-    import {
-        fetchSessions,
-        startSession,
-        type PracticeSessionRow,
-    } from "$lib/sessions";
+    import { Button } from "#lib/components/button/index.js";
+    import { Checklist } from "#lib/components/checklist/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { fetchAllSeries, fetchPlayerRating, type PlayerRating } from "#lib/library.js";
+    import { fetchProblemStateSummary, type ProblemStateSummary } from "#lib/progress.js";
+    import { fetchSessions, startSession, type PracticeSessionRow } from "#lib/sessions.js";
+
     import {
         evaluateGoals,
         dataForGoal,
@@ -27,22 +21,19 @@
         type Goal,
         type GoalFamilyResults,
         type GoalRequestPlan,
-    } from "$lib/goals";
-    import { practiceSessionName, practiceSettingsForGoal } from "$lib/goals/practice";
-    import type { SeriesNames } from "$lib/goals/presentation";
+    } from "#lib/goals/index.js";
+    import { practiceSessionName, practiceSettingsForGoal } from "#lib/goals/practice.js";
+    import type { SeriesNames } from "#lib/goals/presentation.js";
     import {
         attentionGoal,
         primaryGoal,
         promoteGoals,
         type GoalSnapshot,
         type PromotedGoal,
-    } from "$lib/goals/promote";
+    } from "#lib/goals/promote.js";
     import { goto } from "$app/navigation";
-    import {
-        decideNextUp,
-        homeProgressMetrics,
-        type NextUpAction,
-    } from "$lib/home-next";
+    import { decideNextUp, homeProgressMetrics, type NextUpAction } from "#lib/home-next.js";
+
     import {
         completeTourStep,
         completeWelcome,
@@ -64,11 +55,11 @@
         contextualTipCopy,
         type ContextualTipId,
         type OnboardingState,
-    } from "$lib/onboarding";
-    import { restoreDocument } from "$lib/whiteboard/persistence";
-    import { cn } from "$lib/utils";
+    } from "#lib/onboarding/index.js";
+    import { restoreDocument } from "#lib/whiteboard/persistence.js";
+    import { cn } from "#lib/utils.js";
     import HomeGoalRow from "./HomeGoalRow.svelte";
-    import { Skeleton } from "$lib/components/skeleton";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
     import TourView from "./TourView.svelte";
     import ContextualTip from "./ContextualTip.svelte";
 
@@ -120,10 +111,9 @@
                 goal,
                 result: progress.get(goal.id) ?? null,
                 familyData: dataForGoal(goal, evaluation.plan, evaluation.results),
-                period:
-                    slot?.family === "period"
-                        ? (evaluation.results.period?.[slot.index] ?? null)
-                        : null,
+                period: slot?.family === "period"
+                    ? evaluation.results.period?.[slot.index] ?? null
+                    : null
             };
         });
     });
@@ -135,25 +125,19 @@
     let attention = $derived(attentionGoal(goalSnapshots, goalsNow));
     let mainEntry = $derived.by<PromotedGoal | null>(() => {
         if (!mainGoal) return null;
-        return (
-            goalSnapshots
-                .map((snapshot) => promoteGoals([snapshot], goalsNow, 1)[0] ?? null)
-                .find((entry) => entry?.goal.id === mainGoal.id) ?? {
-                goal: mainGoal,
-                result: goalSnapshots.find((snapshot) => snapshot.goal.id === mainGoal.id)?.result ?? null,
-                reason: "remaining",
-            }
-        );
-    });
-    let attentionEntry = $derived(
-        attention?.goal.id !== mainGoal?.id ? attention : null,
-    );
 
-    let next = $derived(
-        decideNextUp({
-            session: activeSession,
-            reviewDue: summary?.review_due ?? 0,
-            leadGoal: mainEntry,
+        return goalSnapshots.map((snapshot) => promoteGoals([snapshot], goalsNow, 1)[0] ?? null).find((entry) => entry?.goal.id === mainGoal.id) ?? {
+            goal: mainGoal,
+            result: goalSnapshots.find((snapshot) => snapshot.goal.id === mainGoal.id)?.result ?? null,
+            reason: "remaining"
+        };
+    });
+
+    let attentionEntry = $derived(attention?.goal.id !== mainGoal?.id ? attention : null);
+    let next = $derived(decideNextUp({
+        session: activeSession,
+        reviewDue: summary?.review_due ?? 0,
+        leadGoal: mainEntry,
             goalsReady: goalsLoaded,
         }),
     );
@@ -261,8 +245,8 @@
                 name: practiceSessionName(goal),
                 settings: practiceSettingsForGoal(goal),
             });
-            await goto(resolve(`/practice?session=${session.id}`));
-        } catch (e) {
+            await goto(resolve(`practice?session=${session.id}`));
+        } catch(e) {
             toasts.error((e as Error).message || "Failed to start practice.");
             startingGoal = false;
         }
@@ -314,15 +298,15 @@
         try {
             const [nextRating, nextSummary, activeSessions, nextOnboarding, coachExists] =
                 await Promise.all([
-                    fetchPlayerRating(supabase, user.id),
-                    fetchProblemStateSummary(supabase),
-                    fetchSessions(supabase, { status: "active" }),
-                    fetchOnboarding(supabase, user.id).catch(() => {
-                        onboardingFailed = true;
-                        return emptyOnboarding();
-                    }),
+                fetchPlayerRating(supabase, user.id),
+                fetchProblemStateSummary(supabase),
+                fetchSessions(supabase, { status: "active" }),
+                fetchOnboarding(supabase, user.id).catch(() => {
+                    onboardingFailed = true;
+                    return emptyOnboarding();
+                }),
                     fetchHasCoachConversation(supabase).catch(() => false),
-                ]);
+            ]);
 
             rating = nextRating;
             summary = nextSummary;
@@ -363,11 +347,11 @@
     function nextHref(action: NextUpAction): string | undefined {
         switch (action.kind) {
             case "continue_session":
-                return resolve(`/practice?session=${action.sessionId}`);
+                return resolve(`practice?session=${action.sessionId}`);
             case "review_due":
-                return resolve("/progress?view=review");
+                return resolve('progress?view=review');
             case "start_practice":
-                return resolve("/practice");
+                return resolve('practice');
             default:
                 return undefined;
         }
@@ -409,11 +393,16 @@
         <section class="rounded-xl border border-border bg-surface-container-lowest p-6">
             <p class="max-w-prose type-secondary text-muted-foreground">Create a free account to keep your progress, goals, and sessions across browsers and devices.</p>
             <div class="mt-5 flex flex-wrap gap-2">
-                <Button href={resolve("/auth/signup")}>Create free account <Icon name="arrow_forward" /></Button>
-                <Button href={resolve("/practice")} variant="outline">Practice as a guest</Button>
-                <Button href={resolve("/library")} variant="ghost">Browse problems</Button>
+                <Button href={resolve('auth/signup')}>Create free account <Icon name="arrow_forward" /></Button>
+                <Button href={resolve('practice')} variant="outline">Practice as a guest</Button>
+                <Button href={resolve('library')} variant="ghost">Browse problems</Button>
             </div>
-            <p class="mt-4 type-secondary text-muted-foreground">Already have an account? <a class="underline" href={resolve("/auth/login")}>Log in</a>.</p>
+
+            <p class="mt-4 type-secondary text-muted-foreground">
+                Already have an account? 
+                <a class="underline" href={resolve('auth/login')}>Log in</a>
+                .
+            </p>
         </section>
     </Page.Root>
 {:else if loading}
@@ -503,7 +492,7 @@
                 {#if next.commitment.kind === "goal"}
                     <HomeGoalRow
                         entry={next.commitment.entry}
-                        {seriesNames}
+                        seriesNames={seriesNames}
                         now={goalsNow}
                         busy={startingGoal}
                         onpractice={practiceGoal}
@@ -517,7 +506,7 @@
                     >
                         No goal yet —
                         <a
-                            href={resolve("/goals?new=1")}
+                            href={resolve('goals?new=1')}
                             class="text-foreground underline decoration-border underline-offset-4 hover:text-foreground"
                         >
                             Set a direction
@@ -565,16 +554,13 @@
             {#if attentionEntry}
                 <Page.Section title="Needs attention">
                     {#snippet actions()}
-                        <Button href={resolve("/goals")} variant="ghost" size="sm">
-                            All goals
-                            <Icon name="arrow_forward" />
-                        </Button>
+                        <Button href={resolve('goals')} variant="ghost" size="sm">All goals <Icon name="arrow_forward" /></Button>
                     {/snippet}
 
                     <div class="divide-y divide-border border-y border-border">
                         <HomeGoalRow
                             entry={attentionEntry}
-                            {seriesNames}
+                            seriesNames={seriesNames}
                             now={goalsNow}
                             busy={startingGoal}
                             onpractice={practiceGoal}
@@ -588,10 +574,11 @@
             {#if progressMetrics.length > 0}
                 <Page.Section title="Progress">
                     {#snippet actions()}
-                        <Button href={resolve("/progress")} variant="ghost" size="sm">
-                            View progress
-                            <Icon name="arrow_forward" />
-                        </Button>
+                        <Button
+                            href={resolve('progress')}
+                            variant="ghost"
+                            size="sm"
+                        >View progress <Icon name="arrow_forward" /></Button>
                     {/snippet}
 
                     <dl

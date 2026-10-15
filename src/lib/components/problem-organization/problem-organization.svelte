@@ -1,7 +1,7 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         ENGAGEMENT_LABELS,
         MASTERY_LABELS,
@@ -10,10 +10,10 @@
         type Engagement,
         type Mastery,
         type PersonalProblemState,
-    } from "$lib/progress";
-    import { toasts } from "$lib/state/toast.svelte";
-    import type { Database } from "$lib/types/database.types";
-    import { cn } from "$lib/utils";
+    } from "#lib/progress.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import type { Database } from "#lib/types/database.types.js";
+    import { cn } from "#lib/utils.js";
     import type { SupabaseClient } from "@supabase/supabase-js";
 
     let {

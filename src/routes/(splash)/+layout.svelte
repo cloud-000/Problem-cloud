@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { ToastContainer } from "$lib/components/toast";
-    import { Theme } from "$lib/utils/Theme.svelte";
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { ToastContainer } from "#lib/components/toast/index.js";
+    import { Theme } from "#lib/utils/Theme.svelte.js";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
 
     let { data, children } = $props();
     // The public shell is told only whether someone is signed in — never the

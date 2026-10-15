@@ -1,7 +1,7 @@
 <script lang="ts" module>
     import type { Snippet } from "svelte";
     import type { HTMLAttributes } from "svelte/elements";
-    import { type WithElementRef } from "$lib/utils.js";
+    import { type WithElementRef } from "#lib/utils.js";
     import type { PanelSize, ResizeEdge } from "./resize";
 
     export interface ResizablePanelProps
@@ -32,7 +32,7 @@
     import { onMount } from "svelte";
     import { cubicOut } from "svelte/easing";
     import type { TransitionConfig } from "svelte/transition";
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
     import {
         clampPanelSize,
         mergePanelSize,

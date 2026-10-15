@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { AIChat } from "$lib/components/ai-chat";
-    import { COACH_FALLBACK_QUICK_ACTIONS } from "$lib/ai/quick-actions";
-    import { coach } from "$lib/state/coach.svelte";
+    import { AIChat } from "#lib/components/ai-chat/index.js";
+    import { COACH_FALLBACK_QUICK_ACTIONS } from "#lib/ai/quick-actions.js";
+    import { coach } from "#lib/state/coach.svelte.js";
     import CoachHeader from "./coach-header.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
     import CoachDebugToggle from "./coach-debug-toggle.svelte";

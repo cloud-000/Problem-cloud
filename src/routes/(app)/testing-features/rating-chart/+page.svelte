@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { RatingChart } from "$lib/components/rating-chart";
-    import type { RatingPoint } from "$lib/components/rating-chart";
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
-    import { Icon } from "$lib/components/icon";
-    import { RangeSlider } from "$lib/components/range-slider";
+    import { RatingChart } from "#lib/components/rating-chart/index.js";
+    import type { RatingPoint } from "#lib/components/rating-chart/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
 
     // Standard preset data
     const PRESETS = {

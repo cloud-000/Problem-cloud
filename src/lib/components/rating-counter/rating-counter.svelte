@@ -3,7 +3,7 @@
     import { cubicOut } from "svelte/easing";
     import { untrack } from "svelte";
     import { fly, fade } from "svelte/transition";
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
 
     let { value, class: className }: { value: number; class?: string } =
         $props();

@@ -1,6 +1,14 @@
-import { env } from "$env/dynamic/private";
-import type { AICoachConnectionState, AIMockScenario } from "$lib/ai/types";
-import { presetFor } from "$lib/ai/presets";
+import {
+    AI_COACH_ENABLED,
+    AI_COACH_MOCK_ENABLED,
+    AI_COACH_MOCK_CONNECTION_STATE,
+    AI_COACH_MOCK_SCENARIO,
+    AI_COACH_MOCK_CHUNK_DELAY_MS,
+    AI_COACH_HOSTED_API_KEY
+} from "$app/env/private";
+
+import type { AICoachConnectionState, AIMockScenario } from "#lib/ai/types.js";
+import { presetFor } from "#lib/ai/presets.js";
 import { HOSTED_PLAN, type HostedConnectionConfig } from "./hosted-plan";
 
 const connectionStates: AICoachConnectionState[] = [
@@ -24,7 +32,7 @@ const scenarios: AIMockScenario[] = [
 ];
 
 export function aiCoachEnabled(): boolean {
-    return env.AI_COACH_ENABLED === "true";
+    return AI_COACH_ENABLED === "true";
 }
 
 /**
@@ -32,34 +40,34 @@ export function aiCoachEnabled(): boolean {
  * need no server flag — their keys stay in the browser and the requests never reach us.
  */
 export function mockProviderEnabled(): boolean {
-    return aiCoachEnabled() && env.AI_COACH_MOCK_ENABLED === "true";
+    return aiCoachEnabled() && AI_COACH_MOCK_ENABLED === "true";
 }
 
 export function mockConnectionState(): AICoachConnectionState {
-    const value = env.AI_COACH_MOCK_CONNECTION_STATE as AICoachConnectionState | undefined;
+    const value = AI_COACH_MOCK_CONNECTION_STATE as AICoachConnectionState | undefined;
     return value && connectionStates.includes(value) ? value : "connected";
 }
 
 export function mockScenario(): AIMockScenario {
-    const value = env.AI_COACH_MOCK_SCENARIO as AIMockScenario | undefined;
+    const value = AI_COACH_MOCK_SCENARIO as AIMockScenario | undefined;
     return value && scenarios.includes(value) ? value : "success";
 }
 
 export function mockChunkDelayMs(): number {
-    const value = Number(env.AI_COACH_MOCK_CHUNK_DELAY_MS ?? 24);
+    const value = Number(AI_COACH_MOCK_CHUNK_DELAY_MS ?? 24);
     return Number.isFinite(value) && value >= 0 && value <= 5_000 ? value : 24;
 }
 
 /**
  * Offers the first-party hosted connection when Coach is on and the OpenRouter
- * key is present. Offer, OpenRouter fallback list, and allowance are `$lib/server/ai/hosted-plan`.
+ * key is present. Offer, OpenRouter fallback list, and allowance are `#lib/server/ai/hosted-plan.js`.
  */
 export function hostedProviderEnabled(): boolean {
     return aiCoachEnabled() && hostedConfig() !== null;
 }
 
 export function hostedConfig(): HostedConnectionConfig | null {
-    const apiKey = (env.AI_COACH_HOSTED_API_KEY ?? "").trim();
+    const apiKey = (AI_COACH_HOSTED_API_KEY ?? "").trim();
     if (!apiKey) return null;
     return {
         preset: HOSTED_PLAN.preset,

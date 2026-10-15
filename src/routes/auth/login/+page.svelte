@@ -1,7 +1,7 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
     import { getAuthForm } from "../form-state";
     import type { ActionData } from "./$types";
 
@@ -54,5 +54,10 @@
 </Button>
 
 <p class="type-secondary text-muted-foreground">
-    Don’t have an account? <a href={resolve("/auth/signup")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Create account</a>
+    Don’t have an account? 
+
+    <a
+        href={resolve('auth/signup')}
+        class="font-medium text-primary-foreground underline-offset-4 hover:underline"
+    >Create account</a>
 </p>

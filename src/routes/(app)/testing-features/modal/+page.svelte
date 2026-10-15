@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { Modal } from "$lib/components/modal";
-    import { modal, type ModalSize } from "$lib/state/modal.svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Switch } from "$lib/components/toggle";
-    import { Select } from "$lib/components/select";
+    import { Modal } from "#lib/components/modal/index.js";
+    import { modal, type ModalSize } from "#lib/state/modal.svelte.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { Select } from "#lib/components/select/index.js";
 
     // Test content components
     import InfoModalContent from "./InfoModalContent.svelte";

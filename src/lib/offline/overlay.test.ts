@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { effectiveProgress, hasPriorActivity } from "./overlay";
-import type { ProblemProgress } from "$lib/progress";
+import type { ProblemProgress } from "#lib/progress.js";
 import type { LocalSubmissionV1 } from "./types";
 
 const base: ProblemProgress = {

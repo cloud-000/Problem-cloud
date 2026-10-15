@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { ToastContainer } from "$lib/components/toast";
+    import { ToastContainer } from "#lib/components/toast/index.js";
     import { page } from "$app/state";
-    import { Icon } from "$lib/components/icon";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let { children } = $props();
 

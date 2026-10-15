@@ -5,14 +5,14 @@ import {
     type PracticeAnswerState,
     type PracticeSource,
 } from "./practice-state";
-import { answersMatch } from "$lib/utils/answer-matcher";
+import { answersMatch } from "#lib/utils/answer-matcher.js";
 import {
     hasComparableAnswer,
     inputModeFor,
     resolveResponseKind,
-} from "$lib/problem-response";
-import type { ProblemRow } from "$lib/library";
-import type { SessionHistoryEntry } from "$lib/sessions";
+} from "#lib/problem-response.js";
+import type { ProblemRow } from "#lib/library.js";
+import type { SessionHistoryEntry } from "#lib/sessions.js";
 
 export type TestDraftAnswer = {
     problemId: number;

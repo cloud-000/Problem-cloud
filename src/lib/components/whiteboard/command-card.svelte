@@ -1,9 +1,9 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import { cn } from "$lib/utils.js";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { cn } from "#lib/utils.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
 
     let {
         store,

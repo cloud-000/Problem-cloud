@@ -1,19 +1,19 @@
 <script lang="ts">
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { Icon } from "$lib/components/icon";
-    import { HiddenText } from "$lib/components/hidden-text";
-    import { Input } from "$lib/components/input";
-    import { StatusTag } from "$lib/components/status-tag";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { cn, isMultipleChoice } from "$lib/utils";
-    import { answersMatch } from "$lib/utils/answer-matcher";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { HiddenText } from "#lib/components/hidden-text/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { cn, isMultipleChoice } from "#lib/utils.js";
+    import { answersMatch } from "#lib/utils/answer-matcher.js";
     import {
         hasComparableAnswer,
         inputModeFor,
         resolveResponseKind,
         type AnswerStatus,
         type ResponseKind,
-    } from "$lib/problem-response";
+    } from "#lib/problem-response.js";
 
     type Props = {
         choices?: string[] | null;

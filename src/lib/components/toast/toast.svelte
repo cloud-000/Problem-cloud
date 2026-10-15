@@ -1,8 +1,8 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import { type VariantProps, tv } from "tailwind-variants";
-    import type { ToastSeverity } from "$lib/state/toast.svelte";
+    import type { ToastSeverity } from "#lib/state/toast.svelte.js";
 
     export const toastVariants = tv({
         base: "pointer-events-auto flex w-80 items-start gap-3 rounded-md border border-l-4 border-border bg-surface-container-high p-sm text-foreground shadow-lg origin-bottom-right transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-xl",
@@ -37,8 +37,8 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
 
     let {
         class: className,

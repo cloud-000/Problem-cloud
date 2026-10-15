@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Subtabs } from "$lib/components/subtabs";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
+    import { Subtabs } from "#lib/components/subtabs/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
 
     // Bindings for active tabs
     let lineTab = $state("general");

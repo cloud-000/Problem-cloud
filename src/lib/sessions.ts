@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
-import { TESTS_EMBED, type ProblemRow } from "$lib/library";
-import type { ProblemProgress } from "$lib/progress";
-import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
+import type { Database, Tables } from "#lib/types/database.types.js";
+import { TESTS_EMBED, type ProblemRow } from "#lib/library.js";
+import type { ProblemProgress } from "#lib/progress.js";
+import { defaultPracticeSettings, type PracticeSettings } from "#lib/trainer.js";
 
 type Supabase = SupabaseClient<Database>;
 

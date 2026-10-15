@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import type { PlayerRating } from "$lib/library";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { PlayerRating } from "#lib/library.js";
+    import { cn } from "#lib/utils.js";
     import { fade } from "svelte/transition";
-    import { deviceDetails } from "$lib/mobile.svelte";
-    import { shell } from "$lib/state/shell.svelte";
+    import { deviceDetails } from "#lib/mobile.svelte.js";
+    import { shell } from "#lib/state/shell.svelte.js";
     import { MediaQuery } from "svelte/reactivity";
     import { onMount } from "svelte";
     import { deriveFooterViewState } from "./footer-state";

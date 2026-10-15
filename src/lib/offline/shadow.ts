@@ -2,7 +2,7 @@ import {
     glickoMatchPreview,
     type PlayerRating,
     type ProblemRating,
-} from "$lib/library";
+} from "#lib/library.js";
 
 /**
  * Advance the runtime-only selector center after one graded offline answer.

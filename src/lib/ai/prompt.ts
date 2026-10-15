@@ -1,7 +1,7 @@
 import type { Policy } from "./context/policy";
 import type { FactWarning, ProblemFact, ResolvedFact, SeriesFact, TestFact } from "./context/facts";
 import { type Doc, group, prefixed, text } from "./context/fit";
-import { isMultipleChoice } from "$lib/utils";
+import { isMultipleChoice } from "#lib/utils.js";
 
 /**
  * Everything the model reads, and the shape it reads it in.

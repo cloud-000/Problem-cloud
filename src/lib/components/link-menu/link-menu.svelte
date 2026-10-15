@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
 
     export type LinkItem = {
         label: string;
@@ -16,8 +16,8 @@
 </script>
 
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let {
         links,

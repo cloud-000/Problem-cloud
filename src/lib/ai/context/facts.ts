@@ -49,7 +49,7 @@ export interface ProblemFact {
     /**
      * Index into `choices` of the correct answer, or null when unknown (`-1`/null in
      * the column). Whether it is ever rendered is a policy decision made in
-     * `$lib/ai/prompt.ts` — an active test never sees it.
+     * `#lib/ai/prompt.ts` — an active test never sees it.
      */
     answerIndex: number | null;
     warnings: FactWarning[];

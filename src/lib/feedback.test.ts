@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { problemReportInsert } from "$lib/feedback";
+import { problemReportInsert } from "#lib/feedback.js";
 
 describe("problemReportInsert", () => {
     test("normalizes one unified report payload", () => {

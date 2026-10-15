@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assetKeysAgree, problemAssetKeys, problemImageUrls } from "./assets";
 import { assetKey } from "./checksum";
-import { resolveImageSrc } from "$lib/utils/math-parser";
+import { resolveImageSrc } from "#lib/utils/math-parser.js";
 
 describe("problem image extraction", () => {
     test("finds asy, img, and markdown references across every rendered field", () => {

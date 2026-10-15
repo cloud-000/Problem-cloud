@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         showControl = true,

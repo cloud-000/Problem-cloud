@@ -11,12 +11,12 @@
  * pointer-down and hands this controller the armed `SmartGesture`.
  */
 
-import type { Scene } from "$lib/asy/scene/types";
+import type { Scene } from "#lib/asy/scene/types.js";
 import {
     arcClosureSnapped,
     type SelectionTransformGesture,
-} from "$lib/asy/engine";
-import type { ConstraintService } from "$lib/whiteboard/constraint-service.svelte";
+} from "#lib/asy/engine/index.js";
+import type { ConstraintService } from "#lib/whiteboard/constraint-service.svelte.js";
 import {
     arcEndpointInteractionGap,
     editWhiteboardEllipseAxis,
@@ -33,7 +33,7 @@ import {
     type PointFeatureRef,
     type SnapRelationProposal,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** The resize/rotate subset of the view's selection-handle gestures. */
 export type SmartSelectionTransform = Extract<

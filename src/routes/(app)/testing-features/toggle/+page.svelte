@@ -4,8 +4,8 @@
         Switch,
         TriStateSwitch,
         type TriState,
-    } from "$lib/components/toggle";
-    import { Icon } from "$lib/components/icon";
+    } from "#lib/components/toggle/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     // Toggle button state
     let isBold = $state(false);

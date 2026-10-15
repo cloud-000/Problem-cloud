@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
-import type { Scene } from "$lib/asy/scene";
+import type { Scene } from "#lib/asy/scene/index.js";
 import {
     addCoincidentConstraint,
     addRelationConstraint,
@@ -9,13 +9,14 @@ import {
     createSmartPointMarker,
     emptyWhiteboardDocument,
     type CurveFeatureRef,
-} from "$lib/whiteboard/model";
-import { buildOverlay } from "$lib/components/whiteboard/overlay-model";
-import type { Pair } from "$lib/asy/scene";
+} from "#lib/whiteboard/model/index.js";
+import { buildOverlay } from "#lib/components/whiteboard/overlay-model.js";
+import type { Pair } from "#lib/asy/scene/index.js";
 
 const runtimeMock = (bunTest as unknown as {
     mock: { module(id: string, factory: () => unknown): void };
 }).mock;
+runtimeMock.module("$app/env", () => ({ browser: false, dev: false, building: false, version: "test" }));
 runtimeMock.module("$app/environment", () => ({ browser: false }));
 
 const state = Object.assign(<T>(value: T): T => value, {

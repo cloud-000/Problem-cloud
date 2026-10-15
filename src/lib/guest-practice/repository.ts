@@ -1,4 +1,4 @@
-import type { PracticeSettings } from "$lib/trainer";
+import type { PracticeSettings } from "#lib/trainer.js";
 
 export type GuestSession = {
     id: number;

@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { modal } from "$lib/state/modal.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
 </script>
 
 <div class="space-y-4">

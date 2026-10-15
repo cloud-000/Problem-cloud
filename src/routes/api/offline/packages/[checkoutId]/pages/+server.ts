@@ -1,8 +1,8 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { parsePackagePage } from "$lib/offline/contracts";
-import type { OfflinePackageRecordsV1 } from "$lib/offline/types";
-import { offlineErrorResponse, requireOfflineUser } from "$lib/server/offline/http";
+import { parsePackagePage } from "#lib/offline/contracts.js";
+import type { OfflinePackageRecordsV1 } from "#lib/offline/types.js";
+import { offlineErrorResponse, requireOfflineUser } from "#lib/server/offline/http.js";
 
 function cursorIndex(raw: string | null): number | null {
     if (raw === null || !/^\d+$/.test(raw)) return null;

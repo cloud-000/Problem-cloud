@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
-import type { Pair } from "$lib/asy/scene";
+import type { Pair } from "#lib/asy/scene/index.js";
 import {
     createSmartArc,
     createSmartPath,
     emptyWhiteboardDocument,
     type CurveFeatureRef,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 import type { VertexRef, WhiteboardOverlay } from "./overlay-model";
 
 const runtimeMock = (bunTest as unknown as {
     mock: { module(id: string, factory: () => unknown): void };
 }).mock;
+runtimeMock.module("$app/env", () => ({ browser: false, dev: false, building: false, version: "test" }));
 runtimeMock.module("$app/environment", () => ({ browser: false }));
 
 const state = Object.assign(<T>(value: T): T => value, {
@@ -19,7 +20,7 @@ const state = Object.assign(<T>(value: T): T => value, {
 });
 Object.assign(globalThis, { $state: state });
 
-const { WhiteboardStore } = await import("$lib/state/whiteboard.svelte");
+const { WhiteboardStore } = await import("#lib/state/whiteboard.svelte.js");
 const { Camera } = await import("./camera.svelte");
 const { PointerInputController } = await import("./pointer-input.svelte");
 const { activeSelectedVertexOf, buildOverlay } = await import("./overlay-model");

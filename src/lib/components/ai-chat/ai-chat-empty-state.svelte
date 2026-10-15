@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
+    import { Icon } from "#lib/components/icon/index.js";
     import AIChatQuickActions from "./ai-chat-quick-actions.svelte";
 
     let {

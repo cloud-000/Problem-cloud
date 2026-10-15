@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { HOSTED_PROVIDER_ID } from "$lib/ai/types";
-import { isModelReference } from "$lib/ai/schemas";
-import { presetFor } from "$lib/ai/presets";
+import { HOSTED_PROVIDER_ID } from "#lib/ai/types.js";
+import { isModelReference } from "#lib/ai/schemas.js";
+import { presetFor } from "#lib/ai/presets.js";
 import {
     HOSTED_PLAN,
     hostedFallbackOptions,

@@ -1,26 +1,26 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
     import { untrack } from "svelte";
-    import { replaceState } from "$app/navigation";
+    import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Combobox } from "$lib/components/combobox";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { Select } from "$lib/components/select";
-    import { fetchAllSeries, fetchByIds, type ProblemRow } from "$lib/library";
-    import { fetchProgressBreakdown } from "$lib/progress-analytics";
-    import type { PersonalProblemState } from "$lib/progress";
+    import { Button } from "#lib/components/button/index.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { fetchAllSeries, fetchByIds, type ProblemRow } from "#lib/library.js";
+    import { fetchProgressBreakdown } from "#lib/progress-analytics.js";
+    import type { PersonalProblemState } from "#lib/progress.js";
     import {
         applyPersonalProblemState,
         dimensionOptions,
         fetchSeriesReview,
         type SeriesReviewTest,
-    } from "$lib/series-review";
-    import { modal } from "$lib/state/modal.svelte";
-    import type { Database } from "$lib/types/database.types";
-    import { problemLabel } from "$lib/utils";
+    } from "#lib/series-review.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import type { Database } from "#lib/types/database.types.js";
+    import { problemLabel } from "#lib/utils.js";
     import SeriesProblemModal from "./SeriesProblemModal.svelte";
     import SeriesReviewGrid from "./SeriesReviewGrid.svelte";
     import {
@@ -32,7 +32,7 @@
         fetchOnboarding,
         shouldShowTip,
         type OnboardingState,
-    } from "$lib/onboarding";
+    } from "#lib/onboarding/index.js";
     import ContextualTip from "../ContextualTip.svelte";
 
     let { supabase }: { supabase: SupabaseClient<Database> } = $props();
@@ -65,36 +65,18 @@
 
     const NO_DIVISION = "__no_division__";
     const NO_FORMAT = "__no_format__";
+    let divisionOptions = $derived(dimensionOptions(tests, "division", { value: NO_DIVISION, label: "No division" }));
+    let formatOptions = $derived(dimensionOptions(tests, "format", { value: NO_FORMAT, label: "No format" }));
 
-    let divisionOptions = $derived(
-        dimensionOptions(tests, "division", {
-            value: NO_DIVISION,
-            label: "No division",
-        }),
-    );
-    let formatOptions = $derived(
-        dimensionOptions(tests, "format", {
-            value: NO_FORMAT,
-            label: "No format",
-        }),
-    );
-    let filteredTests = $derived(
-        tests.filter((test) => {
-            const division = test.division?.trim() || NO_DIVISION;
-            const format = test.format?.trim() || NO_FORMAT;
-            return (
-                (selectedDivisions.length === 0 ||
-                    selectedDivisions.includes(division)) &&
-                (selectedFormats.length === 0 || selectedFormats.includes(format))
-            );
-        }),
-    );
-    let hasFilters = $derived(
-        selectedDivisions.length > 0 || selectedFormats.length > 0,
-    );
-    let matrixKey = $derived(
-        `${seriesId}:${selectedDivisions.join("|")}:${selectedFormats.join("|")}`,
-    );
+    let filteredTests = $derived(tests.filter((test) => {
+        const division = test.division?.trim() || NO_DIVISION;
+        const format = test.format?.trim() || NO_FORMAT;
+
+        return (selectedDivisions.length === 0 || selectedDivisions.includes(division)) && (selectedFormats.length === 0 || selectedFormats.includes(format));
+    }));
+
+    let hasFilters = $derived(selectedDivisions.length > 0 || selectedFormats.length > 0);
+    let matrixKey = $derived(`${seriesId}:${selectedDivisions.join("|")}:${selectedFormats.join("|")}`);
 
     $effect(() => {
         let cancelled = false;
@@ -103,28 +85,19 @@
             fetchProgressBreakdown(supabase, "series"),
         ])
             .then(([series, activity]) => {
-                if (cancelled) return;
-                seriesOptions = series.map((item) => ({
-                    value: String(item.id),
-                    label: item.name,
-                }));
+            if (cancelled) return;
 
-                const mostRecent = [...activity]
-                    .filter((row) => row.bucket_key !== "none" && row.last_activity)
-                    .sort(
-                        (a, b) =>
-                            new Date(b.last_activity!).getTime() -
-                            new Date(a.last_activity!).getTime(),
-                    )[0];
-                const preferred = mostRecent?.bucket_key;
+            seriesOptions = series.map((item) => ({ value: String(item.id), label: item.name }));
+
+            const mostRecent = [...activity].filter((row) => row.bucket_key !== "none" && row.last_activity).sort((a, b) => new Date(b.last_activity!).getTime() - new Date(a.last_activity!).getTime())[0];
+            const preferred = mostRecent?.bucket_key;
                 seriesId = seriesOptions.some(
                     (option) => option.value === requestedSeriesId,
                 )
-                    ? requestedSeriesId!
-                    : seriesOptions.some((option) => option.value === preferred)
-                      ? preferred
-                      : (seriesOptions[0]?.value ?? "");
-                errorMsg = null;
+                ? requestedSeriesId!
+                : seriesOptions.some((option) => option.value === preferred) ? preferred : seriesOptions[0]?.value ?? "";
+
+            errorMsg = null;
             })
             .catch((error) => {
                 if (!cancelled)
@@ -132,8 +105,8 @@
                         (error as Error).message || "Failed to load series";
             })
             .finally(() => {
-                if (!cancelled) loadingSeries = false;
-            });
+            if (!cancelled) loadingSeries = false;
+        });
         return () => {
             cancelled = true;
         };
@@ -162,10 +135,10 @@
         if (!seriesId) return;
         const current = page.url.searchParams.get("series");
         if (seriesId === current) return;
-        const url = new URL(page.url);
+        const url = new URL(page.url.href);
         url.searchParams.set("series", seriesId);
-        const route = `/progress${url.search}` as `/progress?${string}`;
-        untrack(() => replaceState(resolve(route), page.state));
+        const route = `progress${url.search}` as `progress?${string}`;
+        untrack(() => goto(resolve(route), { shallow: true, replace: true, state: page.state }));
     });
 
     $effect(() => {
@@ -290,9 +263,12 @@
         {#if errorMsg}
             <div class="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
                 <span>{errorMsg}</span>
-                <Button variant="ghost" size="sm" onclick={() => (errorMsg = null)}>
-                    Dismiss
-                </Button>
+
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => errorMsg = null}
+                >Dismiss</Button>
             </div>
         {/if}
 
@@ -333,7 +309,7 @@
             {#key matrixKey}
                 <SeriesReviewGrid
                     tests={filteredTests}
-                    {openingProblemId}
+                    openingProblemId={openingProblemId}
                     onOpenProblem={openProblem}
                     onProblemStateChange={updateProblemState}
                 />

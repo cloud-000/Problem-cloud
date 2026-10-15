@@ -1,7 +1,7 @@
 import { mockChunkDelayMs, mockConnectionState, mockProviderEnabled, mockScenario, hostedConfig, hostedProviderEnabled } from "../config";
 import { HostedProviderAdapter } from "./hosted";
 import { MockProviderAdapter } from "./mock";
-import type { AIProviderAdapter } from "$lib/ai/providers/types";
+import type { AIProviderAdapter } from "#lib/ai/providers/types.js";
 
 /**
  * The connections the server itself owns — the deterministic mock (development)
@@ -10,7 +10,7 @@ import type { AIProviderAdapter } from "$lib/ai/providers/types";
  * A user's own BYOK connections are deliberately absent: their keys stay in the
  * browser and their requests go straight to the provider, so the server never
  * sees them. The browser builds those adapters itself
- * (`$lib/ai/providers/client-registry`) and merges the two catalogs.
+ * (`#lib/ai/providers/client-registry.js`) and merges the two catalogs.
  */
 export function providerRegistry(): AIProviderAdapter[] {
     const providers: AIProviderAdapter[] = [];

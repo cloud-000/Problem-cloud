@@ -43,7 +43,7 @@ This document settles five boundaries:
 ## 1. Shared primitives
 
 These examples are TypeScript contracts. Production code should place them in a
-shared `$lib/offline/` module and validate every network payload at runtime; a
+shared `#lib/offline//index.js` module and validate every network payload at runtime; a
 TypeScript assertion alone is not validation.
 
 ```ts

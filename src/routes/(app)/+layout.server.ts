@@ -8,9 +8,9 @@
  */
 import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types";
-import { hasGuestSeenAppShell } from "$lib/guest-app-shell";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { hostedAllowanceFor } from "$lib/server/ai/hosted-usage";
+import { hasGuestSeenAppShell } from "#lib/guest-app-shell.js";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { hostedAllowanceFor } from "#lib/server/ai/hosted-usage.js";
 
 export const load: LayoutServerLoad = async ({
     locals: { safeGetSession, supabase },

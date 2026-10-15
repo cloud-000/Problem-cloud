@@ -1,10 +1,10 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Combobox } from "$lib/components/combobox";
-    import { Icon } from "$lib/components/icon";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { TOPICS } from "$lib/library";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { TOPICS } from "#lib/library.js";
     import {
         dimensionOptions,
         fetchSeriesDimensions,
@@ -12,8 +12,8 @@
         fetchSeriesYearSpan,
         type SeriesDimensionRow,
         type SeriesYearSpan,
-    } from "$lib/series-review";
-    import { cn } from "$lib/utils";
+    } from "#lib/series-review.js";
+    import { cn } from "#lib/utils.js";
     import { fly } from "svelte/transition";
     import { SvelteMap } from "svelte/reactivity";
     import {

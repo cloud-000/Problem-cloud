@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import type { Database, Tables } from "#lib/types/database.types.js";
+import type { ProblemRow } from "#lib/library.js";
 
 type Supabase = SupabaseClient<Database>;
 

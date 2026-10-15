@@ -1,6 +1,6 @@
 <script lang="ts" module>
     import type { Snippet } from "svelte";
-    import type { NormalizedAIMessage } from "$lib/ai/types";
+    import type { NormalizedAIMessage } from "#lib/ai/types.js";
     import type { AIChatController, AIChatQuickAction } from "./types";
 
     export interface AIChatProps {
@@ -35,7 +35,7 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
     import AIChatComposer from "./ai-chat-composer.svelte";
     import AIChatEmptyState from "./ai-chat-empty-state.svelte";
     import AIChatMessageList from "./ai-chat-message-list.svelte";

@@ -1,13 +1,13 @@
-import { env } from "$env/dynamic/private";
-import { PUBLIC_SUPABASE_URL } from "$env/static/public";
+import { SUPABASE_SECRET_KEY, SUPABASE_DEV_SECRET_KEY } from "$app/env/private";
+import { PUBLIC_SUPABASE_URL } from "$app/env/public";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { AIModelCatalog } from "$lib/ai/catalog";
+import type { AIModelCatalog } from "#lib/ai/catalog.js";
 import {
     hostedAllowanceSnapshot,
     type HostedAllowance,
-} from "$lib/ai/hosted-allowance";
-import { HOSTED_PROVIDER_ID } from "$lib/ai/types";
-import type { Database } from "$lib/types/database.types";
+} from "#lib/ai/hosted-allowance.js";
+import { HOSTED_PROVIDER_ID } from "#lib/ai/types.js";
+import type { Database } from "#lib/types/database.types.js";
 import { hostedProviderEnabled } from "./config";
 import { hostedLimits } from "./hosted-plan";
 import {
@@ -31,7 +31,7 @@ let adminClient: SupabaseClient<Database> | null = null;
 
 function admin(): SupabaseClient<Database> {
     if (adminClient) return adminClient;
-    const secret = env.SUPABASE_SECRET_KEY || env.SUPABASE_DEV_SECRET_KEY;
+    const secret = SUPABASE_SECRET_KEY || SUPABASE_DEV_SECRET_KEY;
     if (!secret) {
         throw new AIPersistenceError(
             "persistence_unavailable",

@@ -11,11 +11,11 @@
 </script>
 
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { groupConversations } from "$lib/ai/conversations";
-    import { coach } from "$lib/state/coach.svelte";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { groupConversations } from "#lib/ai/conversations.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { cn } from "#lib/utils.js";
     import CoachConversationRow from "./coach-conversation-row.svelte";
 
     let { showBack = true, class: className }: CoachConversationListProps = $props();

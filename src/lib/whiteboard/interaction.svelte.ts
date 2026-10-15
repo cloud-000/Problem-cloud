@@ -16,7 +16,7 @@
  * and folded back (INVARIANTS §4). Previews are transient renders only.
  */
 
-import type { Pen, Scene } from "$lib/asy/scene/types";
+import type { Pen, Scene } from "#lib/asy/scene/types.js";
 import {
     createTool,
     hitTest,
@@ -28,17 +28,17 @@ import {
     type Tool,
     type ToolContext,
     type ToolResult,
-} from "$lib/asy/engine";
-import { liftCommit, snapCreationPreview, type LiftContext } from "$lib/whiteboard/commit-lift";
-import type { ConstraintService } from "$lib/whiteboard/constraint-service.svelte";
-import type { SelectionModel } from "$lib/whiteboard/selection.svelte";
+} from "#lib/asy/engine/index.js";
+import { liftCommit, snapCreationPreview, type LiftContext } from "#lib/whiteboard/commit-lift.js";
+import type { ConstraintService } from "#lib/whiteboard/constraint-service.svelte.js";
+import type { SelectionModel } from "#lib/whiteboard/selection.svelte.js";
 import {
     SmartGestureController,
     type SmartGesture,
     type SmartGestureHost,
     type SmartSelectionTransform,
-} from "$lib/whiteboard/smart-gestures.svelte";
-import type { StyleModel, WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
+} from "#lib/whiteboard/smart-gestures.svelte.js";
+import type { StyleModel, WhiteboardToolKind } from "#lib/whiteboard/style.svelte.js";
 import {
     arcEndpointClosure,
     arcControlFeature,
@@ -47,7 +47,7 @@ import {
     pointFeaturePosition,
     type PointFeatureRef,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** The store-owned reactive view state and document access the controller drives. */
 export interface InteractionHost extends SmartGestureHost {

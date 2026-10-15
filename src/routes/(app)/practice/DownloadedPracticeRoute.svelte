@@ -2,14 +2,14 @@
     import { onMount } from "svelte";
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { modal } from "$lib/state/modal.svelte";
-    import { offlineRepository } from "$lib/offline/browser";
-    import { deleteSession, type PracticeSessionRow } from "$lib/sessions";
-    import { createDownloadedTrainerDataSource } from "$lib/trainer-data-source";
-    import { defaultPracticeSettings } from "$lib/trainer";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { offlineRepository } from "#lib/offline/browser.js";
+    import { deleteSession, type PracticeSessionRow } from "#lib/sessions.js";
+    import { createDownloadedTrainerDataSource } from "#lib/trainer-data-source.js";
+    import { defaultPracticeSettings } from "#lib/trainer.js";
     import type { PageData } from "./$types";
     import OfflinePracticeRoute from "./OfflinePracticeRoute.svelte";
     import PracticeView from "./PracticeView.svelte";
@@ -47,7 +47,7 @@
                 name: nameValue?.trim() || null,
                 settings: defaultPracticeSettings(),
             });
-            await goto(resolve(`/practice?session=${session.id}` as "/practice"));
+            await goto(resolve(`practice?session=${session.id}` as `practice?${string}`));
         } finally {
             starting = false;
         }
@@ -62,7 +62,7 @@
                 view.userId,
                 defaultPracticeSettings(),
             );
-            await goto(resolve("/practice?session=root" as "/practice"));
+            await goto(resolve("practice?session=root"));
         } finally {
             starting = false;
         }
@@ -172,7 +172,7 @@
         {data}
         sessionParam={String(view.session.id)}
         trainerSource={view.source}
-        backHref="/practice"
+        backHref="practice"
     />
 {:else if view.kind === "legacy"}
     <OfflinePracticeRoute {data} packageId={view.packageId} />

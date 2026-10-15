@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type {
         HTMLAnchorAttributes,
         HTMLButtonAttributes,
@@ -36,7 +36,7 @@
 
 <script lang="ts">
     import { useSidebar } from "./sidebar.svelte";
-    import { Icon } from "$lib/components/icon/.";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let {
         ref = $bindable(null),
@@ -125,4 +125,3 @@
         </button>
     {/if}
 {/if}
-

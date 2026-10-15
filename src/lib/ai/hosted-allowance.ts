@@ -1,7 +1,7 @@
 /**
  * Client-safe hosted Coach allowance. Limits and remaining percent are computed
  * on the server; this module only formats and snapshots that view. It must never
- * import `$lib/server` — the profile menu and `/usage` both read it.
+ * import `#lib/server` — the profile menu and `/usage` both read it.
  */
 
 export interface HostedAllowance {

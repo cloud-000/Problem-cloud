@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
-    import { RatingCounter } from "$lib/components/rating-counter";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { RatingCounter } from "#lib/components/rating-counter/index.js";
 
     let rating = $state(1500);
     let customInput = $state("1500");

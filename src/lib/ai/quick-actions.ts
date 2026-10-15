@@ -1,4 +1,4 @@
-import type { AIChatQuickAction } from "$lib/components/ai-chat";
+import type { AIChatQuickAction } from "#lib/components/ai-chat/index.js";
 import { HINT_LADDER } from "./hints";
 import type { CoachQuickAction } from "./types";
 

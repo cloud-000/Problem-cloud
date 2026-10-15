@@ -15,14 +15,14 @@
  * and best-effort; a full/blocked store must never break editing.
  */
 
-import { browser } from "$app/environment";
-import { parse, serialize } from "$lib/asy/codec";
-import type { Scene } from "$lib/asy/scene/types";
+import { browser } from "$app/env";
+import { parse, serialize } from "#lib/asy/codec/index.js";
+import type { Scene } from "#lib/asy/scene/types.js";
 import {
     parsePersistedWhiteboardDocument,
     resolveWhiteboardDocument,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** Serialize a document's projected Scene to Asymptote text. */
 export function documentToAsy(document: WhiteboardDocument): string {

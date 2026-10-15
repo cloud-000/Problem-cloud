@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { toasts } from "$lib/state/toast.svelte";
+    import { DropdownMenu, type DropdownOption } from "#lib/components/dropdown-menu/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
 
     let lastClicked = $state<string>("None");
 

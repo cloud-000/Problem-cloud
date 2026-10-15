@@ -13,9 +13,9 @@
  * answers and only one of them is honest.
  */
 
-import { hasComparableAnswer } from "$lib/problem-response";
-import { isMultipleChoice } from "$lib/utils";
-import type { Mastery, ProblemProgress } from "$lib/progress";
+import { hasComparableAnswer } from "#lib/problem-response.js";
+import { isMultipleChoice } from "#lib/utils.js";
+import type { Mastery, ProblemProgress } from "#lib/progress.js";
 import { hasPriorActivity } from "./overlay";
 import type {
     BrowseQueryV1,
@@ -26,7 +26,7 @@ import type {
     OfflineProblemV1,
     PracticeQueryV1,
 } from "./types";
-import { matchesLocalProblemFilters } from "$lib/problem-filter-spec";
+import { matchesLocalProblemFilters } from "#lib/problem-filter-spec.js";
 
 export type QueryCandidate = {
     canonicalId: number;

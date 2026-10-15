@@ -1,6 +1,6 @@
 <script lang="ts" module>
     import type { Snippet } from "svelte";
-    import type { NormalizedAIMessage } from "$lib/ai/types";
+    import type { NormalizedAIMessage } from "#lib/ai/types.js";
     import type { AIChatController } from "./types";
 
     export interface AIChatMessageListProps {
@@ -24,8 +24,8 @@
 
 <script lang="ts">
     import AIChatMessage from "./ai-chat-message.svelte";
-    import { Icon } from "$lib/components/icon";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         controller,

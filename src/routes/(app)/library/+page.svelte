@@ -2,12 +2,12 @@
     import type { PageData } from "./$types";
     import { onMount } from "svelte";
     import { page as pageStore } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import * as Page from "$lib/components/page";
-    import * as Subtabs from "$lib/components/subtabs";
-    import type { Option } from "$lib/components/combobox";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import * as Subtabs from "#lib/components/subtabs/index.js";
+    import type { Option } from "#lib/components/combobox/index.js";
     import {
         fetchSeries,
         fetchTests,
@@ -23,12 +23,12 @@
         type ProblemRow,
         type SeriesRow,
         type TestRow,
-    } from "$lib/library";
-    import { LibraryStore } from "$lib/state/library.svelte";
+    } from "#lib/library.js";
+    import { LibraryStore } from "#lib/state/library.svelte.js";
     import Filters from "./Filters.svelte";
     import ResultList from "./ResultList.svelte";
-    import { ProblemSkeleton, ListRowSkeleton } from "$lib/components/skeleton";
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    import { ProblemSkeleton, ListRowSkeleton } from "#lib/components/skeleton/index.js";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);

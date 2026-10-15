@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { TOUR_NAV_ITEMS, type TourNavId } from "$lib/onboarding";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { TOUR_NAV_ITEMS, type TourNavId } from "#lib/onboarding/index.js";
+    import { cn } from "#lib/utils.js";
 
     let { active }: { active: TourNavId } = $props();
 </script>

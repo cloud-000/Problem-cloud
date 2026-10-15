@@ -20,9 +20,9 @@ import type {
     PackageState,
     UUID,
 } from "./types";
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import type { PracticeSessionRow } from "$lib/sessions";
-import type { PlayerRating } from "$lib/library";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import type { PracticeSessionRow } from "#lib/sessions.js";
+import type { PlayerRating } from "#lib/library.js";
 
 export const OFFLINE_DB_NAME = "problem-cloud-offline";
 /**

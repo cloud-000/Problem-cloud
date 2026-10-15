@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import type { ProblemReviewEntry } from "$lib/library";
-    import { isMultipleChoice } from "$lib/utils";
-    import { submissionOutcome } from "$lib/problem-response";
+    import type { ProblemReviewEntry } from "#lib/library.js";
+    import { isMultipleChoice } from "#lib/utils.js";
+    import { submissionOutcome } from "#lib/problem-response.js";
     import Problem from "./problem.svelte";
 
     let {

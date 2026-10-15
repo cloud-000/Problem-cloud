@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { HOSTED_PROVIDER_ID } from "$lib/ai/types";
+import { HOSTED_PROVIDER_ID } from "#lib/ai/types.js";
 import { HostedProviderAdapter } from "./hosted";
-import type { FetchFunction } from "$lib/ai/providers/openai-models";
+import type { FetchFunction } from "#lib/ai/providers/openai-models.js";
 import type { HostedConnectionConfig } from "../hosted-plan";
 
 function sseResponse(...chunks: unknown[]): Response {

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
+import type { Database, Tables } from "#lib/types/database.types.js";
 import {
     CANONICAL_STATE_SELECT,
     PROGRESS_SELECT,
@@ -9,7 +9,7 @@ import {
     type ProblemRow,
     type ProblemRating,
     type ProblemReviewEntry,
-} from "$lib/library";
+} from "#lib/library.js";
 
 type Supabase = SupabaseClient<Database>;
 

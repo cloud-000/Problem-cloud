@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import { fetchByIds, fetchProblems, PAGE_SIZE, type ProblemRow } from "$lib/library";
-import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
+import type { Database } from "#lib/types/database.types.js";
+import { fetchByIds, fetchProblems, PAGE_SIZE, type ProblemRow } from "#lib/library.js";
+import { catalogReadRuntime } from "#lib/offline/read-mode-runtime.js";
 
 type Supabase = SupabaseClient<Database>;
 

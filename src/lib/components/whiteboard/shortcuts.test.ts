@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import * as bunTest from "bun:test";
-import { createSmartPath, emptyWhiteboardDocument } from "$lib/whiteboard/model";
+import { createSmartPath, emptyWhiteboardDocument } from "#lib/whiteboard/model/index.js";
 import type { VertexRef } from "./overlay-model";
 import type { PointerInputController } from "./pointer-input.svelte";
 
 const runtimeMock = (bunTest as unknown as {
     mock: { module(id: string, factory: () => unknown): void };
 }).mock;
+runtimeMock.module("$app/env", () => ({ browser: false, dev: false, building: false, version: "test" }));
 runtimeMock.module("$app/environment", () => ({ browser: false }));
 
 const state = Object.assign(<T>(value: T): T => value, {
@@ -26,7 +27,7 @@ Object.assign(globalThis, {
     HTMLTextAreaElement: class extends FakeHTMLElement {},
 });
 
-const { WhiteboardStore } = await import("$lib/state/whiteboard.svelte");
+const { WhiteboardStore } = await import("#lib/state/whiteboard.svelte.js");
 const { KeyboardShortcutController } = await import("./shortcuts.svelte");
 
 /** A canvas stand-in; the controller only ever compares identity. */

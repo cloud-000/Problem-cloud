@@ -1,6 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
-import type { Toast, ToastSeverity } from "$lib/state/toast.svelte";
+import type { Database, Tables } from "#lib/types/database.types.js";
+import type { Toast, ToastSeverity } from "#lib/state/toast.svelte.js";
 
 type Supabase = SupabaseClient<Database>;
 export type NotificationRow = Tables<"notifications">;

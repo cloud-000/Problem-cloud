@@ -1,21 +1,21 @@
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
-import type { OfflineSyncErrorCode, OfflineSyncErrorV1 } from "$lib/offline/types";
+import type { OfflineSyncErrorCode, OfflineSyncErrorV1 } from "#lib/offline/types.js";
 
 export async function requireOfflineUser(locals: App.Locals) {
     const { user } = await locals.safeGetSession();
-    if (!user) error(401, { message: "Authentication required" });
+    if (!user) error(401, "Authentication required");
     return user;
 }
 
 export function assertOfflineOrigin(request: Request, url: URL): void {
     const origin = request.headers.get("origin");
-    if (!origin || origin !== url.origin) error(403, { message: "Invalid request origin" });
+    if (!origin || origin !== url.origin) error(403, "Invalid request origin");
 }
 
 export function assertBodyLimit(request: Request, maxBytes = 1024 * 1024): void {
     const raw = request.headers.get("content-length");
-    if (raw !== null && Number(raw) > maxBytes) error(413, { message: "Request body is too large" });
+    if (raw !== null && Number(raw) > maxBytes) error(413, "Request body is too large");
 }
 
 function mappedDatabaseError(message: string): {

@@ -1,5 +1,5 @@
-import type { RGB } from "$lib/asy/scene";
-import { hexToRGB } from "$lib/asy/editor-properties";
+import type { RGB } from "#lib/asy/scene/index.js";
+import { hexToRGB } from "#lib/asy/editor-properties.js";
 
 /**
  * Ink inversion, single-sourced.

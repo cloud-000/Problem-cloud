@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import type { Snippet } from "svelte";
     import {
@@ -45,7 +45,7 @@
 <script lang="ts">
     import { coerceOptions, filterOptions, groupOptions } from "./select.js";
     import { shouldCloseOnFocusOut } from "../combobox/combobox.js";
-    import { Icon } from "$lib/components/icon/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let {
         ref = $bindable(null),

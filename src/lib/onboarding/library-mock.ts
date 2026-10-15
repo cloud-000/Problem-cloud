@@ -3,7 +3,7 @@
  * the real Library result list; these helpers keep its chrome copy stable.
  */
 
-import type { Level } from "$lib/library";
+import type { Level } from "#lib/library.js";
 
 export const LIBRARY_MOCK_TABS: { value: Level; label: string }[] = [
     { value: "problems", label: "Problems" },

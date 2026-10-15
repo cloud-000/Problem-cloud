@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { type WithElementRef } from "$lib/utils.js";
+    import { type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import type { Snippet } from "svelte";
 
@@ -29,12 +29,12 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
     import type { Attachment } from "svelte/attachments";
     import { fade, scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
 
     let {
         ref = $bindable(null),

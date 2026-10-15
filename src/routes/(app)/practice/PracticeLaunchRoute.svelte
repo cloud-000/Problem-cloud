@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
     import type { PageData } from "./$types";
     import DownloadedPracticeRoute from "./DownloadedPracticeRoute.svelte";
     import GuestPracticeRoute from "./GuestPracticeRoute.svelte";

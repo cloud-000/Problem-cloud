@@ -2,11 +2,11 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { onMount } from "svelte";
-    import * as Page from "$lib/components/page";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { defaultPracticeSettings } from "$lib/trainer";
-    import { guestPracticeRepository, type GuestSession } from "$lib/guest-practice/repository";
+    import * as Page from "#lib/components/page/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { defaultPracticeSettings } from "#lib/trainer.js";
+    import { guestPracticeRepository, type GuestSession } from "#lib/guest-practice/repository.js";
 
     let sessions = $state<GuestSession[]>([]);
     let error = $state<string | null>(null);
@@ -25,8 +25,8 @@
         busy = true;
         try {
             const session = await (await guestPracticeRepository()).create({ settings: defaultPracticeSettings() });
-            await goto(resolve(`/practice?session=guest:${session.id}`));
-        } catch (cause) {
+            await goto(resolve(`practice?session=guest:${session.id}`));
+        } catch(cause) {
             error = (cause as Error).message;
             busy = false;
         }
@@ -34,7 +34,7 @@
     async function open(session: GuestSession) {
         const repository = await guestPracticeRepository();
         if (session.status === "ended") await repository.save({ ...session, status: "active", ended_at: null });
-        await goto(resolve(`/practice?session=guest:${session.id}`));
+        await goto(resolve(`practice?session=guest:${session.id}`));
     }
     async function remove(session: GuestSession) {
         await (await guestPracticeRepository()).remove(session.id);

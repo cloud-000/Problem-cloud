@@ -13,11 +13,11 @@
  * do not yet record goal provenance (`docs/onboarding-and-home.md` §3.3).
  */
 
-import { playerRatingIsProvisional, type PlayerRating } from "$lib/library";
-import { practiceActionLabel } from "$lib/goals/practice";
-import type { Goal } from "$lib/goals";
-import type { PromotedGoal } from "$lib/goals/promote";
-import type { ProblemStateSummary } from "$lib/progress";
+import { playerRatingIsProvisional, type PlayerRating } from "#lib/library.js";
+import { practiceActionLabel } from "#lib/goals/practice.js";
+import type { Goal } from "#lib/goals/index.js";
+import type { PromotedGoal } from "#lib/goals/promote.js";
+import type { ProblemStateSummary } from "#lib/progress.js";
 
 export type NextUpSession = {
     id: number;

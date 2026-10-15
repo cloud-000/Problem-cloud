@@ -1,6 +1,6 @@
 <script lang="ts">
     import { untrack } from "svelte";
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
     import InteractiveMathBlock from "./interactive-math-block.svelte";
 
     let {

@@ -1,7 +1,7 @@
 import { SvelteMap } from "svelte/reactivity";
-import type { Bounds, Pair } from "$lib/asy/scene";
-import { hitTest, PointerSampleBatcher, type PointerSample } from "$lib/asy/engine";
-import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+import type { Bounds, Pair } from "#lib/asy/scene/index.js";
+import { hitTest, PointerSampleBatcher, type PointerSample } from "#lib/asy/engine/index.js";
+import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
 import type { Camera } from "./camera.svelte";
 import { isArcGuideAt, isRotationHandleAt, isScreenPointInRect, resizeHandleAt } from "./render";
 import type {

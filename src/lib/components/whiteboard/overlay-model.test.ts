@@ -8,7 +8,7 @@ import {
     type Pair,
     type Scene,
     type SceneElement,
-} from "$lib/asy/scene";
+} from "#lib/asy/scene/index.js";
 import { buildOverlay, type OverlayInput } from "./overlay-model";
 
 /** A viewport with origin (100,100), 10 px per scene unit, y flipped. */

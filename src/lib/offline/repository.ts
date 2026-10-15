@@ -24,10 +24,10 @@
  * half-applied one.
  */
 
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import type { PlayerRating } from "$lib/library";
-import type { PracticeSessionRow } from "$lib/sessions";
-import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import type { PlayerRating } from "#lib/library.js";
+import type { PracticeSessionRow } from "#lib/sessions.js";
+import { defaultPracticeSettings, type PracticeSettings } from "#lib/trainer.js";
 import { canonicalByteLength, pageChecksum } from "./checksum";
 import { newUUID, OfflineClock, offlineClock } from "./clock";
 import { countsAgree, parsePackageCreated, parsePackagePage } from "./contracts";
@@ -1779,7 +1779,7 @@ export class OfflineRepository implements OfflinePracticeRepositoryV1 {
                     clientSession = {
                         clientSessionId: session.clientSessionId,
                         name: session.row.name,
-                        settings: session.row.settings as import("$lib/trainer").PracticeSettings,
+                        settings: session.row.settings as import("#lib/trainer.js").PracticeSettings,
                         startedAt: session.row.started_at,
                     };
                 }

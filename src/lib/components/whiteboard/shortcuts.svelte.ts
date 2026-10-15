@@ -1,4 +1,4 @@
-import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
 import type { PointerInputController } from "./pointer-input.svelte";
 import type { VertexRef } from "./overlay-model";
 

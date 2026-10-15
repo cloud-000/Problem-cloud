@@ -13,8 +13,8 @@
 </script>
 
 <script lang="ts">
-    import { Select } from "$lib/components/select";
-    import { Icon } from "$lib/components/icon";
+    import { Select } from "#lib/components/select/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let { controller, compact = false }: AIChatModelPickerProps = $props();
     let options = $derived([

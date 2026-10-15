@@ -377,7 +377,7 @@ same query-param idiom as `/practice?session=` rather than a dynamic segment.
 - **Three modules sit beside the domain layer but outside its barrel**, and the
   deeper import path is the layering made visible: `presentation.ts` reaches for
   `topicLabel`, `practice.ts` for `PracticeSettings`, and neither belongs in what
-  a consumer gets from `import … from "$lib/goals"`. Anything re-exported from
+  a consumer gets from `import … from "#lib/goals"`. Anything re-exported from
   `index.ts` must stay free of both.
 - **Presentation strings live in `presentation.ts`**, not in the components:
   `GoalProgressResult` deliberately carries none (architecture doc §5), and the

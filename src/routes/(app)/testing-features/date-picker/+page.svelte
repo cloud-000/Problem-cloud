@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { DatePicker } from "$lib/components/date-picker";
-    import { Icon } from "$lib/components/icon";
+    import { DatePicker } from "#lib/components/date-picker/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     // DatePicker states
     let dateDefault = $state("");

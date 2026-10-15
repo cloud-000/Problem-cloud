@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { coach } from "$lib/state/coach.svelte";
+    import { coach } from "#lib/state/coach.svelte.js";
     import CoachContextChips from "./coach-context-chips.svelte";
 </script>
 

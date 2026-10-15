@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { cn } from "$lib/utils";
-    import type { GoalProgressResult } from "$lib/goals";
+    import { cn } from "#lib/utils.js";
+    import type { GoalProgressResult } from "#lib/goals/index.js";
 
     let {
         result,

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import type { WhiteboardToolKind } from "$lib/state/whiteboard.svelte";
+    import type { WhiteboardToolKind } from "#lib/state/whiteboard.svelte.js";
 
     const TOOLS: { kind: WhiteboardToolKind; icon: string; title: string }[] = [
         { kind: "select", icon: "arrow_selector_tool", title: "Select / marquee" },
@@ -15,11 +15,11 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Theme } from "$lib/utils/Theme.svelte";
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+    import { cn } from "#lib/utils.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Theme } from "#lib/utils/Theme.svelte.js";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
     import { hasWhiteboardInspector } from "./control-policy";
     import { previewSwatchColor, themeInk } from "./palette";
 

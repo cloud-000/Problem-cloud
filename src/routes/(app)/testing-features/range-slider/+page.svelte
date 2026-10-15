@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         RangeSlider,
         type RangeValue,
-    } from "$lib/components/range-slider";
+    } from "#lib/components/range-slider/index.js";
 
     // Default: push gap + stepped scale.
     let scoreValue = $state<RangeValue>([20, 80]);

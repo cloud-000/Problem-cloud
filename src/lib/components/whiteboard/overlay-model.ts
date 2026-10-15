@@ -20,8 +20,8 @@ import {
     type PathElement,
     type Scene,
     type SceneElement,
-} from "$lib/asy/scene";
-import type { ArcGuide } from "$lib/asy/engine";
+} from "#lib/asy/scene/index.js";
+import type { ArcGuide } from "#lib/asy/engine/index.js";
 import { buildArcGuide } from "./overlay/arc-guide";
 import { buildSelectionTransform } from "./overlay/selection-transform";
 export { activeSelectedVertexOf } from "./overlay/selection-transform";

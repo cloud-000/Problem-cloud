@@ -2,24 +2,24 @@
    import type { PageData } from "./$types";
    import { goto } from "$app/navigation";
    import { resolve } from "$app/paths";
-   import { Button } from "$lib/components/button";
-   import { Icon } from "$lib/components/icon";
-   import type { DropdownOption } from "$lib/components/dropdown-menu";
-   import { MathStatement } from "$lib/components/math-statement";
-   import { ProblemAnswer, ProblemSolution } from "$lib/components/problem";
-   import { ProblemOrganization } from "$lib/components/problem-organization";
-   import { Modal } from "$lib/components/modal";
-   import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
-   import { Skeleton } from "$lib/components/skeleton";
-   import { UtilityPanelRegister } from "$lib/components/utility-panel";
-   import { WhiteboardPanel } from "$lib/components/whiteboard";
-   import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
+   import { Button } from "#lib/components/button/index.js";
+   import { Icon } from "#lib/components/icon/index.js";
+   import type { DropdownOption } from "#lib/components/dropdown-menu/index.js";
+   import { MathStatement } from "#lib/components/math-statement/index.js";
+   import { ProblemAnswer, ProblemSolution } from "#lib/components/problem/index.js";
+   import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
+   import { Modal } from "#lib/components/modal/index.js";
+   import { ProblemGrid, type ProblemGridCell } from "#lib/components/problem-grid/index.js";
+   import { Skeleton } from "#lib/components/skeleton/index.js";
+   import { UtilityPanelRegister } from "#lib/components/utility-panel/index.js";
+   import { WhiteboardPanel } from "#lib/components/whiteboard/index.js";
+   import { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
    import DebugInfo from "./DebugInfo.svelte";
    import {
       type ProblemRow,
       type PlayerRating,
       type ProblemRating,
-   } from "$lib/library";
+   } from "#lib/library.js";
    import {
       createSession,
       FORMAT_BEHAVIOR,
@@ -27,47 +27,47 @@
       type PracticeSettings,
       type PracticeSource,
       type ProblemProgress,
-   } from "$lib/trainer";
-   import { type Mastery } from "$lib/progress";
+   } from "#lib/trainer.js";
+   import { type Mastery } from "#lib/progress.js";
    import type {
       TrainerDataSource,
       TrainerSubmissionResult,
-   } from "$lib/trainer-data-source";
-   import { advanceShadowRating } from "$lib/offline/shadow";
-   import { countdownRemainingMs, rebaseCountdownBaseline } from "$lib/countdown";
+   } from "#lib/trainer-data-source.js";
+   import { advanceShadowRating } from "#lib/offline/shadow.js";
+   import { countdownRemainingMs, rebaseCountdownBaseline } from "#lib/countdown.js";
    import {
       isLastSegment,
       segmentCount,
       segmentElapsedMs,
       segmentRange,
-   } from "$lib/segment-timing";
-   import { type PracticeSessionRow } from "$lib/sessions";
-   import { cn, formatProblemText } from "$lib/utils";
-   import { answersMatch, normalizeAnswer } from "$lib/utils/answer-matcher";
+   } from "#lib/segment-timing.js";
+   import { type PracticeSessionRow } from "#lib/sessions.js";
+   import { cn, formatProblemText } from "#lib/utils.js";
+   import { answersMatch, normalizeAnswer } from "#lib/utils/answer-matcher.js";
    import {
       hasComparableAnswer,
       inputModeFor,
       isReferenceAnswerMissing,
       resolveResponseKind,
-   } from "$lib/problem-response";
-   import { modal } from "$lib/state/modal.svelte";
-   import { toasts } from "$lib/state/toast.svelte";
-   import { utilityPanel } from "$lib/state/utility-panel.svelte";
-   import { acknowledgePracticeSettingsOpen } from "$lib/onboarding";
-   import { settings } from "$lib/state/settings.svelte";
-   import { coach } from "$lib/state/coach.svelte";
-   import { anchorFor } from "$lib/ai/session/anchor";
-   import { problemContextLayer } from "$lib/ai/context/surfaces";
-   import { PROBLEM_SUPPORT_ACTIONS } from "$lib/ai/quick-actions";
+   } from "#lib/problem-response.js";
+   import { modal } from "#lib/state/modal.svelte.js";
+   import { toasts } from "#lib/state/toast.svelte.js";
+   import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
+   import { acknowledgePracticeSettingsOpen } from "#lib/onboarding/index.js";
+   import { settings } from "#lib/state/settings.svelte.js";
+   import { coach } from "#lib/state/coach.svelte.js";
+   import { anchorFor } from "#lib/ai/session/anchor.js";
+   import { problemContextLayer } from "#lib/ai/context/surfaces.js";
+   import { PROBLEM_SUPPORT_ACTIONS } from "#lib/ai/quick-actions.js";
    import {
       HINT_LADDER_LENGTH,
       hintQuickAction,
       hintRungFromActionId,
       type HintRung,
-   } from "$lib/ai/hints";
-   import type { AIChatQuickAction } from "$lib/components/ai-chat";
-   import { shell } from "$lib/state/shell.svelte";
-   import { CoachContextRegister, CoachInline } from "$lib/components/coach";
+   } from "#lib/ai/hints.js";
+   import type { AIChatQuickAction } from "#lib/components/ai-chat/index.js";
+   import { shell } from "#lib/state/shell.svelte.js";
+   import { CoachContextRegister, CoachInline } from "#lib/components/coach/index.js";
    import HintRail from "./HintRail.svelte";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onDestroy, onMount, untrack } from "svelte";
@@ -118,12 +118,12 @@
       data,
       sessionParam,
       trainerSource,
-      backHref = "/practice",
+      backHref = "practice",
    }: {
       data: PageData;
       sessionParam: string;
       trainerSource: TrainerDataSource;
-      backHref?: "/practice" | "/offline";
+      backHref?: "practice" | "offline";
    } = $props();
    let { supabase, user } = $derived(data);
    let capabilities = $derived(trainerSource.capabilities);

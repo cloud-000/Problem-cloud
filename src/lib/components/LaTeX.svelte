@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { settings } from "$lib/state/settings.svelte";
+    import { settings } from "#lib/state/settings.svelte.js";
     import { onMount, type Snippet } from "svelte";
 
     let {

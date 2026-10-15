@@ -12,7 +12,7 @@ const {
     ListRowSkeleton,
     DeferredLoading,
 } = await import("./index");
-const { cn } = await import("$lib/utils");
+const { cn } = await import("#lib/utils.js");
 
 describe("Skeleton component variants & exports", () => {
     test("exports Skeleton, ProblemSkeleton, ListRowSkeleton, and DeferredLoading", () => {

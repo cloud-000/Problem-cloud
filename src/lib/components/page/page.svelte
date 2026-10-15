@@ -1,7 +1,7 @@
 <script lang="ts" module>
     import type { HTMLAttributes } from "svelte/elements";
     import type { Snippet } from "svelte";
-    import type { WithElementRef } from "$lib/utils";
+    import type { WithElementRef } from "#lib/utils.js";
 
     export type PageWidth = "narrow" | "standard" | "wide" | "unbounded";
 
@@ -19,7 +19,7 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils";
+    import { cn } from "#lib/utils.js";
 
     let {
         ref = $bindable(null),

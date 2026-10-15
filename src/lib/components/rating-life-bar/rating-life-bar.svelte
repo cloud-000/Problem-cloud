@@ -2,8 +2,8 @@
     import { Tween } from "svelte/motion";
     import { cubicOut } from "svelte/easing";
     import { untrack } from "svelte";
-    import { cn } from "$lib/utils";
-    import type { PlayerRating } from "$lib/library";
+    import { cn } from "#lib/utils.js";
+    import type { PlayerRating } from "#lib/library.js";
 
     let {
         playerRating,

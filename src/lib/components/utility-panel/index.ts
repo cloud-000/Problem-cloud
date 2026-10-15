@@ -8,4 +8,4 @@ export type {
     UtilityPanelDimensionConfig,
     UtilityPanelMobileHeightConfig,
     UtilityPanelSizing,
-} from "$lib/state/utility-panel.svelte";
+} from "#lib/state/utility-panel.svelte.js";

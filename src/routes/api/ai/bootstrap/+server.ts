@@ -1,13 +1,13 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import type { AIBootstrap } from "$lib/ai/types";
-import { parseBootstrap } from "$lib/ai/schemas";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { catalogFor } from "$lib/ai/catalog";
-import { providerRegistry } from "$lib/server/ai/providers/registry";
-import { catalogWithHostedQuota } from "$lib/server/ai/hosted-usage";
-import { preferencesFor } from "$lib/server/ai/persistence";
-import { assertRateLimit, stableError } from "$lib/server/ai/security";
+import type { AIBootstrap } from "#lib/ai/types.js";
+import { parseBootstrap } from "#lib/ai/schemas.js";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { catalogFor } from "#lib/ai/catalog.js";
+import { providerRegistry } from "#lib/server/ai/providers/registry.js";
+import { catalogWithHostedQuota } from "#lib/server/ai/hosted-usage.js";
+import { preferencesFor } from "#lib/server/ai/persistence.js";
+import { assertRateLimit, stableError } from "#lib/server/ai/security.js";
 
 /**
  * Preferences, saved history, and the connections the *server* owns. The user's own

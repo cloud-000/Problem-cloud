@@ -1,20 +1,20 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { ProblemReview } from "$lib/components/problem";
-    import { StatusTag } from "$lib/components/status-tag";
-    import type { PracticeSessionRow } from "$lib/sessions";
-    import { DropdownMenu, type DropdownOption } from "$lib/components/dropdown-menu/index.js";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { ProblemReview } from "#lib/components/problem/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
+    import type { PracticeSessionRow } from "#lib/sessions.js";
+    import { DropdownMenu, type DropdownOption } from "#lib/components/dropdown-menu/index.js";
     import {
         fetchSessionSubmissions,
         reconcileSessionSubmissions,
         reviewEntryFromSubmission,
         type RecentSubmissionRow,
-    } from "$lib/progress";
-    import { fetchTestProblems } from "$lib/trainer";
-    import { modal } from "$lib/state/modal.svelte";
+    } from "#lib/progress.js";
+    import { fetchTestProblems } from "#lib/trainer.js";
+    import { modal } from "#lib/state/modal.svelte.js";
     import DownloadOfflineModal from "./DownloadOfflineModal.svelte";
 
     let {

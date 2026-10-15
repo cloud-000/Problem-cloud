@@ -32,7 +32,7 @@ export type SeriesScope = {
  * Structurally identical to the practice `TrackValue`
  * (`src/routes/(app)/practice/practice-settings.ts`) — that identity is what
  * makes "practice what remains" free, since the goal's scope is handed to the
- * trainer unchanged. It is re-declared here rather than imported so `$lib` does
+ * trainer unchanged. It is re-declared here rather than imported so `#lib` does
  * not depend on a route module; `plan.test.ts` asserts the two stay assignable
  * in both directions, which is the part that actually matters.
  *

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import type { AIReasoningTrace } from "$lib/ai/types";
+    import type { AIReasoningTrace } from "#lib/ai/types.js";
 
     export interface AIChatReasoningProps {
         trace: AIReasoningTrace;
@@ -13,8 +13,8 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { MathStatement } from "$lib/components/math-statement";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
 
     let { trace, answered }: AIChatReasoningProps = $props();
 

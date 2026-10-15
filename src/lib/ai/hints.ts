@@ -1,4 +1,4 @@
-import type { AIChatQuickAction } from "$lib/components/ai-chat";
+import type { AIChatQuickAction } from "#lib/components/ai-chat/index.js";
 
 /**
  * One rung of the hint ladder.
@@ -31,7 +31,7 @@ export interface HintRung {
  * The prompts do the enforcing. A BYOK model may be small, local, or uncensored, so
  * asking it to hold back is a request and not a guarantee — the only *structural*
  * control is what the request contains, which is why the answer key is withheld under
- * `test-locked` rather than merely embargoed in prose (see `$lib/ai/prompt.ts`). Within
+ * `test-locked` rather than merely embargoed in prose (see `#lib/ai/prompt.ts`). Within
  * a coaching policy the model has the answer, so each rung's wording is explicit about
  * where to stop.
  */

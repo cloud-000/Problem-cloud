@@ -1,15 +1,15 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         Skeleton,
         ProblemSkeleton,
         ListRowSkeleton,
         DeferredLoading,
         type SkeletonEffect,
-    } from "$lib/components/skeleton";
-    import { StatusTag } from "$lib/components/status-tag";
-    import { Switch } from "$lib/components/toggle";
+    } from "#lib/components/skeleton/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
 
     // Controls
     let isLoading = $state(true);

@@ -1,9 +1,9 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Select } from "$lib/components/select";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Select } from "#lib/components/select/index.js";
     import {
         fetchByIds,
         LEVELS,
@@ -11,7 +11,7 @@
         type ProblemRow,
         type SeriesRow,
         type TestRow,
-    } from "$lib/library";
+    } from "#lib/library.js";
     import FindResults from "./FindResults.svelte";
 
     let { data }: { data: PageData } = $props();

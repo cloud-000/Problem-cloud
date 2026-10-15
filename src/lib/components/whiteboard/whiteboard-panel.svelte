@@ -1,6 +1,6 @@
 <script lang="ts">
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { acknowledgeWhiteboardPersist } from "$lib/onboarding";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
+    import { acknowledgeWhiteboardPersist } from "#lib/onboarding/index.js";
     import CompactControls from "./compact-controls.svelte";
     import Whiteboard from "./whiteboard.svelte";
 

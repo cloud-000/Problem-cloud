@@ -1,23 +1,23 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { StatusTag } from "$lib/components/status-tag";
-    import { Skeleton } from "$lib/components/skeleton";
-    import { Combobox } from "$lib/components/combobox";
-    import { Select } from "$lib/components/select";
-    import { DatePicker } from "$lib/components/date-picker";
-    import { ProblemReview } from "$lib/components/problem";
-    import * as Page from "$lib/components/page";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { TriStateSwitch, type TriState } from "$lib/components/toggle";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { DatePicker } from "#lib/components/date-picker/index.js";
+    import { ProblemReview } from "#lib/components/problem/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { TriStateSwitch, type TriState } from "#lib/components/toggle/index.js";
     import {
         fetchRecentSubmissions,
         reviewEntryFromSubmission,
         type RecentSubmissionRow,
-    } from "$lib/progress";
+    } from "#lib/progress.js";
     import ProgressNav from "../progress/ProgressNav.svelte";
-    import { submissionOutcome } from "$lib/problem-response";
+    import { submissionOutcome } from "#lib/problem-response.js";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);

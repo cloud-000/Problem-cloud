@@ -1,12 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
-import { LocalCatalogUnavailable } from "$lib/library";
-import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
+import type { Database, Tables } from "#lib/types/database.types.js";
+import { LocalCatalogUnavailable } from "#lib/library.js";
+import { catalogReadRuntime } from "#lib/offline/read-mode-runtime.js";
 import {
     BROWSE_INTENT,
     type BrowseQueryV1,
     type OfflinePlacementV1,
-} from "$lib/offline/types";
+} from "#lib/offline/types.js";
 import {
     reviewScheduleFor,
     statusFor,
@@ -14,7 +14,7 @@ import {
     type Mastery,
     type PersonalProblemState,
     type ProblemProgress,
-} from "$lib/progress";
+} from "#lib/progress.js";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -275,7 +275,7 @@ export function clampYearRange(
 }
 
 async function localSeriesPlacements(seriesId: number): Promise<OfflinePlacementV1[]> {
-    const { offlineRepository } = await import("$lib/offline/browser");
+    const { offlineRepository } = await import("#lib/offline/browser.js");
     const repository = await offlineRepository();
     const marker = await repository.getAccountMarker();
     if (!marker) throw new LocalCatalogUnavailable("signed-out");

@@ -1,13 +1,13 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database, Tables } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Modal } from "$lib/components/modal";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { fetchProfiles, resetAiHostedUsage } from "$lib/admin";
-    import { cn } from "$lib/utils";
+    import type { Database, Tables } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { fetchProfiles, resetAiHostedUsage } from "#lib/admin.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         supabase,

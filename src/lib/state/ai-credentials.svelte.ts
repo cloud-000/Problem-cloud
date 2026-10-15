@@ -1,6 +1,6 @@
-import { browser } from "$app/environment";
-import { AI_PROVIDER_PRESETS } from "$lib/ai/presets";
-import type { AIConnectionCredential, AIPresetId, StoredAIConnection } from "$lib/ai/types";
+import { browser } from "$app/env";
+import { AI_PROVIDER_PRESETS } from "#lib/ai/presets.js";
+import type { AIConnectionCredential, AIPresetId, StoredAIConnection } from "#lib/ai/types.js";
 
 /**
  * Browser-held AI connections, including their API keys.
@@ -122,7 +122,10 @@ class AICredentialStore {
     maskedKey(id: string): string {
         const key = this.get(id)?.apiKey ?? "";
         if (!key) return "No key";
-        return key.length <= 8 ? "•".repeat(key.length) : `${key.slice(0, 3)}…${key.slice(-4)}`;
+
+        return key.length <= 8
+            ? ("•").repeat(key.length)
+            : `${key.slice(0, 3)}…${key.slice(-4)}`;
     }
 }
 

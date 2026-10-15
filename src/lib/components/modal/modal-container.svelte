@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { modal } from "$lib/state/modal.svelte";
+    import { modal } from "#lib/state/modal.svelte.js";
     import Modal from "./modal.svelte";
 </script>
 

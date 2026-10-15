@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Checklist, type ChecklistItem } from "$lib/components/checklist";
-    import { Icon } from "$lib/components/icon";
-    import { Switch } from "$lib/components/toggle";
+    import { Button } from "#lib/components/button/index.js";
+    import { Checklist, type ChecklistItem } from "#lib/components/checklist/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
 
     const playgroundSeed: ChecklistItem[] = [
         { id: "solve-5", label: "Solve 5 problems", done: true },

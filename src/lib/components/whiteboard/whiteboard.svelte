@@ -21,11 +21,11 @@
 </script>
 
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
     import type { Attachment } from "svelte/attachments";
-    import { sceneBounds, type Pair, type Scene } from "$lib/asy/scene";
-    import type { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { Theme } from "$lib/utils/Theme.svelte";
+    import { sceneBounds, type Pair, type Scene } from "#lib/asy/scene/index.js";
+    import type { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
+    import { Theme } from "#lib/utils/Theme.svelte.js";
     import { themePalette } from "./palette";
     import {
         registerCanvasSnapshot,

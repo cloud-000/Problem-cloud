@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables } from "$lib/types/database.types";
+import type { Database, Tables } from "#lib/types/database.types.js";
 
 export type RoadmapGoalRow = Tables<"roadmap_goals">;
 export type RoadmapVoteRow = Tables<"roadmap_votes">;

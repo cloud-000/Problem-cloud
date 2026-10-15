@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import { setContext, getContext } from "svelte";
     import {
@@ -7,7 +7,7 @@
         MIN_SIDEBAR_WIDTH,
         MAX_SIDEBAR_WIDTH,
         SIDEBAR_WIDTH_STORAGE_KEY,
-    } from "$lib/sidebar-persistence";
+    } from "#lib/sidebar-persistence.js";
 
     export const SIDEBAR_CONTEXT_KEY = Symbol("sidebar");
 
@@ -40,7 +40,7 @@
 </script>
 
 <script lang="ts">
-    import { ResizablePanel, type PanelSize } from "$lib/components/resizable-panel";
+    import { ResizablePanel, type PanelSize } from "#lib/components/resizable-panel/index.js";
 
     let {
         ref = $bindable(null),

@@ -1,10 +1,10 @@
 import { fail, redirect } from "@sveltejs/kit";
-import { authFailureMessage, validateSignupFields } from "$lib/auth";
+import { authFailureMessage, validateSignupFields } from "#lib/auth.js";
 import {
     OAUTH_PROVIDER,
     oauthCallbackURL,
     redirectToOAuth,
-} from "$lib/server/oauth";
+} from "#lib/server/oauth.js";
 import type { Actions } from "./$types";
 
 export const actions: Actions = {

@@ -14,10 +14,10 @@
  * stay **baked**.
  */
 
-import type { Pair, Scene, SceneElement } from "$lib/asy/scene/types";
-import { positiveArcSweep } from "$lib/asy/scene/ellipse-geometry";
-import type { ToolCommit } from "$lib/asy/engine";
-import type { WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
+import type { Pair, Scene, SceneElement } from "#lib/asy/scene/types.js";
+import { positiveArcSweep } from "#lib/asy/scene/ellipse-geometry.js";
+import type { ToolCommit } from "#lib/asy/engine/index.js";
+import type { WhiteboardToolKind } from "#lib/whiteboard/style.svelte.js";
 import {
     addCoincidentConstraint,
     addDefaultRectangleConstraints,
@@ -32,7 +32,7 @@ import {
     pointFeaturePosition,
     type PointFeatureRef,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** The gesture-scoped inputs the lift needs beyond the Document itself. */
 export interface LiftContext {

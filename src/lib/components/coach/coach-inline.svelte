@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import type { AIChatQuickAction } from "$lib/components/ai-chat";
+    import type { AIChatQuickAction } from "#lib/components/ai-chat/index.js";
 
     export interface CoachInlineProps {
         quickActions?: readonly AIChatQuickAction[];
@@ -31,9 +31,9 @@
         AIChatEmptyState,
         AIChatMessageList,
         AIChatQuickActions,
-    } from "$lib/components/ai-chat";
-    import { coach } from "$lib/state/coach.svelte";
-    import { cn } from "$lib/utils";
+    } from "#lib/components/ai-chat/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { cn } from "#lib/utils.js";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
     import CoachDebugToggle from "./coach-debug-toggle.svelte";

@@ -18,7 +18,7 @@ import {
 } from "./fixtures";
 import { STORE } from "./schema";
 import type { PracticeQueryV1, OfflineSyncResponseV1 } from "./types";
-import { defaultPracticeSettings } from "$lib/trainer";
+import { defaultPracticeSettings } from "#lib/trainer.js";
 
 const USER = fixtureUuid("user-a");
 const OTHER_USER = fixtureUuid("user-b");

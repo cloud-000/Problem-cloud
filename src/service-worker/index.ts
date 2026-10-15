@@ -1,4 +1,5 @@
-/// <reference types="@sveltejs/kit" />
+/// <reference no-default-lib="true"/>
+/// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
 /**
@@ -27,10 +28,11 @@
  * lock on the same door.
  */
 
-import { build, files, prerendered, version } from "$service-worker";
-import { offlineNavigationAllowed } from "$lib/offline/presentations";
-
-declare const self: ServiceWorkerGlobalScope;
+import { self } from "$app/service-worker";
+import { version } from "$app/env";
+import { immutable, assets, prerendered } from "$app/manifest";
+import { resolve } from "$app/paths";
+import { offlineNavigationAllowed } from "#lib/offline/presentations.js";
 
 const CACHE = `pc-assets-${version}`;
 /** Media caches are owned by the repository; this worker only reads them. */
@@ -50,11 +52,13 @@ function shouldPrecache(path: string): boolean {
 }
 
 const PRECACHE = [
-    ...build,
-    ...files.filter(shouldPrecache),
-    ...prerendered.filter(
-        (path) => path === OFFLINE_DOCUMENT,
-    ),
+    ...immutable.map((entry) => resolve(entry.path)),
+    ...assets
+        .map((entry) => resolve(entry.path))
+        .filter(shouldPrecache),
+    ...prerendered
+        .map((entry) => resolve(entry.path))
+        .filter((path) => path === OFFLINE_DOCUMENT),
 ];
 
 self.addEventListener("install", (event) => {

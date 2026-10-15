@@ -1,12 +1,12 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Combobox, type Option } from "$lib/components/combobox";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { updateFocusedSeries, MAX_FOCUSED_SERIES } from "$lib/profile";
-    import { fetchAllSeries } from "$lib/library";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Combobox, type Option } from "#lib/components/combobox/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { updateFocusedSeries, MAX_FOCUSED_SERIES } from "#lib/profile.js";
+    import { fetchAllSeries } from "#lib/library.js";
 
     type Supabase = SupabaseClient<Database>;
 

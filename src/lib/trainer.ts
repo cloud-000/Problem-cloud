@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
+import type { Database } from "#lib/types/database.types.js";
 import {
     TESTS_EMBED,
     PROGRESS_SELECT,
@@ -7,11 +7,11 @@ import {
     CANONICAL_STATE_SELECT,
     normalizeEmbeds,
     type ProblemRow,
-} from "$lib/library";
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import type { Pacing } from "$lib/test-timing";
-import { hasComparableAnswer } from "$lib/problem-response";
-export type { ProblemProgress } from "$lib/progress";
+} from "#lib/library.js";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import type { Pacing } from "#lib/test-timing.js";
+import { hasComparableAnswer } from "#lib/problem-response.js";
+export type { ProblemProgress } from "#lib/progress.js";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -79,7 +79,7 @@ export type PracticeSettings = {
     // auto-finishes it in place — grading the entered answer (forced final, no
     // retries), else recording a skip — and reveals it; the user advances. Editable
     // mid-problem, so the countdown window rebases rather than expiring the problem
-    // retroactively (`rebaseCountdownBaseline`, `$lib/countdown`). `null`/absent =
+    // retroactively (`rebaseCountdownBaseline`, `#lib/countdown`). `null`/absent =
     // untimed (count-up). Optional so older snapshots are tolerated.
     perProblemSeconds?: number | null;
     // Adaptive difficulty. When on, every draw is constrained to problems whose

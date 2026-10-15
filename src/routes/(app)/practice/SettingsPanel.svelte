@@ -1,10 +1,10 @@
 <script lang="ts">
     import type { ComponentProps } from "svelte";
-    import type { Pacing } from "$lib/test-timing";
-    import { formatDuration } from "$lib/test-timing";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Switch } from "$lib/components/toggle";
+    import type { Pacing } from "#lib/test-timing.js";
+    import { formatDuration } from "#lib/test-timing.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
     import PracticeFilters from "./PracticeFilters.svelte";
 
     let {

@@ -1,18 +1,18 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import type { Engagement } from "$lib/progress";
-    import type { SeriesDimensionRow, SeriesYearSpan } from "$lib/series-review";
-    import { Button } from "$lib/components/button";
-    import { Combobox } from "$lib/components/combobox";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Select } from "$lib/components/select";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { Switch, TriStateSwitch } from "$lib/components/toggle";
+    import type { Database } from "#lib/types/database.types.js";
+    import type { Engagement } from "#lib/progress.js";
+    import type { SeriesDimensionRow, SeriesYearSpan } from "#lib/series-review.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { Switch, TriStateSwitch } from "#lib/components/toggle/index.js";
     import {
         MAX_HISTORY_COUNT, ADAPTIVE_RANGE_BOUNDS, RATING_RANGE,
-    } from "$lib/trainer";
+    } from "#lib/trainer.js";
     import Track from "./Track.svelte";
     import {
         COUNTER_RANGE, TRIES_RANGE, attemptPreset, setAttemptPreset,

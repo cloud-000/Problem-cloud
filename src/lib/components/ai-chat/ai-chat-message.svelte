@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import type { NormalizedAIMessage } from "$lib/ai/types";
+    import type { NormalizedAIMessage } from "#lib/ai/types.js";
 
     export interface AIChatMessageProps {
         message: NormalizedAIMessage;
@@ -14,10 +14,10 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { MathStatement } from "$lib/components/math-statement";
-    import { cn } from "$lib/utils";
-    import { completionNotice } from "$lib/ai/completion";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { cn } from "#lib/utils.js";
+    import { completionNotice } from "#lib/ai/completion.js";
     import AIChatReasoning from "./ai-chat-reasoning.svelte";
 
     let {

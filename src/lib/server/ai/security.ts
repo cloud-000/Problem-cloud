@@ -3,14 +3,14 @@ import type { RequestEvent } from "@sveltejs/kit";
 
 export async function requireAIUser(locals: App.Locals) {
     const { user } = await locals.safeGetSession();
-    if (!user) error(401, { message: "Authentication required" });
+    if (!user) error(401, "Authentication required");
     return user;
 }
 
 export function assertSameOrigin(request: Request, url: URL): void {
     const origin = request.headers.get("origin");
     if (!origin || origin !== url.origin) {
-        error(403, { message: "Invalid request origin" });
+        error(403, "Invalid request origin");
     }
 }
 
@@ -35,7 +35,7 @@ export function assertRateLimit(
         return;
     }
     current.count += 1;
-    if (current.count > limit) error(429, { message: "Too many AI requests" });
+    if (current.count > limit) error(429, "Too many AI requests");
 }
 
 export function stableError(

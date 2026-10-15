@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { cn } from "$lib/utils";
-    import { markGuestSeenAppShell } from "$lib/guest-app-shell";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { cn } from "#lib/utils.js";
+    import { markGuestSeenAppShell } from "#lib/guest-app-shell.js";
     import { prefersReducedMotion } from "svelte/motion";
     import WelcomeFilters from "./WelcomeFilters.svelte";
     import WelcomeTrainer from "./WelcomeTrainer.svelte";

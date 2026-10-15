@@ -1,15 +1,15 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { GoalProgress } from "$lib/components/goal-progress";
-    import { targetOf, type Goal, type GoalProgressData, type GoalProgressResult } from "$lib/goals";
-    import { cn } from "$lib/utils";
-    import { practiceActionLabel } from "$lib/goals/practice";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { GoalProgress } from "#lib/components/goal-progress/index.js";
+    import { targetOf, type Goal, type GoalProgressData, type GoalProgressResult } from "#lib/goals/index.js";
+    import { cn } from "#lib/utils.js";
+    import { practiceActionLabel } from "#lib/goals/practice.js";
     import {
         consequentialStatus,
         describeScope,
         type SeriesNames,
-    } from "$lib/goals/presentation";
+    } from "#lib/goals/presentation.js";
 
     let {
         goal,

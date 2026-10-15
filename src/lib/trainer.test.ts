@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import type { ProblemRow } from "$lib/library";
+import type { Database } from "#lib/types/database.types.js";
+import type { ProblemRow } from "#lib/library.js";
 import {
     fetchTestProblems,
     hasProblemNumberScope,
@@ -10,7 +10,7 @@ import {
     seriesScopeFilter,
     seriesScopeSelectAliases,
     type PracticeSettings,
-} from "$lib/trainer";
+} from "#lib/trainer.js";
 
 function testProblem(
     id: number,

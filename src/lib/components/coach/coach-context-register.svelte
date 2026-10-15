@@ -1,11 +1,11 @@
 <script lang="ts" module>
-    import type { CoachContextLayer } from "$lib/ai/types";
+    import type { CoachContextLayer } from "#lib/ai/types.js";
     export type CoachContextRegisterProps = CoachContextLayer;
 </script>
 
 <script lang="ts">
     import { untrack } from "svelte";
-    import { coach } from "$lib/state/coach.svelte";
+    import { coach } from "#lib/state/coach.svelte.js";
 
     let props: CoachContextRegisterProps = $props();
     // Surface context is live (Library filters/results and Progress ranges can

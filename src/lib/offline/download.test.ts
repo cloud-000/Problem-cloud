@@ -5,7 +5,7 @@ import { createMemoryStorage } from "./memory";
 import { createMemoryMediaStore } from "./media";
 import { OfflineRepository } from "./repository";
 import { fixtureUuid } from "./fixtures";
-import type { PracticeSessionRow } from "$lib/sessions";
+import type { PracticeSessionRow } from "#lib/sessions.js";
 
 const SESSION = {
     name: "Geometry",

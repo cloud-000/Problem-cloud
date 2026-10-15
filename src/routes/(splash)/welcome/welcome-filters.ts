@@ -4,7 +4,7 @@
  * an account; ids are numeric strings because Track fetches by number.
  */
 
-import type { SeriesDimensionRow, SeriesYearSpan } from "$lib/series-review";
+import type { SeriesDimensionRow, SeriesYearSpan } from "#lib/series-review.js";
 
 export const WELCOME_SERIES_OPTIONS = [
     { value: "1", label: "AMC 10" },

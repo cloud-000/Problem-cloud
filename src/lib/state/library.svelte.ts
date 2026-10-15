@@ -1,5 +1,5 @@
 import { untrack } from "svelte";
-import type { Filters, Level, SeriesRow, TestRow } from "$lib/library";
+import type { Filters, Level, SeriesRow, TestRow } from "#lib/library.js";
 
 /**
  * One entry in the navigation history. `context` holds the parent rows locked in by

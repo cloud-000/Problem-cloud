@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         Whiteboard,
         WhiteboardToolbar,
@@ -10,10 +10,10 @@
         downloadBlob,
         toPngBlob,
         toSvgString,
-    } from "$lib/components/whiteboard";
-    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import { hasWhiteboardInspector } from "$lib/components/whiteboard/control-policy";
-    import { acknowledgeWhiteboardPersist } from "$lib/onboarding";
+    } from "#lib/components/whiteboard/index.js";
+    import { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
+    import { hasWhiteboardInspector } from "#lib/components/whiteboard/control-policy.js";
+    import { acknowledgeWhiteboardPersist } from "#lib/onboarding/index.js";
 
     const PERSIST_KEY = "whiteboard:page";
 

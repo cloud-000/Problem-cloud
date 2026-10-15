@@ -6,7 +6,7 @@
  * module contains no model-facing string at all. That is the whole point: while context
  * was built as strings, each block's layout had to live wherever its char arithmetic
  * lived, which is what scattered composition across the renderer. A document can be
- * declared without knowing its budget, so shapes live with the words in `$lib/ai/prompt.ts`
+ * declared without knowing its budget, so shapes live with the words in `#lib/ai/prompt.ts`
  * and all the arithmetic collapses into the one algorithm below.
  *
  * It replaces three ad-hoc fitters that each did "shed items, then divide the remainder"

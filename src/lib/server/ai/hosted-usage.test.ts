@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { HOSTED_PROVIDER_ID } from "$lib/ai/types";
-import type { AIModelCatalog } from "$lib/ai/catalog";
+import { HOSTED_PROVIDER_ID } from "#lib/ai/types.js";
+import type { AIModelCatalog } from "#lib/ai/catalog.js";
 import {
     creditsFromUsage,
     hostedPeriodStart,

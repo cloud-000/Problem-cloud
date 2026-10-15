@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLButtonAttributes } from "svelte/elements";
     import { useSubtabs } from "./subtabs.svelte";
-    import { Icon } from "$lib/components/icon/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     export type SubtabsTriggerProps = WithElementRef<HTMLButtonAttributes> & {
         value: string;

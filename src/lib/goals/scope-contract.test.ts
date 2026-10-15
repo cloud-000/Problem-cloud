@@ -17,8 +17,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import { applySeriesScopeFilter, seriesScopeSelectAliases, type PracticeSettings } from "$lib/trainer";
+import type { Database } from "#lib/types/database.types.js";
+import { applySeriesScopeFilter, seriesScopeSelectAliases, type PracticeSettings } from "#lib/trainer.js";
 import type { GoalScope } from "./types";
 
 // Web APIs and the three bun:test exports only: `@types/bun` is not installed,

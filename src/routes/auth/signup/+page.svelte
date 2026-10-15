@@ -1,9 +1,9 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { AUTH_MAIL_FROM } from "$lib/auth";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
+    import { AUTH_MAIL_FROM } from "#lib/auth.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
     import { getAuthForm } from "../form-state";
     import type { ActionData } from "./$types";
 
@@ -42,7 +42,12 @@
             </p>
         </div>
         <p class="type-secondary text-muted-foreground">
-            Already confirmed? <a href={resolve("/auth/login")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Log in</a>
+            Already confirmed? 
+
+            <a
+                href={resolve('auth/login')}
+                class="font-medium text-primary-foreground underline-offset-4 hover:underline"
+            >Log in</a>
         </p>
     </section>
 {:else}
@@ -133,6 +138,11 @@
     </Button>
 
     <p class="type-secondary text-muted-foreground">
-        Already have an account? <a href={resolve("/auth/login")} class="font-medium text-primary-foreground underline-offset-4 hover:underline">Log in</a>
+        Already have an account? 
+
+        <a
+            href={resolve('auth/login')}
+            class="font-medium text-primary-foreground underline-offset-4 hover:underline"
+        >Log in</a>
     </p>
 {/if}

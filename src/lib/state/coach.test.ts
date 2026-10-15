@@ -9,6 +9,12 @@ const state = Object.assign(<T>(value: T): T => value, {
 });
 Object.assign(globalThis, { $state: state });
 
+mock.module("$app/env", () => ({
+    browser: false,
+    dev: false,
+    building: false,
+    version: "test",
+}));
 mock.module("$app/environment", () => ({
     browser: false,
     dev: false,
@@ -48,7 +54,7 @@ let streamGate: PromiseWithResolvers<void> | null = null;
 /** Reasoning chunks the mock stream emits before its answer delta. */
 let streamReasoning: string[] = [];
 let streamFinishReason: "stop" | "length" | "other" = "stop";
-mock.module("$lib/ai/providers/client-registry", () => ({
+mock.module("#lib/ai/providers/client-registry.js", () => ({
     clientProviderRegistry: () => [],
     clientProviderById: () => ({
         id: "byok",
@@ -188,7 +194,7 @@ globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => 
     return new Response("{}", { headers: { "content-type": "application/json" } });
 }) as unknown as typeof fetch;
 
-const { problemContextLayer } = await import("$lib/ai/context/surfaces");
+const { problemContextLayer } = await import("#lib/ai/context/surfaces.js");
 const { coach } = await import("./coach.svelte");
 const { settings } = await import("./settings.svelte");
 const { utilityPanel } = await import("./utility-panel.svelte");

@@ -1,4 +1,4 @@
-import { HOSTED_PROVIDER_ID, type AIPresetId } from "$lib/ai/types";
+import { HOSTED_PROVIDER_ID, type AIPresetId } from "#lib/ai/types.js";
 
 /**
  * What the first-party hosted Coach actually serves. Edit this file to change

@@ -22,7 +22,7 @@
  * consumer that would read it, is out of v1 for exactly that reason.
  */
 
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
 import type { LocalSubmissionV1 } from "./types";
 
 /** A pending mastery/engagement change, newest intent per axis. */

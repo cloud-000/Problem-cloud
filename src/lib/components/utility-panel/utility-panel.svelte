@@ -9,9 +9,9 @@
     import { MediaQuery } from "svelte/reactivity";
     import { fade } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
-    import { cn } from "$lib/utils";
-    import { utilityPanel } from "$lib/state/utility-panel.svelte";
-    import { ResizablePanel, type PanelSize } from "$lib/components/resizable-panel";
+    import { cn } from "#lib/utils.js";
+    import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
+    import { ResizablePanel, type PanelSize } from "#lib/components/resizable-panel/index.js";
 
     const DEFAULT_WIDTH = { default: 400, min: 320, max: Number.POSITIVE_INFINITY };
     const DEFAULT_MOBILE_HEIGHT = { defaultRatio: 0.5, minRatio: 0.35, maxRatio: 0.9 };

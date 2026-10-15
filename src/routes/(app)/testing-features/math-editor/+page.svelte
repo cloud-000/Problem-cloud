@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { MathEditor } from "$lib/components/math-editor";
-    import { Icon } from "$lib/components/icon";
+    import { MathEditor } from "#lib/components/math-editor/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     // Playground state initialized with some text and delimiters
     let text = $state(

@@ -1,5 +1,5 @@
 /**
- * Phase two: the only file in `$lib/goals` that talks to Supabase.
+ * Phase two: the only file in `#lib/goals/index.js` that talks to Supabase.
  *
  * Each family maps to one `security invoker` RPC taking an array of requests
  * and returning one row per request, so a goals list of any size costs at most
@@ -8,7 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Json } from "$lib/types/database.types";
+import type { Database, Json } from "#lib/types/database.types.js";
 import { newlyAchieved, requestedFamilies } from "./plan";
 import type { GoalFamilyResults, GoalRequestPlan } from "./plan";
 import { targetOf, validateTarget } from "./registry";

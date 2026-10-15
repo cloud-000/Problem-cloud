@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { MathStatement } from "$lib/components/math-statement";
-    import { Icon } from "$lib/components/icon";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     // Playground state
     let playgroundText = $state(

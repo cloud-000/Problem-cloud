@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
-    import { modal } from "$lib/state/modal.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
 
     let username = $state("");
     let email = $state("");

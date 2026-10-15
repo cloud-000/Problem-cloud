@@ -1,10 +1,10 @@
-import type { ProblemRow } from "$lib/library";
+import type { ProblemRow } from "#lib/library.js";
 import type {
     PracticeAttempt,
     PracticeSource as TrainerPracticeSource,
     ProblemProgress,
-} from "$lib/trainer";
-import type { SessionHistoryEntry } from "$lib/sessions";
+} from "#lib/trainer.js";
+import type { SessionHistoryEntry } from "#lib/sessions.js";
 
 export type PracticeSource = TrainerPracticeSource | "test";
 
@@ -16,7 +16,7 @@ export type PracticeAnswerState = {
     flagged: boolean;
     elapsedMs: number;
     // Timed practice: the `elapsedMs` value the active per-problem limit started
-    // counting down from (see `rebaseCountdownBaseline`, `$lib/countdown`). Zero
+    // counting down from (see `rebaseCountdownBaseline`, `#lib/countdown.js`). Zero
     // unless the limit was retuned mid-problem; carried here so back/forward
     // navigation doesn't hand the problem back a countdown it already spent.
     limitBaselineMs: number;

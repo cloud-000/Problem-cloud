@@ -1,5 +1,5 @@
 import type { RequestHandler } from "./$types";
-import { AISchemaError, parseChatRequest } from "$lib/ai/schemas";
+import { AISchemaError, parseChatRequest } from "#lib/ai/schemas.js";
 import {
     HOSTED_PROVIDER_ID,
     type AIEphemeralMessage,
@@ -7,11 +7,11 @@ import {
     type AIFinishReason,
     type NormalizedAIEvent,
     type NormalizedAIMessage,
-} from "$lib/ai/types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { hostedLimits } from "$lib/server/ai/hosted-plan";
-import { catalogFor } from "$lib/ai/catalog";
-import { AIModelRoutingError, resolveModel } from "$lib/ai/router";
+} from "#lib/ai/types.js";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { hostedLimits } from "#lib/server/ai/hosted-plan.js";
+import { catalogFor } from "#lib/ai/catalog.js";
+import { AIModelRoutingError, resolveModel } from "#lib/ai/router.js";
 import {
     AIWorkAnchorConflict,
     conversationHistory,
@@ -20,17 +20,17 @@ import {
     resolveTurnContext,
     saveAssistantMessage,
     saveUserMessage,
-} from "$lib/server/ai/persistence";
-import { AIContextResolutionError } from "$lib/ai/context/resolve";
-import { providerRegistry } from "$lib/server/ai/providers/registry";
+} from "#lib/server/ai/persistence.js";
+import { AIContextResolutionError } from "#lib/ai/context/resolve.js";
+import { providerRegistry } from "#lib/server/ai/providers/registry.js";
 import {
     addAiHostedCredits,
     creditsFromUsage,
     HOSTED_QUOTA_MESSAGE,
     reserveAiHostedTurn,
-} from "$lib/server/ai/hosted-usage";
-import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
-import { encodeEventStream } from "$lib/server/ai/stream";
+} from "#lib/server/ai/hosted-usage.js";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "#lib/server/ai/security.js";
+import { encodeEventStream } from "#lib/server/ai/stream.js";
 
 /** Converts already-validated ephemeral turns into the normalized provider shape. */
 function ephemeralMessages(history: AIEphemeralMessage[] = []): NormalizedAIMessage[] {

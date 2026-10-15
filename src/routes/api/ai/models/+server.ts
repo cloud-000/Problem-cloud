@@ -1,10 +1,10 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { catalogFor } from "$lib/ai/catalog";
-import { providerRegistry } from "$lib/server/ai/providers/registry";
-import { catalogWithHostedQuota } from "$lib/server/ai/hosted-usage";
-import { assertRateLimit, requireAIUser, stableError } from "$lib/server/ai/security";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { catalogFor } from "#lib/ai/catalog.js";
+import { providerRegistry } from "#lib/server/ai/providers/registry.js";
+import { catalogWithHostedQuota } from "#lib/server/ai/hosted-usage.js";
+import { assertRateLimit, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 /** The server-owned model catalog. BYOK models are discovered in the browser instead. */
 export const GET: RequestHandler = async ({ locals }) => {

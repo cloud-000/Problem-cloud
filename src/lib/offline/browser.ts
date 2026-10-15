@@ -11,7 +11,7 @@
  * created, never as a crash halfway through a download.
  */
 
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { createIdbStorage, indexedDBAvailable, openOfflineDatabase } from "./idb";
 import { cacheStorageAvailable, createCacheStorageMediaStore } from "./media";
 import { OfflineRepository } from "./repository";

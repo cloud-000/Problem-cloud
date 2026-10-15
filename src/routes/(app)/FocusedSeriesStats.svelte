@@ -1,9 +1,9 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { BreakdownRow } from "$lib/components/breakdown-row";
-    import { Icon } from "$lib/components/icon";
-    import type { ProblemStateSummary } from "$lib/progress";
+    import { Button } from "#lib/components/button/index.js";
+    import { BreakdownRow } from "#lib/components/breakdown-row/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { ProblemStateSummary } from "#lib/progress.js";
 
     type Entry = {
         seriesId: number;
@@ -24,7 +24,7 @@
     }
 
     function matrixHref(seriesId: number) {
-        return `${resolve("/progress")}?view=matrix&series=${seriesId}`;
+        return `${resolve('progress')}?view=matrix&series=${seriesId}`;
     }
 </script>
 

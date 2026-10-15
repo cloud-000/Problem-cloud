@@ -1,5 +1,5 @@
-import type { Pair } from "$lib/asy/scene";
-import type { FeatureRef, WhiteboardDocument } from "$lib/whiteboard/model";
+import type { Pair } from "#lib/asy/scene/index.js";
+import type { FeatureRef, WhiteboardDocument } from "#lib/whiteboard/model/index.js";
 
 export type ToolbarPosition = { left: number; top: number };
 export type ToolbarSide = "top" | "bottom" | "right" | "left";

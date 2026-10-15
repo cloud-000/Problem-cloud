@@ -18,7 +18,7 @@
  */
 
 import { normalizeAssetUrl } from "./checksum";
-import { resolveImageSrc } from "$lib/utils/math-parser";
+import { resolveImageSrc } from "#lib/utils/math-parser.js";
 import type { OfflineAssetV1 } from "./types";
 import type { OfflineProblemV1 } from "./types";
 

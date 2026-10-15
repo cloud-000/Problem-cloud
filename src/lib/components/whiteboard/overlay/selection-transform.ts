@@ -21,7 +21,7 @@ import {
     type Pair,
     type PathElement,
     type SceneElement,
-} from "$lib/asy/scene";
+} from "#lib/asy/scene/index.js";
 import type { ScreenRect } from "../render";
 import type {
     OverlayInput,

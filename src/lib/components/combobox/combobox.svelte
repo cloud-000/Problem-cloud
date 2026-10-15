@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
     import type { Snippet } from "svelte";
     import { tv } from "tailwind-variants";
@@ -70,8 +70,8 @@
         defaultDupKey,
         shouldCloseOnFocusOut,
     } from "./combobox.js";
-    import { Button } from "$lib/components/button/index.js";
-    import { Icon } from "$lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let {
         ref = $bindable(null),

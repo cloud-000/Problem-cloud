@@ -8,7 +8,7 @@ import { CONTEXT_POLICIES } from "../src/lib/ai/context/policy";
 import type { ResolvedFact } from "../src/lib/ai/context/facts";
 
 /**
- * `$lib/ai/prompt.ts` is the only module allowed to contain model-facing markers.
+ * `#lib/ai/prompt.ts` is the only module allowed to contain model-facing markers.
  *
  * Before this was enforced, structural labels had drifted into three shapes across three
  * files and elision markers were spelled exactly like tags, so nothing in the codebase

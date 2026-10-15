@@ -9,7 +9,7 @@
  * model; no method reads or reconciles a Scene (INVARIANTS §0 and §4).
  */
 
-import type { Pair } from "$lib/asy/scene/types";
+import type { Pair } from "#lib/asy/scene/types.js";
 import {
     addCoincidentConstraint,
     addLengthDimension,
@@ -32,7 +32,7 @@ import {
     type PointFeatureRef,
     type RelationKind,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 export interface ConstraintHost {
     readonly document: WhiteboardDocument;

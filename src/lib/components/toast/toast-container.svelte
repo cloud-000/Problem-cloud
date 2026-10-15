@@ -1,7 +1,7 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
-    import type { Toast as ToastData } from "$lib/state/toast.svelte";
+    import type { Toast as ToastData } from "#lib/state/toast.svelte.js";
 
     export type ToastContainerProps = WithElementRef<
         HTMLAttributes<HTMLDivElement>
@@ -13,7 +13,7 @@
 
 <script lang="ts">
     import Toast from "./toast.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
+    import { toasts } from "#lib/state/toast.svelte.js";
     import { fly } from "svelte/transition";
     import { flip } from "svelte/animate";
     import { cubicOut } from "svelte/easing";

@@ -1,7 +1,7 @@
 import {
     createOfflineTrainerDataSource,
     type TrainerDataSource,
-} from "$lib/trainer-data-source";
+} from "#lib/trainer-data-source.js";
 import type { OfflineRepository } from "./repository";
 import type { OfflinePackageManifestV1 } from "./types";
 

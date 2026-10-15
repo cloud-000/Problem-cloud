@@ -1,4 +1,4 @@
-import type { Bounds, Pair } from "$lib/asy/scene";
+import type { Bounds, Pair } from "#lib/asy/scene/index.js";
 import { projectPoint, type WhiteboardViewport } from "./render";
 
 /** Pixels per scene unit at 100% zoom. */

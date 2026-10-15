@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
-    import { Graph } from "$lib/components/graph";
+    import { Graph } from "#lib/components/graph/index.js";
 
     /** One point on the climb: a rated match's post-match rating (+ uncertainty). */
     export type RatingPoint = { at: string; rating: number; rd: number };

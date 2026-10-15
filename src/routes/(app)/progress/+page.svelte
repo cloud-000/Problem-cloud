@@ -3,12 +3,12 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Combobox } from "$lib/components/combobox";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { Select } from "$lib/components/select";
-    import { Skeleton } from "$lib/components/skeleton";
+    import { Button } from "#lib/components/button/index.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
     import {
         fetchProgressBreakdown,
         rankWeaknesses,
@@ -16,9 +16,9 @@
         firstAccuracy,
         avgTimeMs,
         type BreakdownRow as TopicStat,
-    } from "$lib/progress-analytics";
-    import { startSession } from "$lib/sessions";
-    import { defaultPracticeSettings, defaultReviewSettings } from "$lib/trainer";
+    } from "#lib/progress-analytics.js";
+    import { startSession } from "#lib/sessions.js";
+    import { defaultPracticeSettings, defaultReviewSettings } from "#lib/trainer.js";
     import {
         topicLabel as topicName,
         fetchAllSeries,
@@ -26,15 +26,15 @@
         RATING_PROVISIONAL_RD,
         type ProblemRow,
         type PlayerRatingPoint,
-    } from "$lib/library";
-    import { RatingChart } from "$lib/components/rating-chart";
+    } from "#lib/library.js";
+    import { RatingChart } from "#lib/components/rating-chart/index.js";
     import SeriesReviewPanel from "./SeriesReviewPanel.svelte";
     import ProgressNav, { type ProgressView } from "./ProgressNav.svelte";
     import {
         fetchDueReviews,
         fetchProblemStateSummary,
         type ProblemStateSummary,
-    } from "$lib/progress";
+    } from "#lib/progress.js";
     import {
         CONTEXTUAL_TIP,
         acknowledgeTip,
@@ -44,7 +44,7 @@
         fetchOnboarding,
         shouldShowTip,
         type OnboardingState,
-    } from "$lib/onboarding";
+    } from "#lib/onboarding/index.js";
     import ContextualTip from "../ContextualTip.svelte";
 
     let { data }: { data: PageData } = $props();
@@ -256,7 +256,7 @@
     );
     let latestRating = $derived(
         visibleHistory.length > 0
-            ? visibleHistory[visibleHistory.length - 1].rating
+        ? visibleHistory[visibleHistory.length - 1].rating
             : null,
     );
 
@@ -277,16 +277,11 @@
         if (!user || drilling) return;
         drilling = topicKey;
         try {
-            const settings = {
-                ...defaultPracticeSettings(),
-                topic: [topicKey],
-            };
-            const session = await startSession(supabase, user.id, {
-                name: `Drill: ${topicLabel(topicKey)}`,
-                settings,
-            });
-            await goto(resolve(`/practice?session=${session.id}`));
-        } catch (e) {
+            const settings = { ...defaultPracticeSettings(), topic: [topicKey] };
+            const session = await startSession(supabase, user.id, { name: `Drill: ${topicLabel(topicKey)}`, settings });
+
+            await goto(resolve(`practice?session=${session.id}`));
+        } catch(e) {
             errorMsg = (e as Error).message || "Failed to start drill";
             drilling = null;
         }
@@ -302,12 +297,10 @@
         startingReview = true;
         try {
             const settings = defaultReviewSettings();
-            const session = await startSession(supabase, user.id, {
-                name: "Review",
-                settings,
-            });
-            await goto(resolve(`/practice?session=${session.id}`));
-        } catch (error) {
+            const session = await startSession(supabase, user.id, { name: "Review", settings });
+
+            await goto(resolve(`practice?session=${session.id}`));
+        } catch(error) {
             dueError = (error as Error).message || "Failed to start review";
             startingReview = false;
         }
@@ -341,9 +334,7 @@
             <Button href="/auth/login">Log in</Button>
         </div>
     {:else if activeView === "matrix"}
-        <div class="2xl:-mx-[120px] 2xl:w-[calc(100%+240px)]">
-            <SeriesReviewPanel {supabase} />
-        </div>
+        <div class="2xl:-mx-[120px] 2xl:w-[calc(100%+240px)]"><SeriesReviewPanel supabase={supabase} /></div>
     {:else if activeView === "review"}
         <Page.Section
             title="Review"
@@ -418,7 +409,7 @@
                                         : "—"}
                                 </span>
                                 <Button
-                                    href={resolve(`/library?search=${problem.id}`)}
+                                    href={resolve(`library?search=${problem.id}`)}
                                     variant="outline"
                                     size="sm"
                                 >
@@ -525,200 +516,203 @@
             </div>
         {:else}
             <div class="space-y-8 animate-fade-in">
-            <section
-                class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                aria-labelledby="next-step-heading"
-            >
-                <div>
-                    <p class="type-caption text-muted-foreground">Recommended next step</p>
+                <section
+                    class="grid gap-6 border-b border-border pb-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    aria-labelledby="next-step-heading"
+                >
+                    <div>
+                        <p class="type-caption text-muted-foreground">Recommended next step</p>
                     <h2 id="next-step-heading" class="mt-1 type-section-title text-foreground">
-                        {#if stateSummary?.review_due}
+                            {#if stateSummary?.review_due}
                             Review {stateSummary.review_due}
                             {stateSummary.review_due === 1 ? "problem" : "problems"} due now
-                        {:else if weaknesses[0]}
-                            Practice {topicLabel(weaknesses[0].bucket_label)}
-                        {:else}
-                            Continue building your progress
-                        {/if}
-                    </h2>
-                    <p class="mt-1 type-secondary text-muted-foreground">
-                        {#if weaknesses[0]}
-                            Start with {topicLabel(weaknesses[0].bucket_label)}—the clearest opportunity in this range.
-                        {:else}
-                            Another focused session will make your next recommendation more precise.
-                        {/if}
-                    </p>
-                </div>
-                <div class="sm:text-right">
+                            {:else if weaknesses[0]}
+                                Practice {topicLabel(weaknesses[0].bucket_label)}
+                            {:else}
+                                Continue building your progress
+                            {/if}
+                        </h2>
+                        <p class="mt-1 type-secondary text-muted-foreground">
+                            {#if weaknesses[0]}
+                                Start with {topicLabel(weaknesses[0].bucket_label)}—the clearest opportunity in this range.
+                            {:else}
+                                Another focused session will make your next recommendation more precise.
+                            {/if}
+                        </p>
+                    </div>
+                    <div class="sm:text-right">
                     <div class="type-display font-mono tabular-nums text-foreground">
                         {stateSummary?.review_due ?? 0}
                     </div>
-                    <a
-                        href={resolve("/progress?view=review")}
-                        class="type-caption text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
-                    >review due</a>
-                </div>
-            </section>
-
-            <div class="grid gap-10 lg:grid-cols-[1.08fr_0.92fr]">
-                <Page.Section title="Focus areas">
-                    {#snippet actions()}
                         <a
-                            href={resolve("/progress?view=review")}
-                            class="type-secondary text-foreground underline decoration-border underline-offset-4"
-                        >Open review</a>
-                    {/snippet}
-                    <div class="border-t border-border">
-                        {#each weaknesses.slice(0, 3) as topic (topic.bucket_key)}
-                            <div class="border-b border-border py-4">
-                                <div class="flex items-baseline justify-between gap-4">
-                                    <div>
+                            href={resolve('progress?view=review')}
+                            class="type-caption text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
+                        >review due</a>
+                    </div>
+                </section>
+
+                <div class="grid gap-10 lg:grid-cols-[1.08fr_0.92fr]">
+                    <Page.Section title="Focus areas">
+                        {#snippet actions()}
+                            <a
+                                href={resolve('progress?view=review')}
+                                class="type-secondary text-foreground underline decoration-border underline-offset-4"
+                            >Open review</a>
+                        {/snippet}
+                        <div class="border-t border-border">
+                            {#each weaknesses.slice(0, 3) as topic (topic.bucket_key)}
+                                <div class="border-b border-border py-4">
+                                    <div class="flex items-baseline justify-between gap-4">
+                                        <div>
                                         <h3 class="type-body text-foreground">
                                             {topicLabel(topic.bucket_label)}
                                         </h3>
                                         <p class="type-caption text-muted-foreground">
                                             {subFor(topic)}
                                         </p>
-                                    </div>
+                                        </div>
                                     <span class="type-code text-foreground">
                                         {pct(firstAccuracy(topic))}
                                     </span>
-                                </div>
-                                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                                    </div>
+
                                     <div
-                                        class="h-full rounded-full bg-primary"
-                                        style:width={`${Math.round((firstAccuracy(topic) ?? 0) * 100)}%`}
-                                    ></div>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onclick={() => drill(topic.bucket_key)}
-                                    disabled={drilling === topic.bucket_key}
-                                    class="mt-2 -ml-2"
+                                        class="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+                                    >
+                                        <div
+                                            class="h-full rounded-full bg-primary"
+                                            style:width={`${Math.round((firstAccuracy(topic) ?? 0) * 100)}%`}
+                                        ></div>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onclick={() => drill(topic.bucket_key)}
+                                        disabled={drilling === topic.bucket_key}
+                                        class="mt-2 -ml-2"
                                 >
                                     {drilling === topic.bucket_key ? "Starting…" : "Practice topic"}
                                 </Button>
-                            </div>
-                        {/each}
-                    </div>
-                </Page.Section>
+                                </div>
+                            {/each}
+                        </div>
+                    </Page.Section>
 
-                <Page.Section title="Rating">
-                    {#snippet actions()}
-                        <span class="type-code text-foreground">
-                            {latestRating == null ? "—" : Math.round(latestRating)}
-                            {#if ratingDelta != null && ratingDelta !== 0}
+                    <Page.Section title="Rating">
+                        {#snippet actions()}
+                            <span class="type-code text-foreground">
+                                {latestRating == null ? "—" : Math.round(latestRating)} 
+                                {#if ratingDelta != null && ratingDelta !== 0}
                                 <span class={ratingDelta > 0 ? "text-correct" : "text-destructive"}>
                                     {ratingDelta > 0 ? "+" : ""}{Math.round(ratingDelta)}
                                 </span>
-                            {/if}
-                        </span>
-                    {/snippet}
-                    {#if visibleHistory.length > 0}
-                        <RatingChart
-                            points={visibleHistory}
-                            color="var(--color-primary-foreground)"
-                            bandColor="var(--color-primary)"
-                            bandOpacity={0.5}
-                        />
-                        {#if ratingProvisional}
+                                {/if}
+                            </span>
+                        {/snippet}
+                        {#if visibleHistory.length > 0}
+                            <RatingChart
+                                points={visibleHistory}
+                                color="var(--color-primary-foreground)"
+                                bandColor="var(--color-primary)"
+                                bandOpacity={0.5}
+                            />
+                            {#if ratingProvisional}
                             <p class="type-caption text-muted-foreground">
                                 Provisional while rating deviation remains high.
                             </p>
-                        {/if}
-                    {:else}
+                            {/if}
+                        {:else}
                         <p class="py-10 type-secondary text-muted-foreground">
                             No rated matches in this range.
                         </p>
-                    {/if}
-                </Page.Section>
-            </div>
+                        {/if}
+                    </Page.Section>
+                </div>
 
             <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
-                <div class="py-4 pr-4">
-                    <div class="type-code text-foreground">{totals.distinct}</div>
-                    <div class="type-caption text-muted-foreground">problems</div>
-                </div>
-                <div class="border-l border-border py-4 pl-4 md:px-5">
-                    <div class="type-code text-foreground">{pct(overallFirst)}</div>
-                    <div class="type-caption text-muted-foreground">first try</div>
-                </div>
-                <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
-                    <div class="type-code text-foreground">{pct(overallAcc)}</div>
-                    <div class="type-caption text-muted-foreground">eventual</div>
-                </div>
-                <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
-                    <div class="type-code text-foreground">{fmtTime(overallAvg)}</div>
-                    <div class="type-caption text-muted-foreground">average time</div>
-                </div>
-            </div>
-
-            {#if stateSummary}
-                <Page.Section
-                    title="Problem state"
-                >
-                    <div class="grid grid-cols-2 border-y border-border md:grid-cols-4">
-                        <div class="py-4 pr-4">
-                            <div class="type-code text-foreground">{stateSummary.unassessed}</div>
-                            <div class="type-caption text-muted-foreground">unassessed</div>
-                        </div>
-                        <div class="border-l border-border py-4 pl-4 md:px-5">
-                            <div class="type-code text-destructive">{stateSummary.needs_work}</div>
-                            <div class="type-caption text-muted-foreground">needs work</div>
-                        </div>
-                        <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
-                            <div class="type-code text-unsure">{stateSummary.learning}</div>
-                            <div class="type-caption text-muted-foreground">learning</div>
-                        </div>
-                        <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
-                            <div class="type-code text-correct">{stateSummary.confident}</div>
-                            <div class="type-caption text-muted-foreground">confident</div>
-                        </div>
+                    <div class="py-4 pr-4">
+                        <div class="type-code text-foreground">{totals.distinct}</div>
+                        <div class="type-caption text-muted-foreground">problems</div>
                     </div>
-                    <p class="type-secondary text-muted-foreground">
+                    <div class="border-l border-border py-4 pl-4 md:px-5">
+                        <div class="type-code text-foreground">{pct(overallFirst)}</div>
+                        <div class="type-caption text-muted-foreground">first try</div>
+                    </div>
+                <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
+                        <div class="type-code text-foreground">{pct(overallAcc)}</div>
+                        <div class="type-caption text-muted-foreground">eventual</div>
+                    </div>
+                <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
+                        <div class="type-code text-foreground">{fmtTime(overallAvg)}</div>
+                        <div class="type-caption text-muted-foreground">average time</div>
+                    </div>
+                </div>
+
+                {#if stateSummary}
+                    <Page.Section title="Problem state">
+                        <div
+                            class="grid grid-cols-2 border-y border-border md:grid-cols-4"
+                        >
+                            <div class="py-4 pr-4">
+                                <div class="type-code text-foreground">{stateSummary.unassessed}</div>
+                                <div class="type-caption text-muted-foreground">unassessed</div>
+                            </div>
+                            <div class="border-l border-border py-4 pl-4 md:px-5">
+                                <div class="type-code text-destructive">{stateSummary.needs_work}</div>
+                                <div class="type-caption text-muted-foreground">needs work</div>
+                            </div>
+                        <div class="border-t border-border py-4 pr-4 md:border-l md:border-t-0 md:px-5">
+                                <div class="type-code text-unsure">{stateSummary.learning}</div>
+                                <div class="type-caption text-muted-foreground">learning</div>
+                            </div>
+                        <div class="border-l border-t border-border py-4 pl-4 md:border-t-0 md:pl-5">
+                                <div class="type-code text-correct">{stateSummary.confident}</div>
+                                <div class="type-caption text-muted-foreground">confident</div>
+                            </div>
+                        </div>
+                        <p class="type-secondary text-muted-foreground">
                         Working on <span class="text-foreground">{stateSummary.working}</span>
                         · Revisit <span class="text-foreground">{stateSummary.revisit}</span>
                         · Later <span class="text-foreground">{stateSummary.later}</span>
                         · Ignored <span class="text-foreground">{stateSummary.ignored}</span>
-                    </p>
-                </Page.Section>
-            {/if}
+                        </p>
+                    </Page.Section>
+                {/if}
 
             <Page.Section
                 title="By topic"
             >
-                <div class="border-t border-border">
-                    {#each topicRows as topic (topic.bucket_key)}
-                        <div
-                            class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-6"
-                        >
-                            <div class="min-w-0">
+                    <div class="border-t border-border">
+                        {#each topicRows as topic (topic.bucket_key)}
+                            <div
+                                class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-6"
+                            >
+                                <div class="min-w-0">
                                 <h3 class="type-body text-foreground">
                                     {topicLabel(topic.bucket_label)}
                                 </h3>
-                                <p class="type-caption text-muted-foreground">{subFor(topic)}</p>
-                            </div>
-                            <div>
-                                <div class="type-code text-foreground">{pct(firstAccuracy(topic))}</div>
-                                <div class="type-caption text-muted-foreground">first try</div>
-                            </div>
-                            <div>
-                                <div class="type-code text-foreground">{pct(accuracy(topic))}</div>
-                                <div class="type-caption text-muted-foreground">eventual</div>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onclick={() => drill(topic.bucket_key)}
-                                disabled={drilling === topic.bucket_key}
+                                    <p class="type-caption text-muted-foreground">{subFor(topic)}</p>
+                                </div>
+                                <div>
+                                    <div class="type-code text-foreground">{pct(firstAccuracy(topic))}</div>
+                                    <div class="type-caption text-muted-foreground">first try</div>
+                                </div>
+                                <div>
+                                    <div class="type-code text-foreground">{pct(accuracy(topic))}</div>
+                                    <div class="type-caption text-muted-foreground">eventual</div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onclick={() => drill(topic.bucket_key)}
+                                    disabled={drilling === topic.bucket_key}
                             >
                                 Practice
                             </Button>
-                        </div>
-                    {/each}
-                </div>
-            </Page.Section>
+                            </div>
+                        {/each}
+                    </div>
+                </Page.Section>
             </div>
         {/if}
     {/if}

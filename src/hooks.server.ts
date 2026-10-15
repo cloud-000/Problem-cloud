@@ -1,12 +1,9 @@
+import { redirect } from "@sveltejs/kit";
 import { createServerClient } from "@supabase/ssr";
 import type { Session, User } from "@supabase/supabase-js";
-import { type Handle, redirect } from "@sveltejs/kit";
-import { sequence } from "@sveltejs/kit/hooks";
-import {
-    PUBLIC_SUPABASE_URL,
-    PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-} from "$env/static/public";
-import type { Database } from "$lib/types/database.types";
+import { sequence, type Handle } from "@sveltejs/kit/hooks";
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY } from "$app/env/public";
+import type { Database } from "#lib/types/database.types.js";
 
 const supabase: Handle = async ({ event, resolve }) => {
     event.locals.supabase = createServerClient<Database>(
@@ -76,10 +73,8 @@ const supabase: Handle = async ({ event, resolve }) => {
 
     return resolve(event, {
         filterSerializedResponseHeaders(name) {
-            return (
-                name === "content-range" || name === "x-supabase-api-version"
-            );
-        },
+            return name === "content-range" || name === "x-supabase-api-version";
+        }
     });
 };
 

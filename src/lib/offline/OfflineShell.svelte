@@ -1,32 +1,28 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { dev } from "$app/environment";
-    import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { modal } from "$lib/state/modal.svelte";
+    import { dev } from '$app/env';
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
     import { createBrowserClient } from "@supabase/ssr";
-    import {
-        PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-        PUBLIC_SUPABASE_URL,
-    } from "$env/static/public";
+    import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from '$app/env/public';
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { offlineRepository, offlineSupport } from "$lib/offline/browser";
-    import { fetchAllSeries, topicLabel } from "$lib/library";
-    import type { OfflinePackageManifestV1 } from "$lib/offline/types";
+    import type { Database } from "#lib/types/database.types.js";
+    import { offlineRepository, offlineSupport } from "#lib/offline/browser.js";
+    import { fetchAllSeries, topicLabel } from "#lib/library.js";
+    import type { OfflinePackageManifestV1 } from "#lib/offline/types.js";
     import {
         downloadFailureMessage,
         downloadOfflinePackage,
         type DownloadProgress,
-    } from "$lib/offline/download";
-    import { checkoutAction } from "$lib/offline/network";
+    } from "#lib/offline/download.js";
+    import { checkoutAction } from "#lib/offline/network.js";
     import {
         DOWNLOAD_DEFAULT_PROBLEMS,
         PACKAGE_MAX_CANONICALS,
-    } from "$lib/offline/limits";
-    import { defaultPracticeSettings } from "$lib/trainer";
+    } from "#lib/offline/limits.js";
+    import { defaultPracticeSettings } from "#lib/trainer.js";
     import Track from "../../routes/(app)/practice/Track.svelte";
     import {
         createTrackValue,
@@ -35,11 +31,11 @@
     import OfflinePracticeRoute from "../../routes/(app)/practice/OfflinePracticeRoute.svelte";
     import DownloadedPracticeRoute from "../../routes/(app)/practice/DownloadedPracticeRoute.svelte";
     import LibraryPage from "../../routes/(app)/library/+page.svelte";
-    import { offlinePresentation, type OfflinePresentation } from "$lib/offline/presentations";
-    import { offlineMode } from "$lib/state/offline-mode.svelte";
+    import { offlinePresentation, type OfflinePresentation } from "#lib/offline/presentations.js";
+    import { offlineMode } from "#lib/state/offline-mode.svelte.js";
     import AppLayout from "../../routes/(app)/+layout.svelte";
-    import { beforeNavigate, pushState, replaceState } from "$app/navigation";
-    import OfflineModeChip from "$lib/offline/OfflineModeChip.svelte";
+    import { beforeNavigate, goto } from "$app/navigation";
+    import OfflineModeChip from "#lib/offline/OfflineModeChip.svelte";
 
     let {
         embedded = false,
@@ -65,11 +61,12 @@
         practicePackageId = url.searchParams.get("offlinePackage");
         practiceSessionId = url.searchParams.get("session");
         const href = url.pathname + url.search + url.hash;
-        if (history === "push") pushState(resolve(href as "/"), {});
-        else if (history === "replace") replaceState(resolve(href as "/"), {});
+
+        if (history === "push") goto(href, { shallow: true }); else if (history === "replace") goto(href, { shallow: true, replace: true });
     }
 
     beforeNavigate((navigation) => {
+        if (navigation.shallow && navigation.type === 'goto') return;
         if (embedded) return;
         const target = navigation.to?.url;
         if (!target || target.origin !== location.origin) return;
@@ -78,17 +75,17 @@
         selectPresentation(target, navigation.type === "popstate" ? "replace" : "push");
     });
 
-    type View =
-        | { kind: "loading" }
-        | { kind: "unsupported"; missing: string[] }
-        | { kind: "unavailable"; message: string }
-        | { kind: "signed-out" }
-        | {
-              kind: "packages";
-              userId: string;
-              label: string | null;
+    type View = 
+        { kind: "loading" } |
+        { kind: "unsupported"; missing: string[] } |
+        { kind: "unavailable"; message: string } |
+        { kind: "signed-out" } |
+        { 
+            kind: "packages";
+            userId: string;
+            label: string | null;
               packages: OfflinePackageManifestV1[];
-          };
+         };
 
     let view = $state<View>({ kind: "loading" });
     let action = $state<{ packageId: string; progress: DownloadProgress } | null>(null);
@@ -106,29 +103,28 @@
     ): TrackValue["seriesScopes"] {
         return Object.fromEntries(
             Object.entries(scopes).map(([seriesId, scope]) => [
-                seriesId,
-                {
-                    divisions: [...scope.divisions],
-                    formats: [...scope.formats],
-                    ...(scope.problemNumbers
-                        ? {
+            seriesId,
+            {
+                divisions: [...scope.divisions],
+                formats: [...scope.formats],
+                ...scope.problemNumbers
+                    ? {
                               problemNumbers: [
                                   scope.problemNumbers[0],
                                   scope.problemNumbers[1],
                               ] as [number, number],
-                          }
-                        : {}),
-                    ...(scope.yearRange
-                        ? {
+                    }
+                    : {},
+                ...scope.yearRange
+                    ? {
                               yearRange: [
                                   scope.yearRange[0],
                                   scope.yearRange[1],
                               ] as [number, number],
-                          }
-                        : {}),
-                },
-            ]),
-        );
+                    }
+                    : {}
+            }
+        ]));
     }
 
     async function refresh() {
@@ -199,7 +195,7 @@
         }
         if (isOfflineBoot || !navigator.onLine) offlineMode.noteRemoteFailure();
         online = navigator.onLine;
-        const updateOnline = () => (online = navigator.onLine);
+        const updateOnline = () => online = navigator.onLine;
         window.addEventListener("online", updateOnline);
         window.addEventListener("offline", updateOnline);
         supabase = appSupabase ?? createBrowserClient<Database>(
@@ -228,9 +224,9 @@
         // with VITE_OFFLINE_E2E=1.
         void (async () => {
             const [{ offlineRepository: open }, fixtures, network] = await Promise.all([
-                import("$lib/offline/browser"),
-                import("$lib/offline/fixtures"),
-                import("$lib/offline/network"),
+                import("#lib/offline/browser.js"),
+                import("#lib/offline/fixtures.js"),
+                import("#lib/offline/network.js"),
             ]);
             Object.assign(window, {
                 __pcOffline: { open, fixtures, network, refresh },
@@ -359,11 +355,10 @@
                     },
                 },
                 packageId: manifest.packageId,
-                onProgress: (progress) => (action = { packageId: manifest.packageId, progress }),
-                confirm: async (created, bytes, persistent) =>
-                    modal.confirm({
-                        title: "Refresh download",
-                        message: `Refresh ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? The current ready copy remains usable until the refresh commits.`,
+                onProgress: (progress) => action = { packageId: manifest.packageId, progress },
+                confirm: async (created, bytes, persistent) => modal.confirm({
+                    title: "Refresh download",
+                    message: `Refresh ${created.problemCount} problems using about ${Math.ceil(bytes / 1024 / 1024)} MB? The current ready copy remains usable until the refresh commits.`,
                         confirmLabel: "Refresh",
                     }),
             });
@@ -376,15 +371,14 @@
         const warning = manifest.pendingOperations
             ? `Discard this download and its ${manifest.pendingOperations} pending change(s)? This cannot be undone.`
             : `Delete this ${manifest.problemCount}-problem download?`;
-        if (
-            !(await modal.confirm({
-                title: "Delete download",
-                message: warning,
-                confirmLabel: "Delete",
-                confirmVariant: "destructive",
-            }))
-        )
-            return;
+
+        if (!await modal.confirm({
+            title: "Delete download",
+            message: warning,
+            confirmLabel: "Delete",
+            confirmVariant: "destructive"
+        })) return;
+
         const repository = await offlineRepository();
         await repository.deletePackage(manifest.packageId, {
             discardPending: manifest.pendingOperations > 0,
@@ -403,9 +397,9 @@
         // Packages that still have a leftover dedicated session keep the
         // explicit selector; new downloads open ordinary local Practice.
         const href = manifest.sessionId != null
-            ? (`/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}` as const)
+            ? `/practice?offlinePackage=${encodeURIComponent(manifest.packageId)}` as const
             : "/practice";
-        window.location.assign(resolve(href));
+        window.location.assign(href);
     }
 </script>
 
@@ -442,8 +436,8 @@
                 </label>
                 <Track
                     bind:value={downloadScope}
-                    {seriesOptions}
-                    {supabase}
+                    seriesOptions={seriesOptions}
+                    supabase={supabase}
                 />
             </div>
             <div aria-live="polite">
@@ -497,160 +491,165 @@
 </svelte:head>
 
 {#snippet presentationContent()}
-{#if presentation?.kind === "practice" && practicePackageId}
-    <OfflinePracticeRoute data={{} as never} packageId={practicePackageId} />
-{:else if presentation?.kind === "library" && supabase}
+    {#if presentation?.kind === "practice" && practicePackageId}
+        <OfflinePracticeRoute data={{} as never} packageId={practicePackageId} />
+    {:else if presentation?.kind === "library" && supabase}
     <div class="h-full overflow-y-auto bg-background text-foreground">
         <LibraryPage data={{ supabase } as never} />
     </div>
-{:else if presentation?.kind === "practice"}
-    <DownloadedPracticeRoute data={{} as never} requestedSessionId={practiceSessionId} />
-{:else if presentation?.kind === "unavailable" || (presentation === null && requestedPath !== "/offline")}
-    <div class="flex h-full items-center justify-center bg-background px-6 text-center text-foreground">
-        <div class="max-w-lg">
-            <p class="type-caption text-muted-foreground">{presentation?.title ?? requestedPath}</p>
-            <h1 class="mt-2 text-xl font-semibold">This page needs a connection</h1>
-            <p class="mt-2 type-secondary text-muted-foreground">The ProblemCloud frame is available, but this page’s data is held by the server. Your downloaded problems and unsynced Practice work are still safe.</p>
-            <div class="mt-4 flex justify-center gap-2">
-                <Button onclick={() => location.reload()}>Retry</Button>
-                <Button variant="outline" href="/offline">Open downloads</Button>
+    {:else if presentation?.kind === "practice"}
+        <DownloadedPracticeRoute
+            data={{} as never}
+            requestedSessionId={practiceSessionId}
+        />
+    {:else if presentation?.kind === "unavailable" || presentation === null && requestedPath !== "/offline"}
+        <div
+            class="flex h-full items-center justify-center bg-background px-6 text-center text-foreground"
+        >
+            <div class="max-w-lg">
+                <p class="type-caption text-muted-foreground">{presentation?.title ?? requestedPath}</p>
+                <h1 class="mt-2 text-xl font-semibold">This page needs a connection</h1>
+                <p class="mt-2 type-secondary text-muted-foreground">The ProblemCloud frame is available, but this page’s data is held by the server. Your downloaded problems and unsynced Practice work are still safe.</p>
+                <div class="mt-4 flex justify-center gap-2">
+                    <Button onclick={() => location.reload()}>Retry</Button>
+                    <Button variant="outline" href="/offline">Open downloads</Button>
+                </div>
             </div>
         </div>
-    </div>
-{:else}
-<div
-    class="bg-background text-foreground flex h-full flex-col overflow-y-auto"
->
-    <header class="border-border/60 border-b">
+    {:else}
         <div
-            class="mx-auto flex h-16 w-full max-w-[720px] items-center gap-2 px-md"
+            class="bg-background text-foreground flex h-full flex-col overflow-y-auto"
         >
-            <Icon
-                name="cloud"
-                fontsize="22px"
+            <header class="border-border/60 border-b">
+                <div
+                    class="mx-auto flex h-16 w-full max-w-[720px] items-center gap-2 px-md"
+                >
+                    <Icon
+                        name="cloud"
+                        fontsize="22px"
                 class={offlineMode.isLocal ? "text-muted-foreground transition-colors" : "text-primary-foreground transition-colors"}
-            />
+                    />
             <span class="text-base font-semibold tracking-[-0.01em]"
                 >ProblemCloud</span
             >
             <span class="ml-auto">
                 <OfflineModeChip floating={false} />
             </span>
-        </div>
-    </header>
+                </div>
+            </header>
 
     <main class="mx-auto w-full max-w-[720px] flex-1 px-md py-lg">
-        {#if view.kind === "loading"}
+                {#if view.kind === "loading"}
             <p class="text-muted-foreground type-secondary">
                 Looking for downloaded problems on this device…
             </p>
-        {:else if view.kind === "unsupported"}
-            <h1 class="text-xl font-semibold">Offline mode is not available here</h1>
-            <p class="text-muted-foreground type-secondary mt-sm">
+                {:else if view.kind === "unsupported"}
+                    <h1 class="text-xl font-semibold">Offline mode is not available here</h1>
+                    <p class="text-muted-foreground type-secondary mt-sm">
                 This browser is missing {view.missing.join(", ")}, which
                 ProblemCloud needs to keep problems on your device. Nothing was
                 downloaded, so nothing is lost — reopen the app once you are back
                 online.
-            </p>
-        {:else if view.kind === "unavailable"}
-            <h1 class="text-xl font-semibold">Local storage could not be opened</h1>
-            <p class="text-muted-foreground type-secondary mt-sm">
+                    </p>
+                {:else if view.kind === "unavailable"}
+                    <h1 class="text-xl font-semibold">Local storage could not be opened</h1>
+                    <p class="text-muted-foreground type-secondary mt-sm">
                 Your downloads and any unsynced work are still on this device.
                 Closing other ProblemCloud tabs and reloading usually fixes this.
-            </p>
+                    </p>
             <p class="text-muted-foreground mt-sm font-mono text-xs">
                 {view.message}
             </p>
-            <Button class="mt-md" onclick={refresh}>Try again</Button>
-        {:else if view.kind === "signed-out"}
-            <h1 class="text-xl font-semibold">No account is open on this device</h1>
-            <p class="text-muted-foreground type-secondary mt-sm">
+                    <Button class="mt-md" onclick={refresh}>Try again</Button>
+                {:else if view.kind === "signed-out"}
+                    <h1 class="text-xl font-semibold">No account is open on this device</h1>
+                    <p class="text-muted-foreground type-secondary mt-sm">
                 Downloads belong to the account that made them, and signing out
                 hides them. Sign in as that account — while you are online — to
                 see them again. Nothing was deleted.
-            </p>
-            <Button class="mt-md" href="/auth/login">Go to sign in</Button>
-        {:else if view.packages.length === 0}
-            <h1 class="text-xl font-semibold">Nothing is downloaded yet</h1>
-            <p class="text-muted-foreground type-secondary mt-sm">
+                    </p>
+                    <Button class="mt-md" href="/auth/login">Go to sign in</Button>
+                {:else if view.packages.length === 0}
+                    <h1 class="text-xl font-semibold">Nothing is downloaded yet</h1>
+                    <p class="text-muted-foreground type-secondary mt-sm">
                 {online ? "You are online" : "You are offline"}{view.label
                     ? `, signed in as ${view.label}`
                     : ""}. Once a download finishes, it is available here without
                 a connection.
-            </p>
-            {@render downloadForm()}
-            {#if !online}
-                <Button class="mt-md" onclick={refresh}>Check again</Button>
-            {/if}
-        {:else}
-            <h1 class="text-xl font-semibold">Downloaded and ready</h1>
-            <p class="text-muted-foreground type-secondary mt-sm">
+                    </p>
+                    {@render downloadForm()}
+                    {#if !online}
+                        <Button class="mt-md" onclick={refresh}>Check again</Button>
+                    {/if}
+                {:else}
+                    <h1 class="text-xl font-semibold">Downloaded and ready</h1>
+                    <p class="text-muted-foreground type-secondary mt-sm">
                 {online ? "You are online" : "You are offline"}{view.label
                     ? `, signed in as ${view.label}`
                     : ""}.
                 These problem sets are stored on this device.
-            </p>
+                    </p>
 
-            {@render downloadForm()}
+                    {@render downloadForm()}
 
-            <ul class="mt-lg flex flex-col gap-md">
-                {#each view.packages as manifest (manifest.packageId)}
-                    <li
-                        class="border-border bg-surface-container-lowest rounded-lg border p-md"
-                    >
-                        <div class="flex items-start justify-between gap-md">
-                            <div>
-                                <p class="font-medium">{scopeSummary(manifest)}</p>
+                    <ul class="mt-lg flex flex-col gap-md">
+                        {#each view.packages as manifest (manifest.packageId)}
+                            <li
+                                class="border-border bg-surface-container-lowest rounded-lg border p-md"
+                            >
+                                <div class="flex items-start justify-between gap-md">
+                                    <div>
+                                        <p class="font-medium">{scopeSummary(manifest)}</p>
                                 <p class="text-muted-foreground type-caption mt-1">
                                     {manifest.problemCount} problems · downloaded {downloadedOn(
                                         manifest.downloadedAt,
                                     )}
                                 </p>
-                            </div>
-                            {#if manifest.state === "stale"}
-                                <span
-                                    class="text-warning-foreground bg-warning/15 rounded-full px-2.5 py-1 text-xs whitespace-nowrap"
+                                    </div>
+                                    {#if manifest.state === "stale"}
+                                        <span
+                                            class="text-warning-foreground bg-warning/15 rounded-full px-2.5 py-1 text-xs whitespace-nowrap"
                                 >
                                     Out of date
                                 </span>
-                            {:else}
-                                <span
-                                    class="text-primary bg-primary/10 rounded-full px-2.5 py-1 text-xs whitespace-nowrap"
+                                    {:else}
+                                        <span
+                                            class="text-primary bg-primary/10 rounded-full px-2.5 py-1 text-xs whitespace-nowrap"
                                 >
                                     Downloaded
                                 </span>
-                            {/if}
-                        </div>
+                                    {/if}
+                                </div>
 
-                        {#if manifest.pendingOperations > 0}
-                            <p class="text-muted-foreground type-caption mt-sm">
+                                {#if manifest.pendingOperations > 0}
+                                    <p class="text-muted-foreground type-caption mt-sm">
                                 {manifest.pendingOperations} answer{manifest.pendingOperations ===
                                 1
                                     ? ""
                                     : "s"} waiting to sync. They are kept until this
                                 account is signed in and the sync succeeds.
-                            </p>
-                        {/if}
-                        {#if action?.packageId === manifest.packageId && action.progress.state === "fetching-package"}
-                            <p class="text-muted-foreground type-caption mt-sm">Refreshing: {action.progress.problems} / {action.progress.totalProblems} problems</p>
-                        {/if}
-                        <div class="mt-sm flex gap-2">
+                                    </p>
+                                {/if}
+                                {#if action?.packageId === manifest.packageId && action.progress.state === "fetching-package"}
+                                    <p class="text-muted-foreground type-caption mt-sm">Refreshing: {action.progress.problems} / {action.progress.totalProblems} problems</p>
+                                {/if}
+                                <div class="mt-sm flex gap-2">
                             <Button size="sm" onclick={() => launchPractice(manifest)}>
                                 Practice offline
                             </Button>
-                            {#if typeof navigator !== "undefined" && navigator.onLine}
+                                    {#if typeof navigator !== "undefined" && navigator.onLine}
                                 <Button size="sm" variant="ghost" onclick={() => refreshPackage(manifest)}>Refresh</Button>
-                            {/if}
+                                    {/if}
                             <Button size="sm" variant="ghost" onclick={() => deletePackage(manifest)}>Delete</Button>
-                        </div>
-                    </li>
-                {/each}
-            </ul>
+                                </div>
+                            </li>
+                        {/each}
+                    </ul>
 
-        {/if}
-    </main>
-</div>
-{/if}
+                {/if}
+            </main>
+        </div>
+    {/if}
 {/snippet}
 
 {#if supabase}

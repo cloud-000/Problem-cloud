@@ -15,13 +15,13 @@
  * (INVARIANTS §0) — it produces transactions, it does not become a second one.
  */
 
-import type { Pen, Scene } from "$lib/asy/scene/types";
+import type { Pen, Scene } from "#lib/asy/scene/types.js";
 import {
     DEFAULT_FONT_SIZE_UNITS,
     DEFAULT_LINE_WIDTH_UNITS,
     ptToSceneUnits,
     sceneUnitsToPt,
-} from "$lib/asy/scene/pen";
+} from "#lib/asy/scene/pen.js";
 import {
     EDITOR_PROPERTY_DEFINITIONS,
     penColorHex,
@@ -32,13 +32,13 @@ import {
     type EditorPropertyId,
     type EditorPropertyValue,
     type ResolvedEditorProperty,
-} from "$lib/asy/editor-properties";
-import type { ToolKind } from "$lib/asy/engine";
+} from "#lib/asy/editor-properties.js";
+import type { ToolKind } from "#lib/asy/engine/index.js";
 import {
     resolveWhiteboardDocument,
     updateSmartPresentationStyle,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** Tool kinds that carry an editable pen (everything but select/eraser/pan). */
 export type WhiteboardToolKind = ToolKind | "pan";

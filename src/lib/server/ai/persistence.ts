@@ -1,7 +1,7 @@
-import { env } from "$env/dynamic/private";
-import { PUBLIC_SUPABASE_URL } from "$env/static/public";
+import { SUPABASE_SECRET_KEY, SUPABASE_DEV_SECRET_KEY } from "$app/env/private";
+import { PUBLIC_SUPABASE_URL } from "$app/env/public";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { parseContextSnapshot, parseMessagePart } from "$lib/ai/schemas";
+import { parseContextSnapshot, parseMessagePart } from "#lib/ai/schemas.js";
 import type {
     AIMessageStatus,
     AIFinishReason,
@@ -11,12 +11,12 @@ import type {
     ConversationSummary,
     NormalizedAIMessage,
     WorkThreadSummary,
-} from "$lib/ai/types";
-import type { WorkAnchor } from "$lib/ai/session/anchor";
-import type { CoachThreadKind } from "$lib/ai/session/tier";
-import type { Database, Json } from "$lib/types/database.types";
-import { messageText, partsText, PREVIEW_MAX_CHARS } from "$lib/ai/conversations";
-import { compileContextFrames } from "$lib/ai/context/resolve";
+} from "#lib/ai/types.js";
+import type { WorkAnchor } from "#lib/ai/session/anchor.js";
+import type { CoachThreadKind } from "#lib/ai/session/tier.js";
+import type { Database, Json } from "#lib/types/database.types.js";
+import { messageText, partsText, PREVIEW_MAX_CHARS } from "#lib/ai/conversations.js";
+import { compileContextFrames } from "#lib/ai/context/resolve.js";
 import {
     encodeCursor,
     type ConversationCursor,
@@ -65,7 +65,7 @@ let adminClient: SupabaseClient<Database> | null = null;
 
 function admin(): SupabaseClient<Database> {
     if (adminClient) return adminClient;
-    const secret = env.SUPABASE_SECRET_KEY || env.SUPABASE_DEV_SECRET_KEY;
+    const secret = SUPABASE_SECRET_KEY || SUPABASE_DEV_SECRET_KEY;
     if (!secret) {
         throw new AIPersistenceError(
             "persistence_unavailable",
@@ -198,8 +198,8 @@ export async function listConversations(
     const last = page.at(-1);
     const nextCursor =
         rows.length > limit && last
-            ? encodeCursor({ updatedAt: last.updated_at, id: last.id })
-            : undefined;
+        ? encodeCursor({ updatedAt: last.updated_at, id: last.id })
+        : undefined;
 
     const previews = await previewsFor(page.map((row) => row.id));
     return {

@@ -6,7 +6,7 @@
  * the engine (`../engine`) edits Scenes; the Svelte view renders them.
  *
  * BOUNDARY: this module (and everything under `src/lib/asy/`) is pure TS with
- * ZERO Svelte / `$lib` imports, so it stays independently `bun test`-able and
+ * ZERO Svelte / `#lib` imports, so it stays independently `bun test`-able and
  * extractable to a standalone package later.
  *
  * COORDINATES: every position is stored in **asy-space** — y-up, origin

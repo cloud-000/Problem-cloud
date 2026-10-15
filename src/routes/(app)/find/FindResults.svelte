@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Problem } from "$lib/components/problem";
+    import { Problem } from "#lib/components/problem/index.js";
     import {
         type Level,
         type ProblemRow,
         type SeriesRow,
         type TestRow,
-    } from "$lib/library";
+    } from "#lib/library.js";
 
     let {
         level,

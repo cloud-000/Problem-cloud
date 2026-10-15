@@ -1,14 +1,14 @@
-import { isModelReference } from "$lib/ai/schemas";
-import { HOSTED_PROVIDER_ID, type NormalizedAIEvent, type NormalizedAIModel } from "$lib/ai/types";
-import { isChatModelId, type FetchFunction } from "$lib/ai/providers/openai-models";
-import { OpenAICompatAdapter } from "$lib/ai/providers/openai-compat";
-import type { AIProviderAdapter } from "$lib/ai/providers/types";
+import { isModelReference } from "#lib/ai/schemas.js";
+import { HOSTED_PROVIDER_ID, type NormalizedAIEvent, type NormalizedAIModel } from "#lib/ai/types.js";
+import { isChatModelId, type FetchFunction } from "#lib/ai/providers/openai-models.js";
+import { OpenAICompatAdapter } from "#lib/ai/providers/openai-compat.js";
+import type { AIProviderAdapter } from "#lib/ai/providers/types.js";
 import { hostedFallbackOptions, type HostedConnectionConfig, type HostedOffer } from "../hosted-plan";
-import { presetFor } from "$lib/ai/presets";
+import { presetFor } from "#lib/ai/presets.js";
 
 /**
  * Server-owned OpenAI-compatible connection. The catalog is the one public offer
- * in `$lib/server/ai/hosted-plan`, not upstream discovery and not the OpenRouter
+ * in `#lib/server/ai/hosted-plan.js`, not upstream discovery and not the OpenRouter
  * fallback list: we pay for every token, so the client picks "Auto", not a slug.
  *
  * The inner adapter is the same any-model class BYOK uses. Fallbacks ride on

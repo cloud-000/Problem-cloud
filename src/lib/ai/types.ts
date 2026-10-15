@@ -52,7 +52,7 @@ export const HOSTED_PROVIDER_ID = "hosted";
 /**
  * A user-supplied connection, sent from the browser on every AI request and used
  * in memory for the lifetime of that request only. Keys are held in the browser
- * (see `$lib/state/ai-credentials.svelte`); the server never persists, logs, or
+ * (see `#lib/state/ai-credentials.svelte.js`); the server never persists, logs, or
  * echoes one back.
  */
 export interface AIConnectionCredential {

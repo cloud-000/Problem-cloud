@@ -1,15 +1,15 @@
 <script lang="ts">
     import { afterNavigate } from "$app/navigation";
     import { tick } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { Select } from "$lib/components/select";
-    import { Switch } from "$lib/components/toggle";
-    import { modal } from "$lib/state/modal.svelte";
-    import { MathStatement } from "$lib/components/math-statement";
-    import { settings, readingSizeOptions } from "$lib/state/settings.svelte";
-    import { Theme } from "$lib/utils/Theme.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { settings, readingSizeOptions } from "#lib/state/settings.svelte.js";
+    import { Theme } from "#lib/utils/Theme.svelte.js";
     import AIConnectionsSection from "./AIConnectionsSection.svelte";
     import FeedbackModal from "./FeedbackModal.svelte";
     import type { PageData } from "./$types";
@@ -36,6 +36,8 @@
     }
 
     afterNavigate(async (navigation) => {
+        if (navigation.shallow && navigation.type === 'goto') return;
+
         const hash = navigation.to?.url.hash;
         if (!hash) return;
         await tick();
@@ -43,7 +45,9 @@
     });
 </script>
 
-<svelte:window onhashchange={() => scrollToHash(window.location.hash)} />
+<svelte:window
+    onhashchange={() => scrollToHash(window.location.hash)}
+></svelte:window>
 
 <svelte:head>
     <title>Settings · ProblemCloud</title>

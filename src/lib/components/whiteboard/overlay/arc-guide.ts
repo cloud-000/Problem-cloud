@@ -15,7 +15,7 @@ import {
     type ArcElement,
     type EllipticalArcElement,
     type Pair,
-} from "$lib/asy/scene";
+} from "#lib/asy/scene/index.js";
 import type { RenderArcHandle } from "../render";
 import type {
     ArcControl,

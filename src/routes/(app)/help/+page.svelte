@@ -2,10 +2,10 @@
     import { afterNavigate } from "$app/navigation";
     import { onMount, tick } from "svelte";
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Modal } from "$lib/components/modal";
-    import * as Page from "$lib/components/page";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import * as Page from "#lib/components/page/index.js";
     import {
         completeTourStep,
         completeWelcome,
@@ -17,8 +17,8 @@
         startTour,
         tourWritesWelcomeState,
         type OnboardingState,
-    } from "$lib/onboarding";
-    import { fetchProblemStateSummary } from "$lib/progress";
+    } from "#lib/onboarding/index.js";
+    import { fetchProblemStateSummary } from "#lib/progress.js";
     import type { PageData } from "./$types";
     import TourView from "../TourView.svelte";
 
@@ -73,6 +73,8 @@
     }
 
     afterNavigate(async (navigation) => {
+        if (navigation.shallow && navigation.type === 'goto') return;
+
         const hash = navigation.to?.url.hash;
         if (!hash) return;
         await tick();
@@ -111,7 +113,9 @@
     }
 </script>
 
-<svelte:window onhashchange={() => scrollToHash(window.location.hash)} />
+<svelte:window
+    onhashchange={() => scrollToHash(window.location.hash)}
+></svelte:window>
 
 <svelte:head><title>Help · ProblemCloud</title></svelte:head>
 
@@ -142,13 +146,12 @@
                 revisit — it lives under Progress, not as a separate destination.
             </p>
             <div class="flex flex-col gap-2 sm:flex-row">
-                <Button onclick={openReplay}>
-                    Replay introduction
-                </Button>
-                <Button href={resolve("/practice?session=root")} variant="outline">
-                    Start practicing
-                    <Icon name="arrow_forward" />
-                </Button>
+                <Button onclick={openReplay}>Replay introduction</Button>
+
+                <Button
+                    href={resolve('practice?session=root')}
+                    variant="outline"
+                >Start practicing <Icon name="arrow_forward" /></Button>
             </div>
         </div>
     </Page.Section>
@@ -164,10 +167,12 @@
                 practice is always available; a named session keeps one stretch of
                 work together so you can return to it.
             </p>
-            <Button href={resolve("/practice")} variant="outline" class="self-start">
-                Open Practice
-                <Icon name="arrow_forward" />
-            </Button>
+
+            <Button
+                href={resolve('practice')}
+                variant="outline"
+                class="self-start"
+            >Open Practice <Icon name="arrow_forward" /></Button>
         </div>
     </Page.Section>
 
@@ -181,10 +186,12 @@
                 Search by problem, browse tests, or open a series and work through
                 its papers. Use this when you already know which contest you want.
             </p>
-            <Button href={resolve("/library")} variant="outline" class="self-start">
-                Browse Library
-                <Icon name="arrow_forward" />
-            </Button>
+
+            <Button
+                href={resolve('library')}
+                variant="outline"
+                class="self-start"
+            >Browse Library <Icon name="arrow_forward" /></Button>
         </div>
     </Page.Section>
 
@@ -200,13 +207,12 @@
                 how it went. History is the chronological log.
             </p>
             <div class="flex flex-col gap-2 sm:flex-row">
-                <Button href={resolve("/progress")} variant="outline">
-                    Open Progress
-                    <Icon name="arrow_forward" />
-                </Button>
-                <Button href={resolve("/progress?view=review")} variant="outline">
-                    Open Review
-                </Button>
+                <Button href={resolve('progress')} variant="outline">Open Progress <Icon name="arrow_forward" /></Button>
+
+                <Button
+                    href={resolve('progress?view=review')}
+                    variant="outline"
+                >Open Review</Button>
             </div>
         </div>
     </Page.Section>
@@ -221,10 +227,12 @@
                 in view and the primary action practices toward it. Creation,
                 editing, and the full list stay on Goals.
             </p>
-            <Button href={resolve("/goals")} variant="outline" class="self-start">
-                Open Goals
-                <Icon name="arrow_forward" />
-            </Button>
+
+            <Button
+                href={resolve('goals')}
+                variant="outline"
+                class="self-start"
+            >Open Goals <Icon name="arrow_forward" /></Button>
         </div>
     </Page.Section>
 
@@ -241,35 +249,35 @@
                         stays in the browser. Open it from the Coach tab, or from
                         the button on a problem.
                     </p>
-                    <Button href={resolve("/coach")} variant="outline" class="self-start">
-                        Open Coach
-                        <Icon name="arrow_forward" />
-                    </Button>
+
+                    <Button
+                        href={resolve('coach')}
+                        variant="outline"
+                        class="self-start"
+                    >Open Coach <Icon name="arrow_forward" /></Button>
                 </div>
             {/if}
 
             <div class="flex flex-col gap-2">
                 <p class="type-body font-medium text-foreground">Whiteboard</p>
-                <p class="type-secondary text-muted-foreground">
-                    Scratch paper for diagrams and algebra, next to a problem or
-                    on its own page.
-                </p>
-                <Button href={resolve("/whiteboard")} variant="outline" class="self-start">
-                    Open Whiteboard
-                    <Icon name="arrow_forward" />
-                </Button>
+                <p class="type-secondary text-muted-foreground">Scratch paper for diagrams and algebra, next to a problem or on its own page.</p>
+
+                <Button
+                    href={resolve('whiteboard')}
+                    variant="outline"
+                    class="self-start"
+                >Open Whiteboard <Icon name="arrow_forward" /></Button>
             </div>
 
             <div class="flex flex-col gap-2">
                 <p class="type-body font-medium text-foreground">Offline</p>
-                <p class="type-secondary text-muted-foreground">
-                    Download competitions to this device so practice still works
-                    without a network.
-                </p>
-                <Button href={resolve("/offline")} variant="outline" class="self-start">
-                    Downloaded content
-                    <Icon name="arrow_forward" />
-                </Button>
+                <p class="type-secondary text-muted-foreground">Download competitions to this device so practice still works without a network.</p>
+
+                <Button
+                    href={resolve('offline')}
+                    variant="outline"
+                    class="self-start"
+                >Downloaded content <Icon name="arrow_forward" /></Button>
             </div>
         </div>
     </Page.Section>

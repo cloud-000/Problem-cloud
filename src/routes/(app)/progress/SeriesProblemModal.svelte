@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Problem } from "$lib/components/problem";
-    import type { ProblemRow } from "$lib/library";
+    import { Problem } from "#lib/components/problem/index.js";
+    import type { ProblemRow } from "#lib/library.js";
 
     let { problem }: { problem: ProblemRow } = $props();
 </script>

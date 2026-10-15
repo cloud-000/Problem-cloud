@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Combobox } from "$lib/components/combobox";
-    import { RangeSlider } from "$lib/components/range-slider";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
     import {
         clampProblemNumbers,
         clampYearRange,
@@ -15,7 +15,7 @@
         type DimensionOption,
         type SeriesDimensionRow,
         type SeriesYearSpan,
-    } from "$lib/series-review";
+    } from "#lib/series-review.js";
     import { untrack } from "svelte";
 
     type Supabase = SupabaseClient<Database>;

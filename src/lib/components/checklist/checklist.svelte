@@ -9,9 +9,9 @@
 
 <script lang="ts">
     import type { HTMLAttributes } from "svelte/elements";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { cn, type WithElementRef } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
 
     let {
         items,

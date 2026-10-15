@@ -14,7 +14,7 @@ before you touch code.
 ## 1. Layers
 
 The feature is four layers, stacked from framework-neutral core to Svelte view.
-The lower two are **pure TypeScript with zero Svelte / `$lib` imports** and are
+The lower two are **pure TypeScript with zero Svelte / `#lib` imports** and are
 independently `bun test`-able (and extractable to a package later).
 
 ```

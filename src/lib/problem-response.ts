@@ -1,4 +1,4 @@
-import { isMultipleChoice } from "$lib/utils";
+import { isMultipleChoice } from "#lib/utils.js";
 
 export const RESPONSE_KINDS = [
     "mcq",

@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { ProblemOrganization } from "$lib/components/problem-organization";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
     import { fly } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
     import {
@@ -10,8 +10,8 @@
         type SeriesReviewProblem,
         type SeriesReviewStatus,
         type SeriesReviewTest,
-    } from "$lib/series-review";
-    import type { PersonalProblemState } from "$lib/progress";
+    } from "#lib/series-review.js";
+    import type { PersonalProblemState } from "#lib/progress.js";
 
     interface Props {
         selected: { test: SeriesReviewTest; problem: SeriesReviewProblem };

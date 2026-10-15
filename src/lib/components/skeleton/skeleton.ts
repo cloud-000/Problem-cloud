@@ -1,6 +1,6 @@
 import { type VariantProps, tv } from "tailwind-variants";
 import type { HTMLAttributes } from "svelte/elements";
-import type { WithElementRef } from "$lib/utils.js";
+import type { WithElementRef } from "#lib/utils.js";
 
 export const skeletonVariants = tv({
     base: "relative overflow-hidden bg-surface-container-high/60 motion-reduce:animate-none",

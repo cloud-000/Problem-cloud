@@ -9,12 +9,12 @@
  * Deliberately NOT re-exported from `index.ts`: the domain layer knows nothing
  * about the trainer, and putting `PracticeSettings` in the barrel would make
  * "what is a goal" answerable only with the practice module loaded. Import it
- * as `$lib/goals/practice` — the deeper path is the layering, made visible.
+ * as `#lib/goals/practice.js` — the deeper path is the layering, made visible.
  */
 
 import { targetOf } from "./registry";
 import type { Goal, GoalScope } from "./types";
-import { defaultPracticeSettings, type PracticeSettings } from "$lib/trainer";
+import { defaultPracticeSettings, type PracticeSettings } from "#lib/trainer.js";
 
 /** Deep-clone the per-series map so a live goal and a stored session snapshot
  * never share arrays. */

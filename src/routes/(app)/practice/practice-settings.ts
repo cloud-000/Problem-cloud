@@ -1,7 +1,7 @@
-import { boolToTri, triToBool } from "$lib/library";
-import type { Pacing } from "$lib/test-timing";
-import type { DimensionOption } from "$lib/series-review";
-import type { Engagement, Mastery } from "$lib/progress";
+import { boolToTri, triToBool } from "#lib/library.js";
+import type { Pacing } from "#lib/test-timing.js";
+import type { DimensionOption } from "#lib/series-review.js";
+import type { Engagement, Mastery } from "#lib/progress.js";
 import {
     MAX_HISTORY_COUNT,
     ADAPTIVE_RANGE_DEFAULT,
@@ -11,7 +11,7 @@ import {
     type PracticeSettings,
     type Range,
     type SessionFormat,
-} from "$lib/trainer";
+} from "#lib/trainer.js";
 
 export const COUNTER_RANGE: Range = [0, 25];
 export const TRIES_RANGE: Range = [1, 5];
@@ -40,7 +40,7 @@ export {
     clampYearRange,
     problemNumberRange,
     yearRange,
-} from "$lib/series-review";
+} from "#lib/series-review.js";
 
 /**
  * A settings-panel row for one selected series: its own division/format

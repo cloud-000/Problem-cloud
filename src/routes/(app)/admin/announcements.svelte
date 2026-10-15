@@ -1,13 +1,13 @@
 <script lang="ts">
     import type { SupabaseClient, User } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Combobox } from "$lib/components/combobox";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { modal } from "$lib/state/modal.svelte";
-    import { fetchProfiles } from "$lib/admin";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Combobox } from "#lib/components/combobox/index.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { fetchProfiles } from "#lib/admin.js";
     import { onMount } from "svelte";
 
     let { supabase, user }: { supabase: SupabaseClient<Database>; user: User | null } = $props();

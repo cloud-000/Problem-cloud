@@ -4,7 +4,7 @@ import {
     assertOfflineOrigin,
     offlineErrorResponse,
     requireOfflineUser,
-} from "$lib/server/offline/http";
+} from "#lib/server/offline/http.js";
 
 const ACTIONS = {
     ready: "offline_mark_checkout_ready",

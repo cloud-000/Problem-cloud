@@ -3,7 +3,7 @@ import type {
     AIModelReference,
     NormalizedAIMessage,
     NormalizedAIModel,
-} from "$lib/ai/types";
+} from "#lib/ai/types.js";
 
 export interface AIChatController {
     messages: NormalizedAIMessage[];

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import type { FloatingPlacement } from "$lib/components/floating";
+    import type { FloatingPlacement } from "#lib/components/floating/index.js";
 
     export interface CoachQuickAskProps {
         /** Only `center` (the anchorless chord) is used today; see floating/DOCS.md. */
@@ -11,13 +11,13 @@
 <script lang="ts">
     import { tick } from "svelte";
     import { MediaQuery } from "svelte/reactivity";
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
-    import { AIChatMessage, AIChatQuickActions } from "$lib/components/ai-chat";
-    import { FloatingSurface } from "$lib/components/floating";
-    import { coach } from "$lib/state/coach.svelte";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { AIChatMessage, AIChatQuickActions } from "#lib/components/ai-chat/index.js";
+    import { FloatingSurface } from "#lib/components/floating/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { cn } from "#lib/utils.js";
     import CoachContextChips from "./coach-context-chips.svelte";
     import CoachResumePrompt from "./coach-resume-prompt.svelte";
 

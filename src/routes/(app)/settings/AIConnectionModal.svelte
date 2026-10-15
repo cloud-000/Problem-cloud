@@ -1,15 +1,15 @@
 <script lang="ts">
     import { untrack } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Select } from "$lib/components/select";
-    import { AI_PRESET_IDS, presetFor } from "$lib/ai/presets";
-    import type { AIPresetId } from "$lib/ai/types";
-    import { aiCredentials } from "$lib/state/ai-credentials.svelte";
-    import { coach } from "$lib/state/coach.svelte";
-    import { modal } from "$lib/state/modal.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { AI_PRESET_IDS, presetFor } from "#lib/ai/presets.js";
+    import type { AIPresetId } from "#lib/ai/types.js";
+    import { aiCredentials } from "#lib/state/ai-credentials.svelte.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { toasts } from "#lib/state/toast.svelte.js";
     import { testConnection } from "./test-connection";
 
     let { existingId }: { existingId?: string } = $props();

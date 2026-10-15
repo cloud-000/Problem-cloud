@@ -1,9 +1,9 @@
 <script lang="ts">
     import type { SupabaseClient } from "@supabase/supabase-js";
-    import type { Database } from "$lib/types/database.types";
-    import { Combobox, type Option } from "$lib/components/combobox";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { TriStateSwitch, type TriState } from "$lib/components/toggle";
+    import type { Database } from "#lib/types/database.types.js";
+    import { Combobox, type Option } from "#lib/components/combobox/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { TriStateSwitch, type TriState } from "#lib/components/toggle/index.js";
     import {
         boolToTri,
         triToBool,
@@ -12,9 +12,9 @@
         DIFFICULTY_RANGE,
         QUALITY_RANGE,
         type Filters,
-    } from "$lib/library";
-    import type { LibraryStore } from "$lib/state/library.svelte";
-    import type { Engagement, Mastery } from "$lib/progress";
+    } from "#lib/library.js";
+    import type { LibraryStore } from "#lib/state/library.svelte.js";
+    import type { Engagement, Mastery } from "#lib/progress.js";
     import { untrack } from "svelte";
     import SeriesScopeFields from "./SeriesScopeFields.svelte";
 

@@ -1,4 +1,4 @@
-import { MAX_HISTORY_COUNT } from "$lib/trainer";
+import { MAX_HISTORY_COUNT } from "#lib/trainer.js";
 import { describe, expect, test } from "bun:test";
 import {
     COUNTER_RANGE,

@@ -21,9 +21,9 @@
 
 <script lang="ts">
     import type { Attachment } from "svelte/attachments";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn } from "#lib/utils.js";
     import AIChatModelPicker from "./ai-chat-model-picker.svelte";
 
     const MAX_HEIGHT = 160;

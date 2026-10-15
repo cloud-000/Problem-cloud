@@ -1,5 +1,5 @@
-import type { PracticeSessionRow } from "$lib/sessions";
-import type { PracticeSettings } from "$lib/trainer";
+import type { PracticeSessionRow } from "#lib/sessions.js";
+import type { PracticeSettings } from "#lib/trainer.js";
 import { normalizeScope } from "./contracts";
 import {
     DOWNLOAD_DEFAULT_PROBLEMS,

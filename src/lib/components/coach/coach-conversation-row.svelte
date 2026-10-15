@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import type { ConversationSummary } from "$lib/ai/types";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import type { ConversationSummary } from "#lib/ai/types.js";
+    import { cn } from "#lib/utils.js";
 
     interface Props {
         conversation: ConversationSummary;

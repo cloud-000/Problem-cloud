@@ -39,9 +39,9 @@ import type {
     OfflineSyncResponseV1,
     PracticeQueryV1,
 } from "./types";
-import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
-import type { PlayerRating } from "$lib/library";
-import type { PracticeSessionRow } from "$lib/sessions";
+import type { Engagement, Mastery, ProblemProgress } from "#lib/progress.js";
+import type { PlayerRating } from "#lib/library.js";
+import type { PracticeSessionRow } from "#lib/sessions.js";
 
 // --- Shared vocabulary -------------------------------------------------------
 

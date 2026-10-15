@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { coach } from "$lib/state/coach.svelte";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { cn } from "#lib/utils.js";
 
     interface Props {
         class?: string;

@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import type { HTMLAttributes } from "svelte/elements";
-    import { cn } from "$lib/utils.js";
-    import { SegmentBar, type Segment } from "$lib/components/segment-bar";
+    import { cn } from "#lib/utils.js";
+    import { SegmentBar, type Segment } from "#lib/components/segment-bar/index.js";
 
     /** A trailing labelled figure (e.g. an eventual-accuracy or avg-time column). */
     export type BreakdownMetric = {

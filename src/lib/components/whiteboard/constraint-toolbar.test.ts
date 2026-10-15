@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { Pair } from "$lib/asy/scene";
+import type { Pair } from "#lib/asy/scene/index.js";
 import {
     createSmartArc,
     createSmartPath,
     emptyWhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 import {
     autoToolbarPlacement,
     clampToolbarPosition,

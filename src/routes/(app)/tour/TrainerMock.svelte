@@ -8,37 +8,37 @@
         AIChatQuickActions,
         type AIChatController,
         type AIChatQuickAction,
-    } from "$lib/components/ai-chat";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { MathStatement } from "$lib/components/math-statement";
-    import { ProblemAnswer } from "$lib/components/problem";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { ResizablePanel } from "$lib/components/resizable-panel";
-    import { Switch } from "$lib/components/toggle";
-    import { WhiteboardPanel } from "$lib/components/whiteboard";
+    } from "#lib/components/ai-chat/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { ProblemAnswer } from "#lib/components/problem/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { ResizablePanel } from "#lib/components/resizable-panel/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { WhiteboardPanel } from "#lib/components/whiteboard/index.js";
     import {
         HINT_LADDER,
         hintQuickAction,
         hintRungFromActionId,
         type HintRung,
-    } from "$lib/ai/hints";
-    import { PROBLEM_SUPPORT_ACTIONS } from "$lib/ai/quick-actions";
-    import { WhiteboardStore } from "$lib/state/whiteboard.svelte";
-    import type { SeriesDimensionRow } from "$lib/series-review";
+    } from "#lib/ai/hints.js";
+    import { PROBLEM_SUPPORT_ACTIONS } from "#lib/ai/quick-actions.js";
+    import { WhiteboardStore } from "#lib/state/whiteboard.svelte.js";
+    import type { SeriesDimensionRow } from "#lib/series-review.js";
     import {
         ADAPTIVE_RANGE_BOUNDS,
         ADAPTIVE_RANGE_DEFAULT,
         RATING_RANGE,
-    } from "$lib/trainer";
+    } from "#lib/trainer.js";
     import type {
         AIErrorPart,
         AIModelReference,
         NormalizedAIMessage,
         NormalizedAIModel,
-    } from "$lib/ai/types";
-    import { cn } from "$lib/utils";
-    import { answersMatch } from "$lib/utils/answer-matcher";
+    } from "#lib/ai/types.js";
+    import { cn } from "#lib/utils.js";
+    import { answersMatch } from "#lib/utils/answer-matcher.js";
     import Track from "../practice/Track.svelte";
     import type { TrackValue } from "../practice/practice-settings";
     import HintRail from "../practice/HintRail.svelte";

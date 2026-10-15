@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseLibrarySearchIds } from "$lib/library";
+import { parseLibrarySearchIds } from "#lib/library.js";
 
 describe("Library exact-id search", () => {
     test("parses comma- and whitespace-separated positive ids", () => {

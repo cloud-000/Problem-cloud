@@ -1,11 +1,11 @@
 <script lang="ts">
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { Figure } from "$lib/components/figure";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { Figure } from "#lib/components/figure/index.js";
     import {
         parseMathStatement,
         segmentStatement,
-    } from "$lib/utils/math-parser";
-    import { parseMarkdown } from "$lib/utils/markdown";
+    } from "#lib/utils/math-parser.js";
+    import { parseMarkdown } from "#lib/utils/markdown.js";
 
     let {
         text = "",
@@ -17,7 +17,7 @@
          * Which dialect `text` is written in. `bbcode` is the authored-statement
          * dialect and the default, so every existing call site is unaffected;
          * `markdown` is model-authored prose, which needs block structure
-         * (see `$lib/utils/markdown.ts`).
+         * (see `#lib/utils/markdown.ts`).
          */
         format?: "bbcode" | "markdown";
         class?: string;

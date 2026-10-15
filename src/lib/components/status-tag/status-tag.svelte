@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn } from "$lib/utils.js";
+    import { cn } from "#lib/utils.js";
     import { type VariantProps, tv } from "tailwind-variants";
 
     export const statusTagVariants = tv({
@@ -129,7 +129,7 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
+    import { Icon } from "#lib/components/icon/index.js";
     import type { HTMLAttributes } from "svelte/elements";
 
     /** An action the tag morphs into on hover/focus (e.g. a status that's also a button). */

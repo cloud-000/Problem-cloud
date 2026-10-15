@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { HiddenText } from "$lib/components/hidden-text";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { HiddenText } from "#lib/components/hidden-text/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     let blocked = $state(true);
 </script>

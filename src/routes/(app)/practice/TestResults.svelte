@@ -1,26 +1,26 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import type { Attachment } from "svelte/attachments";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { StatusTag } from "$lib/components/status-tag";
-    import { ProblemReview, ProblemAnswer, ProblemSolution } from "$lib/components/problem";
-    import { MathStatement } from "$lib/components/math-statement";
-    import { ProblemOrganization } from "$lib/components/problem-organization";
-    import { CoachContextRegister, CoachInline } from "$lib/components/coach";
-    import { ProblemGrid, type ProblemGridCell } from "$lib/components/problem-grid";
-    import { SegmentBar } from "$lib/components/segment-bar";
-    import { Graph } from "$lib/components/graph";
-    import { formatElapsed, isMultipleChoice, cn, formatProblemText } from "$lib/utils";
-    import { aopsProblemUrl, topicLabel } from "$lib/library";
-    import { coach } from "$lib/state/coach.svelte";
-    import { shell } from "$lib/state/shell.svelte";
-    import { anchorFor } from "$lib/ai/session/anchor";
-    import { problemContextLayer } from "$lib/ai/context/surfaces";
-    import { PROBLEM_QUICK_ACTIONS } from "$lib/ai/quick-actions";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { StatusTag } from "#lib/components/status-tag/index.js";
+    import { ProblemReview, ProblemAnswer, ProblemSolution } from "#lib/components/problem/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
+    import { CoachContextRegister, CoachInline } from "#lib/components/coach/index.js";
+    import { ProblemGrid, type ProblemGridCell } from "#lib/components/problem-grid/index.js";
+    import { SegmentBar } from "#lib/components/segment-bar/index.js";
+    import { Graph } from "#lib/components/graph/index.js";
+    import { formatElapsed, isMultipleChoice, cn, formatProblemText } from "#lib/utils.js";
+    import { aopsProblemUrl, topicLabel } from "#lib/library.js";
+    import { coach } from "#lib/state/coach.svelte.js";
+    import { shell } from "#lib/state/shell.svelte.js";
+    import { anchorFor } from "#lib/ai/session/anchor.js";
+    import { problemContextLayer } from "#lib/ai/context/surfaces.js";
+    import { PROBLEM_QUICK_ACTIONS } from "#lib/ai/quick-actions.js";
     import type { PracticeHistoryEntry } from "./practice-state";
     import type { TestResultSummary } from "./test-state";
-    import { submissionOutcome } from "$lib/problem-response";
+    import { submissionOutcome } from "#lib/problem-response.js";
 
     let {
         history,

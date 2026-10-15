@@ -6,50 +6,50 @@
  * It bridges the three pure-TS layers to the Svelte view:
  *   - `toolKind` and transient view state (preview/guides/snap) are reactive
  *     `$state`; item/feature/marquee selection delegates to SelectionModel
- *     (`$lib/whiteboard/selection.svelte`) and is exposed via getters/setters
+ *     (`#lib/whiteboard/selection.svelte.js`) and is exposed via getters/setters
  *   - the document, its snapshot history, undo/redo, and the Scene projection
- *     delegate to DocumentController (`$lib/whiteboard/document-controller.svelte`);
+ *     delegate to DocumentController (`#lib/whiteboard/document-controller.svelte.js`);
  *     the store exposes `document` / `scene` / `canUndo` / `canRedo` via getters
  *     and only resets its own view state after an undo/redo jumps the document
  *   - pointer routing, the two interaction pipelines, and lifting a tool commit
  *     to one Document transaction delegate to InteractionController
- *     (`$lib/whiteboard/interaction.svelte`); the store owns only the transient
+ *     (`#lib/whiteboard/interaction.svelte.js`); the store owns only the transient
  *     view state (`preview` / `snapProposal` / `lineContinuation` / `arcGuide`)
  *     the controller writes through this class as its host
  *   - pen/tool defaults, inspector properties, and property edits delegate to
- *     StyleModel (`$lib/whiteboard/style.svelte`)
+ *     StyleModel (`#lib/whiteboard/style.svelte.js`)
  *   - relations, dimensions, and solver invocation delegate to ConstraintService
- *     (`$lib/whiteboard/constraint-service.svelte`)
+ *     (`#lib/whiteboard/constraint-service.svelte.js`)
  *   - `toAsy` / `loadAsy` / `persist` / `restore` delegate to PersistenceIO
- *     (`$lib/whiteboard/persistence`); the store keeps only the reactive glue.
+ *     (`#lib/whiteboard/persistence.js`); the store keeps only the reactive glue.
  *
  * SSR caveat (per repo conventions): never mutate at module load; the
  * `browser`-guard for localStorage lives in PersistenceIO.
  */
 
-import type { Pen, Scene } from "$lib/asy/scene/types";
-import { isStraightPathVertexEditable, positiveArcSweep } from "$lib/asy/scene";
+import type { Pen, Scene } from "#lib/asy/scene/types.js";
+import { isStraightPathVertexEditable, positiveArcSweep } from "#lib/asy/scene/index.js";
 import type {
     EditorPropertyId,
     EditorPropertyValue,
     ResolvedEditorProperty,
-} from "$lib/asy/editor-properties";
+} from "#lib/asy/editor-properties.js";
 import {
     documentToAsy,
     persistDocument,
     restoreDocument,
     sceneFromAsy,
-} from "$lib/whiteboard/persistence";
-import { DocumentController } from "$lib/whiteboard/document-controller.svelte";
-import { SelectionModel, type Marquee } from "$lib/whiteboard/selection.svelte";
-import { StyleModel, type WhiteboardToolKind } from "$lib/whiteboard/style.svelte";
+} from "#lib/whiteboard/persistence.js";
+import { DocumentController } from "#lib/whiteboard/document-controller.svelte.js";
+import { SelectionModel, type Marquee } from "#lib/whiteboard/selection.svelte.js";
+import { StyleModel, type WhiteboardToolKind } from "#lib/whiteboard/style.svelte.js";
 import {
     ConstraintService,
     type ConstraintGlyph,
     type DimensionGlyph,
-} from "$lib/whiteboard/constraint-service.svelte";
-import { InteractionController } from "$lib/whiteboard/interaction.svelte";
-import { replaceBakedElements } from "$lib/whiteboard/commit-lift";
+} from "#lib/whiteboard/constraint-service.svelte.js";
+import { InteractionController } from "#lib/whiteboard/interaction.svelte.js";
+import { replaceBakedElements } from "#lib/whiteboard/commit-lift.js";
 import {
     type SelectionTransformGesture,
     type LineContinuation,
@@ -57,7 +57,7 @@ import {
     DEFAULT_STROKE_PROCESSING_OPTIONS,
     type StrokeProcessingOptions,
     type PointerInput,
-} from "$lib/asy/engine";
+} from "#lib/asy/engine/index.js";
 import {
     emptyWhiteboardDocument,
     deleteWhiteboardItems,
@@ -67,7 +67,7 @@ import {
     type FeatureRef,
     type RelationKind,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 function documentSnapshot(document: WhiteboardDocument): WhiteboardDocument {
     return $state.snapshot(document) as WhiteboardDocument;
@@ -574,7 +574,7 @@ export class WhiteboardStore {
 
     // --- persistence I/O (delegates to PersistenceIO) -------------------------
     // Reactive glue only; the codec + localStorage logic lives in
-    // `$lib/whiteboard/persistence`. See ARCHITECTURE.md §5.
+    // `#lib/whiteboard/persistence.js`. See ARCHITECTURE.md §5.
 
     toAsy(): string {
         return documentToAsy(documentSnapshot(this.document));

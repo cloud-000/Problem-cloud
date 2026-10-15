@@ -1,8 +1,8 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { preferencesFor, workConversationForAnchor } from "$lib/server/ai/persistence";
-import { assertRateLimit, requireAIUser, stableError } from "$lib/server/ai/security";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { preferencesFor, workConversationForAnchor } from "#lib/server/ai/persistence.js";
+import { assertRateLimit, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 /** A row id from the query string. Absent and malformed are different answers here. */
 function rowIdParam(raw: string | null): number | null | undefined {

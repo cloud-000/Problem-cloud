@@ -3,7 +3,7 @@
     import type {
         UtilityPanelSizing,
         UtilityPanelView,
-    } from "$lib/state/utility-panel.svelte";
+    } from "#lib/state/utility-panel.svelte.js";
 
     export interface UtilityPanelRegisterProps {
         view: UtilityPanelView;
@@ -16,7 +16,7 @@
 
 <script lang="ts">
     import { onMount } from "svelte";
-    import { utilityPanel } from "$lib/state/utility-panel.svelte";
+    import { utilityPanel } from "#lib/state/utility-panel.svelte.js";
 
     let { view, ownerId, label, sizing, children }: UtilityPanelRegisterProps = $props();
 

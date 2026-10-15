@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { GoalProgressBar } from "$lib/components/goal-progress-bar";
-    import type { Goal, GoalProgressData, GoalProgressResult } from "$lib/goals";
-    import { goalProgressView } from "$lib/goals/presentation";
-    import { cn } from "$lib/utils";
+    import { GoalProgressBar } from "#lib/components/goal-progress-bar/index.js";
+    import type { Goal, GoalProgressData, GoalProgressResult } from "#lib/goals/index.js";
+    import { goalProgressView } from "#lib/goals/presentation.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         goal,

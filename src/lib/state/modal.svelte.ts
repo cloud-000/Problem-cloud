@@ -1,6 +1,6 @@
 import type { Component } from "svelte";
-import type { ButtonVariant } from "$lib/components/button";
-import ConfirmModal from "$lib/components/modal/ConfirmModal.svelte";
+import type { ButtonVariant } from "#lib/components/button/index.js";
+import ConfirmModal from "#lib/components/modal/ConfirmModal.svelte";
 
 export type ModalSize = "sm" | "md" | "lg" | "xl" | "full";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { glickoMatchPreview } from "$lib/library";
+import { glickoMatchPreview } from "#lib/library.js";
 import { advanceShadowRating } from "./shadow";
 
 const player = { rating: 1200, rd: 80, matches: 8, last_match_at: null };

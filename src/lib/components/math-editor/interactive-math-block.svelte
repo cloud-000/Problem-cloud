@@ -1,6 +1,6 @@
 <script lang="ts">
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { cn } from "$lib/utils";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { cn } from "#lib/utils.js";
 
     let {
         id,

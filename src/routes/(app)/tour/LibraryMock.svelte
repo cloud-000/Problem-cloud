@@ -1,10 +1,10 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import * as Subtabs from "$lib/components/subtabs";
-    import { setAppScrollViewport } from "$lib/components/virtual-list";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import * as Subtabs from "#lib/components/subtabs/index.js";
+    import { setAppScrollViewport } from "#lib/components/virtual-list/index.js";
     import {
         fetchProblems,
         fetchSeries,
@@ -16,13 +16,13 @@
         type ProblemRow,
         type SeriesRow,
         type TestRow,
-    } from "$lib/library";
+    } from "#lib/library.js";
     import {
         LIBRARY_MOCK_TABS,
         libraryMockCaption,
         librarySearchPlaceholder,
-    } from "$lib/onboarding/library-mock";
-    import { LibraryStore } from "$lib/state/library.svelte";
+    } from "#lib/onboarding/library-mock.js";
+    import { LibraryStore } from "#lib/state/library.svelte.js";
     import ResultList from "../library/ResultList.svelte";
 
     type CatalogRow = SeriesRow | TestRow | ProblemRow;

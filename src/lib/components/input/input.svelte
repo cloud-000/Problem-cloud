@@ -3,8 +3,8 @@
         HTMLInputAttributes,
         HTMLInputTypeAttribute,
     } from "svelte/elements";
-    import { Icon } from "$lib/components/icon";
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     type InputType = Exclude<HTMLInputTypeAttribute, "file">;
     type Props = WithElementRef<
         Omit<HTMLInputAttributes, "type"> &

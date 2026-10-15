@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { SegmentBar, type Segment } from "$lib/components/segment-bar";
-    import { Icon } from "$lib/components/icon";
+    import { SegmentBar, type Segment } from "#lib/components/segment-bar/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
 
     // Practice-outcome example (the real usage in PracticeView's top bar).
     let correct = $state(7);

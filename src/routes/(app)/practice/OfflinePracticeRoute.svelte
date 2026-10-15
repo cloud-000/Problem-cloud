@@ -1,13 +1,13 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import type { PageData } from "./$types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { offlineRepository } from "$lib/offline/browser";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { offlineRepository } from "#lib/offline/browser.js";
     import {
         bindOfflinePracticePackage,
         type OfflinePracticeBinding,
-    } from "$lib/offline/practice-binding";
+    } from "#lib/offline/practice-binding.js";
     import PracticeView from "./PracticeView.svelte";
 
     let { data, packageId }: { data: PageData; packageId: string } = $props();
@@ -32,7 +32,7 @@
         {data}
         sessionParam={String(binding.manifest.sessionId)}
         trainerSource={binding.source}
-        backHref="/offline"
+        backHref="offline"
     />
 {:else if error}
     <div class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">

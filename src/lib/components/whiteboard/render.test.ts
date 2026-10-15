@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makePath, type Pair, type Scene } from "$lib/asy/scene";
+import { makePath, type Pair, type Scene } from "#lib/asy/scene/index.js";
 import {
     gridLines,
     isRotationHandleAt,

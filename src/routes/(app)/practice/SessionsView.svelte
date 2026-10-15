@@ -1,19 +1,19 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { afterNavigate, goto, replaceState } from "$app/navigation";
+    import { afterNavigate, goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Input } from "$lib/components/input";
-    import { Modal } from "$lib/components/modal";
-    import { modal } from "$lib/state/modal.svelte";
-    import * as Page from "$lib/components/page";
-    import { RangeSlider } from "$lib/components/range-slider";
-    import { Select, type SelectOption } from "$lib/components/select";
-    import { Switch } from "$lib/components/toggle";
-    import { Skeleton } from "$lib/components/skeleton";
-    import { fetchAllSeries, fetchTestsForSeries, type TestSummary } from "$lib/library";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
+    import { Select, type SelectOption } from "#lib/components/select/index.js";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
+    import { fetchAllSeries, fetchTestsForSeries, type TestSummary } from "#lib/library.js";
     import {
         fetchSessions,
         startSession,
@@ -21,7 +21,7 @@
         deleteSession,
         resumeSession,
         type PracticeSessionRow,
-    } from "$lib/sessions";
+    } from "#lib/sessions.js";
     import {
         resolveTimingRule,
         timingPacing,
@@ -29,16 +29,16 @@
         timingTotalSeconds,
         type Pacing,
         type TimingRule,
-    } from "$lib/test-timing";
+    } from "#lib/test-timing.js";
     import {
         defaultTestSettings,
         type PracticeSettings,
-    } from "$lib/trainer";
+    } from "#lib/trainer.js";
     import {
         parsePracticeLaunch,
         type PracticeLaunchIntent,
-    } from "$lib/practice-launch";
-    import { cn } from "$lib/utils";
+    } from "#lib/practice-launch.js";
+    import { cn } from "#lib/utils.js";
     import { onMount } from "svelte";
     import SessionCard from "./SessionCard.svelte";
     import PracticeFilters from "./PracticeFilters.svelte";
@@ -56,7 +56,7 @@
     );
     let savedSessions = $derived(
         activeSession
-            ? sessions.filter((session) => session.id !== activeSession.id)
+        ? sessions.filter((session) => session.id !== activeSession.id)
             : sessions,
     );
 
@@ -133,10 +133,8 @@
     // Countdown (single-problem segments) is the only pacing where per-segment
     // reveal makes sense — a pair or a pooled clock reveals nothing mid-run.
     let isCountdownRule = $derived(rule?.mode === "per-problem-seconds");
-    let canCreate = $derived(
-        dialogFormat === "practice" ||
-            (selectedSeriesId !== "" && selectedTestId !== ""),
-    );
+
+    let canCreate = $derived(dialogFormat === "practice" || selectedSeriesId !== "" && selectedTestId !== "");
 
     function resetDialog(format: "practice" | "test" = "practice") {
         dialogName = "";
@@ -212,18 +210,19 @@
     // Launch parameters are one-shot commands: consume them, immediately replace
     // the current history entry with a clean URL, then configure the modal through
     // the same selection handlers used by direct interaction.
-    afterNavigate(() => {
-        const parsed = parsePracticeLaunch(page.url);
+    afterNavigate(({ shallow, type }) => {
+        if (shallow && type === 'goto') return;
+
+        const parsed = parsePracticeLaunch(new URL(page.url.href));
         if (!parsed.hadLaunchParams) return;
         const cleanedRoute = parsed.cleanedUrl.search
-            ? (`/practice${parsed.cleanedUrl.search}${parsed.cleanedUrl.hash}` as `/practice?${string}`)
+            ? `practice${parsed.cleanedUrl.search}${parsed.cleanedUrl.hash}` as `practice?${string}`
             : parsed.cleanedUrl.hash
-              ? (`/practice${parsed.cleanedUrl.hash}` as `/practice#${string}`)
-              : "/practice";
-        replaceState(
-            resolve(cleanedRoute),
-            page.state,
-        );
+                ? `practice${parsed.cleanedUrl.hash}` as `practice#${string}`
+                : "practice";
+
+        goto(resolve(cleanedRoute), { shallow: true, replace: true, state: page.state });
+
         if (parsed.intent) void applyLaunchIntent(parsed.intent);
     });
 
@@ -280,19 +279,18 @@
                         : selectedTest.name;
                 }
             }
-            const row = await startSession(supabase, user.id, {
-                name,
-                settings,
-            });
-            await goto(resolve(`/practice?session=${row.id}`));
-        } catch (e) {
+
+            const row = await startSession(supabase, user.id, { name, settings });
+
+            await goto(resolve(`practice?session=${row.id}`));
+        } catch(e) {
             errorMsg = (e as Error).message || "Failed to start session";
             busy = false;
         }
     }
 
     function practiceFreely() {
-        goto(resolve("/practice?session=root"));
+        goto(resolve('practice?session=root'));
     }
 
     function sessionFormat(s: PracticeSessionRow): "practice" | "test" {
@@ -314,7 +312,7 @@
                 return;
             }
         }
-        await goto(resolve(`/practice?session=${s.id}`));
+        await goto(resolve(`practice?session=${s.id}`));
     }
 
     async function saveRename(s: PracticeSessionRow, name: string) {
@@ -329,16 +327,14 @@
     }
 
     async function removeSession(s: PracticeSessionRow) {
-        if (
-            !(await modal.confirm({
-                title: "Delete session",
+        if (!await modal.confirm({
+            title: "Delete session",
                 message:
                     "Delete this session? Its problems stay in your history (they return to ungrouped).",
-                confirmLabel: "Delete",
-                confirmVariant: "destructive",
-            }))
-        )
-            return;
+            confirmLabel: "Delete",
+            confirmVariant: "destructive"
+        })) return;
+
         try {
             await deleteSession(supabase, s.id);
             sessions = sessions.filter((row) => row.id !== s.id);
@@ -405,94 +401,94 @@
             <Page.Section
                 title="Quick practice"
             >
-                {#snippet actions()}
-                    <Button
-                        variant={activeSession ? "outline" : "primary"}
-                        onclick={practiceFreely}
-                        class="shrink-0 gap-1.5"
+                    {#snippet actions()}
+                        <Button
+                            variant={activeSession ? "outline" : "primary"}
+                            onclick={practiceFreely}
+                            class="shrink-0 gap-1.5"
                     >
                         Start practice
                         <Icon name="arrow_forward" />
                     </Button>
-                {/snippet}
-            </Page.Section>
+                    {/snippet}
+                </Page.Section>
 
-            {#if activeSession}
+                {#if activeSession}
                 <Page.Section
                     title="Continue"
                 >
-                    <div class="border-y border-border/60">
-                    <SessionCard
-                        userId={user!.id}
-                        session={activeSession}
-                        {supabase}
-                        {busy}
-                        featured
-                        onContinue={() => openSession(activeSession)}
-                        onRename={(name) => saveRename(activeSession, name)}
-                        onDelete={() => removeSession(activeSession)}
-                    />
-                    </div>
-                </Page.Section>
-            {/if}
+                        <div class="border-y border-border/60">
+                            <SessionCard
+                                userId={(user!).id}
+                                session={activeSession}
+                                supabase={supabase}
+                                busy={busy}
+                                featured
+                                onContinue={() => openSession(activeSession)}
+                                onRename={(name) => saveRename(activeSession, name)}
+                                onDelete={() => removeSession(activeSession)}
+                            />
+                        </div>
+                    </Page.Section>
+                {/if}
 
             <Page.Section
                 title="Saved sessions"
             >
-                {#if savedSessions.length === 0}
+                    {#if savedSessions.length === 0}
                     <p class="border-y border-border/60 py-5 type-secondary text-muted-foreground">
-                        {activeSession
-                            ? "No other saved sessions yet."
-                            : "No saved sessions yet. Create one for a focused goal or topic."}
-                    </p>
-                {:else}
-                    <div class="border-y border-border/60">
-                        {#each savedSessions as session (session.id)}
-                            <SessionCard
-                                userId={user!.id}
-                                {session}
-                                {supabase}
-                                {busy}
-                                onContinue={() => openSession(session)}
-                                onRename={(name) => saveRename(session, name)}
-                                onDelete={() => removeSession(session)}
-                            />
-                        {/each}
-                    </div>
-                {/if}
-            </Page.Section>
+                            {activeSession
+                                ? "No other saved sessions yet."
+                                : "No saved sessions yet. Create one for a focused goal or topic."}
+                        </p>
+                    {:else}
+                        <div class="border-y border-border/60">
+                            {#each savedSessions as session (session.id)}
+                                <SessionCard
+                                    userId={(user!).id}
+                                    session={session}
+                                    supabase={supabase}
+                                    busy={busy}
+                                    onContinue={() => openSession(session)}
+                                    onRename={(name) => saveRename(session, name)}
+                                    onDelete={() => removeSession(session)}
+                                />
+                            {/each}
+                        </div>
+                    {/if}
+                </Page.Section>
 
-            <Page.Section title="Create a session">
+                <Page.Section title="Create a session">
                 <div class="flex items-center justify-between gap-6 border-t border-border/60 pt-4">
                     <p class="type-secondary text-muted-foreground">
                         Save settings and progress under a named practice goal.
                     </p>
-                    <Button
-                        variant="outline"
-                        onclick={() => openDialog("practice")}
-                        disabled={busy}
-                        class="shrink-0"
+                        <Button
+                            variant="outline"
+                            onclick={() => openDialog("practice")}
+                            disabled={busy}
+                            class="shrink-0"
                     >
                         Create session
                     </Button>
-                </div>
-            </Page.Section>
+                    </div>
+                </Page.Section>
 
-            <Page.Section title="Take a mock test">
+                <Page.Section title="Take a mock test">
                 <div class="flex items-center justify-between gap-6 border-t border-border/60 pt-4">
                     <p class="type-secondary text-muted-foreground">
                         Choose a test and configure its official pacing.
                     </p>
-                    <Button
-                        variant="ghost"
-                        onclick={() => openDialog("test")}
-                        disabled={busy}
-                        class="shrink-0"
+                        <Button
+                            variant="ghost"
+                            onclick={() => openDialog("test")}
+                            disabled={busy}
+                            class="shrink-0"
                     >
                         Choose test
                     </Button>
-                </div>
-            </Page.Section>
+                    </div>
+                </Page.Section>
             </div>
         {/if}
     {/if}
@@ -529,12 +525,9 @@
                         type="button"
                         role="radio"
                         aria-checked={dialogFormat === f.value}
-                        onclick={() =>
-                            (dialogFormat = f.value as "practice" | "test")}
-                        class={cn(
-                            "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                            dialogFormat === f.value
-                                ? "bg-surface-container-lowest text-foreground shadow-sm"
+                        onclick={() => dialogFormat = f.value as "practice" | "test"}
+                        class={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors", dialogFormat === f.value
+                            ? "bg-surface-container-lowest text-foreground shadow-sm"
                                 : "text-muted-foreground hover:text-foreground",
                         )}
                     >
@@ -546,7 +539,11 @@
 
         <!-- The same practice controls as the in-session settings panel. -->
         {#if dialogFormat === "practice"}
-            <PracticeFilters bind:form={practiceForm} {seriesOptions} {supabase} />
+            <PracticeFilters
+                bind:form={practiceForm}
+                seriesOptions={seriesOptions}
+                supabase={supabase}
+            />
         {/if}
 
         <!-- Test options -->
@@ -661,9 +658,12 @@
         {/if}
     </div>
     {#snippet footer()}
-        <Button variant="ghost" size="sm" onclick={() => (dialogOpen = false)}>
-            Cancel
-        </Button>
+        <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => dialogOpen = false}
+        >Cancel</Button>
+
         <Button
             size="sm"
             variant="primary"

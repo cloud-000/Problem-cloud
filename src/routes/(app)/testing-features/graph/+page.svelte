@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { Graph } from "$lib/components/graph";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { RangeSlider } from "$lib/components/range-slider";
+    import { Graph } from "#lib/components/graph/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { RangeSlider } from "#lib/components/range-slider/index.js";
 
     // Demo 1: Sine / Cosine Wave Generator
     let frequency = $state(1);

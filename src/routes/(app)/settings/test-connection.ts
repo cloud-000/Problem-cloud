@@ -1,6 +1,6 @@
-import { OpenAICompatAdapter } from "$lib/ai/providers/openai-compat";
-import { toasts } from "$lib/state/toast.svelte";
-import type { AIConnectionCredential } from "$lib/ai/types";
+import { OpenAICompatAdapter } from "#lib/ai/providers/openai-compat.js";
+import { toasts } from "#lib/state/toast.svelte.js";
+import type { AIConnectionCredential } from "#lib/ai/types.js";
 
 /**
  * Probes a connection from the browser and reports the result as a toast.

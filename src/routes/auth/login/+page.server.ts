@@ -1,11 +1,11 @@
 import { fail, redirect } from "@sveltejs/kit";
-import { authFailureMessage } from "$lib/auth";
+import { authFailureMessage } from "#lib/auth.js";
 import {
     clearOAuthSignupIntent,
     OAUTH_PROVIDER,
     oauthCallbackURL,
     redirectToOAuth,
-} from "$lib/server/oauth";
+} from "#lib/server/oauth.js";
 import type { Actions } from "./$types";
 
 export const load = ({ url }: { url: URL }) => ({

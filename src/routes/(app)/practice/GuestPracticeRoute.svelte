@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { createGuestTrainerDataSource } from "$lib/trainer-data-source";
-    import type { TrainerDataSource } from "$lib/trainer-data-source";
+    import { createGuestTrainerDataSource } from "#lib/trainer-data-source.js";
+    import type { TrainerDataSource } from "#lib/trainer-data-source.js";
     import PracticeView from "./PracticeView.svelte";
     import type { PageData } from "./$types";
 

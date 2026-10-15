@@ -4,7 +4,7 @@ import {
     parseConversationDetail,
     parseConversationList,
     parseWorkThreadResponse,
-} from "$lib/ai/schemas";
+} from "#lib/ai/schemas.js";
 import {
     boundCoachHistory,
     boundEphemeralHistory,
@@ -13,7 +13,7 @@ import {
     latestPreview,
     messageText,
     PREVIEW_MAX_CHARS,
-} from "$lib/ai/conversations";
+} from "#lib/ai/conversations.js";
 import {
     promoteTier,
     threadKindFor,
@@ -21,34 +21,34 @@ import {
     tierPersists,
     type CoachPresentation,
     type CoachTier,
-} from "$lib/ai/session/tier";
-import { sameAnchor, type WorkAnchor } from "$lib/ai/session/anchor";
+} from "#lib/ai/session/tier.js";
+import { sameAnchor, type WorkAnchor } from "#lib/ai/session/anchor.js";
 import {
     workConcluded,
     workRetirable,
     workResumable,
     type WorkAnchorState,
-} from "$lib/ai/session/lifecycle";
-import { catalogFor, type AIModelCatalog } from "$lib/ai/catalog";
-import { resolveModel } from "$lib/ai/router";
-import { clientProviderById, clientProviderRegistry } from "$lib/ai/providers/client-registry";
+} from "#lib/ai/session/lifecycle.js";
+import { catalogFor, type AIModelCatalog } from "#lib/ai/catalog.js";
+import { resolveModel } from "#lib/ai/router.js";
+import { clientProviderById, clientProviderRegistry } from "#lib/ai/providers/client-registry.js";
 import {
     activeContextDescriptors,
     activeContextSnapshot,
     activeQuickActions,
     removeContextLayer,
     upsertContextLayer,
-} from "$lib/ai/context/registry";
-import { compileContextFrames, scopeKey } from "$lib/ai/context/resolve";
-import { buildProviderMessages } from "$lib/ai/providers/messages";
+} from "#lib/ai/context/registry.js";
+import { compileContextFrames, scopeKey } from "#lib/ai/context/resolve.js";
+import { buildProviderMessages } from "#lib/ai/providers/messages.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
-import { acknowledgeCoachSend } from "$lib/onboarding/acknowledge";
+import type { Database } from "#lib/types/database.types.js";
+import { acknowledgeCoachSend } from "#lib/onboarding/acknowledge.js";
 import { aiCredentials } from "./ai-credentials.svelte";
 import { settings } from "./settings.svelte";
 import { utilityPanel } from "./utility-panel.svelte";
-import { completionNotice } from "$lib/ai/completion";
-import { MOCK_PROVIDER_ID } from "$lib/ai/types";
+import { completionNotice } from "#lib/ai/completion.js";
+import { MOCK_PROVIDER_ID } from "#lib/ai/types.js";
 import type {
     AIBootstrap,
     AIChatRequestBody,
@@ -69,7 +69,7 @@ import type {
     ScopeRef,
     WorkThreadSummary,
     ContextSnapshot,
-} from "$lib/ai/types";
+} from "#lib/ai/types.js";
 
 const CONVERSATION_PAGE_SIZE = 20;
 

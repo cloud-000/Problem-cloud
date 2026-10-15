@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
-import { validateUsername } from "$lib/auth";
-import { usernameClaimError } from "$lib/server/oauth";
+import { validateUsername } from "#lib/auth.js";
+import { usernameClaimError } from "#lib/server/oauth.js";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals: { safeGetSession }, url }) => {

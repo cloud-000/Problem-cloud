@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { HiddenText } from "$lib/components/hidden-text";
-    import { StatusTag, type StatusKind } from "$lib/components/status-tag";
-    import { MathStatement } from "$lib/components/math-statement";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { HiddenText } from "#lib/components/hidden-text/index.js";
+    import { StatusTag, type StatusKind } from "#lib/components/status-tag/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
     import {
         topicLabel,
         ratingIsProvisional,
@@ -11,21 +11,21 @@
         aopsCommunityUrl,
         type ProblemRow,
         type ProblemRating,
-    } from "$lib/library";
-    import { statusFor } from "$lib/progress";
+    } from "#lib/library.js";
+    import { statusFor } from "#lib/progress.js";
     import {
         reviewScheduleFor,
         type Engagement,
         type Mastery,
         type PersonalProblemState,
-    } from "$lib/progress";
-    import { ProblemOrganization } from "$lib/components/problem-organization";
-    import { cn, formatElapsed, isMultipleChoice } from "$lib/utils";
+    } from "#lib/progress.js";
+    import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
+    import { cn, formatElapsed, isMultipleChoice } from "#lib/utils.js";
     import {
         inputModeFor,
         isReferenceAnswerMissing,
         resolveResponseKind,
-    } from "$lib/problem-response";
+    } from "#lib/problem-response.js";
     import type { Snippet } from "svelte";
     import ProblemAnswer from "./problem-answer.svelte";
     import ProblemSolution from "./problem-solution.svelte";

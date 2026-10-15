@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         aopsCommunityUrl,
         aopsProblemUrl,
@@ -8,8 +8,8 @@
         topicLabel,
         type ProblemRating,
         type ProblemRow,
-    } from "$lib/library";
-    import type { ProblemProgress } from "$lib/trainer";
+    } from "#lib/library.js";
+    import type { ProblemProgress } from "#lib/trainer.js";
 
     interface Props {
         problem: ProblemRow;

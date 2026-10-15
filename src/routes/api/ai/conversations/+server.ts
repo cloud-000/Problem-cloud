@@ -1,22 +1,22 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { AISchemaError, parseConversationFlushRequest } from "$lib/ai/schemas";
-import { messageText } from "$lib/ai/conversations";
-import type { AIConversationFlushRequest } from "$lib/ai/types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
+import { AISchemaError, parseConversationFlushRequest } from "#lib/ai/schemas.js";
+import { messageText } from "#lib/ai/conversations.js";
+import type { AIConversationFlushRequest } from "#lib/ai/types.js";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
 import {
     ConversationCursorError,
     decodeCursor,
     parseLimit,
-} from "$lib/server/ai/conversation-cursor";
+} from "#lib/server/ai/conversation-cursor.js";
 import {
     AIWorkAnchorConflict,
     ensureConversation,
     listConversations,
     preferencesFor,
     saveTranscript,
-} from "$lib/server/ai/persistence";
-import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+} from "#lib/server/ai/persistence.js";
+import { anchorConflictResponse, assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 export const GET: RequestHandler = async ({ locals, url }) => {
     const user = await requireAIUser(locals);

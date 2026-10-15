@@ -1,11 +1,9 @@
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { defaultThemeConfigs } from "./theme-presets.js";
 
-let currentThemeName = $state<string>(
-    browser
-        ? (document.documentElement.getAttribute("data-theme") || "light")
-        : "light",
-);
+let currentThemeName = $state<string>(browser
+    ? document.documentElement.getAttribute("data-theme") || "light"
+    : "light");
 
 export class Theme {
     static #a = new Map<string, Theme>();

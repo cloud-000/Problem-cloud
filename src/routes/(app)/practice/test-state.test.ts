@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ProblemRow } from "$lib/library";
+import type { ProblemRow } from "#lib/library.js";
 import { createPracticeAnswerState, createPracticeHistoryEntry } from "./practice-state";
 import {
     clearTestDraft,

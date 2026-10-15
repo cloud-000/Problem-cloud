@@ -1,4 +1,4 @@
-import { problemLabel } from "$lib/utils";
+import { problemLabel } from "#lib/utils.js";
 import { PROBLEM_QUICK_ACTIONS } from "../quick-actions";
 import type { AIContextSource, CoachContextLayer, CoachQuickAction } from "../types";
 import type { Policy } from "./policy";

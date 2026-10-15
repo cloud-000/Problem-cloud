@@ -9,13 +9,13 @@
  * classifies as package corruption, not as a silently incomplete problem.
  *
  * Extraction runs over the *same parser the renderer uses*
- * (`$lib/utils/math-parser`), not over a second set of regexes. Markdown image
+ * (`#lib/utils/math-parser.js`), not over a second set of regexes. Markdown image
  * targets in particular are repo-relative and get resolved to a CDN URL at parse
  * time; a private regex here would key the asset to the unresolved path and the
  * service worker would never match the request the page actually makes.
  */
 
-import { parseMathStatement, type ASTNode } from "$lib/utils/math-parser";
+import { parseMathStatement, type ASTNode } from "#lib/utils/math-parser.js";
 import { assetKey, normalizeAssetUrl } from "./checksum";
 import type { OfflineAssetV1, OfflineProblemV1 } from "./types";
 

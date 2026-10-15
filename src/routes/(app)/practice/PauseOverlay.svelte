@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { cn, formatElapsed } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn, formatElapsed } from "#lib/utils.js";
     import { fade } from "svelte/transition";
 
     type Props = {

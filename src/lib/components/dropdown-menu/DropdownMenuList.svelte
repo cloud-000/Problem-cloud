@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { Icon } from "$lib/components/icon/index.js";
-    import { cn } from "$lib/utils.js";
-    import { placeFloating } from "$lib/components/floating";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { cn } from "#lib/utils.js";
+    import { placeFloating } from "#lib/components/floating/index.js";
     import type { DropdownOption } from "./dropdown-menu.js";
     import DropdownMenuList from "./DropdownMenuList.svelte";
 

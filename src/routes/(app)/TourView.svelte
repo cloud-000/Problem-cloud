@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onMount, tick, untrack } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { TOUR_STEPS, tourHeading } from "$lib/onboarding";
-    import { cn } from "$lib/utils";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { TOUR_STEPS, tourHeading } from "#lib/onboarding/index.js";
+    import { cn } from "#lib/utils.js";
     import GoalsMock from "./tour/GoalsMock.svelte";
     import LibraryMock from "./tour/LibraryMock.svelte";
     import ProgressMock from "./tour/ProgressMock.svelte";

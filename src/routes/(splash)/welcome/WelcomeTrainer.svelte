@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { MathStatement } from "$lib/components/math-statement";
-    import { ProblemAnswer } from "$lib/components/problem";
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { cn, formatProblemText, isMultipleChoice } from "$lib/utils";
-    import { answersMatch } from "$lib/utils/answer-matcher";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { MathStatement } from "#lib/components/math-statement/index.js";
+    import { ProblemAnswer } from "#lib/components/problem/index.js";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { cn, formatProblemText, isMultipleChoice } from "#lib/utils.js";
+    import { answersMatch } from "#lib/utils/answer-matcher.js";
     import { prefersReducedMotion } from "svelte/motion";
     import { fade } from "svelte/transition";
     import {

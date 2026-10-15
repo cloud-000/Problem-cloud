@@ -3,7 +3,7 @@
  * pacing. Both features reduce to the same shape: a fixed limit minus a live
  * count-up elapsed, floored at zero. Kept pure so the timing logic is unit-tested
  * independently of any component; display formatting reuses `formatElapsed`
- * (`$lib/utils`).
+ * (`#lib/utils.js`).
  */
 
 /** Milliseconds left on a countdown, never negative. */

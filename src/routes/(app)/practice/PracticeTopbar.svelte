@@ -1,17 +1,17 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
+    import { Button } from "#lib/components/button/index.js";
     import {
         DropdownMenu,
         type DropdownOption,
-    } from "$lib/components/dropdown-menu";
-    import { Icon } from "$lib/components/icon";
-    import { TopbarRegister } from "$lib/components/topbar";
-    import { cn, formatElapsed } from "$lib/utils";
+    } from "#lib/components/dropdown-menu/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { TopbarRegister } from "#lib/components/topbar/index.js";
+    import { cn, formatElapsed } from "#lib/utils.js";
 
     let {
         sessionName,
-        backHref = "/practice",
+        backHref = "practice",
         isTest,
         testFinished,
         historyIndex,
@@ -40,7 +40,7 @@
         onTogglePause,
     }: {
         sessionName: string | null;
-        backHref?: "/practice" | "/offline";
+        backHref?: "practice" | "offline";
         isTest: boolean;
         testFinished: boolean;
         historyIndex: number;

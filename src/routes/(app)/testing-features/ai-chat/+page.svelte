@@ -1,18 +1,18 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         AIChat,
         type AIChatController,
         type AIChatQuickAction,
-    } from "$lib/components/ai-chat";
+    } from "#lib/components/ai-chat/index.js";
     import type {
         AIErrorPart,
         AIModelReference,
         NormalizedAIMessage,
         NormalizedAIModel,
-    } from "$lib/ai/types";
+    } from "#lib/ai/types.js";
 
     const capabilities = {
         chat: true,

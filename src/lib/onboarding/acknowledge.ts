@@ -8,7 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
+import type { Database } from "#lib/types/database.types.js";
 import { fetchOnboarding, saveOnboarding } from "./data";
 import {
     GETTING_STARTED_TIP,

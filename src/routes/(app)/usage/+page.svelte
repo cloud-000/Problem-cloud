@@ -1,15 +1,15 @@
 <script lang="ts">
     import { resolve } from "$app/paths";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { hostedPeriodLabel } from "$lib/ai/hosted-allowance";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { hostedPeriodLabel } from "#lib/ai/hosted-allowance.js";
     import type { PageData } from "./$types";
 
     let { data }: { data: PageData } = $props();
     let { session } = $derived(data);
     let allowance = $derived(data.hostedAllowance ?? null);
-    let settingsAiHref = $derived(`${resolve("/settings")}#ai`);
+    let settingsAiHref = $derived(`${resolve('settings')}#ai`);
 
     let description = $derived.by(() => {
         if (!session) return "Sign in to see how much free Coach you have left.";
@@ -38,7 +38,7 @@
 
     function usedPct(used: number, limit: number): number {
         if (limit <= 0) return 100;
-        return Math.min(100, Math.max(0, (used / limit) * 100));
+        return Math.min(100, Math.max(0, used / limit * 100));
     }
 
     function meterClass(used: number, limit: number): string {
@@ -81,7 +81,7 @@
 </svelte:head>
 
 <Page.Root width="narrow" class="gap-10">
-    <Page.Header title="Usage" {description} />
+    <Page.Header title="Usage" description={description} />
 
     {#if !session}
         <Page.Section>

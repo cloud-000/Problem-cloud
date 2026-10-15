@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
+    import { Icon } from "#lib/components/icon/index.js";
     import {
         HINT_LADDER_LENGTH,
         hintLadderState,
         type HintRung,
-    } from "$lib/ai/hints";
-    import { cn } from "$lib/utils";
+    } from "#lib/ai/hints.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         level = 0,

@@ -1,9 +1,9 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { aiCoachEnabled } from "$lib/server/ai/config";
-import { AISchemaError, parseModelReference } from "$lib/ai/schemas";
-import { preferencesFor, updatePreferences } from "$lib/server/ai/persistence";
-import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "$lib/server/ai/security";
+import { aiCoachEnabled } from "#lib/server/ai/config.js";
+import { AISchemaError, parseModelReference } from "#lib/ai/schemas.js";
+import { preferencesFor, updatePreferences } from "#lib/server/ai/persistence.js";
+import { assertRateLimit, assertSameOrigin, requireAIUser, stableError } from "#lib/server/ai/security.js";
 
 export const GET: RequestHandler = async ({ locals }) => {
     const user = await requireAIUser(locals);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { defaultPracticeSettings, createSession } from "$lib/trainer";
-import { createMemoryStorage } from "$lib/offline/memory";
-import { OfflineRepository } from "$lib/offline/repository";
+import { defaultPracticeSettings, createSession } from "#lib/trainer.js";
+import { createMemoryStorage } from "#lib/offline/memory.js";
+import { OfflineRepository } from "#lib/offline/repository.js";
 import {
     buildFixturePackage,
     GEOMETRY_SCOPE,
@@ -9,13 +9,13 @@ import {
     geometryFixtureProblems,
     overlappingFixtureProblems,
     installFixturePackage,
-} from "$lib/offline/fixtures";
+} from "#lib/offline/fixtures.js";
 import {
     createDownloadedTrainerDataSource,
     createOfflineTrainerDataSource,
     GUEST_TRAINER_CAPABILITIES,
-} from "$lib/trainer-data-source";
-import { bindOfflinePracticePackage } from "$lib/offline/practice-binding";
+} from "#lib/trainer-data-source.js";
+import { bindOfflinePracticePackage } from "#lib/offline/practice-binding.js";
 
 const USER = "00000000-0000-4000-8000-0000000000aa";
 

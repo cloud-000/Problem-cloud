@@ -1,5 +1,5 @@
 <script lang="ts" module>
-    import { cn, type WithElementRef } from "$lib/utils.js";
+    import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
 
     export type DatePickerProps = WithElementRef<
@@ -22,8 +22,8 @@
 </script>
 
 <script lang="ts">
-    import { Icon } from "$lib/components/icon/index.js";
-    import { Select } from "$lib/components/select/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Select } from "#lib/components/select/index.js";
 
     let {
         ref = $bindable(null),

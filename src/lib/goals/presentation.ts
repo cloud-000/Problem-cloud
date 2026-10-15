@@ -10,8 +10,8 @@
  * once, with tests, rather than three times in markup.
  *
  * Deliberately NOT re-exported from `index.ts`: it reaches for `topicLabel`, so
- * a consumer that only wants the domain layer should not pay for `$lib/library`.
- * Import it as `$lib/goals/presentation`.
+ * a consumer that only wants the domain layer should not pay for `#lib/library.js`.
+ * Import it as `#lib/goals/presentation.js`.
  */
 
 import { describeTarget, targetOf } from "./registry";
@@ -30,7 +30,7 @@ import {
     type GoalTargetData,
 } from "./types";
 import { calendarPeriodStart, isPeriodFinishable } from "./period";
-import { topicLabel } from "$lib/library";
+import { topicLabel } from "#lib/library.js";
 
 /** Series id (string, as the Track stores it) → display name. */
 export type SeriesNames = Map<string, string>;

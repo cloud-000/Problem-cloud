@@ -1,4 +1,4 @@
-import type { WorkAnchorState } from "$lib/ai/session/lifecycle";
+import type { WorkAnchorState } from "#lib/ai/session/lifecycle.js";
 
 /**
  * The trainer's record of the sitting its Coach thread is anchored to

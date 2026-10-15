@@ -1,7 +1,7 @@
 <script lang="ts">
     import { untrack } from "svelte";
     import type { PageData } from "./$types";
-    import { createOnlineTrainerDataSource } from "$lib/trainer-data-source";
+    import { createOnlineTrainerDataSource } from "#lib/trainer-data-source.js";
     import PracticeView from "./PracticeView.svelte";
 
     let { data, sessionParam }: { data: PageData; sessionParam: string } = $props();

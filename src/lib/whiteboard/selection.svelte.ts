@@ -20,7 +20,7 @@ import {
     type FeatureRef,
     type PointFeatureRef,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 /** Marquee rubber-band rect in asy-space (matches the store's prior field). */
 export interface Marquee {

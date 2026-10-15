@@ -1,7 +1,7 @@
-import { browser } from "$app/environment";
-import type { ConnectivityEvent, ConnectivityState } from "$lib/offline/connectivity";
-import { catalogReadRuntime } from "$lib/offline/read-mode-runtime";
-import { effectiveReadMode, type EffectiveReadMode, type OfflinePreference } from "$lib/offline/mode";
+import { browser } from "$app/env";
+import type { ConnectivityEvent, ConnectivityState } from "#lib/offline/connectivity.js";
+import { catalogReadRuntime } from "#lib/offline/read-mode-runtime.js";
+import { effectiveReadMode, type EffectiveReadMode, type OfflinePreference } from "#lib/offline/mode.js";
 import { settings } from "./settings.svelte";
 
 class OfflineModeStore {

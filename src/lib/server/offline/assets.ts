@@ -1,4 +1,4 @@
-import { PACKAGE_MAX_TOTAL_BYTES } from "$lib/offline/limits";
+import { PACKAGE_MAX_TOTAL_BYTES } from "#lib/offline/limits.js";
 
 /**
  * Only known immutable problem-image origins may cross the server fallback.

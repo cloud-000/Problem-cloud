@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import * as Page from "$lib/components/page";
-    import { Subtabs } from "$lib/components/subtabs";
+    import * as Page from "#lib/components/page/index.js";
+    import { Subtabs } from "#lib/components/subtabs/index.js";
     import ProblemReports from "./problem-reports.svelte";
     import UserFeedback from "./user-feedback.svelte";
     import UserList from "./user-list.svelte";

@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Icon } from "$lib/components/icon";
-    import { Combobox, type Option } from "$lib/components/combobox";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Combobox, type Option } from "#lib/components/combobox/index.js";
 
     // Combobox demo state
     const topicOptions: Option[] = [

@@ -17,13 +17,13 @@
  * Document (the forbidden seam, INVARIANTS §4).
  */
 
-import type { Scene } from "$lib/asy/scene/types";
-import { History } from "$lib/asy/engine";
+import type { Scene } from "#lib/asy/scene/types.js";
+import { History } from "#lib/asy/engine/index.js";
 import {
     emptyWhiteboardDocument,
     resolveWhiteboardDocument,
     type WhiteboardDocument,
-} from "$lib/whiteboard/model";
+} from "#lib/whiteboard/model/index.js";
 
 function snapshot(document: WhiteboardDocument): WhiteboardDocument {
     return $state.snapshot(document) as WhiteboardDocument;

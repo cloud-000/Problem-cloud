@@ -1,8 +1,8 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { coach } from "$lib/state/coach.svelte";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { coach } from "#lib/state/coach.svelte.js";
     import { resolve } from "$app/paths";
 </script>
 
@@ -18,14 +18,24 @@
     </p>
     {#if !page.data.user}
         <a
-            href={resolve("/auth/signup")}
+            href={resolve('auth/signup')}
             class="mt-2 text-sm font-bold text-primary-foreground underline-offset-4 hover:underline"
         >
             Create an account to use free AI.
         </a>
     {/if}
     <div class="mt-4 flex items-center gap-2">
-        <Button size="sm" class="text-xs" onclick={() => coach.initialize(true)}>Retry connection</Button>
-        <Button size="sm" variant="outline" class="text-xs" href={resolve("/settings#ai")}>AI settings</Button>
+        <Button
+            size="sm"
+            class="text-xs"
+            onclick={() => coach.initialize(true)}
+        >Retry connection</Button>
+
+        <Button
+            size="sm"
+            variant="outline"
+            class="text-xs"
+            href={resolve('settings#ai')}
+        >AI settings</Button>
     </div>
 </div>

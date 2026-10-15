@@ -1,15 +1,15 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { Icon } from "$lib/components/icon";
-    import { Button } from "$lib/components/button";
-    import * as Page from "$lib/components/page";
-    import { Input } from "$lib/components/input";
-    import { Select } from "$lib/components/select";
-    import { DatePicker } from "$lib/components/date-picker";
-    import { Modal } from "$lib/components/modal";
-    import LaTeX from "$lib/components/LaTeX.svelte";
-    import { toasts } from "$lib/state/toast.svelte";
-    import { cn } from "$lib/utils";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { Select } from "#lib/components/select/index.js";
+    import { DatePicker } from "#lib/components/date-picker/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import LaTeX from "#lib/components/LaTeX.svelte";
+    import { toasts } from "#lib/state/toast.svelte.js";
+    import { cn } from "#lib/utils.js";
     import {
         fetchRoadmap,
         voteGoal,
@@ -19,7 +19,7 @@
         deleteGoal,
         type RoadmapGoalWithVotes,
         type RoadmapStatus,
-    } from "$lib/roadmap";
+    } from "#lib/roadmap.js";
     import type { PageData } from "./$types";
 
     let { data }: { data: PageData } = $props();

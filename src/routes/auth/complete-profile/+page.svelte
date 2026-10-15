@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
     import { getAuthForm } from "../form-state";
     import type { ActionData, PageData } from "./$types";
 

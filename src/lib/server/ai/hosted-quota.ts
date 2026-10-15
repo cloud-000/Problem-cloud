@@ -1,5 +1,5 @@
-import type { AIModelCatalog } from "$lib/ai/catalog";
-import { HOSTED_PROVIDER_ID, type AIUsage } from "$lib/ai/types";
+import type { AIModelCatalog } from "#lib/ai/catalog.js";
+import { HOSTED_PROVIDER_ID, type AIUsage } from "#lib/ai/types.js";
 
 export const HOSTED_QUOTA_MESSAGE =
     "The free Coach allowance for this period is used up. Add your own key in Settings to keep going.";

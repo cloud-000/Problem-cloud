@@ -2,7 +2,7 @@ import type { AICoachConnectionState } from "../types";
 
 /**
  * Probes an OpenAI-compatible `GET /models` endpoint. Server-only: this speaks the
- * vendor wire format, unlike `$lib/ai/schemas`, which validates our own normalized
+ * vendor wire format, unlike `#lib/ai/schemas.js`, which validates our own normalized
  * contract. Discovery owns which models exist; the preset tables only decorate them.
  */
 

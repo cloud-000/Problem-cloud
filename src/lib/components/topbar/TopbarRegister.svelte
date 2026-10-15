@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { topbar } from "$lib/state/topbar.svelte";
+    import { topbar } from "#lib/state/topbar.svelte.js";
     import type { Snippet } from "svelte";
 
     let { left, right }: { left?: Snippet; right?: Snippet } = $props();

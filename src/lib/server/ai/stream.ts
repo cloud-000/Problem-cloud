@@ -1,5 +1,5 @@
-import { parseAIEvent } from "$lib/ai/schemas";
-import type { NormalizedAIEvent } from "$lib/ai/types";
+import { parseAIEvent } from "#lib/ai/schemas.js";
+import type { NormalizedAIEvent } from "#lib/ai/types.js";
 
 const encoder = new TextEncoder();
 

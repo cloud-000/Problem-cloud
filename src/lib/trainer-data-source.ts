@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$lib/types/database.types";
+import type { Database } from "#lib/types/database.types.js";
 import {
     fetchByIds,
     fetchAllSeries,
@@ -8,7 +8,7 @@ import {
     type PlayerRating,
     type ProblemRating,
     type ProblemRow,
-} from "$lib/library";
+} from "#lib/library.js";
 import {
     recordSubmission as recordOnlineSubmission,
     setProblemEngagement,
@@ -17,7 +17,7 @@ import {
     type Mastery,
     type ProblemProgress,
     type SubmissionInput,
-} from "$lib/progress";
+} from "#lib/progress.js";
 import {
     endSession,
     fetchSession,
@@ -30,7 +30,7 @@ import {
     type OlderSubmission,
     type PracticeSessionRow,
     type SessionHistoryEntry,
-} from "$lib/sessions";
+} from "#lib/sessions.js";
 import {
     ADAPTIVE_RANGE_DEFAULT,
     RATING_RANGE,
@@ -41,24 +41,24 @@ import {
     type PracticeSession,
     type PracticeSettings,
     type SessionFormat,
-} from "$lib/trainer";
+} from "#lib/trainer.js";
 import {
     fetchSeriesDimensions,
     fetchSeriesNumberLine,
     fetchSeriesYearSpan,
     type SeriesDimensionRow,
     type SeriesYearSpan,
-} from "$lib/series-review";
-import type { OfflineRepository } from "$lib/offline/repository";
+} from "#lib/series-review.js";
+import type { OfflineRepository } from "#lib/offline/repository.js";
 import type {
     LocalSubmissionV1,
     OfflinePackageManifestV1,
     OfflinePracticeProblemV1,
     PracticeQueryV1,
-} from "$lib/offline/types";
-import { BROWSE_INTENT } from "$lib/offline/types";
-import { guestPracticeRepository, type GuestSession } from "$lib/guest-practice/repository";
-import { hasComparableAnswer } from "$lib/problem-response";
+} from "#lib/offline/types.js";
+import { BROWSE_INTENT } from "#lib/offline/types.js";
+import { guestPracticeRepository, type GuestSession } from "#lib/guest-practice/repository.js";
+import { hasComparableAnswer } from "#lib/problem-response.js";
 
 type Supabase = SupabaseClient<Database>;
 

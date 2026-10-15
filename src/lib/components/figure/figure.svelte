@@ -2,12 +2,12 @@
     import { untrack } from "svelte";
     import { scale } from "svelte/transition";
     import { cubicOut } from "svelte/easing";
-    import { browser } from "$app/environment";
-    import { cn } from "$lib/utils.js";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import { Modal } from "$lib/components/modal";
-    import { Theme } from "$lib/utils/Theme.svelte";
+    import { browser } from '$app/env';
+    import { cn } from "#lib/utils.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { Modal } from "#lib/components/modal/index.js";
+    import { Theme } from "#lib/utils/Theme.svelte.js";
 
     let {
         imageSrc,
@@ -126,8 +126,8 @@
 
     let lightboxBaseScale = $derived.by(() => {
         if (naturalWidth <= 0 || naturalHeight <= 0) return 40;
-        const availableW = lightboxWidth > 0 ? lightboxWidth : (browser ? window.innerWidth : 800);
-        const availableH = lightboxHeight > 0 ? lightboxHeight : (browser ? window.innerHeight : 600);
+        const availableW = lightboxWidth > 0 ? lightboxWidth : browser ? window.innerWidth : 800;
+        const availableH = lightboxHeight > 0 ? lightboxHeight : browser ? window.innerHeight : 600;
         const fitScale = Math.min(1, availableW / naturalWidth, availableH / naturalHeight);
         return 40 * fitScale;
     });
@@ -143,7 +143,7 @@
         const prevBase = prevLightboxBaseScale;
         prevLightboxBaseScale = currentBase;
         if (expanded && prevBase > 0 && currentBase !== prevBase) {
-            lightboxScale = (lightboxScale / prevBase) * currentBase;
+            lightboxScale = lightboxScale / prevBase * currentBase;
         }
     });
 
@@ -154,8 +154,8 @@
      * static import put all of it in the initial bundle of every route. Keep
      * these imports dynamic.
      */
-    type WhiteboardView = typeof import("$lib/components/whiteboard");
-    type WhiteboardState = typeof import("$lib/state/whiteboard.svelte");
+    type WhiteboardView = typeof import("#lib/components/whiteboard/index.js");
+    type WhiteboardState = typeof import("#lib/state/whiteboard.svelte.js");
 
     let wb = $state<WhiteboardView | null>(null);
     let board = $state<InstanceType<WhiteboardState["WhiteboardStore"]> | null>(null);
@@ -164,8 +164,8 @@
     function loadWhiteboard(): Promise<void> {
         loading ??= (async () => {
             const [components, state] = await Promise.all([
-                import("$lib/components/whiteboard"),
-                import("$lib/state/whiteboard.svelte"),
+                import("#lib/components/whiteboard/index.js"),
+                import("#lib/state/whiteboard.svelte.js"),
             ]);
             const { WhiteboardStore } = state;
             board = new WhiteboardStore(WhiteboardStore.restore(persistKey) ?? undefined);
@@ -279,7 +279,7 @@
                         src={imageSrc}
                         onerror={handleImageError}
                         onload={handleImageLoad}
-                        {alt}
+                        alt={alt}
                         style={inverted ? INVERT_STYLE : ""}
                         class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
                     />
@@ -316,20 +316,17 @@
                 variant="ghost"
                 size="icon-xs"
                 title={view === "image" ? "Show code" : "Show image"}
-                onclick={() => (view = view === "image" ? "code" : "image")}
-            >
-                <Icon name={view === "image" ? "code" : "image"} />
-            </Button>
+                onclick={() => view = view === "image" ? "code" : "image"}
+            ><Icon name={view === "image" ? "code" : "image"} /></Button>
         {/if}
         {#if view === "image" && !imageFailed}
             <Button
                 variant="ghost"
                 size="icon-xs"
                 title={inverted ? "Light" : "Dark"}
-                onclick={() => (userInverted = !inverted)}
-            >
-                <Icon name="invert_colors" fill={inverted} />
-            </Button>
+                onclick={() => userInverted = !inverted}
+            ><Icon name="invert_colors" fill={inverted} /></Button>
+
             <Button
                 variant="ghost"
                 size="icon-xs"
@@ -363,7 +360,7 @@
                 src={imageSrc}
                 onerror={handleImageError}
                 onload={handleImageLoad}
-                {alt}
+                alt={alt}
                 style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxBaseScale > 0 ? lightboxScale / lightboxBaseScale : 1});`}
                 class="block max-h-full max-w-full rounded-lg object-contain select-none"
             />

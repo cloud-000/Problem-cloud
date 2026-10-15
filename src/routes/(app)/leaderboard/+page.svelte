@@ -1,11 +1,11 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { Button } from "$lib/components/button";
-    import { Icon } from "$lib/components/icon";
-    import * as Page from "$lib/components/page";
-    import { Skeleton } from "$lib/components/skeleton";
-    import { fetchLeaderboard, type LeaderboardEntry } from "$lib/leaderboard";
-    import { playerRatingIsProvisional } from "$lib/library";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import * as Page from "#lib/components/page/index.js";
+    import { Skeleton } from "#lib/components/skeleton/index.js";
+    import { fetchLeaderboard, type LeaderboardEntry } from "#lib/leaderboard.js";
+    import { playerRatingIsProvisional } from "#lib/library.js";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);

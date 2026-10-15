@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { Switch } from "$lib/components/toggle";
-    import { Icon } from "$lib/components/icon";
-    import { HiddenText } from "$lib/components/hidden-text";
+    import { Switch } from "#lib/components/toggle/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
+    import { HiddenText } from "#lib/components/hidden-text/index.js";
     import {
         topicLabel,
         glickoMatchPreview,
@@ -10,7 +10,7 @@
         type ProblemRow,
         type PlayerRating,
         type ProblemRating,
-    } from "$lib/library";
+    } from "#lib/library.js";
 
     interface Props {
         problem: ProblemRow;

@@ -1,17 +1,17 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { Button } from "$lib/components/button";
-    import { Input } from "$lib/components/input";
-    import { modal } from "$lib/state/modal.svelte";
-    import { offlineRepository } from "$lib/offline/browser";
-    import { downloadOfflinePackage, scopeFromSettings, type DownloadProgress } from "$lib/offline/download";
-    import type { OfflinePackageCreatedV1 } from "$lib/offline/types";
-    import type { PracticeSessionRow } from "$lib/sessions";
-    import type { PracticeSettings } from "$lib/trainer";
+    import { Button } from "#lib/components/button/index.js";
+    import { Input } from "#lib/components/input/index.js";
+    import { modal } from "#lib/state/modal.svelte.js";
+    import { offlineRepository } from "#lib/offline/browser.js";
+    import { downloadOfflinePackage, scopeFromSettings, type DownloadProgress } from "#lib/offline/download.js";
+    import type { OfflinePackageCreatedV1 } from "#lib/offline/types.js";
+    import type { PracticeSessionRow } from "#lib/sessions.js";
+    import type { PracticeSettings } from "#lib/trainer.js";
     import {
         DOWNLOAD_DEFAULT_PROBLEMS,
         PACKAGE_MAX_CANONICALS,
-    } from "$lib/offline/limits";
+    } from "#lib/offline/limits.js";
 
     let { userId, session, packageId, onDone }: {
         userId: string;
