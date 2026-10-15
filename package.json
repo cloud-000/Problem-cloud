@@ -7,6 +7,7 @@
 		"dev": "vite dev",
 		"dev:prod": "vite dev --mode production",
 		"build": "bun scripts/vendor-assets.ts --if-missing && vite build",
+		"deploy": "bun run build && wrangler pages deploy .svelte-kit/cloudflare --project-name problem-cloud --branch main",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''; bun scripts/vendor-assets.ts --if-missing || echo 'vendor-assets skipped; run `bun run vendor:assets` before building'",
 		"test": "bun test",
@@ -28,7 +29,8 @@
 		"svelte-check": "^4.7.6",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^6.0.3",
-		"vite": "^8.2.2"
+		"vite": "^8.2.2",
+		"wrangler": "4.110.0"
 	},
 	"dependencies": {
 		"@any-model/core": "^0.1.3",

@@ -36,6 +36,21 @@ bun run dev        # start the dev server
 | `bun run build`      | Production build                                      |
 | `bun run vendor:assets` | Re-download KaTeX / fonts / icon subset            |
 
+## Deployment
+
+Production runs on Cloudflare Pages at https://problem-cloud.pages.dev, with
+SvelteKit SSR and server routes handled by the Cloudflare adapter. The Pages
+configuration lives in `wrangler.jsonc`.
+
+Run `bun run deploy` to build and deploy the current checkout to production.
+The build needs the production `PUBLIC_SUPABASE_URL` and
+`PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env` or the build environment. Server
+secrets (`SUPABASE_SECRET_KEY` and `AI_COACH_HOSTED_API_KEY`) belong in the
+Pages project's encrypted environment variables, never in the config file.
+Supabase Auth must allow `https://problem-cloud.pages.dev/auth/callback`.
+
+Deployments use direct upload; pushing a Git commit alone does not deploy.
+
 ## Docs
 
 Feature and design docs live in [`docs/`](docs/). For architecture and conventions aimed at AI agents/contributors, see [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md).

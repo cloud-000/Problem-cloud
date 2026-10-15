@@ -53,9 +53,6 @@ src/lib/components/DOCS.md
 .zed
 .cursor
 
-# Cloudflare
-wrangler.jsonc
-
 # static
 static/fonts/
 static/vendor/

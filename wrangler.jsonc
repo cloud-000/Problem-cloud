@@ -1,0 +1,12 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "problem-cloud",
+	"compatibility_date": "2026-07-03",
+	"compatibility_flags": [
+		"nodejs_als"
+	],
+	"vars": {
+		"AI_COACH_ENABLED": "true"
+	},
+	"pages_build_output_dir": ".svelte-kit/cloudflare"
+}
