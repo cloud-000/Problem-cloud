@@ -31,7 +31,6 @@
         type TimingRule,
     } from "$lib/test-timing";
     import {
-        defaultPracticeSettings,
         defaultTestSettings,
         type PracticeSettings,
     } from "$lib/trainer";
@@ -42,8 +41,8 @@
     import { cn } from "$lib/utils";
     import { onMount } from "svelte";
     import SessionCard from "./SessionCard.svelte";
-    import Track from "./Track.svelte";
-    import { createTrackValue, type TrackValue } from "./practice-settings";
+    import PracticeFilters from "./PracticeFilters.svelte";
+    import { createPracticeSettingsForm, practiceSettingsFromForm } from "./practice-settings";
 
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
@@ -83,10 +82,8 @@
     // Countdown problem the moment its segment is submitted.
     let allowPause = $state(false);
     let revealPerSegment = $state(false);
-    // Practice-format track (topic/series/division-format), front-loaded in the
-    // dialog. Optional: an empty selection means "any" (today's default), so it
-    // never gates `canCreate`. Shared with SettingsPanel's mid-session Track.
-    let track = $state<TrackValue>(createTrackValue());
+    // Shared scope, history, and session options; the same form is used in-session.
+    let practiceForm = $state(createPracticeSettingsForm());
 
     // Typed narrower than `SelectOption[]` (no bare-string variant) so this same
     // array can feed both the test-format `<Select>` below and the practice-format
@@ -152,7 +149,7 @@
         strictTiming = true;
         allowPause = false;
         revealPerSegment = false;
-        track = createTrackValue();
+        practiceForm = createPracticeSettingsForm();
     }
 
     function openDialog(format: "practice" | "test" = "practice") {
@@ -253,12 +250,7 @@
         busy = true;
         try {
             let name = dialogName.trim() || null;
-            let settings: PracticeSettings = {
-                ...defaultPracticeSettings(),
-                topic: track.topic,
-                seriesIds: track.seriesIds,
-                seriesScopes: track.seriesScopes,
-            };
+            let settings: PracticeSettings = practiceSettingsFromForm(practiceForm);
             if (dialogFormat === "test") {
                 const testId = Number(selectedTestId);
                 const timeLimitSeconds =
@@ -511,8 +503,8 @@
     bind:open={dialogOpen}
     title="Start a new session"
     size="md"
-    class="flex flex-col min-h-120"
-    overflowVisible={true}
+    class="flex flex-col min-h-0"
+    overflowVisible={dialogFormat === "test"}
 >
     <div class="flex flex-col w-full h-full gap-2">
         <!-- Name -->
@@ -552,11 +544,9 @@
             </div>
         </div>
 
-        <!-- Practice options: what this session is about. Optional — an empty
-             selection means "any" (today's default), same shared Track step as
-             the mid-session settings panel. -->
+        <!-- The same practice controls as the in-session settings panel. -->
         {#if dialogFormat === "practice"}
-            <Track bind:value={track} {seriesOptions} {supabase} />
+            <PracticeFilters bind:form={practiceForm} {seriesOptions} {supabase} />
         {/if}
 
         <!-- Test options -->

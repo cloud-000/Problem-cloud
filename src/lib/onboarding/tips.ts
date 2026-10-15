@@ -69,7 +69,7 @@ const TIP_COPY: Record<ContextualTipId, string> = {
     [CONTEXTUAL_TIP.firstProgress]:
         "Each graded attempt is counted on Progress.",
     [CONTEXTUAL_TIP.firstReview]:
-        "A problem comes back when it is due.",
+        "Use last submission to keep recently answered or skipped problems out of your review.",
     [CONTEXTUAL_TIP.firstMatrix]:
         "Each cell is one problem. Color is how it went; select a cell to open it.",
     [CONTEXTUAL_TIP.firstGoal]:

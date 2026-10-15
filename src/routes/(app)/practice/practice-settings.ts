@@ -3,9 +3,10 @@ import type { Pacing } from "$lib/test-timing";
 import type { DimensionOption } from "$lib/series-review";
 import type { Engagement, Mastery } from "$lib/progress";
 import {
+    MAX_HISTORY_COUNT,
     ADAPTIVE_RANGE_DEFAULT,
     RATING_RANGE,
-    defaultPracticeSettings,
+    normalizePracticeHistory,
     type PracticeMode,
     type PracticeSettings,
     type Range,
@@ -129,6 +130,9 @@ export type PracticeSettingsForm = {
     counterRanges: CounterRanges;
     counterEnabled: CounterEnabled;
     lastSubmissionDays: number | null;
+    lastSubmissionWindow: "within" | "outside";
+    historyEngagement: Engagement | null;
+    historyOrder: "random" | "oldest";
     lastOutcome: "any" | "correct" | "incorrect";
     includeUnscheduled: boolean;
     mastery: (Mastery | "unassessed")[];
@@ -173,7 +177,7 @@ function normalizeDifficulty(range: Range): Range {
 export function createPracticeSettingsForm(
     raw: Partial<PracticeSettings> = {},
 ): PracticeSettingsForm {
-    const settings = { ...defaultPracticeSettings(), ...raw };
+    const settings = normalizePracticeHistory(raw);
     const counterRanges = {} as CounterRanges;
     const counterEnabled = {} as CounterEnabled;
 
@@ -225,6 +229,9 @@ export function createPracticeSettingsForm(
         counterRanges,
         counterEnabled,
         lastSubmissionDays: settings.lastSubmissionDays,
+        lastSubmissionWindow: settings.lastSubmissionWindow ?? "outside",
+        historyEngagement: settings.historyEngagement ?? null,
+        historyOrder: settings.historyOrder ?? "random",
         lastOutcome: settings.lastOutcome,
         includeUnscheduled: false,
         mastery: [...(settings.mastery ?? [])],
@@ -245,7 +252,8 @@ export function practiceSettingsFromForm(
     form: PracticeSettingsForm,
 ): PracticeSettings {
     return {
-        mode: form.mode,
+        mode: "new",
+        historyVersion: 1,
         format: form.format,
         testId: form.testId,
         timeLimitSeconds: form.timeLimitSeconds,
@@ -279,6 +287,9 @@ export function practiceSettingsFromForm(
         timesCorrect: counterFilter(form, "correct"),
         timesSkipped: counterFilter(form, "skipped"),
         lastSubmissionDays: form.lastSubmissionDays,
+        lastSubmissionWindow: form.lastSubmissionWindow,
+        historyEngagement: form.historyEngagement,
+        historyOrder: form.historyOrder,
         lastOutcome: form.lastOutcome,
         includeUnscheduled: false,
         mastery: [...form.mastery],
@@ -296,3 +307,56 @@ export function resetPracticeSettingsForm(
 }
 
 export { RATING_RANGE };
+
+/** The shortcut and custom range are two presentations of one counter filter. */
+export function attemptPreset(form: PracticeSettingsForm): "any" | "never" | "attempted" | "custom" {
+    if (!form.counterEnabled.reviewed) return "any";
+    const [min, max] = form.counterRanges.reviewed;
+    if (min === 0 && max === 0) return "never";
+    if (min === 1 && max === MAX_HISTORY_COUNT) return "attempted";
+    return "custom";
+}
+
+export function setAttemptPreset(form: PracticeSettingsForm, value: string): void {
+    form.counterEnabled.reviewed = value !== "any";
+    if (value === "never") form.counterRanges.reviewed = [0, 0];
+    if (value === "attempted") form.counterRanges.reviewed = [1, MAX_HISTORY_COUNT];
+    if (value === "custom") form.counterRanges.reviewed = [1, COUNTER_RANGE[1]];
+}
+
+export function historyFilterSummary(form: PracticeSettingsForm): string {
+    const parts: string[] = [];
+    const preset = attemptPreset(form);
+    if (preset === "never") parts.push("Never attempted");
+    if (preset === "attempted") parts.push("Attempted before");
+    if (preset === "custom") parts.push(`${form.counterRanges.reviewed.join("–")} attempts`);
+    if (form.mastery.length) parts.push(form.mastery.map((v) => ({ needs_work: "Needs work", learning: "Learning", confident: "Confident", unassessed: "Unassessed" })[v]).join(" or "));
+    if (form.lastSubmissionDays != null) parts.push(form.lastSubmissionWindow === "outside"
+        ? `No submission in the last ${form.lastSubmissionDays} days`
+        : `Submitted in the last ${form.lastSubmissionDays} days`);
+    if (form.historyEngagement) parts.push({ working: "Working on", revisit: "Revisit", later: "Later", ignored: "Ignored" }[form.historyEngagement]);
+    if (form.lastOutcome !== "any") parts.push(`Last graded result: ${form.lastOutcome}`);
+    for (const key of ["seen", "correct", "skipped"] as const) {
+        if (form.counterEnabled[key]) parts.push(`${form.counterRanges[key].join("–")} ${key === "seen" ? "logged submissions" : key}`);
+    }
+    return parts.join(" · ") || "Any attempt history, mastery and submission date";
+}
+
+/** Commit a count draft on blur, leaving the previous filter intact on rejection. */
+export function commitAttemptBound(
+    form: PracticeSettingsForm,
+    index: 0 | 1,
+    draft: string,
+): string | null {
+    const text = draft.trim();
+    if (text && !/^\d+$/.test(text)) return "Enter a non-negative whole number.";
+    const value = text ? Number(text) : index === 0 ? 0 : MAX_HISTORY_COUNT;
+    if (!Number.isSafeInteger(value) || value > MAX_HISTORY_COUNT) return "Number is too large.";
+    const range = [...form.counterRanges.reviewed] as Range;
+    range[index] = value;
+    if (range[0] > range[1]) return index === 0
+        ? "Minimum cannot exceed maximum."
+        : "Maximum cannot be less than minimum.";
+    form.counterRanges.reviewed = range;
+    return null;
+}

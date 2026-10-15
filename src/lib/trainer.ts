@@ -2,7 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "$lib/types/database.types";
 import {
     TESTS_EMBED,
-    TESTS_EMBED_INNER,
+    PROGRESS_SELECT,
+    RATING_SELECT,
+    CANONICAL_STATE_SELECT,
+    normalizeEmbeds,
     type ProblemRow,
 } from "$lib/library";
 import type { Engagement, Mastery, ProblemProgress } from "$lib/progress";
@@ -24,8 +27,16 @@ export type SessionFormat = "practice" | "test";
 
 export type Range = [number, number];
 
+/** PostgreSQL integer counter ceiling, also used as an open upper bound. */
+export const MAX_HISTORY_COUNT = 2_147_483_647;
+
 export type PracticeSettings = {
+    /** Legacy/offline compatibility only; online selection uses history filters. */
     mode: PracticeMode;
+    historyVersion?: 1;
+    lastSubmissionWindow?: "within" | "outside";
+    historyEngagement?: Engagement | null;
+    historyOrder?: "random" | "oldest";
     // Session format. Defaults to "practice"; reads must tolerate older snapshots
     // that predate this field (treat a missing value as "practice").
     format: SessionFormat;
@@ -73,8 +84,8 @@ export type PracticeSettings = {
     perProblemSeconds?: number | null;
     // Adaptive difficulty. When on, every draw is constrained to problems whose
     // overall Glicko rating sits within `adaptiveRange` points of the player's
-    // live rating, falling back to the nearest-rated problem (new draws) or the
-    // unconstrained queue (review/skipped) when the band is empty. Optional so
+    // live rating, falling back to the nearest-rated matching problem and then
+    // an unrated draw when the band is empty. History filters are never relaxed. Optional so
     // older session snapshots are tolerated (adaptive treated as on by default).
     adaptive?: boolean;
     adaptiveRange?: number;
@@ -113,12 +124,12 @@ export type PracticeSettings = {
     // solution; "without" = only those with none; "any" = both. Optional so older
     // session snapshots without it are tolerated (treated as "any").
     solutionAvailability?: "with" | "without" | "any";
-    // Advanced progress filters — apply to the review queue only. `null` = "Any".
+    // History filters apply to every online draw. `null` = "Any".
     timesSeen: Range | null;
     timesReviewed: Range | null;
     timesCorrect: Range | null;
     timesSkipped: Range | null;
-    lastSubmissionDays: number | null; // only reviewed within the last N days
+    lastSubmissionDays: number | null; // window on last_submission_at, including skips
     lastOutcome: "any" | "correct" | "incorrect";
     /** Legacy snapshot field. Unscheduled rows are no longer served as due. */
     includeUnscheduled: boolean;
@@ -174,11 +185,11 @@ export type PracticeAttempt = {
     flagged: boolean;
 };
 
-/** Cross-load state for interleaving and forward progress through queues. */
+/** Cross-load state for forward progress through matching problems. */
 export type PracticeSession = {
     /** Problem ids already shown this session (avoids repeats / advances queues). */
     shownIds: Set<number>;
-    /** Monotonic draw counter; drives the Mixed-mode interleave pattern. */
+    /** Monotonic count of successful draws. */
     drawIndex: number;
 };
 
@@ -189,7 +200,6 @@ export type PracticeResult = {
 };
 
 const PROBLEM_SELECT = `*, ${TESTS_EMBED}`;
-const MAX_RANDOM_ATTEMPTS = 6;
 const FALLBACK_PAGE_SIZE = 25;
 
 /** Adaptive difficulty: default half-width of the rating band (points ±). */
@@ -224,9 +234,6 @@ function manualRatingBand(range: Range | undefined): [number, number] | null {
     return [lo, hi];
 }
 
-/** Inner rating embed, so a draw can be band-filtered by overall Glicko rating. */
-const RATING_INNER = "problem_ratings!inner(scope, rating, rd, attempts)";
-
 /**
  * Settings augmented with a resolved rating band for adaptive draws. The band is
  * `[center - range, center + range]` around the player's live rating, computed
@@ -236,10 +243,8 @@ const RATING_INNER = "problem_ratings!inner(scope, rating, rd, attempts)";
  */
 type ResolvedSettings = PracticeSettings & {
     ratingBand?: [number, number] | null;
+    historyNow?: number;
 };
-
-// Mixed-mode interleave: 1 review : 2 new (lead with review so it never starves).
-const MIXED_PATTERN: PracticeSource[] = ["review", "practice", "practice"];
 
 export function createSession(): PracticeSession {
     return { shownIds: new Set<number>(), drawIndex: 0 };
@@ -253,6 +258,10 @@ export function createSession(): PracticeSession {
 export function defaultPracticeSettings(): PracticeSettings {
     return {
         mode: "new",
+        historyVersion: 1,
+        lastSubmissionWindow: "outside",
+        historyEngagement: null,
+        historyOrder: "random",
         format: "practice",
         testId: null,
         timeLimitSeconds: null,
@@ -304,17 +313,6 @@ export function defaultTestSettings(
         allowPause,
         revealPerSegment,
     };
-}
-
-/**
- * Whether the draw filters on any `tests`-level attribute. Scoping is always
- * anchored to `seriesIds` (a division/format scope only narrows a selected
- * series), so this reduces to "any series selected". When true, the `tests`
- * embed must be inner-joined so the filter constrains the parent
- * `problems`/`problem_progress` rows.
- */
-function scopesTests(settings: PracticeSettings): boolean {
-    return (settings.seriesIds?.length ?? 0) > 0;
 }
 
 /** A stored 1-based problem-number pair that actually narrows that series. */
@@ -519,360 +517,36 @@ function exclusionList(ids: Iterable<number>): string | null {
     return arr.length ? `(${arr.join(",")})` : null;
 }
 
-/**
- * Base eligibility + problem-attribute filters. `prefix` targets an embedded
- * resource ("problems.") when filtering through `problem_progress`, or "" when
- * querying the `problems` table directly.
- */
-function applyAttributeFilters(
-    query: any,
-    settings: ResolvedSettings,
-    prefix: "" | "problems." = "",
-) {
-    // Eligibility floor: a usable problem always has a non-blank statement.
-    let next = query
-        .not(`${prefix}statement`, "is", null)
-        .neq(`${prefix}statement`, "");
-
-    // Reference-answer coverage comes from answer_status. A known answer still
-    // needs a usable key; the post-query eligibility check enforces its range.
-    const answerAvailability = settings.answerAvailability ?? "with";
-    if (answerAvailability === "with") {
-        next = next
-            .eq(`${prefix}answer_status`, "known")
-            .gte(`${prefix}answer_index`, 0)
-            .not(`${prefix}choices`, "is", null)
-            .neq(`${prefix}choices`, "{}");
-    } else if (answerAvailability === "without") {
-        next = next.in(`${prefix}answer_status`, [
-            "source_missing",
-            "needs_review",
-        ]);
-    }
-
-    // Solution availability. Solutions live in `official_solutions` (text[]):
-    // "with" needs a non-empty array, "without" wants null/empty, "any" drops it.
-    const solutionAvailability = settings.solutionAvailability ?? "any";
-    if (solutionAvailability === "with") {
-        next = next
-            .not(`${prefix}official_solutions`, "is", null)
-            .neq(`${prefix}official_solutions`, "{}");
-    } else if (solutionAvailability === "without") {
-        next =
-            prefix === "problems."
-                ? next.or(
-                      "official_solutions.is.null,official_solutions.eq.{}",
-                      { referencedTable: "problems" },
-                  )
-                : next.or(
-                      "official_solutions.is.null,official_solutions.eq.{}",
-                  );
-    }
-
-    if (settings.topic.length > 0) {
-        next = next.in(`${prefix}topic`, settings.topic);
-    }
-    // Difficulty is no longer a column filter — it resolves into `ratingBand`
-    // (see nextPracticeProblem / manualRatingBand) and is applied via the rating
-    // embed below, exactly like the adaptive band.
-    if (settings.verifiedOnly) next = next.eq(`${prefix}verified`, true);
-    if (settings.computational != null) {
-        next = next.eq(`${prefix}is_computational`, settings.computational);
-    }
-    // Series scope. With no per-series division/format/problem-number narrowing
-    // this is plain `series_id` membership (unchanged behavior). When at least
-    // one series is narrowed, switch to the per-series OR-of-ANDs so each
-    // series is filtered by its *own* axes. Problem numbers live on `problems.n`,
-    // so that path uses empty-embed aliases plus a problems-resource OR rather
-    // than the tests embed (which would look for `tests.n`). The embed is
-    // inner-joined (see the `*Select` helpers) so these drop the parent.
-    if (settings.seriesIds && settings.seriesIds.length > 0) {
-        next = applySeriesScopeFilter(next, settings, prefix);
-    }
-
-    // Adaptive difficulty: keep only problems whose overall-scope rating sits in
-    // the band. Filtered through the inner `problem_ratings` embed (nested under
-    // `problems` when drawing via progress), so the select strings must carry
-    // `RATING_INNER` whenever a band is present — see the `*Select` helpers.
-    if (settings.ratingBand) {
-        const rp = `${prefix}problem_ratings.`;
-        next = next
-            .eq(`${rp}scope`, "overall")
-            .gte(`${rp}rating`, settings.ratingBand[0])
-            .lte(`${rp}rating`, settings.ratingBand[1]);
-    }
-
-    return next;
-}
-
-/** Select for a direct `problems` draw, widened for series scope / adaptive band. */
-function problemsDirectSelect(settings: ResolvedSettings): string {
-    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
-    const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
-    return `*, ${tests}${seriesScopeSelectAliases(settings)}${rating}`;
-}
-
-/** Minimal head-count select for a direct `problems` draw (ids + join anchors). */
-function problemsCountSelect(settings: ResolvedSettings): string {
-    let sel = "id";
-    if (scopesTests(settings)) {
-        sel += ", tests!inner(series_id, division, format)";
-    }
-    sel += seriesScopeSelectAliases(settings);
-    if (settings.ratingBand) sel += ", problem_ratings!inner(rating)";
-    return sel;
-}
-
-/** Select for a `problem_progress` review draw, with the embedded problem widened. */
-function reviewSelect(settings: ResolvedSettings): string {
-    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
-    const rating = settings.ratingBand ? `, ${RATING_INNER}` : "";
-    return `problem_id, next_review_at, times_seen, times_reviewed, times_correct, times_skipped, last_submission_at, last_reviewed_at, last_correct, solved, mastery, engagement, problems!inner(*, ${tests}${seriesScopeSelectAliases(settings)}${rating})`;
-}
-
-/** Whether settings permit problems without a comparable reference answer. */
-function allowsWithoutComparableAnswer(settings: PracticeSettings): boolean {
-    return (settings.answerAvailability ?? "with") !== "with";
-}
-
-function isEligibleProblem(
-    problem: ProblemRow | null,
-    allowWithoutComparableAnswer = false,
-): problem is ProblemRow {
-    if (!problem?.statement?.trim()) return false;
-    if (allowWithoutComparableAnswer) return true;
-    return hasComparableAnswer(problem);
-}
-
-async function fetchRandomCandidate(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    exclude: string | null,
-    count: number,
-): Promise<ProblemRow | null> {
-    const offset = Math.floor(Math.random() * count);
-    // Exclude duplicate aliases (canonical_id set): the same real-world problem
-    // is served once, under its canonical. Aliases still appear in list/test-mode
-    // draws (which target a specific test), just not in cross-catalog discovery.
-    let query = applyAttributeFilters(
-        supabase.from("problems").select(problemsDirectSelect(settings)),
-        settings,
-    ).is("canonical_id", null);
-    if (exclude) query = query.not("id", "in", exclude);
-
-    const { data, error } = await query.order("id").range(offset, offset).maybeSingle();
-
-    if (error) throw error;
-    return (data as unknown as ProblemRow | null) ?? null;
-}
-
-/**
- * Problem ids to exclude from a "new" draw: everything already interacted with
- * (`problem_progress`; RLS scopes to the current user, anon → none) plus anything
- * already shown this session. Shared by the random and adaptive-nearest draws.
- */
-async function seenProblemIds(
-    supabase: Supabase,
-    settings: PracticeSettings,
-    session: PracticeSession,
-): Promise<Set<number>> {
-    const excludeIds = new Set(session.shownIds);
-    const { data: seen, error } = await supabase
-        .from("problem_progress")
-        .select("problem_id, times_seen, mastery, engagement");
-    if (error) throw error;
-    for (const row of seen ?? []) {
-        const mastery = settings.mastery ?? [];
-        const masteryMatches =
-            mastery.length === 0 ||
-            (row.mastery == null
-                ? mastery.includes("unassessed")
-                : mastery.includes(row.mastery as Mastery));
-        if (row.times_seen > 0 || row.engagement === "ignored" || !masteryMatches) {
-            excludeIds.add(row.problem_id);
+/** Translate old mode snapshots once; new snapshots have no mode-dependent logic. */
+export function normalizePracticeHistory(raw: Partial<PracticeSettings>): PracticeSettings {
+    const settings = { ...defaultPracticeSettings(), ...raw };
+    if (raw.historyVersion !== 1 && raw.mode) {
+        if (raw.mode === "new") settings.timesReviewed ??= [0, 0];
+        if (raw.mode === "review") {
+            settings.timesReviewed = [Math.max(1, settings.timesReviewed?.[0] ?? 1), settings.timesReviewed?.[1] ?? MAX_HISTORY_COUNT];
+            if (raw.lastSubmissionDays == null) {
+                settings.lastSubmissionDays = 7;
+                settings.lastSubmissionWindow = "outside";
+            }
         }
-    }
-    return excludeIds;
-}
-
-/**
- * A problem the user has not seen yet: no `problem_progress` row, and not already
- * shown this session. Reuses the random-offset selection so picks stay varied.
- */
-async function fetchNewProblem(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-): Promise<ProblemRow | null> {
-    if (
-        settings.mastery?.length > 0 &&
-        !settings.mastery.includes("unassessed")
-    ) {
-        const draw = await runReviewDraw(
-            excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
-                .eq("times_seen", 0)
-                .order("problem_id"),
-            allowsWithoutComparableAnswer(settings),
-        );
-        return draw.problem;
-    }
-
-    const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
-
-    // `.is("canonical_id", null)` keeps the count aligned with the alias-excluded
-    // draws below (a duplicate is discovered once, under its canonical).
-    let countQuery = applyAttributeFilters(
-        supabase
-            .from("problems")
-            .select(problemsCountSelect(settings), { count: "exact", head: true }),
-        settings,
-    ).is("canonical_id", null);
-    if (exclude) countQuery = countQuery.not("id", "in", exclude);
-    const { count, error } = await countQuery;
-
-    if (error) throw error;
-    if (!count) return null;
-
-    const allowAnswerless = allowsWithoutComparableAnswer(settings);
-    for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
-        const candidate = await fetchRandomCandidate(supabase, settings, exclude, count);
-        if (isEligibleProblem(candidate, allowAnswerless)) return candidate;
-    }
-
-    let fallback = applyAttributeFilters(
-        supabase.from("problems").select(problemsDirectSelect(settings)),
-        settings,
-    ).is("canonical_id", null);
-    if (exclude) fallback = fallback.not("id", "in", exclude);
-    const { data, error: fallbackError } = await fallback
-        .order("id")
-        .limit(FALLBACK_PAGE_SIZE);
-
-    if (fallbackError) throw fallbackError;
-
-    const eligible = ((data ?? []) as unknown as ProblemRow[]).filter((p) =>
-        isEligibleProblem(p, allowAnswerless),
-    );
-    if (eligible.length === 0) return null;
-
-    return eligible[Math.floor(Math.random() * eligible.length)];
-}
-
-/**
- * The unseen problem whose overall rating is closest to `center` — the "next
- * closest" fallback when the adaptive band itself is empty. Queried through the
- * `problem_ratings` table (a to-one embed to `problems`) so it can be ordered by
- * the rating column directly, which a to-many embed on `problems` can't. Grabs a
- * page just above and just below `center`, then picks the nearest eligible one.
- */
-async function fetchNearestNewProblem(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-    center: number,
-): Promise<ProblemRow | null> {
-    const exclude = exclusionList(await seenProblemIds(supabase, settings, session));
-    const allowAnswerless = allowsWithoutComparableAnswer(settings);
-    const tests = scopesTests(settings) ? TESTS_EMBED_INNER : TESTS_EMBED;
-    const select = `problem_id, rating, problems!inner(*, ${tests}${seriesScopeSelectAliases(settings)})`;
-
-    // The band is intentionally dropped here (nearest lives *outside* it); every
-    // other attribute filter still applies, under the `problems.` embed prefix.
-    const base = () => {
-        let q = applyAttributeFilters(
-            supabase.from("problem_ratings").select(select),
-            { ...settings, ratingBand: null },
-            "problems.",
-        ).eq("scope", "overall");
-        if (exclude) q = q.not("problem_id", "in", exclude);
-        return q;
-    };
-
-    type NearestRow = { rating: number; problems: ProblemRow | null };
-    const [above, below] = await Promise.all([
-        base().gte("rating", center).order("rating", { ascending: true }).limit(FALLBACK_PAGE_SIZE),
-        base().lt("rating", center).order("rating", { ascending: false }).limit(FALLBACK_PAGE_SIZE),
-    ]);
-    if (above.error) throw above.error;
-    if (below.error) throw below.error;
-
-    const rows = [
-        ...((above.data ?? []) as unknown as NearestRow[]),
-        ...((below.data ?? []) as unknown as NearestRow[]),
-    ].filter((r) => isEligibleProblem(r.problems, allowAnswerless));
-    if (rows.length === 0) return null;
-
-    let best = rows[0];
-    let bestDist = Math.abs(best.rating - center);
-    for (const r of rows.slice(1)) {
-        const dist = Math.abs(r.rating - center);
-        if (dist < bestDist) {
-            best = r;
-            bestDist = dist;
+        if (raw.mode === "skipped") {
+            settings.timesSkipped = [Math.max(1, settings.timesSkipped?.[0] ?? 1), settings.timesSkipped?.[1] ?? MAX_HISTORY_COUNT];
+            settings.timesCorrect ??= [0, 0];
         }
+        if (raw.mode === "list") settings.historyEngagement = raw.listEngagement ?? "working";
+        if (raw.lastSubmissionDays != null) settings.lastSubmissionWindow = "within";
     }
-    return best.problems;
+    return { ...settings, mode: "new", historyVersion: 1 };
 }
 
-/**
- * A "new" draw honoring the adaptive band: an in-band problem first, then the
- * nearest-rated one when the band is empty, and finally an unconstrained draw
- * when nothing rated matches at all (so a fresh/unrated corpus never dead-ends).
- * With no band this is just {@link fetchNewProblem}.
- */
-async function fetchNewProblemDraw(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-    center: number | null,
-): Promise<ProblemRow | null> {
-    if (!settings.ratingBand || center == null) {
-        return fetchNewProblem(supabase, settings, session);
-    }
-    const inBand = await fetchNewProblem(supabase, settings, session);
-    if (inBand) return inBand;
-    const nearest = await fetchNearestNewProblem(supabase, settings, session, center);
-    if (nearest) return nearest;
-    return fetchNewProblem(supabase, { ...settings, ratingBand: null }, session);
-}
-
-/**
- * The most overdue due-for-review problem (`next_review_at <= now`, ascending),
- * honoring attribute + advanced progress filters and skipping anything already
- * shown this session so the queue always advances.
- */
-/** A single queue draw: the chosen problem plus its progress (review queue only). */
-type Draw = { problem: ProblemRow | null; progress: ProblemProgress | null };
-
-/** Row shape returned by the review query: progress columns + embedded problem. */
-type ReviewRow = {
-    next_review_at: string | null;
-    times_seen: number;
-    times_reviewed: number;
-    times_correct: number;
-    times_skipped: number;
-    last_submission_at: string | null;
-    last_reviewed_at: string | null;
-    last_correct: boolean | null;
-    solved: boolean;
-    mastery: Mastery | null;
-    engagement: Engagement | null;
-    problems: ProblemRow | null;
-};
-
-function toProgress(row: ReviewRow): ProblemProgress {
+/** The Review shortcut is a preset of the same filters, never a separate queue. */
+export function defaultReviewSettings(): PracticeSettings {
     return {
-        times_seen: row.times_seen,
-        times_reviewed: row.times_reviewed,
-        times_correct: row.times_correct,
-        times_skipped: row.times_skipped,
-        last_submission_at: row.last_submission_at,
-        last_reviewed_at: row.last_reviewed_at,
-        last_correct: row.last_correct,
-        next_review_at: row.next_review_at,
-        solved: row.solved,
-        mastery: row.mastery,
-        engagement: row.engagement,
+        ...defaultPracticeSettings(),
+        timesReviewed: [1, MAX_HISTORY_COUNT],
+        lastSubmissionDays: 7,
+        lastSubmissionWindow: "outside",
+        historyOrder: "oldest",
     };
 }
 
@@ -885,276 +559,159 @@ function applyMasteryFilter(query: any, mastery: PracticeSettings["mastery"]) {
     return query.or(`mastery.is.null,mastery.in.(${values.join(",")})`);
 }
 
-/**
- * Filters shared by every review-queue tier — attribute, progress-counter,
- * recency, outcome, and session-exclusion. The caller layers on the
- * `next_review_at` time condition and ordering.
- */
-function buildReviewBaseQuery(
+/** One history contract, applied before counting, ordering or paging. */
+export function applyPracticeHistoryFilters(
+    query: any,
+    settings: PracticeSettings,
+    now = Date.now(),
+): any {
+    let next = applyMasteryFilter(query, settings.mastery);
+    for (const [column, range] of [
+        ["times_seen", settings.timesSeen],
+        ["times_reviewed", settings.timesReviewed],
+        ["times_correct", settings.timesCorrect],
+        ["times_skipped", settings.timesSkipped],
+    ] as const) {
+        if (range) next = next.gte(column, range[0]).lte(column, range[1]);
+    }
+    if (settings.lastSubmissionDays != null) {
+        const cutoff = new Date(now - settings.lastSubmissionDays * 86_400_000).toISOString();
+        next = settings.lastSubmissionWindow === "outside"
+            ? next.or(`last_submission_at.is.null,last_submission_at.lt.${cutoff}`)
+            : next.gte("last_submission_at", cutoff);
+    }
+    if (settings.lastOutcome === "correct") next = next.eq("last_correct", true);
+    if (settings.lastOutcome === "incorrect") next = next.eq("last_correct", false);
+    return settings.historyEngagement
+        ? next.eq("engagement", settings.historyEngagement)
+        : next.eq("is_ignored", false);
+}
+
+/** The flat index carries placement scope and canonical-owned progress together. */
+function practiceIndexQuery(
     supabase: Supabase,
     settings: ResolvedSettings,
     session: PracticeSession,
     options: { count?: "exact"; head?: boolean } = {},
 ) {
-    let query = applyAttributeFilters(
-        supabase.from("problem_progress").select(reviewSelect(settings), options),
+    let query = applyPracticeHistoryFilters(
+        supabase.from("user_problem_index").select("problem_id, canonical_id", options),
         settings,
-        "problems.",
-    );
-    query = applyMasteryFilter(query, settings.mastery ?? []);
-
-    const counters: [keyof Database["public"]["Tables"]["problem_progress"]["Row"], Range | null][] =
-        [
-            ["times_seen", settings.timesSeen],
-            ["times_reviewed", settings.timesReviewed],
-            ["times_correct", settings.timesCorrect],
-            ["times_skipped", settings.timesSkipped],
-        ];
-    for (const [column, range] of counters) {
-        if (range) query = query.gte(column, range[0]).lte(column, range[1]);
+        settings.historyNow ?? Date.now(),
+    ).eq("has_statement", true);
+    if (!settings.seriesIds?.length) query = query.is("canonical_id", null);
+    else {
+        const scopes = settings.seriesScopes ?? {};
+        const clauses = settings.seriesIds.map((id) => {
+            const scope = scopes[id];
+            const terms = [`series_id.eq.${Number(id)}`];
+            if (scope?.divisions?.length) terms.push(`division.in.(${scope.divisions.map(pgQuote).join(",")})`);
+            if (scope?.formats?.length) terms.push(`format.in.(${scope.formats.map(pgQuote).join(",")})`);
+            const numbers = storedProblemNumbers(scope);
+            if (numbers) terms.push(`n.gte.${numbers[0] - 1}`, `n.lte.${numbers[1] - 1}`);
+            const years = storedYearRange(scope);
+            if (years) terms.push(`year.gte.${years[0]}`, `year.lte.${years[1]}`);
+            return terms.length === 1 ? terms[0] : `and(${terms.join(",")})`;
+        });
+        query = query.or(clauses.join(","));
     }
-
-    if (settings.lastSubmissionDays != null) {
-        const since = new Date(
-            Date.now() - settings.lastSubmissionDays * 24 * 60 * 60 * 1000,
-        ).toISOString();
-        query = query.gte("last_submission_at", since);
+    if (settings.topic.length) query = query.in("topic", settings.topic);
+    if (settings.verifiedOnly) query = query.eq("verified", true);
+    if (settings.computational != null) query = query.eq("is_computational", settings.computational);
+    if (settings.answerAvailability === "without") query = query.in("answer_status", ["source_missing", "needs_review"]);
+    else if ((settings.answerAvailability ?? "with") === "with") {
+        query = query.eq("answer_status", "known").gte("answer_index", 0).eq("has_choices", true);
     }
-
-    if (settings.lastOutcome === "correct") query = query.eq("last_correct", true);
-    else if (settings.lastOutcome === "incorrect") query = query.eq("last_correct", false);
-
+    if (settings.solutionAvailability === "with") query = query.eq("has_solution", true);
+    if (settings.solutionAvailability === "without") query = query.eq("has_solution", false);
+    if (settings.ratingBand) query = query.gte("rating", settings.ratingBand[0]).lte("rating", settings.ratingBand[1]);
     const exclude = exclusionList(session.shownIds);
-    if (exclude) query = query.not("problem_id", "in", exclude);
-
+    if (exclude) {
+        query = query.not("problem_id", "in", exclude)
+            .or(`canonical_id.is.null,canonical_id.not.in.${exclude}`);
+    }
     return query;
 }
 
-function excludeIgnored(query: any) {
-    return query.or("engagement.is.null,engagement.neq.ignored");
-}
-
-function buildSkippedBaseQuery(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-    options: { count?: "exact"; head?: boolean } = {},
-) {
-    return excludeIgnored(buildReviewBaseQuery(supabase, settings, session, options))
-        .gt("times_skipped", 0)
-        .eq("solved", false);
-}
-
-/** Execute a review/progress query and map the first eligible row to a Draw. */
-async function runReviewDraw(
-    query: any,
-    allowAnswerless = false,
-    limitToOne = true,
-): Promise<Draw> {
-    const { data, error } = await (limitToOne ? query.limit(1) : query);
+async function eligibleIndexRows(supabase: Supabase, ids: number[], settings: PracticeSettings) {
+    if (!ids.length) return [];
+    const { data, error } = await supabase.from("problems")
+        .select(`*, ${TESTS_EMBED}, ${PROGRESS_SELECT}, ${RATING_SELECT}, ${CANONICAL_STATE_SELECT}`)
+        .in("id", ids);
     if (error) throw error;
-
-    const rows = (data ?? []) as unknown as ReviewRow[];
-    const row = rows.find((r) => isEligibleProblem(r.problems, allowAnswerless));
-
-    return row?.problems
-        ? { problem: row.problems, progress: toProgress(row) }
-        : { problem: null, progress: null };
-}
-
-/**
- * The oldest problem that is actually due. Future and unscheduled rows never
- * enter this queue; explicit Revisit intent owns unscheduled reinforcement.
- */
-async function fetchDueReviewProblem(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-): Promise<Draw> {
-    const now = new Date().toISOString();
-    const allowAnswerless = allowsWithoutComparableAnswer(settings);
-
-    return runReviewDraw(
-        excludeIgnored(buildReviewBaseQuery(supabase, settings, session))
-            .not("next_review_at", "is", null)
-            .lte("next_review_at", now)
-            .order("next_review_at", { ascending: true }),
-        allowAnswerless,
+    const rows = ((data ?? []) as unknown as (ProblemRow & Parameters<typeof normalizeEmbeds>[0])[]).map(normalizeEmbeds);
+    const byId = new Map<number, ProblemRow>(rows.map((row) => [row.id, row]));
+    return ids.map((id) => byId.get(id)).filter((row): row is ProblemRow =>
+        Boolean(row?.statement?.trim()) &&
+        ((settings.answerAvailability ?? "with") !== "with" || hasComparableAnswer(row!)),
     );
 }
 
-async function fetchListProblem(
+async function drawMatchingProblem(
     supabase: Supabase,
     settings: ResolvedSettings,
     session: PracticeSession,
-): Promise<Draw> {
-    const allowAnswerless = allowsWithoutComparableAnswer(settings);
-    return runReviewDraw(
-        buildReviewBaseQuery(supabase, settings, session)
-            .eq("engagement", settings.listEngagement ?? "working")
-            .order("last_submission_at", { ascending: true, nullsFirst: true })
-            .order("problem_id", { ascending: true }),
-        allowAnswerless,
-    );
-}
-
-async function fetchSkippedProblem(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-): Promise<Draw> {
-    const allowAnswerless = allowsWithoutComparableAnswer(settings);
-    const countQuery = buildSkippedBaseQuery(supabase, settings, session, {
-        count: "exact",
-        head: true,
-    });
-    const { count, error } = await countQuery;
+): Promise<ProblemRow | null> {
+    const { count, error } = await practiceIndexQuery(supabase, settings, session, { count: "exact", head: true });
     if (error) throw error;
-    if (!count) return { problem: null, progress: null };
-
-    for (let i = 0; i < MAX_RANDOM_ATTEMPTS; i += 1) {
-        const offset = Math.floor(Math.random() * count);
-        const draw = await runReviewDraw(
-            buildSkippedBaseQuery(supabase, settings, session)
-                .order("problem_id")
-                .range(offset, offset),
-            allowAnswerless,
-            false,
-        );
-        if (draw.problem) return draw;
+    if (!count) return null;
+    const offset = settings.historyOrder === "oldest" ? 0 : Math.floor(Math.random() * count);
+    // Scan beyond an invalid reference key/blank statement instead of allowing
+    // one malformed candidate to hide later eligible results.
+    for (const [start, end] of [[offset, count], [0, offset]]) {
+        for (let from = start; from < end; from += FALLBACK_PAGE_SIZE) {
+            let query = practiceIndexQuery(supabase, settings, session);
+            if (settings.historyOrder === "oldest") query = query.order("last_submission_at", { ascending: true, nullsFirst: true });
+            const { data, error: pageError } = await query.order("problem_id")
+                .range(from, Math.min(end, from + FALLBACK_PAGE_SIZE) - 1);
+            if (pageError) throw pageError;
+            const ids = (data ?? []).map((row: { problem_id: number }) => row.problem_id);
+            const rows = await eligibleIndexRows(supabase, ids, settings);
+            if (rows.length) return rows[0];
+        }
     }
-
-    const draw = await runReviewDraw(
-        buildSkippedBaseQuery(supabase, settings, session)
-            .order("last_submission_at", { ascending: false })
-            .order("problem_id")
-            .limit(FALLBACK_PAGE_SIZE),
-        allowAnswerless,
-        false,
-    );
-    return draw;
+    return null;
 }
 
-/**
- * A due-review draw honoring the adaptive band, relaxing to the unconstrained
- * review queue when the band leaves nothing due (the schedule, not the band,
- * governs review — the band only reorders which due problem surfaces first).
- */
-async function fetchDueReviewDraw(
+/** Nearest-rated fallback preserves every explicit scope/history requirement. */
+async function nearestMatchingProblem(
     supabase: Supabase,
     settings: ResolvedSettings,
     session: PracticeSession,
-): Promise<Draw> {
-    const draw = await fetchDueReviewProblem(supabase, settings, session);
-    if (draw.problem || !settings.ratingBand) return draw;
-    return fetchDueReviewProblem(supabase, { ...settings, ratingBand: null }, session);
+    center: number,
+): Promise<ProblemRow | null> {
+    const base = () => practiceIndexQuery(supabase, { ...settings, ratingBand: null }, session);
+    const [above, below] = await Promise.all([
+        base().gte("rating", center).order("rating").order("problem_id").limit(FALLBACK_PAGE_SIZE),
+        base().lt("rating", center).order("rating", { ascending: false }).order("problem_id").limit(FALLBACK_PAGE_SIZE),
+    ]);
+    if (above.error) throw above.error;
+    if (below.error) throw below.error;
+    const ordered = [...(above.data ?? []), ...(below.data ?? [])];
+    const rows = await eligibleIndexRows(supabase, ordered.map((row) => row.problem_id!), settings);
+    return rows.sort((a, b) => Math.abs((a.rating?.rating ?? Infinity) - center) - Math.abs((b.rating?.rating ?? Infinity) - center))[0] ?? null;
 }
 
-/** A skipped-queue draw honoring the adaptive band, relaxing it when empty. */
-async function fetchSkippedDraw(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-): Promise<Draw> {
-    const draw = await fetchSkippedProblem(supabase, settings, session);
-    if (draw.problem || !settings.ratingBand) return draw;
-    return fetchSkippedProblem(supabase, { ...settings, ratingBand: null }, session);
-}
-
-async function fetchListDraw(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-): Promise<Draw> {
-    const draw = await fetchListProblem(supabase, settings, session);
-    if (draw.problem || !settings.ratingBand) return draw;
-    return fetchListProblem(supabase, { ...settings, ratingBand: null }, session);
-}
-
-async function drawFromSource(
-    supabase: Supabase,
-    settings: ResolvedSettings,
-    session: PracticeSession,
-    source: PracticeSource,
-    center: number | null,
-): Promise<Draw> {
-    return source === "review"
-        ? fetchDueReviewDraw(supabase, settings, session)
-        : {
-              problem: await fetchNewProblemDraw(supabase, settings, session, center),
-              progress: null,
-          };
-}
-
-/**
- * Pick the next practice problem for the active mode. For Mixed, follows the
- * 1:2 review:new pattern and falls back to the other queue when the preferred
- * one is empty, so neither new problems nor reviews can starve the other.
- *
- * The caller records the returned problem's id in `session.shownIds` and bumps
- * `session.drawIndex` after a successful draw.
- *
- * `playerRating` is the drawer's live overall rating; with adaptive on it centers
- * the rating band, so every draw prefers problems near the player's level. It is
- * `null` before the rating loads (or for unrated users), which leaves the draw
- * unconstrained until a rating exists.
- */
+/** All online practice uses the same filters; due dates never gate selection. */
 export async function nextPracticeProblem(
     supabase: Supabase,
-    settings: PracticeSettings,
+    raw: PracticeSettings,
     session: PracticeSession,
     playerRating: number | null = null,
 ): Promise<PracticeResult> {
-    // Resolve the rating band once and layer it over the stored settings, so
-    // every draw path below reads it off `resolved` rather than recomputing it.
-    // Two mutually exclusive sources feed the same band:
-    //   • Adaptive on  → a *soft* band centered on the player's live rating
-    //     (`center` set), which the new-problem draw relaxes to nearest/unrated
-    //     when empty so it never dead-ends.
-    //   • Adaptive off → the manual Difficulty range as a *hard* rating filter
-    //     (`center` stays null → no relaxation on the new-problem draw).
-    // When adaptive is on the manual Difficulty is ignored (the UI hides it).
+    const settings = normalizePracticeHistory(raw);
     const center = settings.adaptive && playerRating != null ? playerRating : null;
     const range = settings.adaptiveRange ?? ADAPTIVE_RANGE_DEFAULT;
-    const ratingBand =
-        center != null
-            ? ([center - range, center + range] as [number, number])
-            : settings.adaptive
-              ? null
-              : manualRatingBand(settings.difficulty);
-    const resolved: ResolvedSettings = { ...settings, ratingBand };
-
-    if (settings.mode === "new") {
-        return {
-            problem: await fetchNewProblemDraw(supabase, resolved, session, center),
-            source: "practice",
-            progress: null,
-        };
+    const ratingBand = center != null ? [center - range, center + range] as Range
+        : settings.adaptive ? null : manualRatingBand(settings.difficulty);
+    const resolved: ResolvedSettings = { ...settings, ratingBand, historyNow: Date.now() };
+    let problem = await drawMatchingProblem(supabase, resolved, session);
+    if (!problem && center != null) {
+        problem = await nearestMatchingProblem(supabase, resolved, session, center)
+            ?? await drawMatchingProblem(supabase, { ...resolved, ratingBand: null }, session);
     }
-    if (settings.mode === "review") {
-        const draw = await fetchDueReviewDraw(supabase, resolved, session);
-        return { problem: draw.problem, source: "review", progress: draw.progress };
-    }
-    if (settings.mode === "skipped") {
-        const draw = await fetchSkippedDraw(supabase, resolved, session);
-        return { problem: draw.problem, source: "review", progress: draw.progress };
-    }
-    if (settings.mode === "list") {
-        const draw = await fetchListDraw(supabase, resolved, session);
-        return { problem: draw.problem, source: "review", progress: draw.progress };
-    }
-
-    // Mixed: try the patterned source first, then the other.
-    const preferred = MIXED_PATTERN[session.drawIndex % MIXED_PATTERN.length];
-    const fallback: PracticeSource = preferred === "review" ? "practice" : "review";
-
-    let draw = await drawFromSource(supabase, resolved, session, preferred, center);
-    if (draw.problem) {
-        return { problem: draw.problem, source: preferred, progress: draw.progress };
-    }
-
-    draw = await drawFromSource(supabase, resolved, session, fallback, center);
-    return { problem: draw.problem, source: fallback, progress: draw.progress };
+    const progress = problem?.progress ?? null;
+    return { problem, progress, source: (progress?.times_reviewed ?? 0) > 0 ? "review" : "practice" };
 }
 
 /**

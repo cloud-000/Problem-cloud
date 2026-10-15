@@ -101,7 +101,7 @@ describe("surface tips", () => {
 
     test("copy explains a consequence, not the layout", () => {
         expect(contextualTipCopy(CONTEXTUAL_TIP.firstReview).body).toContain(
-            "comes back",
+            "recently answered or skipped",
         );
         expect(contextualTipCopy(CONTEXTUAL_TIP.firstMatrix).body).toContain(
             "cell",

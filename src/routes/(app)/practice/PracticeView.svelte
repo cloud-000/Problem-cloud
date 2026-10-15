@@ -205,11 +205,6 @@
    let interstitialToken = 0;
    const INTERSTITIAL_FLASH_MS = 3000;
 
-   // Progress-backed modes need per-user progress. Without a session, pin to New.
-   $effect(() => {
-      if (!capabilities.modes[settingsForm.mode]) settingsForm.mode = "new";
-   });
-
    // Cross-load draw state for interleaving and forward progress.
    const session = createSession();
    const submissionWrites = new SvelteMap<number, Promise<TrainerSubmissionResult>>();
@@ -530,6 +525,7 @@
    ) {
       commitCurrent();
       error = null;
+      session.shownIds.add(p.canonical_id ?? p.id);
       session.shownIds.add(p.id);
       session.drawIndex += 1;
       history = [
@@ -1365,6 +1361,7 @@
          if (token !== loadToken) return;
 
          if (result.problem) {
+            session.shownIds.add(result.problem.canonical_id ?? result.problem.id);
             session.shownIds.add(result.problem.id);
             session.drawIndex += 1;
 
@@ -1393,9 +1390,7 @@
       }
    }
 
-   // Forget which problems were shown this session so the queue can cycle
-   // through them again (e.g. after exhausting the due-review queue, problems
-   // that were skipped and are still due become eligible once more).
+   // Forget this session's shown problems; the active history filters still apply.
    function resetSession() {
       session.shownIds.clear();
       session.drawIndex = 0;
@@ -2238,28 +2233,16 @@
                <div class="flex max-w-3xl flex-col gap-1">
                   <h2 class="text-sm font-semibold">No matching problems</h2>
                   <p class="text-xs text-muted-foreground">
-                     {#if settingsForm.mode === "skipped"}
-                        You've gone through every unsolved skipped problem that
-                        matches these settings. Reset to cycle through them
-                        again, or broaden the settings.
-                     {:else if settingsForm.mode === "review" || settingsForm.mode === "mixed"}
-                        You've gone through everything queued this session.
-                        Reset to cycle through them again, or broaden the
-                        settings.
-                     {:else}
-                        Try broadening the settings, then generate again.
-                     {/if}
+                     No more problems match your scope, history and session options.
+                     Adjust your filters, or reset this session's shown problems.
                   </p>
                </div>
                <div class="flex items-center gap-2">
-                  {#if settingsForm.mode === "review" || settingsForm.mode === "skipped" || settingsForm.mode === "mixed"}
-                     <Button size="sm" onclick={resetSession} class="gap-1.5">
-                        <Icon name="restart_alt" />
-                        {settingsForm.mode === "skipped"
-                           ? "Reset skipped queue"
-                           : "Reset review queue"}
-                     </Button>
-                  {/if}
+                  <Button size="sm" onclick={resetSession} class="gap-1.5">
+                     <Icon name="restart_alt" />
+                     Reset shown problems
+                  </Button>
+                  <Button variant="outline" size="sm" onclick={() => utilityPanel.open("practice-settings")}>Adjust filters</Button>
                   <Button
                      variant="outline"
                      size="sm"
@@ -2615,8 +2598,9 @@
                loadSeriesDimensions={trainerSource.getSeriesDimensions}
                loadSeriesNumberLine={trainerSource.getSeriesNumberLine}
                loadSeriesYearSpan={trainerSource.getSeriesYearSpan}
-               canReview={!!user}
-               enabledModes={capabilities.modes}
+               historyAvailable={trainerSource.kind === "online" && !!user}
+               adaptiveAvailable={capabilities.adaptive}
+               historyUnavailableReason={trainerSource.kind === "offline" ? "Downloaded practice currently draws unattempted problems. History filters require an online connection." : "Sign in to use your saved problem history."}
                {isTest}
                {testName}
                timeLimitSeconds={settingsForm.timeLimitSeconds}
@@ -2634,8 +2618,8 @@
                   </Button>
                </div>
                <p class="text-xs text-muted-foreground">
-                  This package keeps the New-mode settings chosen when it was downloaded.
-                  List, Skipped, Review, Mixed, and Test aren't available offline yet.
+                  This package keeps the settings chosen when it was downloaded.
+                  History filtering and tests are not available in downloaded practice yet.
                </p>
             </div>
          {/if}

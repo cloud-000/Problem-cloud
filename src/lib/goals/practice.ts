@@ -46,12 +46,11 @@ function cloneScopes(scope: GoalScope): PracticeSettings["seriesScopes"] {
  * Per family, because "remaining" is a different set for each:
  *
  *   * **attempted** — problems with no graded attempt at all, which is exactly
- *     the new-problem draw;
- *   * **solved** — anything not yet solved, so the new draw *and* the review
- *     queue, with the review side held to `times_correct = 0` so a solved
- *     problem can never come back as "remaining";
+ *     the zero-attempt history filter;
+ *   * **solved** — anything not yet solved (`times_correct = 0`), regardless
+ *     of its schedule or whether it has been skipped before;
  *   * **volume, accuracy, speed, streak** — event families have no remaining
- *     set: any work in scope moves them. Mixed practice in the goal's scope is
+ *     set: any work in scope moves them. Practice with any history in the goal's scope is
  *     the honest reading, and narrowing it further would count work the goal
  *     itself does not.
  *
@@ -72,12 +71,12 @@ export function practiceSettingsForGoal(
     switch (target?.type) {
         case "attempted_count":
         case "attempted_percent":
-            return { ...base, mode: "new" };
+            return { ...base, timesReviewed: [0, 0] };
         case "solved_count":
         case "solved_percent":
-            return { ...base, mode: "mixed", timesCorrect: [0, 0] };
+            return { ...base, timesCorrect: [0, 0] };
         default:
-            return { ...base, mode: "mixed" };
+            return base;
     }
 }
 

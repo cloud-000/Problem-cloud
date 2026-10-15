@@ -79,7 +79,7 @@ describe("practice handoff", () => {
             { type: "attempted_percent", percentage: 80 },
         ] as GoalTargetData[]) {
             const settings = practiceSettingsForGoal(goal(target));
-            expect(settings.mode).toBe("new");
+            expect(settings.timesReviewed).toEqual([0, 0]);
             expect(settings.timesCorrect).toBeNull();
         }
     });
@@ -90,7 +90,7 @@ describe("practice handoff", () => {
             { type: "solved_percent", percentage: 80 },
         ] as GoalTargetData[]) {
             const settings = practiceSettingsForGoal(goal(target));
-            expect(settings.mode).toBe("mixed");
+            expect(settings.mode).toBe("new");
             expect(settings.timesCorrect).toEqual([0, 0]);
         }
     });
@@ -103,7 +103,7 @@ describe("practice handoff", () => {
             { type: "streak", days: 14, perDay: 5, timeZone: "UTC" },
         ] as GoalTargetData[]) {
             const settings = practiceSettingsForGoal(goal(target));
-            expect(settings.mode).toBe("mixed");
+            expect(settings.mode).toBe("new");
             expect(settings.timesCorrect).toBeNull();
             expect(hasRemainingSet({ target })).toBe(false);
         }
@@ -117,7 +117,7 @@ describe("practice handoff", () => {
             scope: { topic: [], seriesIds: [], seriesScopes: {} },
             target: { type: "mastery_percent" } as unknown as GoalTargetData,
         });
-        expect(settings.mode).toBe("mixed");
+        expect(settings.mode).toBe("new");
         expect(settings.timesCorrect).toBeNull();
     });
 

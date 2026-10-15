@@ -1,6 +1,11 @@
+import { MAX_HISTORY_COUNT } from "$lib/trainer";
 import { describe, expect, test } from "bun:test";
 import {
     COUNTER_RANGE,
+    attemptPreset,
+    commitAttemptBound,
+    setAttemptPreset,
+    historyFilterSummary,
     clampProblemNumbers,
     clampYearRange,
     configsForSelectedSeries,
@@ -21,7 +26,10 @@ describe("practice settings form", () => {
             seriesIds: undefined,
         });
 
-        expect(form.mode).toBe("review");
+        expect(form.mode).toBe("new");
+        expect(form.counterRanges.reviewed).toEqual([1, MAX_HISTORY_COUNT]);
+        expect(form.lastSubmissionDays).toBe(7);
+        expect(form.lastSubmissionWindow).toBe("outside");
         expect(form.format).toBe("practice");
         expect(form.triesPerProblem).toBe(2);
         expect(form.adaptive).toBe(true);
@@ -176,5 +184,60 @@ describe("year-range helpers", () => {
             2010, 2012,
         ]);
         expect(clampYearRange(undefined, { min: 2010, max: 2024 })).toBeUndefined();
+    });
+});
+
+describe("history form", () => {
+    test("attempt shortcuts and the custom range serialize one filter", () => {
+        const form = createPracticeSettingsForm();
+        expect(attemptPreset(form)).toBe("any");
+        setAttemptPreset(form, "never");
+        expect(practiceSettingsFromForm(form).timesReviewed).toEqual([0, 0]);
+        setAttemptPreset(form, "attempted");
+        expect(practiceSettingsFromForm(form).timesReviewed).toEqual([1, MAX_HISTORY_COUNT]);
+        setAttemptPreset(form, "custom");
+        form.counterRanges.reviewed = [2, 100];
+        expect(attemptPreset(form)).toBe("custom");
+        expect(practiceSettingsFromForm(form).timesReviewed).toEqual([2, 100]);
+        setAttemptPreset(form, "any");
+        expect(practiceSettingsFromForm(form).timesReviewed).toBeNull();
+    });
+
+    test("retains history windows, status, and order across resume", () => {
+        const form = createPracticeSettingsForm();
+        setAttemptPreset(form, "attempted");
+        form.lastSubmissionDays = 14;
+        form.lastSubmissionWindow = "outside";
+        form.historyEngagement = "revisit";
+        form.historyOrder = "oldest";
+        form.mastery = ["needs_work", "learning"];
+        const snapshot = practiceSettingsFromForm(form);
+        expect(snapshot.historyVersion).toBe(1);
+        const resumed = createPracticeSettingsForm(snapshot);
+        expect(resumed.lastSubmissionWindow).toBe("outside");
+        expect(resumed.historyEngagement).toBe("revisit");
+        expect(resumed.historyOrder).toBe("oldest");
+        expect(historyFilterSummary(resumed)).toBe("Attempted before · Needs work or Learning · No submission in the last 14 days · Revisit");
+        expect(resumed.counterRanges.reviewed).toEqual([1, MAX_HISTORY_COUNT]);
+    });
+});
+
+describe("attempt count editing", () => {
+    test("empty minimum and maximum receive their defaults only on commit", () => {
+        const form = createPracticeSettingsForm({ timesReviewed: [12, 25] });
+        expect(commitAttemptBound(form, 0, "")).toBeNull();
+        expect(form.counterRanges.reviewed).toEqual([0, 25]);
+        expect(commitAttemptBound(form, 1, "")).toBeNull();
+        expect(form.counterRanges.reviewed).toEqual([0, MAX_HISTORY_COUNT]);
+    });
+
+    test("invalid text or inverted bounds are rejected without changing either bound", () => {
+        const form = createPracticeSettingsForm({ timesReviewed: [12, 25] });
+        for (const draft of ["-1", "1.5", "abc", "26", "999999999999999999999999999999"]) {
+            expect(commitAttemptBound(form, 0, draft)).not.toBeNull();
+            expect(form.counterRanges.reviewed).toEqual([12, 25]);
+        }
+        expect(commitAttemptBound(form, 1, "11")).not.toBeNull();
+        expect(form.counterRanges.reviewed).toEqual([12, 25]);
     });
 });

@@ -18,7 +18,7 @@
         type BreakdownRow as TopicStat,
     } from "$lib/progress-analytics";
     import { startSession } from "$lib/sessions";
-    import { defaultPracticeSettings } from "$lib/trainer";
+    import { defaultPracticeSettings, defaultReviewSettings } from "$lib/trainer";
     import {
         topicLabel as topicName,
         fetchAllSeries,
@@ -301,12 +301,9 @@
         if (!user || startingReview) return;
         startingReview = true;
         try {
-            const settings = {
-                ...defaultPracticeSettings(),
-                mode: "review" as const,
-            };
+            const settings = defaultReviewSettings();
             const session = await startSession(supabase, user.id, {
-                name: "Due review",
+                name: "Review",
                 settings,
             });
             await goto(resolve(`/practice?session=${session.id}`));
@@ -349,13 +346,18 @@
         </div>
     {:else if activeView === "review"}
         <Page.Section
-            title="Review due"
+            title="Review"
         >
             {#snippet actions()}
-                <Button onclick={startReview} disabled={startingReview || dueReviews.length === 0}>
+                <Button onclick={startReview} disabled={startingReview}>
                     {startingReview ? "Starting…" : "Start review"}
                 </Button>
             {/snippet}
+
+            <p class="mb-4 type-secondary text-muted-foreground">
+                Start with previously attempted problems with no submission in the last 7 days.
+                Adjust mastery, dates and other filters in session settings.
+            </p>
 
             {#if showReviewTip}
                 <ContextualTip
@@ -364,67 +366,69 @@
                 />
             {/if}
 
-            {#if dueLoading}
-                <div class="relative border-t border-border divide-y divide-border" role="status" aria-label="Loading reviews">
-                    {#each Array(3) as _, i (i)}
-                        <div
-                            class="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
-                        >
-                            <div class="min-w-0 space-y-1.5">
-                                <Skeleton class="h-5 w-44 rounded-sm" />
-                                <Skeleton class="h-3 w-28 rounded-sm" />
-                            </div>
-                            <Skeleton class="h-4 w-12 rounded-sm" />
-                            <Skeleton class="h-8 w-18 rounded-md shrink-0" />
-                        </div>
-                    {/each}
-                    <span class="sr-only">Loading reviews…</span>
-                </div>
-            {:else if dueError}
-                <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
-                    {dueError}
-                </p>
-            {:else if dueReviews.length === 0}
-                <div class="py-12 text-center">
-                    <h3 class="type-section-title text-foreground">You are caught up</h3>
-                    <p class="mt-1 type-secondary text-muted-foreground">
-                        Practice another problem to keep building your review queue.
-                    </p>
-                </div>
-            {:else}
-                <div class="border-t border-border animate-fade-in">
-                    {#each dueReviews as problem (problem.id)}
-                        <div
-                            class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
-                        >
-                            <div class="min-w-0">
-                                <h3 class="type-body text-foreground">
-                                    {problem.tests?.name ?? "Practice problem"}
-                                    <span class="text-muted-foreground">
-                                        · Problem {problem.n + 1}
-                                    </span>
-                                </h3>
-                                <p class="type-caption text-muted-foreground">
-                                    {problem.tests?.series?.name ?? "Independent problem"}
-                                </p>
-                            </div>
-                            <span class="type-code text-muted-foreground">
-                                {problem.rating
-                                    ? Math.round(problem.rating.rating)
-                                    : "—"}
-                            </span>
-                            <Button
-                                onclick={startReview}
-                                disabled={startingReview}
-                                variant="outline"
-                                size="sm"
+            <details>
+                <summary class="mb-4 cursor-pointer type-secondary text-muted-foreground">Scheduled reminders</summary>
+                {#if dueLoading}
+                    <div class="relative border-t border-border divide-y divide-border" role="status" aria-label="Loading reviews">
+                        {#each Array(3) as _, i (i)}
+                            <div
+                                class="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
                             >
-                                Review
-                            </Button>
-                        </div>
-                    {/each}
-                </div>
-            {/if}
+                                <div class="min-w-0 space-y-1.5">
+                                    <Skeleton class="h-5 w-44 rounded-sm" />
+                                    <Skeleton class="h-3 w-28 rounded-sm" />
+                                </div>
+                                <Skeleton class="h-4 w-12 rounded-sm" />
+                                <Skeleton class="h-8 w-18 rounded-md shrink-0" />
+                            </div>
+                        {/each}
+                        <span class="sr-only">Loading reviews…</span>
+                    </div>
+                {:else if dueError}
+                    <p class="rounded-lg bg-destructive/10 p-4 type-secondary text-destructive">
+                        {dueError}
+                    </p>
+                {:else if dueReviews.length === 0}
+                    <div class="py-12 text-center">
+                        <h3 class="type-section-title text-foreground">No scheduled reminders</h3>
+                        <p class="mt-1 type-secondary text-muted-foreground">
+                            You can still review previously attempted problems at any time.
+                        </p>
+                    </div>
+                {:else}
+                    <div class="border-t border-border animate-fade-in">
+                        {#each dueReviews as problem (problem.id)}
+                            <div
+                                class="grid gap-3 border-b border-border py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6"
+                            >
+                                <div class="min-w-0">
+                                    <h3 class="type-body text-foreground">
+                                        {problem.tests?.name ?? "Practice problem"}
+                                        <span class="text-muted-foreground">
+                                            · Problem {problem.n + 1}
+                                        </span>
+                                    </h3>
+                                    <p class="type-caption text-muted-foreground">
+                                        {problem.tests?.series?.name ?? "Independent problem"}
+                                    </p>
+                                </div>
+                                <span class="type-code text-muted-foreground">
+                                    {problem.rating
+                                        ? Math.round(problem.rating.rating)
+                                        : "—"}
+                                </span>
+                                <Button
+                                    href={resolve(`/library?search=${problem.id}`)}
+                                    variant="outline"
+                                    size="sm"
+                                >
+                                    Open problem
+                                </Button>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            </details>
         </Page.Section>
     {:else}
         <Page.Toolbar>
