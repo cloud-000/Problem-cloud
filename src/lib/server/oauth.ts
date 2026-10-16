@@ -47,7 +47,7 @@ export function redirectToOAuth(data: { url: string | null }, error: { message?:
     if (error || !data.url) {
         return authFailureMessage(error ?? {});
     }
-    redirect(303, data.url);
+    redirect(303, data.url, { external: true });
 }
 
 export function oauthCallbackFailureURL(error: { message?: string | null; code?: string | null }): string {

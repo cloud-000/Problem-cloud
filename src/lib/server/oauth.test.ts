@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { isRedirect } from "@sveltejs/kit";
 import {
     OAUTH_SIGNUP_COOKIE,
     oauthCallbackURL,
+    redirectToOAuth,
     setOAuthSignupIntent,
     takeOAuthSignupIntent,
 } from "./oauth";
@@ -54,5 +56,24 @@ describe("OAuth signup handoff", () => {
         expect(oauthCallbackURL(new URL("https://practice.example/auth/signup"))).toBe(
             "https://practice.example/auth/callback",
         );
+    });
+
+    test("redirects externally without throwing redirect_external_not_allowed", () => {
+        try {
+            redirectToOAuth({ url: "https://project.supabase.co/auth/v1/authorize?provider=google" }, null);
+            expect().fail("expected redirect to throw");
+        } catch (e) {
+            expect(isRedirect(e)).toBe(true);
+            if (isRedirect(e)) {
+                expect(e.status).toBe(303);
+                expect(e.location).toBe("https://project.supabase.co/auth/v1/authorize?provider=google");
+            }
+        }
+    });
+
+    test("returns auth failure message on error or missing url", () => {
+        const message = redirectToOAuth({ url: null }, { message: "Something went wrong" });
+        expect(typeof message).toBe("string");
+        expect(message.length).toBeGreaterThan(0);
     });
 });
