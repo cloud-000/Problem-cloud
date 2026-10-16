@@ -704,11 +704,49 @@
     text-align: center;
 }
 
+/* ==========================================================================
+   SELF-CONTAINED HORIZONTAL OVERFLOW PRIMITIVE
+   Used for any wide inner block (math equations, tables, code blocks) so it
+   scrolls inside its own container without blowing out parent flex containers
+   or causing horizontal scroll on the outer page / transcript.
+   ========================================================================== */
+.pc-overflow-x,
+.katex-display,
+.pc-table-wrap,
+.pc-md pre,
+.pc-statement pre {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+/* Vertical breathing room prevents tall radicals (√), matrices, fractions,
+   and superscripts/subscripts from being cut off by the scroll container's
+   clipping box. */
+.katex-display {
+    padding-top: 0.35em;
+    padding-bottom: 0.35em;
+    margin: 0.75em 0;
+}
+
+/* Guard for long inline math ($...$) when LLMs or statements don't use display
+   math ($$...$$). Capped at 100% with horizontal scroll so it never pushes the
+   message bubble or line beyond screen width. */
+.katex:not(.katex-display .katex) {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    vertical-align: middle;
+    scrollbar-width: thin;
+}
+
 /* The scroll track is centered with `text-align` + an inline-table rather than
    flex/`justify-content`, which makes the left edge of an overflowing table
    unreachable inside a scroll container. */
 .pc-table-wrap {
-    overflow-x: auto;
     text-align: center;
 }
 
@@ -782,6 +820,11 @@
    component-scoped rules never reach it. Spacing is set with margins between
    siblings rather than on every block, so a reply never opens or closes with a
    stray gap inside its bubble. */
+.pc-statement,
+.pc-md {
+    overflow-wrap: anywhere;
+}
+
 .pc-statement {
     white-space: pre-wrap;
 }
@@ -855,6 +898,12 @@
 
 .pc-md strong {
     font-weight: 600;
+}
+
+.pc-md code,
+.pc-statement code {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 /* ==========================================================================

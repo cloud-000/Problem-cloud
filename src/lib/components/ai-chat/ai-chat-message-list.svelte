@@ -58,9 +58,9 @@
         following = true;
     }
 
-    function onscroll() {
-        if (!container) return;
-        following = distanceFromBottom(container) <= STICK_THRESHOLD;
+    function onscroll(event: UIEvent) {
+        const node = event.currentTarget as HTMLElement;
+        following = distanceFromBottom(node) <= STICK_THRESHOLD;
     }
 
     // A turn the reader just sent always pulls them back down — they are the one who
@@ -92,7 +92,7 @@
     <div
         bind:this={container}
         {onscroll}
-        class={cn("min-h-0 flex-1 overflow-y-auto px-3 pt-3 sm:px-4", className)}
+        class={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 sm:px-4", className)}
         aria-label={conversationLabel}
     >
         <!-- Clearance for a composer floating over the transcript. It lives on the

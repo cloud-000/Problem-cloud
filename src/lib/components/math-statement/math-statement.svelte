@@ -6,6 +6,7 @@
         segmentStatement,
     } from "#lib/utils/math-parser.js";
     import { parseMarkdown } from "#lib/utils/markdown.js";
+    import { cn } from "#lib/utils.js";
 
     let {
         text = "",
@@ -33,7 +34,7 @@
     );
 </script>
 
-<div class={className}>
+<div class={cn("min-w-0 max-w-full", className)}>
     {#each segments as segment, i (i)}
         {#if segment.kind === "asy"}
             <Figure imageSrc={segment.imageSrc} code={segment.code} alt="Asymptote diagram" />

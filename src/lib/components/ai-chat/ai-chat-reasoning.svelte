@@ -31,7 +31,7 @@
     let label = $derived(trace.endedAt ? `Thought for ${seconds}s` : "Thinking…");
 </script>
 
-<div class="my-1.5 rounded-xl border border-border/40 bg-surface-container-lowest/60">
+<div class="my-1.5 min-w-0 max-w-full rounded-xl border border-border/40 bg-surface-container-lowest/60">
     <button
         type="button"
         class="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"

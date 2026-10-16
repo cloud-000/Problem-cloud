@@ -93,6 +93,6 @@
 </div>
 <div
     bind:this={renderEl}
-    class="font-serif leading-relaxed select-text {className}"
+    class="font-serif leading-relaxed select-text min-w-0 max-w-full {className}"
     style:font-size={`${settings.readingTextScale}em`}
 >{@render children?.()}</div>

@@ -39,7 +39,7 @@
 
 <article
     class={cn(
-        "ai-chat-message flex flex-col text-sm",
+        "ai-chat-message flex min-w-0 max-w-full flex-col text-sm",
         message.role === "user"
             ? "ml-auto max-w-[88%] rounded-2xl rounded-br-sm border border-border/40 bg-surface-container-low px-3.5 py-2 text-foreground"
             : "py-1 text-foreground",
@@ -76,7 +76,7 @@
                     class="leading-6 text-foreground"
                 />
             {:else}
-                <p class="whitespace-pre-wrap leading-relaxed text-foreground">{part.text.trim()}</p>
+                <p class="whitespace-pre-wrap leading-relaxed text-foreground break-words [overflow-wrap:anywhere]">{part.text.trim()}</p>
             {/if}
         {:else if part.type === "completion"}
             {#if completionNotice(part.reason)}
