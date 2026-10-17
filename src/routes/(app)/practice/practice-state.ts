@@ -5,6 +5,7 @@ import type {
     ProblemProgress,
 } from "#lib/trainer.js";
 import type { SessionHistoryEntry } from "#lib/sessions.js";
+import { answersMatch } from "#lib/utils/answer-matcher.js";
 
 export type PracticeSource = TrainerPracticeSource | "test";
 
@@ -22,6 +23,8 @@ export type PracticeAnswerState = {
     limitBaselineMs: number;
     attemptIndex: number | null;
     triesUsed: number;
+    // c:<choice index> or a:<raw response>. Keep responses unnormalized so
+    // duplicate detection uses exactly the same interpretation as grading.
     triedAnswers: string[];
     eliminatedChoices: number[];
 };
@@ -38,6 +41,28 @@ export type PracticeHistoryEntry = PracticeAnswerState & {
     // and drives inference in the review UI).
     skipped?: boolean;
 };
+
+export function practiceAnswerKey(
+    state: Pick<PracticeAnswerState, "selectedChoice" | "answer">,
+    isMultipleChoice: boolean,
+): string | null {
+    if (isMultipleChoice) {
+        return state.selectedChoice == null ? null : `c:${state.selectedChoice}`;
+    }
+    return state.answer.trim() ? `a:${state.answer}` : null;
+}
+
+export function hasTriedPracticeAnswer(
+    triedAnswers: readonly string[],
+    key: string | null,
+): boolean {
+    if (key == null) return false;
+    return triedAnswers.some((previous) =>
+        key.startsWith("a:") && previous.startsWith("a:")
+            ? answersMatch(key.slice(2), previous.slice(2))
+            : key === previous,
+    );
+}
 
 export function createPracticeAnswerState(
     overrides: Partial<PracticeAnswerState> = {},

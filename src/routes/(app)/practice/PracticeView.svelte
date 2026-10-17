@@ -43,7 +43,7 @@
    } from "#lib/segment-timing.js";
    import { type PracticeSessionRow } from "#lib/sessions.js";
    import { cn, formatProblemText } from "#lib/utils.js";
-   import { answersMatch, normalizeAnswer } from "#lib/utils/answer-matcher.js";
+   import { answersMatch } from "#lib/utils/answer-matcher.js";
    import {
       hasComparableAnswer,
       inputModeFor,
@@ -83,6 +83,8 @@
       commitPracticeHistoryEntry,
       createPracticeAnswerState,
       createPracticeHistoryEntry,
+      hasTriedPracticeAnswer,
+      practiceAnswerKey,
       practiceHistoryEntryFromSubmission,
       restorePracticeAnswerState,
       type PracticeAnswerState,
@@ -1397,18 +1399,6 @@
       loadProblem();
    }
 
-   // A normalized key identifying the currently-entered answer, used to detect a
-   // repeat of an already-tried answer. null when nothing is entered.
-   function currentAnswerKey(): string | null {
-      if (isProblemMcq) {
-         return answerState.selectedChoice == null
-            ? null
-            : `c:${answerState.selectedChoice}`;
-      }
-      const normalized = normalizeAnswer(answerState.answer);
-      return normalized ? `a:${normalized}` : null;
-   }
-
    // Live skill-rating feedback: baseline fetched on mount, refreshed after a
    // graded submission lands (the DB trigger rates it in the same insert).
    // `ratingDelta` is the change from the last known rating, shown in the
@@ -1480,8 +1470,8 @@
 
       // Reject a repeat of a previously-tried answer: flash feedback but don't
       // consume a try — the user simply hasn't offered anything new.
-      const key = currentAnswerKey();
-      if (key != null && answerState.triedAnswers.includes(key)) {
+      const key = practiceAnswerKey(answerState, isProblemMcq);
+      if (hasTriedPracticeAnswer(answerState.triedAnswers, key)) {
          answerFeedback?.trigger(true);
          toasts.warning("You already tried that answer.");
          return;

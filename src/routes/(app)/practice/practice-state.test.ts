@@ -5,6 +5,8 @@ import {
     commitPracticeHistoryEntry,
     createPracticeAnswerState,
     createPracticeHistoryEntry,
+    hasTriedPracticeAnswer,
+    practiceAnswerKey,
     practiceAttemptFromAnswerState,
     practiceHistoryEntryFromSubmission,
     restorePracticeAnswerState,
@@ -24,6 +26,68 @@ const progress: ProblemProgress = {
     mastery: "confident",
     engagement: null,
 };
+
+describe("practice answer deduplication", () => {
+    for (const [first, second] of [
+        ["1/2", "0.5"],
+        ["2/4", "1/2"],
+        ["\\frac{1}{2}", "1/2"],
+        ["2+3", "5"],
+        ["5 cm", "5"],
+        ["x=5", "5"],
+        ["2\\frac{1}{2}", "2.5"],
+    ]) {
+        test(`dedupes ${first} against ${second} in either order`, () => {
+            for (const [previous, current] of [[first, second], [second, first]]) {
+                const key = practiceAnswerKey({ answer: previous, selectedChoice: null }, false)!;
+                expect(key).toBe(`a:${previous}`);
+                expect(hasTriedPracticeAnswer(
+                    [key],
+                    practiceAnswerKey({ answer: current, selectedChoice: null }, false),
+                )).toBe(true);
+            }
+        });
+    }
+
+    for (const [first, second] of [
+        ["1/2", "0.6"],
+        ["x+x", "2x"],
+        ["1/3", "0.3333333333"],
+    ]) {
+        test(`keeps ${first} distinct from ${second}, matching grading limits`, () => {
+            expect(hasTriedPracticeAnswer([`a:${first}`], `a:${second}`)).toBe(false);
+        });
+    }
+
+    test("MCQ uses choice indices and never compares them with free responses", () => {
+        const key = practiceAnswerKey({ answer: "0", selectedChoice: 0 }, true);
+        expect(key).toBe("c:0");
+        expect(hasTriedPracticeAnswer(["c:0"], key)).toBe(true);
+        expect(hasTriedPracticeAnswer(["c:1", "a:0"], key)).toBe(false);
+        expect(hasTriedPracticeAnswer(["c:0"], "a:0")).toBe(false);
+    });
+
+    test("blank inputs have no key", () => {
+        expect(practiceAnswerKey({ answer: "  ", selectedChoice: null }, false)).toBeNull();
+        expect(practiceAnswerKey({ answer: "5", selectedChoice: null }, true)).toBeNull();
+        expect(hasTriedPracticeAnswer(["a:5"], null)).toBe(false);
+    });
+
+    test("semantic dedupe survives history restoration with the raw response", () => {
+        const entry = createPracticeHistoryEntry({
+            problem,
+            source: "practice",
+            progress: null,
+            triesUsed: 1,
+            triedAnswers: ["a:2\\frac{1}{2}"],
+        });
+        const restored = restorePracticeAnswerState(entry);
+        restored.answer = "2.5";
+        expect(hasTriedPracticeAnswer(restored.triedAnswers, practiceAnswerKey(restored, false))).toBe(true);
+        expect(restored.triesUsed).toBe(1);
+        expect(restored.triedAnswers).toEqual(["a:2\\frac{1}{2}"]);
+    });
+});
 
 describe("practice answer history", () => {
     test("creates complete independent defaults", () => {

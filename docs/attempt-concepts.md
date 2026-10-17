@@ -27,6 +27,11 @@ increments an in-memory `triesUsed` counter and lets the user retry. Only the
 **final** outcome of the sitting — the eventual correct answer, or the last wrong
 answer once tries run out — is written via `recordSubmission`.
 
+Repeating a wrong answer does not consume another try. Free-response duplicates
+use the same `answersMatch` comparison as grading (so `1/2`, `0.5`, and `2/4`
+count as one tried answer); MCQ duplicates use the selected choice index. Raw
+tried responses are retained in the in-memory practice history for this check.
+
 So one "wrong, wrong, right" sitting = **one row**, `is_correct = true`.
 
 Everything that keys off rows (`attempt`, `encounter`, `problem_progress`, the rating
