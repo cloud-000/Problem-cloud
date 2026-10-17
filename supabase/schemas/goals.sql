@@ -73,23 +73,23 @@ alter table public.goals enable row level security;
 create policy "Users can view their own goals."
   on public.goals for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 create policy "Users can insert their own goals."
   on public.goals for insert
   to authenticated
-  with check ( auth.uid() = user_id );
+  with check ( (select auth.uid()) = user_id );
 
 create policy "Users can update their own goals."
   on public.goals for update
   to authenticated
-  using ( auth.uid() = user_id )
-  with check ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id )
+  with check ( (select auth.uid()) = user_id );
 
 create policy "Users can delete their own goals."
   on public.goals for delete
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 -- Column-level update grant, mirroring practice_sessions: everything a student
 -- can legitimately change is here, and `user_id`/`created_at` are not, so a
@@ -323,7 +323,10 @@ $$;
 -- the client decides what "this month" means.
 --
 -- Repeats count — that is the point of a volume goal (§6), so this counts
--- submissions and not distinct problems.
+-- submissions and not distinct problems. Queries `public.submissions` directly
+-- (since `submissions.problem_id` is already canonicalized on insert and
+-- neither `attempt_seq`/`graded_seq` nor catalog metadata from `submission_facts`
+-- is needed), using `submissions_user_created_idx`.
 create or replace function public.goal_volume_progress(p_requests jsonb)
 returns table (idx integer, graded_submissions bigint)
 language sql
@@ -337,13 +340,14 @@ as $$
   from pg_catalog.jsonb_array_elements(p_requests) with ordinality as r(req, ord)
   left join lateral (
     select pg_catalog.count(*) as graded_submissions
-    from public.submission_facts f
+    from public.submissions s
     join public.goal_scope_canonicals(r.req -> 'scope') g
-      on g.canonical_id = f.problem_id
-    where not f.skipped
-      and f.is_correct is not null
-      and (r.req ->> 'from' is null or f.created_at >= (r.req ->> 'from')::timestamptz)
-      and (r.req ->> 'to'   is null or f.created_at <  (r.req ->> 'to')::timestamptz)
+      on g.canonical_id = s.problem_id
+    where s.user_id = (select auth.uid())
+      and not s.skipped
+      and s.is_correct is not null
+      and (r.req ->> 'from' is null or s.created_at >= (r.req ->> 'from')::timestamptz)
+      and (r.req ->> 'to'   is null or s.created_at <  (r.req ->> 'to')::timestamptz)
   ) v on true
   order by r.ord;
 $$;
@@ -387,12 +391,14 @@ as $$
       end as name
     ),
     days as (
-      select ((f.created_at at time zone (select name from tz))::date) as d,
+      select ((sub.created_at at time zone (select name from tz))::date) as d,
              pg_catalog.count(*) as n
-      from public.submission_facts f
+      from public.submissions sub
       join public.goal_scope_canonicals(r.req -> 'scope') g
-        on g.canonical_id = f.problem_id
-      where not f.skipped and f.is_correct is not null
+        on g.canonical_id = sub.problem_id
+      where sub.user_id = (select auth.uid())
+        and not sub.skipped
+        and sub.is_correct is not null
       group by 1
     ),
     today as (

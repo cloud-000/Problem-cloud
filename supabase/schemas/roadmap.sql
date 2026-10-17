@@ -35,17 +35,17 @@ create policy "Roadmap goals are viewable by everyone."
 create policy "Admins can insert roadmap goals."
   on public.roadmap_goals for insert
   to authenticated
-  with check ( (select admin_rank from public.profiles where id = auth.uid()) > 10 );
+  with check ( (select admin_rank from public.profiles where id = (select auth.uid())) > 10 );
 
 create policy "Admins can update roadmap goals."
   on public.roadmap_goals for update
   to authenticated
-  using ( (select admin_rank from public.profiles where id = auth.uid()) > 10 );
+  using ( (select admin_rank from public.profiles where id = (select auth.uid())) > 10 );
 
 create policy "Admins can delete roadmap goals."
   on public.roadmap_goals for delete
   to authenticated
-  using ( (select admin_rank from public.profiles where id = auth.uid()) > 10 );
+  using ( (select admin_rank from public.profiles where id = (select auth.uid())) > 10 );
 
 -- RLS Policies for roadmap_votes
 create policy "Roadmap votes are viewable by everyone."
@@ -55,17 +55,17 @@ create policy "Roadmap votes are viewable by everyone."
 create policy "Users can insert their own vote."
   on public.roadmap_votes for insert
   to authenticated
-  with check ( auth.uid() = profile_id );
+  with check ( (select auth.uid()) = profile_id );
 
 create policy "Users can update their own vote."
   on public.roadmap_votes for update
   to authenticated
-  using ( auth.uid() = profile_id );
+  using ( (select auth.uid()) = profile_id );
 
 create policy "Users can delete their own vote."
   on public.roadmap_votes for delete
   to authenticated
-  using ( auth.uid() = profile_id );
+  using ( (select auth.uid()) = profile_id );
 
 -- Grant permissions for roles
 grant select on public.roadmap_goals to anon;

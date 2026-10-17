@@ -61,7 +61,7 @@ left join public.tests t on t.id = p.test_id
 -- progress of the real problem (submissions are canonicalized on insert, so an
 -- alias never accrues its own progress row anyway).
 left join public.problem_progress pp
-  on pp.problem_id = coalesce(p.canonical_id, p.id) and pp.user_id = auth.uid()
+  on pp.problem_id = coalesce(p.canonical_id, p.id) and pp.user_id = (select auth.uid())
 -- Rating is keyed on the canonical too, so an alias placement reflects the shared
 -- problem's live Glicko difficulty. `problem_ratings` is world-readable.
 left join public.problem_ratings pr
@@ -95,6 +95,35 @@ stable
 security invoker
 set search_path = ''
 as $$
+  with scoped as (
+    select
+      coalesce(pp.times_seen, 0) as times_seen,
+      coalesce(pp.times_reviewed, 0) as times_reviewed,
+      pp.next_review_at,
+      pp.mastery,
+      pp.engagement
+    from public.problems p
+    left join public.problem_progress pp
+      on pp.problem_id = coalesce(p.canonical_id, p.id)
+     and pp.user_id = (select auth.uid())
+    where p_series_id is null
+
+    union all
+
+    select
+      coalesce(pp.times_seen, 0) as times_seen,
+      coalesce(pp.times_reviewed, 0) as times_reviewed,
+      pp.next_review_at,
+      pp.mastery,
+      pp.engagement
+    from public.tests t
+    join public.problems p on p.test_id = t.id
+    left join public.problem_progress pp
+      on pp.problem_id = coalesce(p.canonical_id, p.id)
+     and pp.user_id = (select auth.uid())
+    where p_series_id is not null
+      and t.series_id = p_series_id
+  )
   select
     count(*),
     count(*) filter (where i.times_seen = 0),
@@ -111,8 +140,7 @@ as $$
     count(*) filter (where i.engagement = 'revisit'),
     count(*) filter (where i.engagement = 'later'),
     count(*) filter (where i.engagement = 'ignored')
-  from public.user_problem_index i
-  where p_series_id is null or i.series_id = p_series_id;
+  from scoped i;
 $$;
 
 grant execute on function public.problem_state_summary(bigint) to authenticated;

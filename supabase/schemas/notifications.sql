@@ -27,36 +27,36 @@ create policy "Notifications are viewable by their target users or admins."
   to anon, authenticated
   using (
     (targets is null) or
-    (auth.uid() = any(targets)) or
-    ((select admin_rank from public.profiles where id = auth.uid()) > 0)
+    ((select auth.uid()) = any(targets)) or
+    ((select admin_rank from public.profiles where id = (select auth.uid())) > 0)
   );
 
 create policy "Admins can insert notifications."
   on public.notifications for insert
   to authenticated
-  with check ( (select admin_rank from public.profiles where id = auth.uid()) > 0 );
+  with check ( (select admin_rank from public.profiles where id = (select auth.uid())) > 0 );
 
 create policy "Admins can update notifications."
   on public.notifications for update
   to authenticated
-  using ( (select admin_rank from public.profiles where id = auth.uid()) > 0 )
-  with check ( (select admin_rank from public.profiles where id = auth.uid()) > 0 );
+  using ( (select admin_rank from public.profiles where id = (select auth.uid())) > 0 )
+  with check ( (select admin_rank from public.profiles where id = (select auth.uid())) > 0 );
 
 create policy "Admins can delete notifications."
   on public.notifications for delete
   to authenticated
-  using ( (select admin_rank from public.profiles where id = auth.uid()) > 0 );
+  using ( (select admin_rank from public.profiles where id = (select auth.uid())) > 0 );
 
 -- Policies for public.notification_reads
 create policy "Users can view their own read records."
   on public.notification_reads for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 create policy "Users can insert their own read records."
   on public.notification_reads for insert
   to authenticated
-  with check ( auth.uid() = user_id );
+  with check ( (select auth.uid()) = user_id );
 
 -- Grant permissions for roles
 grant select on public.notifications to anon, authenticated;

@@ -23,14 +23,21 @@ export const load: LayoutServerLoad = async ({
         redirect(303, "/welcome");
     }
 
+    depends("ai:hosted-usage");
+
     let profile = null;
+    let hostedAllowance = null;
     if (user) {
-        const { data: profileData } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .single();
+        const [{ data: profileData }, allowance] = await Promise.all([
+            supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", user.id)
+                .single(),
+            hostedAllowanceFor(user.id),
+        ]);
         profile = profileData;
+        hostedAllowance = allowance;
 
         if (!profile?.username) {
             redirect(303, "/auth/complete-profile");
@@ -53,8 +60,6 @@ export const load: LayoutServerLoad = async ({
         }
     }
 
-    depends("ai:hosted-usage");
-
     return {
         session,
         user,
@@ -63,6 +68,6 @@ export const load: LayoutServerLoad = async ({
         // Guests may use browser-local BYOK connections. The Coach bootstrap keeps
         // server-owned providers (including the hosted offer) behind authentication.
         aiCoachEnabled: aiCoachEnabled(),
-        hostedAllowance: user ? await hostedAllowanceFor(user.id) : null,
+        hostedAllowance,
     };
 };

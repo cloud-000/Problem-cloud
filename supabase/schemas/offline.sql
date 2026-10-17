@@ -88,20 +88,20 @@ alter table public.offline_client_sessions enable row level security;
 
 create policy "Users can view their own offline checkouts."
   on public.offline_checkouts for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 create policy "Users can view pages for their own offline checkouts."
   on public.offline_package_pages for select to authenticated
   using (exists (
     select 1 from public.offline_checkouts c
-    where c.id = checkout_id and c.user_id = auth.uid()
+    where c.id = checkout_id and c.user_id = (select auth.uid())
   ));
 
 create policy "Users can view their own offline client session maps."
   on public.offline_client_sessions for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 create policy "Users can delete their own offline client session maps."
   on public.offline_client_sessions for delete to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 grant select on public.offline_checkouts, public.offline_package_pages to authenticated;
 grant select, delete on public.offline_client_sessions to authenticated;

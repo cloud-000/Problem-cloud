@@ -33,6 +33,8 @@ export type WelcomeProblem = {
 
 const WELCOME_PROBLEM_SELECT =
     "id, n, statement, choices, answer_index, answer_status, response_kind, tests!inner(name, year, series_id)";
+const WELCOME_PROBLEM_SERIES_NAME_SELECT =
+    "id, n, statement, choices, answer_index, answer_status, response_kind, tests!inner(name, year, series_id, series!inner(name))";
 
 export function isWelcomeTrainerProblem(problem: WelcomeProblem): boolean {
     const statement = problem.statement.trim();
@@ -71,11 +73,15 @@ export function welcomeProblemSource(problem: WelcomeProblem): string {
 
 export async function loadWelcomeProblems(
     supabase: SupabaseClient<Database>,
-    seriesId: number | null,
+    seriesFilter: number | string | null,
 ): Promise<WelcomeProblem[]> {
+    const select =
+        typeof seriesFilter === "string"
+            ? WELCOME_PROBLEM_SERIES_NAME_SELECT
+            : WELCOME_PROBLEM_SELECT;
     let query = supabase
         .from("problems")
-        .select(WELCOME_PROBLEM_SELECT)
+        .select(select)
         .eq("answer_status", "known")
         .is("canonical_id", null)
         .lte("n", WELCOME_MAX_N)
@@ -83,7 +89,11 @@ export async function loadWelcomeProblems(
         .not("statement", "is", null)
         .gte("tests.year", WELCOME_MIN_YEAR);
 
-    if (seriesId != null) query = query.eq("tests.series_id", seriesId);
+    if (typeof seriesFilter === "number") {
+        query = query.eq("tests.series_id", seriesFilter);
+    } else if (typeof seriesFilter === "string") {
+        query = query.eq("tests.series.name", seriesFilter);
+    }
 
     const { data, error } = await query.order("n").limit(80);
     if (error || !data) return [];

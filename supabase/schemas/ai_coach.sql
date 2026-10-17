@@ -120,11 +120,11 @@ alter table public.ai_messages enable row level security;
 
 create policy "Users can read their own AI preferences."
   on public.ai_preferences for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 create policy "Users can read their own AI conversations."
   on public.ai_conversations for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 create policy "Users can read messages from their AI conversations."
   on public.ai_messages for select to authenticated
@@ -132,7 +132,7 @@ create policy "Users can read messages from their AI conversations."
     exists (
       select 1 from public.ai_conversations conversation
       where conversation.id = conversation_id
-        and conversation.user_id = auth.uid()
+        and conversation.user_id = (select auth.uid())
     )
   );
 
@@ -166,7 +166,7 @@ alter table public.ai_hosted_usage enable row level security;
 
 create policy "Users can read their own hosted Coach usage."
   on public.ai_hosted_usage for select to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 revoke all on public.ai_hosted_usage from anon, authenticated;
 grant select on public.ai_hosted_usage to authenticated;

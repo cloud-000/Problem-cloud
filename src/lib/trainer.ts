@@ -659,7 +659,9 @@ async function drawMatchingProblem(
     if (!count) return null;
     const offset = settings.historyOrder === "oldest" ? 0 : Math.floor(Math.random() * count);
     // Scan beyond an invalid reference key/blank statement instead of allowing
-    // one malformed candidate to hide later eligible results.
+    // one malformed candidate to hide later eligible results. Hydrate only the
+    // first candidate on the happy path so a normal draw fetches 1 problem row
+    // instead of FALLBACK_PAGE_SIZE (25) full rows with nested embeds.
     for (const [start, end] of [[offset, count], [0, offset]]) {
         for (let from = start; from < end; from += FALLBACK_PAGE_SIZE) {
             let query = practiceIndexQuery(supabase, settings, session);
@@ -668,8 +670,10 @@ async function drawMatchingProblem(
                 .range(from, Math.min(end, from + FALLBACK_PAGE_SIZE) - 1);
             if (pageError) throw pageError;
             const ids = (data ?? []).map((row: { problem_id: number }) => row.problem_id);
-            const rows = await eligibleIndexRows(supabase, ids, settings);
-            if (rows.length) return rows[0];
+            const first = await eligibleIndexRows(supabase, ids.slice(0, 1), settings);
+            if (first.length) return first[0];
+            const rest = await eligibleIndexRows(supabase, ids.slice(1), settings);
+            if (rest.length) return rest[0];
         }
     }
     return null;

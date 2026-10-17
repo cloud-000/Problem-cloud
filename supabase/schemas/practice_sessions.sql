@@ -63,23 +63,23 @@ alter table public.practice_sessions enable row level security;
 create policy "Users can view their own sessions."
   on public.practice_sessions for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 create policy "Users can insert their own sessions."
   on public.practice_sessions for insert
   to authenticated
-  with check ( auth.uid() = user_id );
+  with check ( (select auth.uid()) = user_id );
 
 create policy "Users can update their own sessions."
   on public.practice_sessions for update
   to authenticated
-  using ( auth.uid() = user_id )
-  with check ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id )
+  with check ( (select auth.uid()) = user_id );
 
 create policy "Users can delete their own sessions."
   on public.practice_sessions for delete
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 -- Grants. Clients may only UPDATE metadata columns; the counter columns are
 -- written exclusively by the security-definer submissions trigger. The

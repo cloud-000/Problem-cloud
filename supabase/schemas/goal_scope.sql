@@ -46,6 +46,15 @@ as $$
      and p_answer_index < coalesce(pg_catalog.cardinality(p_choices), 0);
 $$;
 
+-- Expression covering index on (id, is_gradeable(...)): lets canonical
+-- gradeability lookups resolve via an Index-Only Scan without visiting the
+-- heap or detoasting `statement` and `choices`.
+create index problems_id_gradeable_idx
+  on public.problems (
+    id,
+    public.is_gradeable(statement, answer_status, answer_index, choices)
+  );
+
 -- One row per catalog placement, resolved to the canonical it shares state with.
 -- A canonical with no aliases contributes exactly one row; a duplicated problem
 -- contributes one row per test it appears under, all carrying the same
@@ -117,9 +126,7 @@ grant select on public.canonical_placements to authenticated;
 --     nothing chosen.
 --
 -- `gradeable` is returned rather than applied: the set family filters on it to
--- build its denominator, and the event families ignore it (§4). `bool_or` is
--- exact here, not an approximation — the value is a property of the canonical,
--- so it is constant within each group.
+-- build its denominator, and the event families ignore it (§4).
 --
 -- Returned as a set-returning function rather than a view with a scope column
 -- so that a batched, multi-scope family RPC can call it once per scope via
@@ -131,21 +138,6 @@ stable
 security invoker
 set search_path = ''
 as $$
-  -- The jsonb is decoded ONCE, into scalars and text[]s, before the catalog is
-  -- touched: the row predicate is then plain array containment, and the series
-  -- clauses become a relation the planner can hash-join rather than a jsonb
-  -- expression re-evaluated per placement. Throughout, a NULL array means "no
-  -- narrowing on this axis" — which is what `array_agg` over an empty selection
-  -- returns anyway.
-  --
-  -- Cost, measured warm against a 30k-problem catalog (2026-08-10): ~20ms for a
-  -- two-series scope, ~87ms for the whole catalog, dominated by the placement
-  -- scan and by detoasting `statement` for the gradeability test. Every scope
-  -- pays a full scan — there is no index on the catalog by series. That is
-  -- comfortably inside a page load today, and the point at which it stops being
-  -- so is the point `docs/goals.md` §8 means by "shown to be too slow"; the
-  -- first fix is a covering index or a stored gradeability column, NOT a cached
-  -- progress column.
   with scope as (
     select
       coalesce(p_scope -> 'topic',        '[]'::jsonb) as topics,
@@ -196,41 +188,44 @@ as $$
          from pg_catalog.jsonb_array_elements_text(s.topics) t) as topics,
       (select pg_catalog.count(*) from clauses) as clause_count
     from scope s
+  ),
+  matched as (
+    -- Unscoped by series: scan `problems` directly without joining `tests`.
+    select distinct coalesce(p.canonical_id, p.id) as canonical_id
+    from filters f
+    join public.problems p
+      on (f.topics is null or p.topic = any(f.topics))
+    where f.clause_count = 0
+
+    union
+
+    -- Scoped by one or more series clauses: drive from `clauses` -> `tests`
+    -- (`tests_series_scope_idx`) -> `problems` (`problems_test_id_idx`), so a
+    -- series-scoped goal only touches placements in the selected series.
+    select distinct coalesce(p.canonical_id, p.id) as canonical_id
+    from filters f
+    join clauses cl on f.clause_count > 0
+    join public.tests t
+      on t.series_id = cl.series_id
+     and (cl.divisions is null or t.division = any(cl.divisions))
+     and (cl.formats   is null or t.format   = any(cl.formats))
+     and (
+       cl.year_lo is null or cl.year_hi is null
+       or (t.year is not null and t.year >= cl.year_lo and t.year <= cl.year_hi)
+     )
+    join public.problems p
+      on p.test_id = t.id
+     and (f.topics is null or p.topic = any(f.topics))
+     and (
+       cl.n_lo is null or cl.n_hi is null
+       or (p.n >= cl.n_lo - 1 and p.n <= cl.n_hi - 1)
+     )
   )
-  select cp.canonical_id, pg_catalog.bool_or(cp.gradeable)
-  from public.canonical_placements cp, filters f
-  where
-    -- Topic is matched on the same placement row as the series clause, so the
-    -- whole scope is one row test: "this placement satisfies all of it". A NULL
-    -- topic never matches a non-empty filter, which is also what the trainer's
-    -- `.in("topic", …)` does.
-    (f.topics is null or cp.topic = any(f.topics))
-    -- OR-of-ANDs over the selected series: matching ANY clause is enough, and
-    -- each clause's narrowing applies only within itself.
-    and (
-      f.clause_count = 0
-      or exists (
-        select 1
-        from clauses c
-        where c.series_id = cp.series_id
-          and (c.divisions is null or cp.division = any(c.divisions))
-          and (c.formats   is null or cp.format   = any(c.formats))
-          -- problemNumbers is 1-based inclusive; problems.n is 0-based.
-          -- NULL lo/hi means the axis was omitted (full number line).
-          and (
-            c.n_lo is null or c.n_hi is null
-            or (cp.n >= c.n_lo - 1 and cp.n <= c.n_hi - 1)
-          )
-          -- yearRange is inclusive on tests.year. NULL lo/hi means the axis
-          -- was omitted (full span). A null placement year never matches a
-          -- narrowed range.
-          and (
-            c.year_lo is null or c.year_hi is null
-            or (cp.year is not null and cp.year >= c.year_lo and cp.year <= c.year_hi)
-          )
-      )
-    )
-  group by cp.canonical_id;
+  select
+    m.canonical_id,
+    public.is_gradeable(c.statement, c.answer_status, c.answer_index, c.choices) as gradeable
+  from matched m
+  join public.problems c on c.id = m.canonical_id;
 $$;
 
 grant execute on function public.is_gradeable(text, text, integer, text[])

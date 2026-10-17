@@ -53,6 +53,7 @@ create table public.tests (
 );
 
 create index tests_series_id_idx on public.tests(series_id);
+create index tests_series_scope_idx on public.tests(series_id, year desc, division, format);
 create unique index tests_sync_key_idx on public.tests(sync_key);
 
 -- Denormalized, "built" problem rows for browsing/practice.
@@ -115,6 +116,12 @@ create unique index problems_sync_key_idx on public.problems(sync_key);
 -- Aliases only; canonicals (the common case) are excluded so the index stays small.
 create index problems_canonical_id_idx on public.problems(canonical_id)
   where canonical_id is not null;
+create index problems_coalesce_canonical_id_idx on public.problems(coalesce(canonical_id, id));
+create index problems_topic_idx on public.problems(topic);
+create index problems_tags_gin_idx on public.problems using gin (tags);
+create index problems_has_statement_idx
+  on public.problems(id, canonical_id, test_id, n, topic, answer_status, answer_index, verified, is_computational)
+  where statement is not null;
 
 -- Enable Row Level Security (RLS)
 alter table public.series enable row level security;

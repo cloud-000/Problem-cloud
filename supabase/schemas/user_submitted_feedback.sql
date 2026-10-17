@@ -72,13 +72,13 @@ alter table public.user_submitted_feedback enable row level security;
 create policy "Users can view their own feedback."
   on public.user_submitted_feedback for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 create policy "Users can insert their own feedback."
   on public.user_submitted_feedback for insert
   to authenticated
   with check (
-    auth.uid() = user_id
+    (select auth.uid()) = user_id
     and status = 'pending'
     and reviewed_by is null
     and reviewed_at is null
@@ -88,7 +88,7 @@ create policy "Users can insert their own feedback."
 create policy "Admins can view all feedback."
   on public.user_submitted_feedback for select
   to authenticated
-  using ( (select admin_rank from public.profiles where id = auth.uid()) > 0 );
+  using ( (select admin_rank from public.profiles where id = (select auth.uid())) > 0 );
 
 -- Grant permissions for roles
 grant select, insert on public.user_submitted_feedback to authenticated;

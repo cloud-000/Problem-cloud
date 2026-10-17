@@ -50,7 +50,8 @@ create table public.submissions (
   created_at      timestamp with time zone default now() not null
 );
 
-create index submissions_user_problem_idx on public.submissions(user_id, problem_id);
+create index submissions_user_problem_idx
+  on public.submissions(user_id, problem_id, created_at, id);
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
 create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
 create unique index submissions_user_client_key_uidx
@@ -324,18 +325,18 @@ alter table public.problem_progress enable row level security;
 create policy "Users can view their own submissions."
   on public.submissions for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 create policy "Users can insert their own submissions."
   on public.submissions for insert
   to authenticated
-  with check ( auth.uid() = user_id );
+  with check ( (select auth.uid()) = user_id );
 
 -- Policies for public.problem_progress (read-only to clients; trigger writes).
 create policy "Users can view their own progress."
   on public.problem_progress for select
   to authenticated
-  using ( auth.uid() = user_id );
+  using ( (select auth.uid()) = user_id );
 
 -- Grant permissions for roles
 grant select, insert on public.submissions to authenticated;

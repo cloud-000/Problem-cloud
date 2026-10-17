@@ -20,12 +20,13 @@ type SeriesEmbed = {
 export const load: PageLoad = async ({ parent }) => {
     const { supabase } = await parent();
 
-    const [problems, series] = await Promise.all([
+    const [problems, series, preferredWelcomeProblems] = await Promise.all([
         supabase.from("problems").select("id", { count: "exact", head: true }),
         supabase
             .from("series")
             .select("id, name, tests(count)")
             .order("name"),
+        loadWelcomeProblems(supabase, WELCOME_PREFERRED_SERIES),
     ]);
 
     const seriesRows = series.error
@@ -35,10 +36,8 @@ export const load: PageLoad = async ({ parent }) => {
               name: row.name,
               testCount: row.tests?.[0]?.count ?? 0,
           }));
-    const preferredSeriesId =
-        seriesRows.find((row) => row.name === WELCOME_PREFERRED_SERIES)?.id ?? null;
-    let welcomeProblems = await loadWelcomeProblems(supabase, preferredSeriesId);
-    if (welcomeProblems.length === 0 && preferredSeriesId != null) {
+    let welcomeProblems = preferredWelcomeProblems;
+    if (welcomeProblems.length === 0) {
         welcomeProblems = await loadWelcomeProblems(supabase, null);
     }
 
