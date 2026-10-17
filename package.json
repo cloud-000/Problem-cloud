@@ -15,7 +15,8 @@
 		"vendor:assets": "bun scripts/vendor-assets.ts",
 		"vendor:check": "bun scripts/vendor-assets.ts --if-missing",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"perf:measure": "bun scripts/perf/measure.ts"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.62.1",
