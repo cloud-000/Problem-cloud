@@ -37,9 +37,20 @@
 <div class={cn("min-w-0 max-w-full", className)}>
     {#each segments as segment, i (i)}
         {#if segment.kind === "asy"}
-            <Figure imageSrc={segment.imageSrc} code={segment.code} alt="Asymptote diagram" />
+            <Figure
+                imageSrc={segment.imageSrc}
+                code={segment.code}
+                alt="Asymptote diagram"
+                width={segment.width}
+                height={segment.height}
+            />
         {:else if segment.kind === "img"}
-            <Figure imageSrc={segment.src} alt={segment.alt} />
+            <Figure
+                imageSrc={segment.src}
+                alt={segment.alt}
+                width={segment.width}
+                height={segment.height}
+            />
         {:else}
             <!-- `pc-md` styles the block markup only markdown produces. It has to
                  land on LaTeX's render element, because that is the ancestor of

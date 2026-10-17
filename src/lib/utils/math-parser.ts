@@ -1,3 +1,5 @@
+import { getKnownImageDimensions, toProxyMediaUrl } from "#lib/utils/media.js";
+
 export type ASTNode =
     | { type: "text"; content: string }
     | { type: "bold"; children: ASTNode[] }
@@ -6,8 +8,8 @@ export type ASTNode =
     | { type: "strikethrough"; children: ASTNode[] }
     | { type: "url"; href: string; children: ASTNode[] }
     | { type: "code"; content: string }
-    | { type: "asy"; imageSrc: string; code: string }
-    | { type: "img"; src: string; label: string }
+    | { type: "asy"; imageSrc: string; code: string; width?: number; height?: number }
+    | { type: "img"; src: string; label: string; width?: number; height?: number }
     | { type: "table"; head: TableRow[]; body: TableRow[] }
     | { type: "center"; children: ASTNode[] }
     // Block nodes. Markdown produces most of these, while `linebreak` and
@@ -52,7 +54,7 @@ type Token = TagToken | TextToken;
 
 // Single source of truth for the supported tag set. `tokenize` builds a fresh
 // global copy each call (stateful `lastIndex`).
-const TAG_REGEX = /\[(\/?)(b|i|u|s|code|url|asy|img)(?:=([^\]]+))?\]/gi;
+const TAG_REGEX = /\[(\/?)(b|i|u|s|code|url|asy|img)(?:[=\s]([^\]]+))?\]/gi;
 
 // --- Markdown images → Math-Images CDN ------------------------------------
 //
@@ -94,10 +96,32 @@ function splitMarkdownImages(text: string): ASTNode[] {
                 content: text.slice(lastIndex, match.index),
             });
         }
+        let label = match[1];
+        let width: number | undefined;
+        let height: number | undefined;
+
+        // Check for alt|WxH or alt =WxH
+        const altDimMatch = label.match(/^(.*?)(?:\||\s+=)(\d+)x(\d+)$/);
+        if (altDimMatch) {
+            label = altDimMatch[1].trim();
+            width = parseInt(altDimMatch[2], 10);
+            height = parseInt(altDimMatch[3], 10);
+        }
+
+        const src = resolveImageSrc(match[2]);
+        if (!width || !height) {
+            const dims = getKnownImageDimensions(src);
+            if (dims) {
+                width = dims.width;
+                height = dims.height;
+            }
+        }
+
         nodes.push({
             type: "img",
-            label: match[1],
-            src: resolveImageSrc(match[2]),
+            label,
+            src,
+            ...(width && height ? { width, height } : {}),
         });
         lastIndex = regex.lastIndex;
     }
@@ -173,6 +197,56 @@ function tokenize(text: string): Token[] {
     return tokens;
 }
 
+export function parseImageAttributes(attribute: string | undefined): {
+    label?: string;
+    width?: number;
+    height?: number;
+} {
+    if (!attribute) return {};
+    let text = attribute.trim();
+    let width: number | undefined;
+    let height: number | undefined;
+
+    // 1. Explicit width=123 height=456 or w=123 h=456
+    const wMatch = text.match(/\b(?:width|w)=(\d+)\b/i);
+    const hMatch = text.match(/\b(?:height|h)=(\d+)\b/i);
+    if (wMatch) {
+        width = parseInt(wMatch[1], 10);
+        text = text.replace(wMatch[0], "").trim();
+    }
+    if (hMatch) {
+        height = parseInt(hMatch[1], 10);
+        text = text.replace(hMatch[0], "").trim();
+    }
+
+    // 2. Whitespace-separated dimensions, e.g. " 300x200" or "=300x200"
+    if (!width || !height) {
+        const dimMatch = text.match(/(?:^|\s+|[=,])(\d{1,4})x(\d{1,4})(?:\s+|$)/i);
+        if (dimMatch) {
+            width = parseInt(dimMatch[1], 10);
+            height = parseInt(dimMatch[2], 10);
+            text = text.replace(dimMatch[0], " ").trim();
+        }
+    }
+
+    const label = text.length > 0 ? text : undefined;
+    return { label, width, height };
+}
+
+export function parseAsyAttributes(attribute: string | undefined): {
+    imageSrc: string;
+    width?: number;
+    height?: number;
+} {
+    if (!attribute) return { imageSrc: "" };
+    const parsed = parseImageAttributes(attribute);
+    return {
+        imageSrc: parsed.label || "",
+        width: parsed.width,
+        height: parsed.height,
+    };
+}
+
 /**
  * Parses BBCode text (no HTML tables) into an AST.
  * Verbatim tags (like [code] and [asy]) capture all tokens inside them as plain text.
@@ -234,18 +308,29 @@ function parseBBCode(text: string): ASTNode[] {
             if (tagName === "code") {
                 nodes.push({ type: "code", content: captureVerbatim("code") });
             } else if (tagName === "asy") {
+                const parsed = parseAsyAttributes(attribute);
+                const dims = parsed.width && parsed.height
+                    ? { width: parsed.width, height: parsed.height }
+                    : getKnownImageDimensions(parsed.imageSrc);
                 nodes.push({
                     type: "asy",
-                    imageSrc: attribute || "",
+                    imageSrc: parsed.imageSrc,
                     code: captureVerbatim("asy").trim(),
+                    ...(dims ? { width: dims.width, height: dims.height } : {}),
                 });
             } else if (tagName === "img") {
                 // [img]url[/img] (optional [img=label]url[/img]). The URL is the
                 // verbatim body so it is never re-parsed for BBCode.
+                const parsed = parseImageAttributes(attribute);
+                const src = captureVerbatim("img").trim();
+                const dims = parsed.width && parsed.height
+                    ? { width: parsed.width, height: parsed.height }
+                    : getKnownImageDimensions(src);
                 nodes.push({
                     type: "img",
-                    label: attribute || "",
-                    src: captureVerbatim("img").trim(),
+                    label: parsed.label || "",
+                    src,
+                    ...(dims ? { width: dims.width, height: dims.height } : {}),
                 });
             } else {
                 const node = makeInlineNode(tagName, attribute, parse(tagName));
@@ -949,7 +1034,17 @@ export function astToHtml(nodes: ASTNode[]): string {
                 );
                 if (src) {
                     const alt = escapeHtml(node.label || "Image");
-                    html += `<img src="${escapeHtml(src)}" alt="${alt}" class="${IMG_CLASS}" />`;
+                    const renderedSrc = toProxyMediaUrl(src);
+                    const dims = [
+                        node.width ? `width="${node.width}"` : "",
+                        node.height ? `height="${node.height}"` : "",
+                        node.width && node.height
+                            ? `style="aspect-ratio: ${node.width} / ${node.height};"`
+                            : "",
+                    ]
+                        .filter(Boolean)
+                        .join(" ");
+                    html += `<img src="${escapeHtml(renderedSrc)}" alt="${alt}" ${dims ? dims + " " : ""}class="${IMG_CLASS}" />`;
                 }
                 break;
             }
@@ -958,7 +1053,17 @@ export function astToHtml(nodes: ASTNode[]): string {
                     ? sanitizeUrl(node.imageSrc, ["http", "https", "data"], "")
                     : "";
                 if (src) {
-                    html += `<img src="${escapeHtml(src)}" alt="Asymptote diagram" class="${ASY_IMG_CLASS}" />`;
+                    const renderedSrc = toProxyMediaUrl(src);
+                    const dims = [
+                        node.width ? `width="${node.width}"` : "",
+                        node.height ? `height="${node.height}"` : "",
+                        node.width && node.height
+                            ? `style="aspect-ratio: ${node.width} / ${node.height};"`
+                            : "",
+                    ]
+                        .filter(Boolean)
+                        .join(" ");
+                    html += `<img src="${escapeHtml(renderedSrc)}" alt="Asymptote diagram" ${dims ? dims + " " : ""}class="${ASY_IMG_CLASS}" />`;
                 } else {
                     html += `<pre class="${ASY_PRE_CLASS}"><code>${escapeHtml(node.code)}</code></pre>`;
                 }
@@ -1043,8 +1148,8 @@ function tableToHtml(node: Extract<ASTNode, { type: "table" }>): string {
 
 export type StatementSegment =
     | { kind: "html"; html: string }
-    | { kind: "asy"; imageSrc: string; code: string }
-    | { kind: "img"; src: string; alt: string };
+    | { kind: "asy"; imageSrc: string; code: string; width?: number; height?: number }
+    | { kind: "img"; src: string; alt: string; width?: number; height?: number };
 
 function isWhitespaceOnly(nodes: ASTNode[]): boolean {
     for (const node of nodes) {
@@ -1069,12 +1174,26 @@ function getInteractiveSegment(node: ASTNode): StatementSegment | null {
             "",
         );
         if (src) {
-            return { kind: "asy", imageSrc: src, code: node.code };
+            return {
+                kind: "asy",
+                imageSrc: src,
+                code: node.code,
+                ...(node.width && node.height
+                    ? { width: node.width, height: node.height }
+                    : {}),
+            };
         }
     } else if (node.type === "img") {
         const src = sanitizeUrl(node.src, ["http", "https", "data"], "");
         if (src) {
-            return { kind: "img", src, alt: node.label || "Image" };
+            return {
+                kind: "img",
+                src,
+                alt: node.label || "Image",
+                ...(node.width && node.height
+                    ? { width: node.width, height: node.height }
+                    : {}),
+            };
         }
     }
     return null;

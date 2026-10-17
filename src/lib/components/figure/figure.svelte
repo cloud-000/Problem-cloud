@@ -8,38 +8,54 @@
     import { Icon } from "#lib/components/icon/index.js";
     import { Modal } from "#lib/components/modal/index.js";
     import { Theme } from "#lib/utils/Theme.svelte.js";
+    import { getKnownImageDimensions, toProxyMediaUrl } from "#lib/utils/media.js";
 
     let {
         imageSrc,
         alt = "Image",
         code = "",
         autoInvert = true,
+        width,
+        height,
         class: className,
     }: {
         imageSrc: string;
         alt?: string;
         code?: string;
         autoInvert?: boolean;
+        width?: number;
+        height?: number;
         class?: string;
     } = $props();
 
     let view = $state<"image" | "code">("image");
     let expanded = $state(false);
+
+    let renderedSrc = $derived(toProxyMediaUrl(imageSrc));
+    let dims = $derived(
+        width && height
+            ? { width, height }
+            : getKnownImageDimensions(imageSrc),
+    );
+
     // An error stays visible until a load succeeds or the source changes.
-    let imageFailed = $derived.by(() => {
-        void imageSrc;
-        return false;
-    });
-    let retrying = $derived.by(() => {
-        void imageSrc;
-        return false;
-    });
+    let imageFailed = $state(false);
+    let retrying = $state(false);
     let retryAttempt = $state(0);
+
+    $effect(() => {
+        void imageSrc;
+        imageFailed = false;
+        retrying = false;
+    });
+
     let externalImage = $derived.by(() => {
         try {
-            const source = imageSrc.startsWith("/_offline/media?")
-                ? new URLSearchParams(imageSrc.split("?")[1]).get("url")
-                : imageSrc;
+            let source = imageSrc;
+            if (source.startsWith("/api/media?") || source.startsWith("/_offline/media?")) {
+                const search = source.includes("?") ? source.slice(source.indexOf("?") + 1) : "";
+                source = new URLSearchParams(search).get("url") || source;
+            }
             if (!source) return null;
             const url = new URL(source);
             if (url.protocol !== "https:" && url.protocol !== "http:") return null;
@@ -79,19 +95,21 @@
 
     $effect(() => {
         void imageSrc;
-        naturalWidth = 0;
-        naturalHeight = 0;
+        naturalWidth = dims?.width ?? 0;
+        naturalHeight = dims?.height ?? 0;
     });
 
     function handleImageError(event: Event & { currentTarget: Element }) {
-        if (event.currentTarget.getAttribute("src") !== imageSrc) return;
+        const srcAttr = event.currentTarget.getAttribute("src");
+        if (srcAttr !== renderedSrc && srcAttr !== imageSrc) return;
         imageFailed = true;
         retrying = false;
         expanded = false;
     }
 
     function handleImageLoad(event: Event & { currentTarget: Element }) {
-        if (event.currentTarget.getAttribute("src") !== imageSrc) return;
+        const srcAttr = event.currentTarget.getAttribute("src");
+        if (srcAttr !== renderedSrc && srcAttr !== imageSrc) return;
         imageFailed = false;
         retrying = false;
         updateNaturalDimensions(event.currentTarget as HTMLImageElement);
@@ -118,18 +136,29 @@
     const persistKey = annotationKey(untrack(() => imageSrc));
 
     let thumbnailScale = $derived.by(() => {
-        if (naturalWidth > 0 && thumbWidth > 0) {
-            return 40 * (thumbWidth / naturalWidth);
+        const nw = naturalWidth > 0 ? naturalWidth : (dims?.width ?? 0);
+        if (nw > 0 && thumbWidth > 0) {
+            return 40 * (thumbWidth / nw);
         }
         return 40;
     });
 
     let lightboxBaseScale = $derived.by(() => {
-        if (naturalWidth <= 0 || naturalHeight <= 0) return 40;
+        const nw = naturalWidth > 0 ? naturalWidth : (dims?.width ?? 0);
+        const nh = naturalHeight > 0 ? naturalHeight : (dims?.height ?? 0);
+        if (nw <= 0 || nh <= 0) return 40;
         const availableW = lightboxWidth > 0 ? lightboxWidth : browser ? window.innerWidth : 800;
         const availableH = lightboxHeight > 0 ? lightboxHeight : browser ? window.innerHeight : 600;
-        const fitScale = Math.min(1, availableW / naturalWidth, availableH / naturalHeight);
+        const fitScale = Math.min(1, availableW / nw, availableH / nh);
         return 40 * fitScale;
+    });
+
+    let containerStyle = $derived.by(() => {
+        if (!dims) return "";
+        const maxDisplayWidth = Math.round(
+            Math.min(dims.width, (300 * dims.width) / dims.height),
+        );
+        return `aspect-ratio: ${dims.width} / ${dims.height}; width: min(100%, ${maxDisplayWidth}px); max-height: 300px;`;
     });
 
     let lightboxScale = $state(40);
@@ -270,18 +299,21 @@
         >
             <span
                 class="relative mx-auto block w-fit max-w-full"
+                style={containerStyle}
                 bind:clientWidth={thumbWidth}
                 bind:clientHeight={thumbHeight}
             >
-                {#key `${imageSrc}:${retryAttempt}`}
+                {#key `${renderedSrc}:${retryAttempt}`}
                     <img
                         bind:this={thumbImgEl}
-                        src={imageSrc}
+                        src={renderedSrc}
                         onerror={handleImageError}
                         onload={handleImageLoad}
                         alt={alt}
+                        width={dims?.width}
+                        height={dims?.height}
                         style={inverted ? INVERT_STYLE : ""}
-                        class="block max-h-[300px] max-w-full rounded-lg object-contain select-none"
+                        class="block h-full w-full max-h-[300px] max-w-full rounded-lg object-contain select-none"
                     />
                 {/key}
                 {#if wb && board && board.scene.elements.length > 0}
@@ -357,10 +389,12 @@
             transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
         >
             <img
-                src={imageSrc}
+                src={renderedSrc}
                 onerror={handleImageError}
                 onload={handleImageLoad}
                 alt={alt}
+                width={dims?.width}
+                height={dims?.height}
                 style={`${inverted ? `${INVERT_STYLE};` : ""} transform: translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxBaseScale > 0 ? lightboxScale / lightboxBaseScale : 1});`}
                 class="block max-h-full max-w-full rounded-lg object-contain select-none"
             />
