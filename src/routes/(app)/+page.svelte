@@ -405,11 +405,25 @@
             </p>
         </section>
     </Page.Root>
-{:else if loading}
+{:else if presentation === "introduction"}
+    <TourView
+        initialStep={resumeTourStep(onboarding.lastCompletedTourStep)}
+        username={profile?.username ?? null}
+        onskip={skipOnboarding}
+        onadvance={advanceTour}
+        onfinish={finishTour}
+    />
+{:else}
+    <!-- The header is deliberately outside the loading gate: it needs only
+        `profile`, which the (app) layout already loads and SSRs. Gating it
+        behind the dashboard's five client fetches left the first paint with
+        no LCP-eligible text at all (the skeleton is bare divs), so LCP waited
+        for the slowest fetch instead of landing with FCP. -->
     <Page.Root width="standard">
-        <div class="space-y-2 pb-2">
-            <Skeleton class="h-8 w-48 rounded-md" />
-        </div>
+        <Page.Header
+            title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
+        />
+        {#if loading}
         <div class="relative flex flex-col gap-10" role="status" aria-label="Loading your dashboard">
             <section
                 class="flex flex-col gap-5 rounded-xl border border-border bg-surface-container-lowest p-5 sm:p-6"
@@ -449,21 +463,8 @@
             </section>
             <span class="sr-only">Loading your next step…</span>
         </div>
-    </Page.Root>
-{:else if presentation === "introduction"}
-    <TourView
-        initialStep={resumeTourStep(onboarding.lastCompletedTourStep)}
-        username={profile?.username ?? null}
-        onskip={skipOnboarding}
-        onadvance={advanceTour}
-        onfinish={finishTour}
-    />
-{:else}
-    <Page.Root width="standard" class="animate-fade-in">
-        <Page.Header
-            title={`Welcome back${profile?.username ? `, ${profile.username}` : ""}`}
-        />
-        <div class="flex flex-col gap-10">
+        {:else}
+        <div class="flex flex-col gap-10 animate-fade-in">
             <section
                 aria-labelledby="next-up-title"
                 class="flex flex-col gap-5 rounded-xl border border-border bg-surface-container-lowest p-5 sm:p-6"
@@ -620,5 +621,6 @@
                 </Page.Section>
             {/if}
         </div>
+        {/if}
     </Page.Root>
 {/if}
