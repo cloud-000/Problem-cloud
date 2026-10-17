@@ -627,8 +627,10 @@ function practiceIndexQuery(
     if (settings.ratingBand) query = query.gte("rating", settings.ratingBand[0]).lte("rating", settings.ratingBand[1]);
     const exclude = exclusionList(session.shownIds);
     if (exclude) {
-        query = query.not("problem_id", "in", exclude)
-            .or(`canonical_id.is.null,canonical_id.not.in.${exclude}`);
+        query = query.not("problem_id", "in", exclude);
+        if (settings.seriesIds?.length) {
+            query = query.or(`canonical_id.is.null,canonical_id.not.in.${exclude}`);
+        }
     }
     return query;
 }

@@ -142,6 +142,18 @@ describe("unified practice draw", () => {
         expect(requests[0].searchParams.get("problem_id")).toBe("not.in.(10)");
     });
 
+    test("shown problems exclusion omits redundant canonical_id or-clause when series is unconstrained", async () => {
+        const { supabase, requests } = catalog([candidate(1, 0)]);
+        const session = createSession(); session.shownIds.add(10);
+        await nextPracticeProblem(supabase, {
+            ...defaultPracticeSettings(), adaptive: false,
+        }, session);
+        const ors = requests[0].searchParams.getAll("or");
+        expect(ors).not.toContain("(canonical_id.is.null,canonical_id.not.in.(10))");
+        expect(requests[0].searchParams.get("canonical_id")).toBe("is.null");
+        expect(requests[0].searchParams.get("problem_id")).toBe("not.in.(10)");
+    });
+
     test("manual difficulty remains a hard filter rather than silently widening", async () => {
         const { supabase, requests } = catalog([]);
         await nextPracticeProblem(supabase, { ...defaultPracticeSettings(), adaptive: false, difficulty: [800, 1000] }, createSession(), 1500);

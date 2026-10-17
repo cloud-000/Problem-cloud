@@ -59,7 +59,7 @@
     }
 
     function handleOutsideClick(event: MouseEvent) {
-        if (closeOnOutsideClick && event.target === event.currentTarget) {
+        if (event.target === event.currentTarget && closeOnOutsideClick) {
             close();
         }
     }

@@ -5,18 +5,20 @@
 
 {#if modal.activeModal}
     {@const active = modal.activeModal}
-    {@const Component = active.component}
+    {@const Component = active?.component}
     <Modal
         open={true}
-        title={active.options?.title}
-        description={active.options?.description}
-        size={active.options?.size}
-        closeOnOutsideClick={active.options?.closeOnOutsideClick}
-        closeOnEscape={active.options?.closeOnEscape}
-        overflowVisible={active.options?.overflowVisible}
-        class={active.options?.class}
+        title={active?.options?.title}
+        description={active?.options?.description}
+        size={active?.options?.size}
+        closeOnOutsideClick={active?.options?.closeOnOutsideClick}
+        closeOnEscape={active?.options?.closeOnEscape}
+        overflowVisible={active?.options?.overflowVisible}
+        class={active?.options?.class}
         onClose={() => modal.close()}
     >
-        <Component {...(active.props || {})} />
+        {#if Component}
+            <Component {...(active?.props || {})} />
+        {/if}
     </Modal>
 {/if}
