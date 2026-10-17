@@ -123,6 +123,7 @@
 </script>
 
 <svelte:head>
+    <link rel="preload" href="/fonts/source-serif-4-200-900-normal-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <title>ProblemCloud — contest math practice with free AI</title>
     <meta
         name="description"

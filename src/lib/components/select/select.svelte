@@ -289,10 +289,7 @@
             class={cn(
                 "transition-transform duration-200 text-muted-foreground origin-center shrink-0",
                 open && "rotate-180",
-            )}
-        >
-            keyboard_arrow_down
-        </Icon>
+            )} name="keyboard_arrow_down" />
     </button>
 
     {#if open && (allOptions.length > 0 || searchable)}

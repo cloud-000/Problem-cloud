@@ -1,75 +1,55 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import {
-    APP_HTML,
-    MATERIAL_SYMBOLS_CSS,
-    MATERIAL_SYMBOLS_FONT,
-    MATERIAL_SYMBOLS_FONT_PATH,
-    knownIconNames,
-    materialSymbolsCss,
-    readSubsetManifest,
-    subsetUrl,
-    usedIconNames,
-} from "./icon-subset";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { DEFAULT_ICON_AXES, iconHref, iconVariantId } from "../src/lib/components/icon/assets";
+import { APP_HTML, ICON_DIRECTORY, ICON_SOURCE, iconRequirements, knownIconNames, missingIconAssets, readSubsetManifest, svgSymbol, upstreamIconUrl, usedIconNames } from "./icon-subset";
 
-describe("material symbols subset", () => {
-    test("the vendored subset lists every icon name used in src", () => {
-        const manifest = readSubsetManifest();
-        expect(manifest).not.toBeNull();
-
-        const listed = new Set(manifest!.names);
-        const missing = usedIconNames().filter((name) => !listed.has(name));
-
-        // A name absent from the subset renders as blank space, not a fallback
-        // glyph, so this is the difference between a working icon and an
-        // invisible one. Run `bun scripts/icon-subset.ts --write` to fix.
-        expect(missing).toEqual([]);
-    });
-
-    test("the manifest describes the font file actually committed", () => {
-        const manifest = readSubsetManifest()!;
-        expect(existsSync(MATERIAL_SYMBOLS_FONT)).toBe(true);
-        // A truncated or re-downloaded-but-not-committed font is the failure
-        // this catches: the glyph list would still look right.
-        expect(statSync(MATERIAL_SYMBOLS_FONT).size).toBe(manifest.bytes);
-        expect(manifest.source).toBe(subsetUrl(manifest.names));
-    });
-
-    test("the vendored stylesheet matches the generator and points at the font", () => {
-        const css = readFileSync(MATERIAL_SYMBOLS_CSS, "utf8");
-        expect(css).toBe(materialSymbolsCss());
-        expect(css).toContain(`/${MATERIAL_SYMBOLS_FONT_PATH}`);
-    });
-
-    test("app.html loads no font or math asset from a third-party origin", () => {
-        // Offline mode's precondition (docs/offline.md §4): a service worker can
-        // only precache same-origin assets, so a CDN link here is an offline
-        // problem that renders without math, icons, or its typography.
-        const html = readFileSync(APP_HTML, "utf8");
-        expect(html).not.toContain("fonts.googleapis.com");
-        expect(html).not.toContain("fonts.gstatic.com");
-        expect(html).not.toContain("cdn.jsdelivr.net");
-        expect(html).toContain("/vendor/katex/katex.min.css");
-        expect(html).toContain(`/${MATERIAL_SYMBOLS_FONT_PATH.replace(".woff2", ".css")}`);
-    });
-
-    test("extraction finds the icons that are only reachable dynamically", () => {
-        const names = usedIconNames();
-        // `SEVERITY_ICON[severity]` in toast.svelte and `tool.icon` in the
-        // whiteboard toolbar never appear next to an `<Icon>` tag — they are
-        // why extraction scans every string literal rather than call sites.
-        expect(names).toContain("check_circle");
-        expect(names).toContain("ink_eraser");
-    });
-
-    test("a short string value before an icon literal does not hide it", () => {
-        // Regression: `{ href: "/", icon: "home" }` in the app-shell nav. A
-        // length-bounded string regex skipped the 1-char `"/"` and swallowed
-        // `home` as an inter-quote span, so the nav's Home icon shipped blank.
+describe("Material Symbols SVG assets", () => {
+    test("every dynamic icon and explicit axis instance has intact local artwork", () => {
+        expect(missingIconAssets()).toEqual([]);
+        const requirements = iconRequirements();
+        expect(requirements.get("check")?.map(iconVariantId)).toContain("w400-g0-o20-f1");
+        expect(requirements.get("expand_more")?.map(iconVariantId)).toContain("w400-g0-o20-f0");
+        expect(requirements.get("mark_email_unread")?.map(iconVariantId)).toContain("w500-g0-o24-f0");
+        expect(usedIconNames()).toContain("ink_eraser");
+        expect(usedIconNames()).toContain("check_circle");
         expect(usedIconNames()).toContain("home");
+        expect(knownIconNames().size).toBeGreaterThan(4000);
     });
 
-    test("the vendored glyph list covers the full font", () => {
-        expect(knownIconNames().size).toBeGreaterThan(4000);
+    test("the generated manifest describes independently loadable icons", () => {
+        const manifest = readSubsetManifest()!;
+        expect(manifest.source).toBe(ICON_SOURCE);
+        expect(manifest.bytes).toBe(manifest.files.reduce((n, f) => n + f.bytes, 0));
+        for (const file of manifest.files) {
+            const svg = readFileSync(join(ICON_DIRECTORY, `${file.name}.svg`), "utf8");
+            expect(Buffer.byteLength(svg)).toBe(file.bytes);
+            for (const id of file.variants) expect(svg).toContain(`id="${id}"`);
+            expect(svg).not.toContain("<script");
+        }
+    });
+
+    test("only emits path geometry, including older SVGs without viewBox", () => {
+        expect(svgSymbol('<svg width="24" height="24"><path d="M0 0h24v24Z"/></svg>', "test"))
+            .toContain('viewBox="0 0 24 24"');
+        expect(() => svgSymbol('<svg viewBox="0 0 24 24"><script>alert(1)</script></svg>', "test")).toThrow();
+    });
+
+    test("uses exact fill/weight/optical-size instances and rejects malformed names", () => {
+        expect(iconHref("home", DEFAULT_ICON_AXES)).toBe("/vendor/material-symbols/home.svg#w400-g0-o24-f0");
+        expect(iconHref("../home", DEFAULT_ICON_AXES)).toBe("");
+        expect(upstreamIconUrl("check", { ...DEFAULT_ICON_AXES, fill: true, opticalSize: 20 }))
+            .toEndWith("/check_fill1_20px.svg");
+        expect(upstreamIconUrl("home", { ...DEFAULT_ICON_AXES, weight: 500, grade: -25, fill: true }))
+            .toEndWith("/home_wght500gradN25fill1_24px.svg");
+    });
+
+    test("the document loads no icon font or third-party rendering assets", () => {
+        const html = readFileSync(APP_HTML, "utf8");
+        for (const host of ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net"]) expect(html).not.toContain(host);
+        expect(html).toContain("/vendor/katex/katex.min.css");
+        expect(html).not.toContain("material-symbols-rounded.css");
+        expect(html).not.toContain("source-serif-4-200-900-normal-latin.woff2");
+        expect(html).toContain("inter-300-700-normal-latin.woff2");
     });
 });

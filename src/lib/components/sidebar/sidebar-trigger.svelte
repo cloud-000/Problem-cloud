@@ -33,7 +33,5 @@
     onclick={handleToggle}
     {...restProps}
 >
-    <Icon class="transition-transform duration-300" style={sidebar.expanded ? "transform: rotate(0deg);" : "transform: rotate(180deg);"}>
-        chevron_left
-    </Icon>
+    <Icon class="transition-transform duration-300" style={sidebar.expanded ? "transform: rotate(0deg);" : "transform: rotate(180deg);"} name="chevron_left" />
 </Button>

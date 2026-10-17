@@ -23,8 +23,8 @@
  *   how you pick up a new KaTeX version or a changed font request.
  *
  * `--if-missing` is a real check, not a directory-exists test: it verifies every
- * font each vendored stylesheet references and that the icon subset still covers
- * the icons `src/` uses. A half-populated `static/` is the failure mode worth
+ * font each vendored stylesheet references and that the SVG artwork still covers
+ * the icons and explicit axis instances `src/` uses. A half-populated `static/` is worth
  * catching, because it looks fine until one glyph is blank.
  *
  * Only **woff2** is vendored. The v1 release gate is Chromium 111+ / Safari
@@ -34,19 +34,13 @@
  * accordingly rather than left pointing at files we did not fetch.
  */
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-    MATERIAL_SYMBOLS_CSS,
-    MATERIAL_SYMBOLS_CSS_PATH,
-    MATERIAL_SYMBOLS_FONT,
-    MATERIAL_SYMBOLS_FONT_PATH,
-    MODERN_UA,
-    readSubsetManifest,
-    usedIconNames,
-    vendorMaterialSymbols,
-} from "./icon-subset";
+import { missingIconAssets, vendorMaterialSymbols } from "./icon-subset";
+
+/** Google Fonts serves woff2 to modern browser clients. */
+const MODERN_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -66,8 +60,8 @@ const KEPT_SUBSETS = new Set(["latin", "latin-ext"]);
 
 const TEXT_FONTS_URL =
     "https://fonts.googleapis.com/css2" +
-    "?family=Inter:wght@300;400;500;600;700" +
-    "&family=JetBrains+Mono:wght@400;500;600" +
+    "?family=Inter:wght@300..700" +
+    "&family=JetBrains+Mono:wght@400..600" +
     "&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900" +
     "&display=swap";
 
@@ -181,15 +175,17 @@ export function localFontName(face: FontFace): string {
     return `${family}-${weight}-${style}-${face.subset}.woff2`;
 }
 
-async function vendorTextFonts(): Promise<number> {
+export async function vendorTextFonts(): Promise<number> {
     const css = await (await get(TEXT_FONTS_URL)).text();
     const faces = parseFontFaces(css).filter((f) => KEPT_SUBSETS.has(f.subset));
     if (faces.length === 0) throw new Error("No latin font faces were returned");
 
     let bytes = 0;
     const blocks: string[] = [];
+    const retained = new Set(["text.css"]);
     for (const face of faces) {
         const name = localFontName(face);
+        retained.add(name);
         bytes += await writeBinary(`fonts/${name}`, face.url);
         blocks.push(
             `/* ${face.subset} */\n${face.block.replace(/url\([^)]+\)/, `url("/fonts/${name}")`)}`,
@@ -200,6 +196,13 @@ async function vendorTextFonts(): Promise<number> {
    Vendored text faces (see docs/offline.md §4). Only the latin and latin-ext
    cuts are kept; woff2 only, which every supported browser reads. */\n\n`;
     bytes += write("fonts/text.css", header + blocks.join("\n\n") + "\n");
+    // This directory is generated exclusively by this script. Remove old weight
+    // copies and the retired icon font so they cannot enter the SW precache.
+    for (const name of readdirSync(join(STATIC, "fonts"))) {
+        if (!retained.has(name) && /\.(woff2|css)$/.test(name)) {
+            rmSync(join(STATIC, "fonts", name));
+        }
+    }
     console.log(`text fonts: ${faces.length} faces, ${bytes} bytes`);
     return bytes;
 }
@@ -224,7 +227,7 @@ function missingReferences(
 
 /**
  * What a complete `static/` is missing, as human-readable paths. Empty means
- * every stylesheet, every font it names, and an icon subset covering `src/` are
+ * every stylesheet, every font it names, and SVG artwork covering `src/` are
  * all present — the condition `--if-missing` skips the download on.
  */
 export function missingAssets(): string[] {
@@ -251,24 +254,20 @@ export function missingAssets(): string[] {
         ),
     );
 
-    if (!existsSync(MATERIAL_SYMBOLS_CSS)) missing.push(MATERIAL_SYMBOLS_CSS_PATH);
-    const manifest = readSubsetManifest();
-    if (!manifest) {
-        missing.push("scripts/material-symbols-subset.json");
-    } else if (
-        !existsSync(MATERIAL_SYMBOLS_FONT) ||
-        statSync(MATERIAL_SYMBOLS_FONT).size !== manifest.bytes
-    ) {
-        // A size mismatch means a truncated or stale download, which renders as
-        // blank space rather than as an error.
-        missing.push(MATERIAL_SYMBOLS_FONT_PATH);
-    } else {
-        const listed = new Set(manifest.names);
-        const uncovered = usedIconNames().filter((name) => !listed.has(name));
-        if (uncovered.length > 0) {
-            missing.push(`${uncovered.length} icon glyph(s): ${uncovered.join(", ")}`);
+    const textCss = join(STATIC, "fonts/text.css");
+    if (existsSync(textCss)) {
+        const css = readFileSync(textCss, "utf8");
+        for (const name of ["inter-300-700-normal-latin.woff2", "jetbrains-mono-400-600-normal-latin.woff2"]) {
+            if (!css.includes(name)) missing.push(`shared text font: ${name}`);
+        }
+        const referenced = new Set([...css.matchAll(/url\("\/fonts\/([^"]+)"\)/g)].map((m) => m[1]));
+        for (const name of readdirSync(join(STATIC, "fonts"))) {
+            if (name !== "text.css" && /\.(woff2|css)$/.test(name) && !referenced.has(name)) {
+                missing.push(`obsolete generated font: ${name}`);
+            }
         }
     }
+    missing.push(...missingIconAssets());
 
     return missing;
 }

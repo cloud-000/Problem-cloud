@@ -518,7 +518,7 @@
                                 aria-label={`Remove ${option.label}`}
                                 onclick={remove}
                             >
-                                <Icon fontsize={14}>close</Icon>
+                                <Icon fontsize={14} name="close" />
                             </Button>
                         </li>
                     {/if}
@@ -602,9 +602,7 @@
                             >
                         {/if}
                     {:else if row.kind === "create"}
-                        <Icon fontsize={16} class="mr-1.5 text-muted-foreground"
-                            >add</Icon
-                        >
+                        <Icon fontsize={16} class="mr-1.5 text-muted-foreground" name="add" />
                         <span class="truncate">Create "{row.text}"</span>
                     {:else if row.text === "Nothing left" && exhausted}
                         {@render exhausted()}

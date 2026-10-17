@@ -3,6 +3,7 @@ node_modules
 DESIGN.md
 
 # Output
+/.cache/render-assets/
 .output
 .vercel
 .netlify

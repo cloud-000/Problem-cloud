@@ -326,7 +326,7 @@
         {...restProps}
     >
         <div class="flex items-center gap-2 min-w-0 flex-1">
-            <Icon fontsize={18} class="text-muted-foreground shrink-0">calendar_month</Icon>
+            <Icon fontsize={18} class="text-muted-foreground shrink-0" name="calendar_month" />
             <span class="truncate" class:text-muted-foreground={!value}>
                 {value ? displayValue : placeholder}
             </span>
@@ -340,7 +340,7 @@
                     onclick={clearDate}
                     aria-label="Clear date"
                 >
-                    <Icon fontsize={14}>close</Icon>
+                    <Icon fontsize={14} name="close" />
                 </button>
             {/if}
 
@@ -350,9 +350,7 @@
                     "transition-transform duration-200 text-muted-foreground origin-center shrink-0",
                     open && "rotate-180"
                 )}
-            >
-                keyboard_arrow_down
-            </Icon>
+             name="keyboard_arrow_down" />
         </div>
     </div>
 
@@ -371,7 +369,7 @@
                     onclick={prevMonth}
                     aria-label="Previous month"
                 >
-                    <Icon fontsize={18}>chevron_left</Icon>
+                    <Icon fontsize={18} name="chevron_left" />
                 </button>
 
                 <div class="flex items-center gap-1.5 min-w-0 flex-1 justify-center">
@@ -402,13 +400,13 @@
                     onclick={nextMonth}
                     aria-label="Next month"
                 >
-                    <Icon fontsize={18}>chevron_right</Icon>
+                    <Icon fontsize={18} name="chevron_right" />
                 </button>
             </div>
 
             <!-- Days of Week Row -->
             <div class="grid grid-cols-7 gap-1 text-center mb-1">
-                {#each WEEK_DAYS as dayName}
+                {#each WEEK_DAYS as dayName (dayName)}
                     <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
                         {dayName}
                     </span>
@@ -417,7 +415,7 @@
 
             <!-- Calendar Grid -->
             <div class="grid grid-cols-7 gap-1">
-                {#each monthDays as cell}
+                {#each monthDays as cell (cell.dateString)}
                     <button
                         type="button"
                         disabled={cell.disabled}

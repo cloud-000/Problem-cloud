@@ -1,232 +1,203 @@
 /**
- * Material Symbols subsetting.
- *
- * The app renders icons with Material Symbols Rounded. Requested without an
- * `icon_names` filter, the font is the *whole* variable face — all ~4200 glyphs
- * across four axes, 5.1 MB — on every cold load. Naming the icons we actually
- * use cuts it to a few hundred KB.
- *
- * The catch: an icon missing from the list renders as blank space, and icon
- * names reach `<Icon>` through data objects and dynamic props, so there is no
- * single syntactic form to scan for. Rather than pattern-match call sites, we
- * intersect every string literal in `src/` with the official glyph-name list
- * (`material-symbols-names.txt`). That over-collects — words like "code" and
- * "image" are both real strings and real icons — but over-collecting costs a
- * few KB while under-collecting ships an invisible icon, so the bias is
- * deliberate. Keep it.
- *
- * Offline mode moved the output from a Google Fonts `<link>` to a **vendored**
- * subset (`docs/offline.md` §4): the font file and its `@font-face` are written
- * into `static/fonts/`, and `material-symbols-subset.json` records which glyphs
- * that file was built from. The Google Fonts URL is now only the *source* the
- * subset is fetched from, never a runtime dependency.
- *
- * `bun scripts/icon-subset.ts` prints the current subset URL and reports drift;
- * `--write` re-downloads the subset and rewrites the vendored files.
- * `icon-subset.test.ts` fails if the manifest and the sources drift apart.
+ * Generate same-origin Material Symbols Rounded SVGs, one file per icon.
+ * Both fill states are included; explicit numeric axes on <Icon> add instances.
+ * The conservative name scan includes dynamic data objects but excludes comments
+ * and tests. Unused names cost offline storage, not a global foreground font.
+ * Run `bun scripts/icon-subset.ts --write` after adding icons or axis instances.
  */
-
-import {
-    existsSync,
-    mkdirSync,
-    readdirSync,
-    readFileSync,
-    statSync,
-    writeFileSync,
-} from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { parse } from "svelte/compiler";
+import { DEFAULT_ICON_AXES, iconVariantId, type IconAxes } from "../src/lib/components/icon/assets";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const APP_HTML = join(root, "src/app.html");
+export const NAMES_FILE = join(root, "scripts/material-symbols-names.txt");
+// Build metadata stays outside static/ so it is neither deployed nor precached.
+export const SUBSET_MANIFEST = join(root, ".cache/render-assets/material-symbols-subset.json");
+export const ICON_DIRECTORY = join(root, "static/vendor/material-symbols");
+// Pin the upstream artwork so clean installs reproduce the same SVGs.
+export const ICON_REVISION = "49d4db35df873165d6bd6ba09b063c7dafbac2f4";
+export const ICON_SOURCE = `https://raw.githubusercontent.com/google/material-design-icons/${ICON_REVISION}`;
 
-export const NAMES_FILE = join(here, "material-symbols-names.txt");
-export const APP_HTML = join(root, "src", "app.html");
-
-/** Where the vendored subset lives, relative to `static/`. */
-export const MATERIAL_SYMBOLS_FONT_PATH = "fonts/material-symbols-rounded.woff2";
-export const MATERIAL_SYMBOLS_CSS_PATH = "fonts/material-symbols-rounded.css";
-
-export const MATERIAL_SYMBOLS_FONT = join(
-    root,
-    "static",
-    MATERIAL_SYMBOLS_FONT_PATH,
-);
-export const MATERIAL_SYMBOLS_CSS = join(
-    root,
-    "static",
-    MATERIAL_SYMBOLS_CSS_PATH,
-);
-/** Records the glyph set the vendored font file was actually built from. */
-export const SUBSET_MANIFEST = join(here, "material-symbols-subset.json");
-
-/** Axis ranges must stay in sync with what `icon/material.svelte` can set. */
-const AXES = "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200";
-
-/** Every glyph name the Rounded variable font ships. */
 export function knownIconNames(): Set<string> {
-    return new Set(
-        readFileSync(NAMES_FILE, "utf8")
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean),
-    );
+    return new Set(readFileSync(NAMES_FILE, "utf8").split(/\s+/).filter(Boolean));
 }
-
-function sourceFiles(dir: string, out: string[] = []): string[] {
-    for (const entry of readdirSync(dir)) {
-        if (entry === "node_modules" || entry.startsWith(".")) continue;
-        const path = join(dir, entry);
-        if (statSync(path).isDirectory()) sourceFiles(path, out);
-        else if (/\.(svelte|ts|js)$/.test(entry)) out.push(path);
+function sourceFiles(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+        if (name.startsWith(".") || name === "node_modules") return [];
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) return sourceFiles(path);
+        return /\.(svelte|ts|js)$/.test(name) && !/\.(test|spec)\./.test(name) ? [path] : [];
+    });
+}
+// The Svelte AST contains ordinary ESTree nodes as well as template nodes.
+function visit(node: unknown, callback: (node: any) => void): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const item of node) visit(item, callback); return; }
+    callback(node);
+    for (const [key, value] of Object.entries(node)) {
+        if (key !== "parent" && key !== "metadata") visit(value, callback);
     }
-    return out;
 }
-
-// Match whole string tokens with no length bound. A bounded content class
-// (e.g. `{2,40}`) silently breaks quote pairing: a value too short to match —
-// `"/"`, `""` — makes the scanner skip that opening quote and read the *next*
-// string's contents as an inter-quote span, so `icon: "home"` after `href: "/"`
-// is never seen. Intersecting with the glyph list below is the only filter we
-// need, so the token itself carries no length limit.
-const STRING_LITERAL = /"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g;
-/** `<Icon>home</Icon>` — a bare text child, not a string literal. */
-const ICON_CHILD = /<Icon\b[^>]*>\s*([a-z0-9_]+)\s*<\/Icon>/g;
-
-/** Icon names referenced anywhere under `src/`, sorted. */
-export function usedIconNames(): string[] {
+export function iconRequirements(): Map<string, IconAxes[]> {
     const known = knownIconNames();
-    const found = new Set<string>();
-
+    const found = new Map<string, IconAxes[]>();
+    const add = (name: string, axes?: IconAxes) => {
+        if (!known.has(name)) return;
+        let variants = found.get(name);
+        if (!variants) {
+            variants = [DEFAULT_ICON_AXES, { ...DEFAULT_ICON_AXES, fill: true }];
+            found.set(name, variants);
+        }
+        if (axes && !variants.some((v) => iconVariantId(v) === iconVariantId(axes))) variants.push(axes);
+    };
     for (const file of sourceFiles(join(root, "src"))) {
         const source = readFileSync(file, "utf8");
-        for (const m of source.matchAll(STRING_LITERAL)) {
-            const value = (m[1] ?? m[2] ?? m[3]).trim();
-            if (known.has(value)) found.add(value);
+        if (!file.endsWith(".svelte")) {
+            const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+            const collect = (node: ts.Node) => {
+                if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) add(node.text);
+                ts.forEachChild(node, collect);
+            };
+            collect(ast);
+            continue;
         }
-        for (const m of source.matchAll(ICON_CHILD)) {
-            if (known.has(m[1])) found.add(m[1]);
-        }
+        const ast = parse(source, { modern: true });
+        visit(ast, (node) => {
+            if (node.type === "Literal" && typeof node.value === "string") add(node.value);
+            if (node.type === "Text") add(node.data.trim());
+            if (node.type !== "Component" || node.name !== "Icon") return;
+            if (node.fragment.nodes.some((n: any) => n.type !== "Text" || n.data.trim())) {
+                throw new Error(`${file}: SVG icons require a name prop instead of text children`);
+            }
+            const attrs = node.attributes.filter((a: any) => a.type === "Attribute");
+            const attr = (name: string) => attrs.find((a: any) => a.name === name);
+            const value = (a: any) => a?.value?.expression?.value ?? a?.value?.[0]?.expression?.value ?? a?.value?.[0]?.data;
+            const axes = { ...DEFAULT_ICON_AXES };
+            let custom = false;
+            for (const key of ["weight", "grade", "opticalSize"] as const) {
+                if (!attr(key)) continue;
+                const number = Number(value(attr(key)));
+                if (!Number.isFinite(number)) throw new Error(`${file}: SVG icon ${key} must be a static number`);
+                axes[key] = number;
+                custom = true;
+            }
+            if (!custom) return;
+            const name = value(attr("name"));
+            if (typeof name !== "string" || !known.has(name)) {
+                throw new Error(`${file}: custom SVG axes require a static icon name`);
+            }
+            // Include both states: fill may be driven by selected/active state.
+            add(name, axes);
+            add(name, { ...axes, fill: true });
+        });
     }
-    return [...found].sort();
+    return new Map([...found].sort(([a], [b]) => a.localeCompare(b)));
 }
+export function usedIconNames(): string[] { return [...iconRequirements().keys()]; }
 
-export function subsetUrl(names: string[]): string {
-    // `display=block` because a swap period would flash raw glyph names
-    // ("settings", "home") as text before the font lands.
-    return (
-        "https://fonts.googleapis.com/css2" +
-        `?family=Material+Symbols+Rounded:${AXES}` +
-        `&icon_names=${names.join(",")}` +
-        "&display=block"
-    );
-}
-
-/** The glyph set the vendored font file was built from. */
-export type SubsetManifest = {
-    /** Glyph names baked into the vendored file, sorted. */
-    names: string[];
-    /** The Google Fonts URL the file was fetched through (provenance only). */
-    source: string;
-    /** Size of the vendored woff2, so a truncated download is visible. */
-    bytes: number;
-};
-
+export type IconFile = { name: string; bytes: number; sha256: string; variants: string[] };
+export type SubsetManifest = { source: string; names: string[]; bytes: number; files: IconFile[] };
 export function readSubsetManifest(): SubsetManifest | null {
     if (!existsSync(SUBSET_MANIFEST)) return null;
-    return JSON.parse(readFileSync(SUBSET_MANIFEST, "utf8")) as SubsetManifest;
+    return JSON.parse(readFileSync(SUBSET_MANIFEST, "utf8"));
 }
-
-/** The `@font-face` + utility class Google Fonts would have served, vendored. */
-export function materialSymbolsCss(): string {
-    return `/* Generated by scripts/icon-subset.ts — do not edit.
-   Vendored Material Symbols Rounded subset (see docs/offline.md §4): the icon
-   font must resolve with no network, so the Google Fonts stylesheet is baked
-   out here and the subset itself lives beside this file. */
-@font-face {
-    font-family: "Material Symbols Rounded";
-    font-style: normal;
-    font-weight: 100 700;
-    /* block, not swap: a swap period flashes raw glyph names ("settings",
-       "home") as text before the font lands. */
-    font-display: block;
-    src: url("/${MATERIAL_SYMBOLS_FONT_PATH}") format("woff2");
+const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+export function missingIconAssets(): string[] {
+    const manifest = readSubsetManifest();
+    if (!manifest?.files || manifest.source !== ICON_SOURCE) return ["generated SVG icons (run bun scripts/icon-subset.ts --write)"];
+    const missing: string[] = [];
+    if (!existsSync(join(ICON_DIRECTORY, "LICENSE"))) missing.push("Material Symbols license");
+    for (const [name, axes] of iconRequirements()) {
+        const entry = manifest.files.find((f) => f.name === name);
+        const path = join(ICON_DIRECTORY, `${name}.svg`);
+        if (!entry || !existsSync(path) || hash(readFileSync(path)) !== entry.sha256 ||
+            axes.some((v) => !entry.variants.includes(iconVariantId(v)))) missing.push(`SVG icon: ${name}`);
+    }
+    return missing;
 }
-
-.material-symbols-rounded {
-    font-family: "Material Symbols Rounded";
-    font-weight: normal;
-    font-style: normal;
-    font-size: 24px;
-    line-height: 1;
-    letter-spacing: normal;
-    text-transform: none;
-    display: inline-block;
-    white-space: nowrap;
-    word-wrap: normal;
-    direction: ltr;
-    -webkit-font-feature-settings: "liga";
-    -webkit-font-smoothing: antialiased;
+export function upstreamIconUrl(name: string, axes: IconAxes): string {
+    const weight = axes.weight === 400 ? "" : `_wght${axes.weight}`;
+    const grade = axes.grade === 0 ? "" : `_grad${axes.grade < 0 ? `N${-axes.grade}` : axes.grade}`;
+    const fill = axes.fill ? "fill1" : "";
+    const suffix = weight + (weight ? grade.replace("_", "") : grade) + (fill ? `${weight || grade ? "" : "_"}${fill}` : "");
+    return `${ICON_SOURCE}/symbols/web/${name}/materialsymbolsrounded/${name}${suffix}_${axes.opticalSize}px.svg`;
 }
-`;
+export function svgSymbol(source: string, id: string): string {
+    const viewBox = source.match(/viewBox="([^"]+)"/)?.[1] ??
+        `0 0 ${source.match(/width="(\d+)"/)?.[1]} ${source.match(/height="(\d+)"/)?.[1]}`;
+    const paths = [...source.matchAll(/<path\s+d="([^"]+)"\s*\/>/g)].map((m) => m[1]);
+    // Only trusted, pinned upstream path data is emitted, never arbitrary SVG markup.
+    if (!viewBox || !/^[\d .-]+$/.test(viewBox) || !paths.length ||
+        paths.some((p) => !/^[a-zA-Z\d .,\-+]+$/.test(p))) throw new Error(`Unexpected upstream SVG: ${id}`);
+    return `<symbol id="${id}" viewBox="${viewBox}">${paths.map((d) => `<path d="${d}"/>`).join("")}</symbol>`;
 }
-
-/** A browser UA — Google Fonts serves woff2 only to modern clients. */
-export const MODERN_UA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-async function fetchText(url: string): Promise<string> {
-    const res = await fetch(url, { headers: { "User-Agent": MODERN_UA } });
-    if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
-    return res.text();
-}
-
-/**
- * Download the subset named by `names` and rewrite the vendored font, its
- * stylesheet, and the manifest. Network-bound: this is a maintenance script, not
- * anything the app runs.
- */
-export async function vendorMaterialSymbols(
-    names: string[] = usedIconNames(),
-): Promise<SubsetManifest> {
-    const url = subsetUrl(names);
-    const css = await fetchText(url);
-    const src = css.match(/src:\s*url\(([^)]+)\)/)?.[1];
-    if (!src) throw new Error(`No font URL in the Material Symbols CSS: ${url}`);
-
-    const font = await fetch(src, { headers: { "User-Agent": MODERN_UA } });
-    if (!font.ok) throw new Error(`GET ${src} → ${font.status}`);
-    const bytes = new Uint8Array(await font.arrayBuffer());
-
-    mkdirSync(dirname(MATERIAL_SYMBOLS_FONT), { recursive: true });
-    writeFileSync(MATERIAL_SYMBOLS_FONT, bytes);
-    writeFileSync(MATERIAL_SYMBOLS_CSS, materialSymbolsCss());
-
-    const manifest: SubsetManifest = {
-        names,
-        source: url,
-        bytes: bytes.byteLength,
-    };
-    writeFileSync(SUBSET_MANIFEST, `${JSON.stringify(manifest, null, 4)}\n`);
+export async function vendorMaterialSymbols(): Promise<SubsetManifest> {
+    const requirements = [...iconRequirements()];
+    // Font ligatures include aliases (create/edit/mode_edit) that share one
+    // codepoint. The SVG repository keeps only the canonical artwork name.
+    const codepoints = await fetch(`${ICON_SOURCE}/variablefont/MaterialSymbolsRounded%5BFILL,GRAD,opsz,wght%5D.codepoints`);
+    if (!codepoints.ok) throw new Error(`Material Symbols codepoints: ${codepoints.status}`);
+    const pairs = (await codepoints.text()).trim().split("\n").map((line) => line.split(/\s+/));
+    const pointFor = new Map(pairs.map(([name, point]) => [name, point]));
+    const aliases = new Map<string, string[]>();
+    for (const [name, point] of pairs) aliases.set(point, [...(aliases.get(point) ?? []), name]);
+    mkdirSync(ICON_DIRECTORY, { recursive: true });
+    const previous = readSubsetManifest();
+    const files: IconFile[] = [];
+    // Bound concurrency rather than making hundreds of simultaneous requests.
+    let next = 0;
+    await Promise.all(Array.from({ length: 8 }, async () => {
+        while (next < requirements.length) {
+            const [name, axes] = requirements[next++];
+            const path = join(ICON_DIRECTORY, `${name}.svg`);
+            const ids = axes.map(iconVariantId);
+            const cached = previous?.source === ICON_SOURCE ? previous.files?.find((f) => f.name === name) : undefined;
+            if (cached && ids.join() === cached.variants.join() && existsSync(path) && hash(readFileSync(path)) === cached.sha256) {
+                files.push(cached);
+                continue;
+            }
+            const symbols: string[] = [];
+            for (const variant of axes) {
+                const candidates = [name, ...(aliases.get(pointFor.get(name) ?? "") ?? []).filter((alias) => alias !== name)];
+                let symbol: string | undefined;
+                for (const candidate of candidates) {
+                    const url = upstreamIconUrl(candidate, variant);
+                    const response = await fetch(url);
+                    if (response.status === 404) continue;
+                    if (!response.ok) throw new Error(`GET ${url} → ${response.status}`);
+                    try { symbol = svgSymbol(await response.text(), iconVariantId(variant)); }
+                    catch (error) { throw new Error(`${url}: ${error}`); }
+                    break;
+                }
+                if (!symbol) throw new Error(`No upstream SVG for ${name}, ${iconVariantId(variant)}`);
+                symbols.push(symbol);
+            }
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg">${symbols.join("")}</svg>\n`;
+            writeFileSync(path, svg);
+            files.push({ name, bytes: Buffer.byteLength(svg), sha256: hash(svg), variants: ids });
+        }
+    }));
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    const names = files.map((f) => f.name);
+    for (const file of readdirSync(ICON_DIRECTORY)) {
+        if (file.endsWith(".svg") && !names.includes(file.slice(0, -4))) rmSync(join(ICON_DIRECTORY, file));
+    }
+    const license = await fetch(`${ICON_SOURCE}/LICENSE`);
+    if (!license.ok) throw new Error(`Material Symbols license download failed: ${license.status}`);
+    writeFileSync(join(ICON_DIRECTORY, "LICENSE"), await license.text());
+    const manifest = { source: ICON_SOURCE, names, files, bytes: files.reduce((n, f) => n + f.bytes, 0) };
+    mkdirSync(dirname(SUBSET_MANIFEST), { recursive: true });
+    writeFileSync(SUBSET_MANIFEST, JSON.stringify(manifest, null, 4) + "\n");
     return manifest;
 }
-
 if (import.meta.main) {
-    const names = usedIconNames();
-
     if (process.argv.includes("--write")) {
-        const manifest = await vendorMaterialSymbols(names);
-        console.log(
-            `Vendored ${manifest.names.length} icons (${manifest.bytes} bytes) → ${MATERIAL_SYMBOLS_FONT_PATH}`,
-        );
-    } else {
-        const manifest = readSubsetManifest();
-        const listed = new Set(manifest?.names ?? []);
-        const missing = names.filter((name) => !listed.has(name));
-        console.log(subsetUrl(names));
-        console.error(
-            `\n${names.length} icons used; ${listed.size} vendored; ${missing.length} missing.`,
-        );
-        if (missing.length) console.error(`Missing: ${missing.join(", ")}`);
-    }
+        const manifest = await vendorMaterialSymbols();
+        console.log(`Vendored ${manifest.names.length} SVG icons (${manifest.bytes} bytes)`);
+    } else console.log(missingIconAssets());
 }

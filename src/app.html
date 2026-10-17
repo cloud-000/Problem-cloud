@@ -94,7 +94,7 @@
                     justify-content: center !important;
                 }
                 html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button > span.min-w-0,
-                html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button > span.material-symbols-rounded:last-child {
+                html[data-sidebar-expanded="false"] [data-slot="sidebar-footer"] button > span[data-slot="icon"]:last-child {
                     display: none !important;
                 }
                 html[data-sidebar-width]:not([data-sidebar-expanded="false"]) [data-slot="sidebar-root"]:not([data-ready="true"]) {
@@ -128,30 +128,15 @@
         </noscript>
         <script defer src="/vendor/katex/katex.min.js"></script>
         <script defer src="/vendor/katex/auto-render.min.js"></script>
-        <!--Fonts (vendored; see scripts/vendor-assets.ts and scripts/icon-subset.ts)-->
+        <!--Text fonts (vendored; see scripts/vendor-assets.ts). Icons use local SVGs.-->
         <link
             rel="preload"
-            href="/fonts/inter-400-normal-latin.woff2"
-            as="font"
-            type="font/woff2"
-            crossorigin
-        />
-        <link
-            rel="preload"
-            href="/fonts/inter-600-normal-latin.woff2"
-            as="font"
-            type="font/woff2"
-            crossorigin
-        />
-        <link
-            rel="preload"
-            href="/fonts/source-serif-4-200-900-normal-latin.woff2"
+            href="/fonts/inter-300-700-normal-latin.woff2"
             as="font"
             type="font/woff2"
             crossorigin
         />
         <link rel="stylesheet" href="/fonts/text.css" />
-        <link rel="stylesheet" href="/fonts/material-symbols-rounded.css" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <!-- iOS Home Screen Support -->
         <meta name="apple-mobile-web-app-capable" content="yes" />

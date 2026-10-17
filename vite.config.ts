@@ -15,10 +15,25 @@ export default defineConfig({
                         : true,
             },
 
-            // adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-            // If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-            // See https://svelte.dev/docs/kit/adapters for more information about adapters.
-            adapter: adapter(),
+            adapter: adapter({
+                routes: {
+                    // Pages allows 100 include/exclude rules combined. Avoid
+                    // <files>/<all>, which expand every icon into its own rule.
+                    exclude: [
+                        "<build>",
+                        "<prerendered>",
+                        "<redirects>",
+                        "/fonts/*",
+                        "/vendor/*",
+                        "/icons/*",
+                        "/favicon.svg",
+                        "/apple-touch-icon.png",
+                        "/manifest.webmanifest",
+                        "/robots.txt",
+                        "/service-worker.js",
+                    ],
+                },
+            }),
         }),
     ],
     server: {

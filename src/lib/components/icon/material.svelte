@@ -1,8 +1,9 @@
 <script lang="ts" module>
     import { cn, type WithElementRef } from "#lib/utils.js";
     import type { HTMLAttributes } from "svelte/elements";
+    import { iconHref } from "./assets.js";
 
-    export type IconProps = WithElementRef<HTMLAttributes<HTMLSpanElement>> & {
+    export type IconProps = WithElementRef<Omit<HTMLAttributes<HTMLSpanElement>, "children">> & {
         name?: string;
         fill?: boolean;
         fontsize?: string | number;
@@ -19,70 +20,36 @@
         class: className,
         name,
         fill = false,
-        fontsize,
+        fontsize = 24,
         color,
-        weight,
-        grade,
-        opticalSize,
+        weight = 400,
+        grade = 0,
+        opticalSize = 24,
         style,
-        children,
         ...restProps
     }: IconProps = $props();
 
-    // Construct font-variation-settings based on parameters.
-    let variationSettings = $derived.by(() => {
-        const settings: string[] = [];
-        
-        // Fill axis: 0 for outline, 1 for filled
-        settings.push(`'FILL' ${fill ? 1 : 0}`);
-        
-        if (weight !== undefined) {
-            settings.push(`'wght' ${weight}`);
-        }
-        if (grade !== undefined) {
-            settings.push(`'GRAD' ${grade}`);
-        }
-        if (opticalSize !== undefined) {
-            settings.push(`'opsz' ${opticalSize}`);
-        }
-        
-        return settings.join(", ");
-    });
-
-    // Merge custom styles with color, font-size, and font-variation-settings
-    let computedStyle = $derived.by(() => {
-        const styles: string[] = [];
-        
-        if (color) {
-            styles.push(`color: ${color}`);
-        }
-        
-        if (fontsize !== undefined) {
-            const fs = typeof fontsize === "number" ? `${fontsize}px` : fontsize;
-            styles.push(`font-size: ${fs}`);
-        }
-        
-        if (variationSettings) {
-            styles.push(`font-variation-settings: ${variationSettings}`);
-        }
-        
-        if (style) {
-            styles.push(style);
-        }
-        
-        return styles.length > 0 ? styles.join("; ") : undefined;
-    });
+    let href = $derived(name ? iconHref(name, { fill, weight, grade, opticalSize }) : "");
+    let computedStyle = $derived([
+        color ? `color: ${color}` : "",
+        fontsize !== undefined ? `font-size: ${typeof fontsize === "number" ? `${fontsize}px` : fontsize}` : "",
+        style,
+    ].filter(Boolean).join("; "));
 </script>
 
 <span
     bind:this={ref}
-    class={cn("material-symbols-rounded inline-flex items-center justify-center align-middle leading-none size-[1em] select-none", className)}
-    style={computedStyle}
+    data-slot="icon"
+    class={cn("inline-flex items-center justify-center align-middle leading-none size-[1em] select-none", className)}
+    style={computedStyle || undefined}
     {...restProps}
 >
-    {#if name}
-        {name}
-    {:else if children}
-        {@render children()}
+    {#if href}
+        <!-- Like the former font glyph, artwork follows fontsize independently
+             of the wrapper's box and ancestor buttons' generic SVG sizing. -->
+        <svg style="width: 1em; height: 1em; flex-shrink: 0;" fill="currentColor" aria-hidden="true" focusable="false">
+            <use {href} />
+        </svg>
+        <span class="sr-only">{name}</span>
     {/if}
 </span>

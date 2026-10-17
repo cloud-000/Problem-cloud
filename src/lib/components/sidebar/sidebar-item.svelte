@@ -93,9 +93,7 @@
             {...restProps}
         >
             {#if icon}
-                <Icon class={cn("shrink-0 transition-colors", active ? "text-primary" : "text-muted-foreground group-hover/sidebar-item:text-foreground")}>
-                    {icon}
-                </Icon>
+                <Icon class={cn("shrink-0 transition-colors", active ? "text-primary" : "text-muted-foreground group-hover/sidebar-item:text-foreground")} name={icon} />
             {/if}
             {#if sidebar.expanded}
                 <span class="truncate transition-opacity duration-200">{label || ""}</span>
@@ -114,9 +112,7 @@
             {...restProps}
         >
             {#if icon}
-                <Icon class={cn("shrink-0 transition-colors", active ? "text-primary" : "text-muted-foreground group-hover/sidebar-item:text-foreground")}>
-                    {icon}
-                </Icon>
+                <Icon class={cn("shrink-0 transition-colors", active ? "text-primary" : "text-muted-foreground group-hover/sidebar-item:text-foreground")} name={icon} />
             {/if}
             {#if sidebar.expanded}
                 <span class="truncate transition-opacity duration-200">{label || ""}</span>

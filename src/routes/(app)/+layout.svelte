@@ -358,10 +358,7 @@
                class={cn(
                   "shrink-0 transition-colors",
                   isActive && "text-primary-foreground",
-               )}
-            >
-               {icon}
-            </Icon>
+               )} name={icon} />
             {#if expanded}
                <span class="truncate transition-opacity duration-200"
                   >{label}</span
@@ -439,10 +436,7 @@
                         >
                            <Icon
                               fill={isMoreActive || isProfileActive}
-                              class="shrink-0 transition-colors"
-                           >
-                              more_horiz
-                           </Icon>
+                              class="shrink-0 transition-colors" name="more_horiz" />
                         </button>
                      </DropdownMenu>
                   {/snippet}

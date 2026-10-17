@@ -30,8 +30,8 @@
 
 import { self } from "$app/service-worker";
 import { version } from "$app/env";
+import { shouldPrecacheRenderAsset, workerAssetPath } from "../lib/offline/render-assets";
 import { immutable, assets, prerendered } from "$app/manifest";
-import { resolve } from "$app/paths";
 import { offlineNavigationAllowed } from "#lib/offline/presentations.js";
 
 const CACHE = `pc-assets-${version}`;
@@ -41,23 +41,16 @@ const MEDIA_CACHE_PREFIX = "offline-media-";
 /** The credential-free document a generic failed navigation falls back to. */
 const OFFLINE_DOCUMENT = "/offline-shell";
 
-/**
- * Static files worth precaching. `static/` also holds things a cold offline
- * start does not need (robots.txt), so this is an allowlist rather than
- * `files` wholesale — the fonts and KaTeX are exactly what an offline problem
- * cannot render without.
- */
-function shouldPrecache(path: string): boolean {
-    return path.startsWith("/fonts/") || path.startsWith("/vendor/");
-}
+// Include per-icon SVGs and shared text fonts, excluding obsolete weight copies
+// even if an older generated file survives in a developer's static directory.
 
-const PRECACHE = [
-    ...immutable.map((entry) => resolve(entry.path)),
+const PRECACHE: string[] = [
+    ...immutable.map((entry) => workerAssetPath(entry.path, self.location.href)),
     ...assets
-        .map((entry) => resolve(entry.path))
-        .filter(shouldPrecache),
+        .map((entry) => workerAssetPath(entry.path, self.location.href))
+        .filter(shouldPrecacheRenderAsset),
     ...prerendered
-        .map((entry) => resolve(entry.path))
+        .map((entry) => workerAssetPath(entry.path, self.location.href))
         .filter((path) => path === OFFLINE_DOCUMENT),
 ];
 

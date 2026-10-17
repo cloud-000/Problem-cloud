@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -9,6 +9,8 @@ import {
     parseFontFaces,
     woff2Only,
 } from "./vendor-assets";
+
+import { shouldPrecacheRenderAsset, workerAssetPath } from "../src/lib/offline/render-assets";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const STATIC = join(root, "static");
@@ -95,5 +97,35 @@ describe("the vendored output", () => {
             expect(css).not.toContain("fonts.gstatic.com");
             expect(css).not.toContain("cdn.jsdelivr.net");
         }
+    });
+});
+
+
+describe("shared font delivery", () => {
+    test("resolves manifest asset paths beside the worker, including a base path", () => {
+        expect(workerAssetPath("vendor/material-symbols/home.svg", "https://example.com/service-worker.js"))
+            .toBe("/vendor/material-symbols/home.svg");
+        expect(workerAssetPath("fonts/text.css", "https://example.com/app/service-worker.js"))
+            .toBe("/app/fonts/text.css");
+        expect(workerAssetPath("_app/immutable/chunk.js", "https://example.com/service-worker.js"))
+            .toBe("/_app/immutable/chunk.js");
+    });
+    test("each text font subset has one source URL for its entire weight range", () => {
+        const css = readFileSync(join(STATIC, "fonts/text.css"), "utf8");
+        const urls = [...css.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]);
+        expect(new Set(urls).size).toBe(urls.length);
+        expect(css).toContain("font-weight: 300 700;");
+        expect(css).toContain("font-weight: 400 600;");
+        expect(urls).toHaveLength(8);
+        const files = readdirSync(join(STATIC, "fonts")).filter((name) => name.endsWith(".woff2"));
+        expect(files.length).toBe(urls.length);
+        for (const name of files) expect(shouldPrecacheRenderAsset(`/fonts/${name}`)).toBe(true);
+    });
+
+    test("offline caching includes SVGs and excludes retired font copies", () => {
+        expect(shouldPrecacheRenderAsset("/vendor/material-symbols/home.svg")).toBe(true);
+        expect(shouldPrecacheRenderAsset("/fonts/inter-400-normal-latin.woff2")).toBe(false);
+        expect(shouldPrecacheRenderAsset("/fonts/material-symbols-rounded.woff2")).toBe(false);
+        expect(shouldPrecacheRenderAsset("/api/ai/chat")).toBe(false);
     });
 });
