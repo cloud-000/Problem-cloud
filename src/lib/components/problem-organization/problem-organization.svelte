@@ -155,7 +155,7 @@
 {#if canEdit}
     <div
         class={cn(
-            "flex min-h-10 flex-wrap items-center gap-1.5",
+            "flex min-h-10 shrink-0 flex-wrap items-center gap-1.5",
             showPrompt && "w-full",
             className,
         )}

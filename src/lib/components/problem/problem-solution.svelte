@@ -78,7 +78,7 @@
 </script>
 
 {#if totalCount > 0}
-    <div class={cn("mx-auto w-full max-w-4xl", className)}>
+    <div class={cn("mx-auto w-full max-w-4xl shrink-0", className)}>
         <button
             type="button"
             class="flex w-full items-center gap-1.5 border-t border-border/50 pt-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"

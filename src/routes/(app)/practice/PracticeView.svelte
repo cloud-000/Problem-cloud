@@ -2256,6 +2256,8 @@
                        scrollable shelf once there is a transcript to make room
                        for. The Coach below owns whatever is left, including on
                        mobile portrait. -->
+                  <!-- Preserve each section's natural height so overflow belongs
+                       to this shelf rather than shrinking the answer/solutions. -->
                   <div
                      style="height: {statementShelfHeight};"
                      class={cn(
@@ -2337,7 +2339,7 @@
                              this sits at the bottom of the region on its own. -->
                         <div
                            bind:clientHeight={null, measureAnswerBox}
-                           class="flex w-full max-w-[48rem] flex-col gap-1.5"
+                           class="flex w-full max-w-[48rem] shrink-0 flex-col gap-1.5"
                         >
                            <!-- The ladder sits over the answer box, collapsed to a
                                 single lightbulb until it is hovered, focused, or
