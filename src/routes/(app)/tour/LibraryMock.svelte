@@ -22,12 +22,33 @@
         libraryMockCaption,
         librarySearchPlaceholder,
     } from "#lib/onboarding/library-mock.js";
+    import type { LibraryAction } from "#lib/library/view.js";
     import { LibraryStore } from "#lib/state/library.svelte.js";
     import ResultList from "../library/ResultList.svelte";
 
     type CatalogRow = SeriesRow | TestRow | ProblemRow;
 
     const store = new LibraryStore();
+    const view = $derived(store.view);
+    const filters: Filters = $derived(view.filters);
+    let seriesNames = $state<Record<number, string>>({});
+    let testNames = $state<Record<number, string>>({});
+    const seriesName = $derived(filters.seriesId != null ? seriesNames[filters.seriesId] ?? `Series ${filters.seriesId}` : undefined);
+    const testName = $derived(filters.testId != null ? testNames[filters.testId] ?? `Test ${filters.testId}` : undefined);
+
+    function dispatch(action: LibraryAction) {
+        if (action.type === "series") {
+            const row = results.find((row) => row.id === action.seriesId) as SeriesRow | undefined;
+            if (row) seriesNames[row.id] = row.name;
+        } else if (action.type === "test") {
+            const row = results.find((row) => row.id === action.testId) as TestRow | undefined;
+            if (row) {
+                testNames[row.id] = row.name;
+                if (row.series_id != null && row.series?.name) seriesNames[row.series_id] = row.series.name;
+            }
+        }
+        store.dispatch(action);
+    }
 
     let listViewport = $state<HTMLElement | null>(null);
     setAppScrollViewport({ getElement: () => listViewport });
@@ -44,13 +65,13 @@
     let token = 0;
     let resultPage = 0;
 
-    let level = $derived(store.current.level);
-    let searchValue = $derived(store.current.filters.search ?? "");
+    let level = $derived(view.tab);
+    let searchValue = $derived(filters.search ?? "");
     let caption = $derived(
         libraryMockCaption({
             level,
-            seriesName: store.current.context.series?.name,
-            testName: store.current.context.test?.name,
+            seriesName: seriesName,
+            testName: testName,
         }),
     );
     let resultCount = $derived(resultsLevel === level ? results.length : 0);
@@ -67,20 +88,20 @@
     }
 
     function updateSearch(event: Event) {
-        store.patchFilters({
+        dispatch({ type: "patch", filters: {
             search: (event.currentTarget as HTMLInputElement).value || undefined,
-        });
+        } });
     }
 
     function removeScope(scope: "series" | "test") {
-        store.clearScope(scope);
+        dispatch({ type: "clear-scope", scope });
     }
 
     $effect(() => {
         const supabase = page.data.supabase;
-        const frame = store.current;
+        const frame = view;
         retryKey;
-        const nextLevel = frame.level;
+        const nextLevel = frame.tab;
         const snapshot = $state.snapshot(frame.filters);
         const myToken = ++token;
         queryKey = myToken;
@@ -127,8 +148,8 @@
     async function loadMore() {
         const supabase = page.data.supabase;
         if (!supabase || loading || loadingMore || !hasMore) return;
-        const frame = store.current;
-        const nextLevel = frame.level;
+        const frame = view;
+        const nextLevel = frame.tab;
         const snapshot = $state.snapshot(frame.filters);
         const myToken = token;
         loadingMore = true;
@@ -166,7 +187,7 @@
 
     <Subtabs.Root
         value={level}
-        onchange={(value) => store.setLevel(value as Level)}
+        onchange={(value) => dispatch({ type: "tab", tab: value as Level })}
         class="min-h-0 flex-1 gap-0"
     >
         <div class="flex min-w-0 items-end border-b border-border px-3">
@@ -186,32 +207,32 @@
             </span>
         </div>
 
-        {#if store.current.context.series || store.current.context.test}
+        {#if seriesName || testName}
             <div class="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
-                {#if store.current.context.series}
+                {#if seriesName}
                     <span
                         class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground"
                     >
-                        {store.current.context.series.name}
+                        {seriesName}
                         <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Remove ${store.current.context.series.name} scope`}
+                            aria-label={`Remove ${seriesName} scope`}
                             onclick={() => removeScope("series")}
                         >
                             <Icon name="close" />
                         </Button>
                     </span>
                 {/if}
-                {#if store.current.context.test}
+                {#if testName}
                     <span
                         class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground"
                     >
-                        {store.current.context.test.name}
+                        {testName}
                         <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Remove ${store.current.context.test.name} scope`}
+                            aria-label={`Remove ${testName} scope`}
                             onclick={() => removeScope("test")}
                         >
                             <Icon name="close" />
@@ -227,7 +248,8 @@
         >
             {#key queryKey}
                 <ResultList
-                    {store}
+                    {view}
+                    onaction={dispatch}
                     {results}
                     {resultsLevel}
                     {loading}

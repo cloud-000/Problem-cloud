@@ -16,7 +16,7 @@ export type ProblemFilterValues = {
     /** Per-series vocabulary; only applied when `seriesId` is set and `testId` is not. */
     divisions?: string[];
     formats?: string[];
-    /** 1-based inclusive range (`problems.n + 1`); only applied when `seriesId` is set. */
+    /** 1-based inclusive range (`problems.n + 1`); requires series or test scope. */
     problemNumbers?: [number, number];
     /** Inclusive `[min, max]` on `tests.year`; only applied when `seriesId` is set. */
     year?: [number, number];
@@ -97,7 +97,7 @@ export const PROBLEM_FILTERS = {
     },
     problemNumbers: {
         remote: (query, value, all) => {
-            if (all.seriesId == null) return query;
+            if (all.seriesId == null && all.testId == null) return query;
             const lo = value[0];
             const hi = value[1];
             if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {
@@ -106,7 +106,7 @@ export const PROBLEM_FILTERS = {
             return query.gte("n", lo - 1).lte("n", hi - 1);
         },
         local: (candidate, value, all) => {
-            if (all.seriesId == null) return true;
+            if (all.seriesId == null && all.testId == null) return true;
             const lo = value[0];
             const hi = value[1];
             if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < lo) {

@@ -13,51 +13,34 @@
         QUALITY_RANGE,
         type Filters,
     } from "#lib/library.js";
-    import type { LibraryStore } from "#lib/state/library.svelte.js";
+    import type { LibraryView, LibraryAction } from "#lib/library/view.js";
     import type { Engagement, Mastery } from "#lib/progress.js";
-    import { untrack } from "svelte";
     import SeriesScopeFields from "./SeriesScopeFields.svelte";
 
     type Supabase = SupabaseClient<Database>;
 
-    let {
-        store,
-        seriesOptions,
-        supabase,
-    }: { store: LibraryStore; seriesOptions: Option[]; supabase: Supabase } =
-        $props();
+    let { view, onaction, seriesOptions, supabase, testSeriesId }: {
+        view: LibraryView;
+        onaction: (action: LibraryAction) => void;
+        seriesOptions: Option[];
+        supabase: Supabase;
+        testSeriesId?: number;
+    } = $props();
 
-    // Captured once at mount. The parent wraps this component in `{#key store.cursor}`,
-    // so it remounts (re-seeding all locals) whenever the active frame changes.
-    const frame = untrack(() => store.current);
-    const level = frame.level;
-    const f = frame.filters;
+    const level = $derived(view.tab);
+    const f: Filters = $derived(view.filters);
+    const selectedSeriesId = $derived(f.seriesId ?? testSeriesId);
+    const lockedTest = $derived(f.testId);
+    const isOfficial = $derived(boolToTri(f.isOfficial));
+    const isComputational = $derived(boolToTri(f.isComputational));
+    const verified = $derived(boolToTri(f.verified));
+    const year = $derived(f.year ?? YEAR_RANGE);
+    const difficulty = $derived(f.difficulty ?? DIFFICULTY_RANGE);
+    const quality = $derived(f.quality ?? QUALITY_RANGE);
 
-    // Locals seeded from the frame's filters; an effect below pushes them back.
-    let isOfficial = $state<TriState>(boolToTri(f.isOfficial));
-    let seriesSel = $state<string[]>(
-        f.seriesId != null ? [String(f.seriesId)] : [],
-    );
-    let year = $state<[number, number]>(f.year ?? [...YEAR_RANGE]);
-    let type = $state<string[]>(f.type ?? []);
-    let isComputational = $state<TriState>(boolToTri(f.isComputational));
-    let topic = $state<string[]>(f.topic ?? []);
-    let tags = $state<string[]>(f.tags ?? []);
-    let difficulty = $state<[number, number]>(f.difficulty ?? [
-        ...DIFFICULTY_RANGE,
-    ]);
-    let quality = $state<[number, number]>(f.quality ?? [...QUALITY_RANGE]);
-    let verified = $state<TriState>(boolToTri(f.verified));
-    let mastery = $state<(Mastery | "unassessed")[]>([...(f.mastery ?? [])]);
-    let engagement = $state<(Engagement | "none")[]>([...(f.engagement ?? [])]);
-    let divisions = $state<string[]>([...(f.divisions ?? [])]);
-    let formats = $state<string[]>([...(f.formats ?? [])]);
-    let problemNumbers = $state<[number, number] | undefined>(
-        f.problemNumbers ? [f.problemNumbers[0], f.problemNumbers[1]] : undefined,
-    );
-    let seriesYear = $state<[number, number] | undefined>(
-        f.year && f.seriesId != null ? [f.year[0], f.year[1]] : undefined,
-    );
+    function patch(filters: Filters) {
+        onaction({ type: "patch", filters });
+    }
 
     const masteryOptions = [
         { value: "unassessed", label: "Unassessed" },
@@ -73,92 +56,11 @@
         { value: "ignored", label: "Ignored" },
     ];
 
-    const lockedSeries = frame.context.series;
-    const lockedTest = frame.context.test;
-
-    const selectedSeriesId = $derived(
-        lockedSeries?.id ??
-            (seriesSel[0] ? Number(seriesSel[0]) : undefined),
-    );
-
-    // Nested scope is per-series. Reset it when the selected series changes
-    // (not on the initial seed from the current frame).
-    let scopedSeriesId = untrack(() => selectedSeriesId);
-    $effect(() => {
-        const id = selectedSeriesId;
-        if (id === scopedSeriesId) return;
-        scopedSeriesId = id;
-        divisions = [];
-        formats = [];
-        problemNumbers = undefined;
-        seriesYear = undefined;
-    });
-
-    /** Treat an untouched (full-range) slider as "no filter" so null-valued rows show. */
-    function rangeOrUndef(
-        v: [number, number],
-        full: [number, number],
-    ): [number, number] | undefined {
-        return v[0] === full[0] && v[1] === full[1] ? undefined : v;
-    }
-
     /** Human-readable current state of a tri-state filter (neutral = "Any"). */
     function triText(v: TriState, on: string, off: string): string {
         return v === "on" ? on : v === "off" ? off : "Any";
     }
 
-    // Push local edits into the current frame. Reads only locals + locked context,
-    // never `frame.filters`, so it doesn't loop with patchFilters.
-    $effect(() => {
-        const seriesId = selectedSeriesId;
-        const scoped = seriesId != null;
-        const divisionsValue =
-            scoped && !lockedTest && divisions.length ? divisions : undefined;
-        const formatsValue =
-            scoped && !lockedTest && formats.length ? formats : undefined;
-        const problemNumbersValue =
-            scoped && level === "problems" ? problemNumbers : undefined;
-        const seriesYearValue = scoped && !lockedTest ? seriesYear : undefined;
-        const globalYearValue =
-            !scoped && level === "tests"
-                ? rangeOrUndef(year, YEAR_RANGE)
-                : undefined;
-        const yearValue = seriesYearValue ?? globalYearValue;
-        let patch: Filters;
-        if (level === "series") {
-            patch = {
-                isOfficial: triToBool(isOfficial),
-            };
-        } else if (level === "tests") {
-            patch = {
-                seriesId,
-                year: yearValue,
-                type: type.length ? type : undefined,
-                isComputational: triToBool(isComputational),
-                divisions: divisionsValue,
-                formats: formatsValue,
-                problemNumbers: undefined,
-            };
-        } else {
-            patch = {
-                seriesId,
-                testId: lockedTest?.id,
-                year: yearValue,
-                topic: topic.length ? topic : undefined,
-                tags: tags.length ? tags : undefined,
-                difficulty: rangeOrUndef(difficulty, DIFFICULTY_RANGE),
-                quality: rangeOrUndef(quality, QUALITY_RANGE),
-                isComputational: triToBool(isComputational),
-                verified: triToBool(verified),
-                mastery: mastery.length ? mastery : undefined,
-                engagement: engagement.length ? engagement : undefined,
-                divisions: divisionsValue,
-                formats: formatsValue,
-                problemNumbers: problemNumbersValue,
-            };
-        }
-        store.patchFilters(patch);
-    });
 </script>
 
 {#snippet field(label: string)}
@@ -166,16 +68,17 @@
 {/snippet}
 
 {#snippet seriesScope()}
-    {#if selectedSeriesId != null && (level === "problems" || !lockedTest)}
+    {#if selectedSeriesId != null}
         {#key selectedSeriesId}
             <SeriesScopeFields
                 seriesId={selectedSeriesId}
-                testId={lockedTest?.id}
+                testId={lockedTest}
                 {supabase}
-                bind:divisions
-                bind:formats
-                bind:problemNumbers
-                bind:yearRange={seriesYear}
+                bind:divisions={() => f.divisions ?? [], (value) => patch({ divisions: value })}
+                bind:formats={() => f.formats ?? [], (value) => patch({ formats: value })}
+                bind:problemNumbers={() => f.problemNumbers, (value) => patch({ problemNumbers: value })}
+                bind:yearRange={() => f.year, (value) => patch({ year: value })}
+                clampOnLoad={false}
                 showDivisionFormat={!lockedTest}
                 showProblemNumbers={level === "problems"}
                 showYear={!lockedTest}
@@ -192,7 +95,7 @@
                 <span class="type-caption text-muted-foreground"
                     >{triText(isOfficial, "Official", "Not official")}</span
                 >
-                <TriStateSwitch bind:value={isOfficial} size="sm" />
+                <TriStateSwitch bind:value={() => isOfficial, (value) => patch({ isOfficial: triToBool(value) })} size="sm" />
             </div>
         </div>
     {:else if level === "tests"}
@@ -200,14 +103,14 @@
             <h3 id="test-browse-filters" class="type-secondary font-semibold text-foreground">
                 Browse
             </h3>
-            {#if !lockedSeries}
+            {#if !lockedTest}
                 <div class="flex flex-col gap-1.5">
                     {@render field("Series")}
                     <Combobox
                         options={seriesOptions}
                         strict
                         max={1}
-                        bind:value={seriesSel}
+                        bind:value={() => selectedSeriesId != null ? [String(selectedSeriesId)] : [], (value) => patch({ seriesId: value[0] ? Number(value[0]) : undefined })}
                         placeholder="Any series…"
                     />
                 </div>
@@ -216,14 +119,14 @@
             <div class="flex flex-col gap-1.5">
                 {@render field("Type")}
                 <Combobox
-                    bind:value={type}
+                    bind:value={() => f.type ?? [], (value) => patch({ type: value })}
                     placeholder="Any type…"
                     inputPlaceholder="Add type…"
                 />
             </div>
         </section>
 
-        {#if !lockedSeries && selectedSeriesId == null}
+        {#if selectedSeriesId == null}
             <section class="flex flex-col gap-4 border-t border-border pt-5" aria-labelledby="test-date-filters">
                 <h3 id="test-date-filters" class="type-secondary font-semibold text-foreground">
                     Date
@@ -231,9 +134,9 @@
                 <div class="flex flex-col gap-1.5">
                     {@render field(`Year (${year[0]}–${year[1]})`)}
                     <RangeSlider
-                        bind:value={year}
-                        min={YEAR_RANGE[0]}
-                        max={YEAR_RANGE[1]}
+                        bind:value={() => year, (value) => patch({ year: value })}
+                        min={Math.min(YEAR_RANGE[0], year[0])}
+                        max={Math.max(YEAR_RANGE[1], year[1])}
                         step={1}
                         label="Year"
                     />
@@ -255,7 +158,7 @@
                             "Not computational",
                         )}</span
                     >
-                    <TriStateSwitch bind:value={isComputational} size="sm" />
+                    <TriStateSwitch bind:value={() => isComputational, (value) => patch({ isComputational: triToBool(value) })} size="sm" />
                 </div>
             </div>
         </section>
@@ -264,14 +167,14 @@
             <h3 id="problem-browse-filters" class="type-secondary font-semibold text-foreground">
                 Browse
             </h3>
-            {#if !lockedSeries}
+            {#if !lockedTest}
                 <div class="flex flex-col gap-1.5">
                     {@render field("Series")}
                     <Combobox
                         options={seriesOptions}
                         strict
                         max={1}
-                        bind:value={seriesSel}
+                        bind:value={() => selectedSeriesId != null ? [String(selectedSeriesId)] : [], (value) => patch({ seriesId: value[0] ? Number(value[0]) : undefined })}
                         placeholder="Any series…"
                     />
                 </div>
@@ -282,7 +185,7 @@
                 <Combobox
                     options={TOPICS}
                     strict
-                    bind:value={topic}
+                    bind:value={() => f.topic ?? [], (value) => patch({ topic: value })}
                     placeholder="Any topic…"
                     inputPlaceholder="Add topic…"
                 />
@@ -290,7 +193,7 @@
             <div class="flex flex-col gap-1.5">
                 {@render field("Tags")}
                 <Combobox
-                    bind:value={tags}
+                    bind:value={() => f.tags ?? [], (value) => patch({ tags: value })}
                     placeholder="Any tags…"
                     inputPlaceholder="Add tag…"
                 />
@@ -305,7 +208,7 @@
                 <div class="flex flex-col gap-1.5">
                     {@render field("Mastery")}
                     <Combobox
-                        bind:value={mastery}
+                        bind:value={() => f.mastery ?? [], (value) => patch({ mastery: value as (Mastery | "unassessed")[] })}
                         options={masteryOptions}
                         strict
                         placeholder="Any mastery…"
@@ -314,7 +217,7 @@
                 <div class="flex flex-col gap-1.5">
                     {@render field("Plan")}
                     <Combobox
-                        bind:value={engagement}
+                        bind:value={() => f.engagement ?? [], (value) => patch({ engagement: value as (Engagement | "none")[] })}
                         options={engagementOptions}
                         strict
                         placeholder="Any plan…"
@@ -330,7 +233,7 @@
             <div class="flex flex-col gap-1.5">
                 {@render field(`Problem rating (${difficulty[0]}–${difficulty[1]})`)}
                 <RangeSlider
-                    bind:value={difficulty}
+                    bind:value={() => difficulty, (value) => patch({ difficulty: value })}
                     min={DIFFICULTY_RANGE[0]}
                     max={DIFFICULTY_RANGE[1]}
                     step={50}
@@ -340,7 +243,7 @@
             <div class="flex flex-col gap-1.5">
                 {@render field(`Quality (${quality[0]}–${quality[1]})`)}
                 <RangeSlider
-                    bind:value={quality}
+                    bind:value={() => quality, (value) => patch({ quality: value })}
                     min={QUALITY_RANGE[0]}
                     max={QUALITY_RANGE[1]}
                     step={1}
@@ -363,7 +266,7 @@
                             "Not computational",
                         )}</span
                     >
-                    <TriStateSwitch bind:value={isComputational} size="sm" />
+                    <TriStateSwitch bind:value={() => isComputational, (value) => patch({ isComputational: triToBool(value) })} size="sm" />
                 </div>
             </div>
             <div class="flex items-center justify-between gap-4">
@@ -372,7 +275,7 @@
                     <span class="type-caption text-muted-foreground"
                         >{triText(verified, "Verified", "Not verified")}</span
                     >
-                    <TriStateSwitch bind:value={verified} size="sm" />
+                    <TriStateSwitch bind:value={() => verified, (value) => patch({ verified: triToBool(value) })} size="sm" />
                 </div>
             </div>
         </section>

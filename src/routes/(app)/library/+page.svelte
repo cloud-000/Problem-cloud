@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { PageData } from "./$types";
-    import { onMount } from "svelte";
+    import { onDestroy } from "svelte";
+    import { goto } from "$app/navigation";
     import { page as pageStore } from "$app/state";
     import { Button } from "#lib/components/button/index.js";
     import { Icon } from "#lib/components/icon/index.js";
@@ -15,6 +16,7 @@
         fetchPublicProblems,
         isRemoteConnectivityError,
         fetchAllSeries,
+        fetchByIds,
         LocalCatalogUnavailable,
         topicLabel,
         PAGE_SIZE,
@@ -24,7 +26,9 @@
         type SeriesRow,
         type TestRow,
     } from "#lib/library.js";
-    import { LibraryStore } from "#lib/state/library.svelte.js";
+    import { parseLibraryUrl } from "#lib/library/url.js";
+    import { createLibraryNavigation } from "#lib/library/navigation.js";
+    import { libraryViewKey, toQueryFilters, type LibraryAction, type LibraryView } from "#lib/library/view.js";
     import Filters from "./Filters.svelte";
     import ResultList from "./ResultList.svelte";
     import { ProblemSkeleton, ListRowSkeleton } from "#lib/components/skeleton/index.js";
@@ -33,46 +37,50 @@
     let { data }: { data: PageData } = $props();
     let { supabase, user } = $derived(data);
 
-    const store = new LibraryStore();
+    // SvelteKit 3 keeps the loaded route URL separate from shallow navigation.
+    const currentUrl = $derived(pageStore.shallow?.url ?? pageStore.url);
+    const view = $derived(parseLibraryUrl(currentUrl.searchParams));
+    const filters: FilterValues = $derived(view.filters);
+    const viewKey = $derived(libraryViewKey(view));
+    const scopedTestId = $derived(filters.testId);
+    const navigation = createLibraryNavigation({
+        readUrl: () => new URL(currentUrl.href),
+        navigate: (url, replace) => goto(url, { shallow: true, replace, state: pageStore.state }),
+    });
+    onDestroy(() => navigation.dispose());
+    function dispatch(action: LibraryAction) {
+        void navigation.dispatch(action).catch((error) => {
+            errorMsg = (error as Error).message;
+        });
+    }
     const tabs: { value: Level; label: string }[] = [
         { value: "problems", label: "Problems" },
         { value: "tests", label: "Tests" },
         { value: "series", label: "Series" },
     ];
 
-    // Seed the search filter from `?search=` (e.g. the home page's focused-series
-    // worklist links to `/library?search=<problem id>`) so the linked-to problem
-    // is actually surfaced. Read once at mount — the store owns the field after.
-    onMount(() => {
-        const search = pageStore.url.searchParams.get("search");
-        if (search) store.patchFilters({ search });
-    });
-
     let filtersOpen = $state(false);
     let pageRoot = $state<HTMLDivElement | null>(null);
     let filterAnchor = $state<HTMLDivElement | null>(null);
     let filterPanel = $state<HTMLElement | null>(null);
-    let filterEditorKey = $state(0);
     let dockFilters = $state(false);
-    let searchValue = $derived(store.current.filters.search ?? "");
+    let searchValue = $derived(filters.search ?? "");
     let searchPlaceholder = $derived(
-        store.current.level === "problems"
+        view.tab === "problems"
             ? "Search by problem ID, e.g. 42, 108, 316"
-            : `Search ${store.current.level} by name or ID`,
+            : `Search ${view.tab} by name or ID`,
     );
     let searchHint = $derived(
-        store.current.level === "problems" && searchValue.trim()
+        view.tab === "problems" && searchValue.trim()
             ? "Problem search accepts one or more exact IDs. Use Filters to browse by topic, rating, or progress."
             : null,
     );
     let activeFilterCount = $derived.by(() => {
-        const filters = store.current.filters;
         return Object.entries(filters).filter(([key, value]) => {
             if (
                 key === "search" ||
                 key === "name" ||
-                (key === "seriesId" && store.current.context.series) ||
-                (key === "testId" && store.current.context.test)
+                key === "seriesId" || key === "testId"
             )
                 return false;
             if (value === undefined || value === null) return false;
@@ -82,7 +90,6 @@
 
     type FilterChip = { key: keyof FilterValues; label: string };
     let activeFilterChips = $derived.by<FilterChip[]>(() => {
-        const filters = store.current.filters;
         const chips: FilterChip[] = [];
         const add = (key: keyof FilterValues, label: string, active = true) => {
             if (active) chips.push({ key, label });
@@ -90,17 +97,6 @@
         const readable = (value: string) =>
             value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 
-        if (filters.seriesId != null && !store.current.context.series) {
-            const series = seriesOptions.find(
-                (option) =>
-                    typeof option !== "string" &&
-                    Number(option.value) === filters.seriesId,
-            );
-            add(
-                "seriesId",
-                `Series: ${typeof series === "string" ? series : (series?.label ?? filters.seriesId)}`,
-            );
-        }
         add(
             "topic",
             `Topics: ${filters.topic?.map((topic) => topicLabel(topic) ?? topic).join(", ")}`,
@@ -154,15 +150,41 @@
         return chips;
     });
 
-    // Series options for the filter comboboxes, fetched once.
+    // Labels are presentation metadata. Missing rows never remove an ID from the view.
     let seriesOptions = $state<Option[]>([]);
+    let testMetadata = $state<TestRow | undefined>();
+    const scopedTest = $derived.by(() => {
+        if (testMetadata?.id === scopedTestId) return testMetadata;
+        // Downloaded problem placements carry enough metadata to label test-only links.
+        const row = resultsLevel === "problems"
+            ? (results as ProblemRow[]).find((row) => row.test_id === scopedTestId)
+            : undefined;
+        return row?.tests ? { id: row.test_id, name: row.tests.name, series_id: row.tests.series_id } : undefined;
+    });
+    const seriesName = $derived.by(() => {
+        const id = filters.seriesId;
+        const option = seriesOptions.find((option) => typeof option !== "string" && Number(option.value) === id);
+        return typeof option === "object" ? option.label : `Series ${id}`;
+    });
+    const testName = $derived(scopedTest?.name ?? `Test ${filters.testId}`);
     $effect(() => {
+        let cancelled = false;
         fetchAllSeries(supabase).then((rows) => {
-            seriesOptions = rows.map((row) => ({
-                value: String(row.id),
-                label: row.name,
-            }));
-        });
+            if (!cancelled) seriesOptions = rows.map((row) => ({ value: String(row.id), label: row.name }));
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    });
+    $effect(() => {
+        const id = scopedTestId;
+        const local = offlineMode.effective === "local";
+        let cancelled = false;
+        testMetadata = undefined;
+        if (id != null && !local) {
+            fetchByIds(supabase, "tests", [id]).then((rows) => {
+                if (!cancelled) testMetadata = rows[0] as TestRow | undefined;
+            }).catch(() => {});
+        }
+        return () => { cancelled = true; };
     });
 
     let results = $state<(SeriesRow | TestRow | ProblemRow)[]>([]);
@@ -190,9 +212,9 @@
     }
 
     function updateSearch(event: Event) {
-        store.patchFilters({
+        dispatch({ type: "patch", filters: {
             search: (event.currentTarget as HTMLInputElement).value || undefined,
-        });
+        } });
     }
 
     function closeFilters() {
@@ -218,18 +240,15 @@
     }
 
     function removeFilter(key: keyof FilterValues) {
-        store.patchFilters({ [key]: undefined } as FilterValues);
-        filterEditorKey += 1;
+        dispatch({ type: "patch", filters: { [key]: undefined } as FilterValues });
     }
 
     function removeScope(scope: "series" | "test") {
-        store.clearScope(scope);
-        filterEditorKey += 1;
+        dispatch({ type: "clear-scope", scope });
     }
 
     function clearFilters() {
-        store.clearFilters();
-        filterEditorKey += 1;
+        dispatch({ type: "clear-filters" });
     }
 
     $effect(() => {
@@ -249,11 +268,12 @@
     });
 
     $effect(() => {
-        const frame = store.current;
+        // Only effective query inputs drive this effect, never resolved labels.
+        const frame: LibraryView = JSON.parse(viewKey);
         const readMode = offlineMode.effective;
         retryKey;
-        const level = frame.level;
-        const snapshot = $state.snapshot(frame.filters);
+        const level = frame.tab;
+        const snapshot = toQueryFilters(frame);
 
         const myToken = ++token;
         queryKey = myToken;
@@ -292,9 +312,9 @@
 
     async function loadMore() {
         if (loading || loadingMore || !hasMore) return;
-        const frame = store.current;
-        const level = frame.level;
-        const snapshot = $state.snapshot(frame.filters);
+        const frame = view;
+        const level = frame.tab;
+        const snapshot = toQueryFilters(frame);
         const myToken = token;
         loadingMore = true;
         try {
@@ -340,9 +360,7 @@
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {#key `${store.cursor}:${filterEditorKey}`}
-            <Filters {store} {seriesOptions} {supabase} />
-        {/key}
+        <Filters {view} onaction={dispatch} {seriesOptions} {supabase} testSeriesId={scopedTest?.series_id ?? undefined} />
     </div>
 
     {#if showDone}
@@ -433,8 +451,8 @@
     {/if}
 
     <Subtabs.Root
-        value={store.current.level}
-        onchange={(value) => store.setLevel(value as Level)}
+        value={view.tab}
+        onchange={(value) => dispatch({ type: "tab", tab: value as Level })}
         class="mt-8 gap-0"
     >
         <div class="flex min-w-0 items-end border-b border-border">
@@ -447,28 +465,6 @@
             </Subtabs.List>
 
             <div class="flex shrink-0 items-center gap-1 pb-1.5 pl-2">
-                {#if store.canBack || store.canForward}
-                    <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        class="hidden sm:inline-flex"
-                        disabled={!store.canBack}
-                        onclick={() => store.back()}
-                        aria-label="Back in Library"
-                    >
-                        <Icon name="arrow_back" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        class="hidden sm:inline-flex"
-                        disabled={!store.canForward}
-                        onclick={() => store.forward()}
-                        aria-label="Forward in Library"
-                    >
-                        <Icon name="arrow_forward" />
-                    </Button>
-                {/if}
                 <span class="min-w-16 text-right type-caption text-muted-foreground" aria-live="polite">
                     {#if loading}
                         Searching…
@@ -479,28 +475,28 @@
             </div>
         </div>
 
-        {#if store.current.context.series || store.current.context.test || activeFilterChips.length}
+        {#if filters.seriesId != null || filters.testId != null || activeFilterChips.length}
             <div class="flex flex-wrap items-center gap-1.5 border-b border-border py-3">
-                {#if store.current.context.series}
+                {#if filters.seriesId != null}
                     <span class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground">
-                        {store.current.context.series.name}
+                        {seriesName}
                         <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Remove ${store.current.context.series.name} scope`}
+                            aria-label={`Remove ${seriesName} scope`}
                             onclick={() => removeScope("series")}
                         >
                             <Icon name="close" />
                         </Button>
                     </span>
                 {/if}
-                {#if store.current.context.test}
+                {#if filters.testId != null}
                     <span class="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1 type-caption text-foreground">
-                        {store.current.context.test.name}
+                        {testName}
                         <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Remove ${store.current.context.test.name} scope`}
+                            aria-label={`Remove ${testName} scope`}
                             onclick={() => removeScope("test")}
                         >
                             <Icon name="close" />
@@ -531,7 +527,8 @@
             <div class="min-w-0">
                 {#key queryKey}
                     <ResultList
-                        {store}
+                        {view}
+                        onaction={dispatch}
                         {results}
                         {resultsLevel}
                         {loading}

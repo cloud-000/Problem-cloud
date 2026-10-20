@@ -320,8 +320,9 @@ export function normalizeEmbeds<T extends ProblemEmbeds>(
     };
 }
 
-export type Level = "series" | "tests" | "problems";
-export const LEVELS: Level[] = ["series", "tests", "problems"];
+export type { Level, Filters } from "#lib/library/filters.js";
+import type { Level, Filters } from "#lib/library/filters.js";
+export { LEVELS, DIFFICULTY_RANGE, QUALITY_RANGE, YEAR_RANGE } from "#lib/library/filters.js";
 
 // Topic options: display label vs. the single-letter code stored in the DB / used
 // in queries. The combobox binds the `value` (code) while showing the `label`.
@@ -346,46 +347,6 @@ export const TOPIC_LABELS: Record<string, string> = Object.fromEntries(
 export function topicLabel(code: string | null | undefined): string | null {
     if (!code) return null;
     return TOPIC_LABELS[code] ?? code;
-}
-
-// The Difficulty slider is a band on the problem's live Glicko rating (the
-// `problem_ratings` overall scope, surfaced as `rating` on user_problem_index),
-// not the dead authored `problems.difficulty` column. Wide enough to cover the
-// corpus with headroom up to 3000.
-export const DIFFICULTY_RANGE: [number, number] = [0, 3000];
-export const QUALITY_RANGE: [number, number] = [0, 100];
-export const YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()];
-
-/**
- * One flat filter shape covering all three levels — fields are optional and each
- * `fetch*` reads only the ones it cares about. A single shape keeps `patchFilters`
- * and the filter UI trivial. `boolean | null`: `null`/absent = no filter ("Any").
- */
-export interface Filters {
-    // shared Library toolbar query: names for series/tests, exact ids for all levels
-    search?: string;
-    // series
-    name?: string; // also used by tests
-    isOfficial?: boolean | null;
-    // tests
-    seriesId?: number; // also scopes problems
-    year?: [number, number];
-    type?: string[];
-    isComputational?: boolean | null; // also used by problems
-    // problems
-    testId?: number;
-    topic?: string[];
-    tags?: string[];
-    difficulty?: [number, number];
-    quality?: [number, number];
-    verified?: boolean | null;
-    mastery?: (Mastery | "unassessed")[];
-    engagement?: (Engagement | "none")[];
-    /** Shown only when a single series is selected; dropped if that series is cleared. */
-    divisions?: string[];
-    formats?: string[];
-    /** 1-based inclusive range (`problems.n + 1`); problems tab only. */
-    problemNumbers?: [number, number];
 }
 
 /** Page size for the infinite-scroll result feed. */
@@ -501,7 +462,7 @@ export async function fetchPublicProblems(
         if (f.seriesId != null && f.testId == null && f.divisions?.length) query = query.in("tests.division", f.divisions);
         if (f.seriesId != null && f.testId == null && f.formats?.length) query = query.in("tests.format", f.formats);
         if (f.seriesId != null && f.year) query = query.gte("tests.year", f.year[0]).lte("tests.year", f.year[1]);
-        if (f.seriesId != null && f.problemNumbers) query = query.gte("n", f.problemNumbers[0] - 1).lte("n", f.problemNumbers[1] - 1);
+        if ((f.seriesId != null || f.testId != null) && f.problemNumbers) query = query.gte("n", f.problemNumbers[0] - 1).lte("n", f.problemNumbers[1] - 1);
         if (f.topic?.length) query = query.in("topic", f.topic);
         if (f.tags?.length) query = query.contains("tags", f.tags);
         if (f.quality) query = query.gte("quality", f.quality[0]).lte("quality", f.quality[1]);

@@ -31,6 +31,7 @@
         showDivisionFormat = true,
         showProblemNumbers = true,
         showYear = true,
+        clampOnLoad = true,
         loadSeriesDimensions,
         loadSeriesNumberLine,
         loadSeriesYearSpan,
@@ -45,6 +46,8 @@
         showDivisionFormat?: boolean;
         showProblemNumbers?: boolean;
         showYear?: boolean;
+        /** Embedded legacy callers may normalize on load; URL views only change on gestures. */
+        clampOnLoad?: boolean;
         loadSeriesDimensions?: (
             seriesId: number,
         ) => Promise<SeriesDimensionRow[]>;
@@ -135,7 +138,7 @@
                     current != null &&
                     next[0] === current[0] &&
                     next[1] === current[1]);
-            if (!same) problemNumbers = next;
+            if (clampOnLoad && !same) problemNumbers = next;
             numberLineLength = length;
         })();
     });
@@ -176,26 +179,28 @@
                     current != null &&
                     next[0] === current[0] &&
                     next[1] === current[1]);
-            if (!same) yearRange = next;
+            if (clampOnLoad && !same) yearRange = next;
             yearSpan = span;
         })();
     });
 
     function seriesRange(length: number): [number, number] {
-        return problemNumberRange({ problemNumbers }, length) ?? [1, length];
+        const [lo, hi] = problemNumberRange({ problemNumbers }, length) ?? [1, length];
+        return [Math.min(length, Math.max(1, lo)), Math.min(length, Math.max(1, hi))];
     }
 
     function rangeCaption(length: number): string {
-        const [lo, hi] = seriesRange(length);
+        const [lo, hi] = problemNumbers ?? seriesRange(length);
         return lo === hi ? `Problem ${lo}` : `Problems ${lo}–${hi}`;
     }
 
     function seriesYears(span: SeriesYearSpan): [number, number] {
-        return storedYearRange({ yearRange }, span) ?? [span.min, span.max];
+        const [lo, hi] = storedYearRange({ yearRange }, span) ?? [span.min, span.max];
+        return [Math.min(span.max, Math.max(span.min, lo)), Math.min(span.max, Math.max(span.min, hi))];
     }
 
     function yearCaption(span: SeriesYearSpan): string {
-        const [lo, hi] = seriesYears(span);
+        const [lo, hi] = yearRange ?? seriesYears(span);
         return lo === hi ? `Year ${lo}` : `Years ${lo}–${hi}`;
     }
 </script>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { matchesLocalProblemFilters, type LocalProblemCandidate } from "./problem-filter-spec";
+import { applyRemoteProblemFilters, matchesLocalProblemFilters, type LocalProblemCandidate } from "./problem-filter-spec";
 
 function candidate(overrides: Partial<LocalProblemCandidate> = {}): LocalProblemCandidate {
     return {
@@ -114,6 +114,19 @@ describe("downloaded catalogue filter parity", () => {
         expect(
             matchesLocalProblemFilters(late, { problemNumbers: [1, 10] }),
         ).toBe(true);
+    });
+
+    test("test-only scope applies displayed number ranges locally and remotely", () => {
+        expect(matchesLocalProblemFilters(candidate(), { testId: 4, problemNumbers: [3, 3] })).toBe(true);
+        expect(matchesLocalProblemFilters(candidate(), { testId: 4, problemNumbers: [4, 5] })).toBe(false);
+        const calls: unknown[][] = [];
+        const query = {
+            eq: (...args: unknown[]) => { calls.push(["eq", ...args]); return query; },
+            gte: (...args: unknown[]) => { calls.push(["gte", ...args]); return query; },
+            lte: (...args: unknown[]) => { calls.push(["lte", ...args]); return query; },
+        };
+        applyRemoteProblemFilters(query, { testId: 4, problemNumbers: [3, 5] });
+        expect(calls).toEqual([["eq", "test_id", 4], ["gte", "n", 2], ["lte", "n", 4]]);
     });
 
     test("a year range matches the placement test year", () => {

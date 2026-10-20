@@ -15,7 +15,8 @@
         type TestRow,
     } from "#lib/library.js";
     import type { Engagement, Mastery, PersonalProblemState } from "#lib/progress.js";
-    import type { LibraryStore } from "#lib/state/library.svelte.js";
+    import type { LibraryView, LibraryAction } from "#lib/library/view.js";
+    import type { Filters } from "#lib/library/filters.js";
     import { practiceLaunchHref } from "#lib/practice-launch.js";
     import { problemContextLayer } from "#lib/ai/context/surfaces.js";
     import { anchorFor } from "#lib/ai/session/anchor.js";
@@ -39,7 +40,8 @@
     }
 
     let {
-        store,
+        view,
+        onaction,
         results,
         resultsLevel,
         loading,
@@ -55,7 +57,8 @@
          * The tour's Library mock uses this so the real rows cannot leave the tour.
          */
     }: { 
-        store: LibraryStore;
+        view: LibraryView;
+        onaction: (action: LibraryAction) => void;
         results: ResultRow[];
         resultsLevel: Level | null;
         loading: boolean;
@@ -67,7 +70,8 @@
         onRetry?: () => void;
     } = $props();
 
-    const level = $derived(store.current.level);
+    const level = $derived(view.tab);
+    const filters: Filters = $derived(view.filters);
     /**
      * Problem rows name their test only when the page isn't already naming it.
      * Drilling into a test puts its name in the scope chip above the list, but
@@ -75,7 +79,7 @@
      * chip has scrolled out of view. An unscoped list (a filtered search across
      * tests) genuinely needs both the test and number on each row.
      */
-    const problemHeader = $derived(store.current.context.test ? "number" : "full");
+    const problemHeader = $derived(filters.testId ? "number" : "full");
     const displayedResults = $derived(
         resultsLevel === level ? results : [],
     );
@@ -201,7 +205,7 @@
             <button
                 type="button"
                 class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                onclick={() => store.drillToTests(series)}
+                onclick={() => onaction({ type: "series", seriesId: series.id })}
             >
                 <span class="min-w-0 flex-1">
                     <span class="block type-body font-semibold text-foreground group-hover:underline">
@@ -235,7 +239,7 @@
                 type="button"
                 class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 onclick={() =>
-                    store.drillToProblems(store.current.context.series, test)}
+                    onaction({ type: "test", testId: test.id, seriesId: test.series_id ?? undefined })}
             >
                 <span class="min-w-0 flex-1">
                     <span class="block type-body font-semibold text-foreground group-hover:underline">
