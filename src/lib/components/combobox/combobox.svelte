@@ -429,8 +429,7 @@
         const target = e.target as HTMLElement;
         if (target === inputEl) return;
         if (target.closest("button")) return; // let pill remove buttons work
-        // Do not preventDefault on the list: that suppresses the subsequent
-        // click on touch (so taps never commit) and blocks scrolling.
+        // Let list gestures use native click selection and touch scrolling.
         if (target.closest(`#${listboxId}`)) return;
         e.preventDefault(); // keep focus on the input
         inputEl?.focus();
@@ -577,17 +576,17 @@
                             : "text-muted-foreground",
                     )}
                     onpointerdown={(e) => {
-                        // Mouse: keep the input focused so focusout doesn't
-                        // close the list. Touch: must not preventDefault —
-                        // that suppresses click (and blocks scrolling).
+                        // Keep mouse focus on the input. Leave touch/pen
+                        // pointerdown alone so dragging can scroll the list.
                         if (e.pointerType === "mouse") {
                             e.preventDefault();
                         }
                     }}
                     onmousedown={(e) => {
-                        if (typeof PointerEvent === "undefined") {
-                            e.preventDefault();
-                        }
+                        // Touch also synthesizes mousedown, possibly after
+                        // listPointer expires. Prevent its focus change so
+                        // blur cannot remove the option before click commits.
+                        e.preventDefault();
                     }}
                     onclick={() => commitRow(row)}
                 >

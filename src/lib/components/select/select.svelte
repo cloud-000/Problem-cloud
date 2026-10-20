@@ -353,17 +353,17 @@
                                     : "cursor-pointer hover:bg-muted/50 data-active:bg-primary data-active:text-primary-foreground data-selected:bg-primary/20 dark:data-selected:bg-primary/30",
                             )}
                             onpointerdown={(e) => {
-                                // Mouse: keep the trigger/search focused so
-                                // focusout doesn't close the list. Touch: must
-                                // not preventDefault — that suppresses click.
+                                // Keep mouse focus on the trigger/search.
+                                // Leave touch/pen pointerdown free to scroll.
                                 if (e.pointerType === "mouse") {
                                     e.preventDefault();
                                 }
                             }}
                             onmousedown={(e) => {
-                                if (typeof PointerEvent === "undefined") {
-                                    e.preventDefault();
-                                }
+                                // Touch compatibility mousedown can arrive
+                                // after listPointer expires. Keep focus here
+                                // so blur cannot unmount the option before click.
+                                e.preventDefault();
                             }}
                             onclick={() =>
                                 !option.disabled && commitOption(option)}
