@@ -105,4 +105,45 @@
     :global([data-slot="ai-chat-model-picker"][data-compact]) {
         padding: 0 0.25rem !important;
     }
+
+    @media (max-width: 767px) {
+        /* Escape the panel's clipped transcript area. A viewport-bound picker
+           keeps search reachable even when the mobile panel is half-height. */
+        :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"]) {
+            position: fixed;
+            inset: auto 0 1rem;
+            display: flex;
+            flex-direction: column;
+            width: min(24rem, calc(100vw - 2rem));
+            max-height: calc(100dvh - 2rem);
+            margin: 0 auto;
+        }
+
+        :global([data-slot="ai-chat-model-picker"][data-compact] + [data-slot="select-popover"]) {
+            right: 0;
+            left: 0;
+        }
+
+        :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"] > div) {
+            flex-shrink: 0;
+        }
+
+        :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"] [role="listbox"]) {
+            min-height: 0;
+            overscroll-behavior: contain;
+        }
+
+        :global([data-slot="ai-chat-model-picker"]) {
+            min-width: 2.75rem;
+            height: 2.75rem !important;
+        }
+
+        :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"] input) {
+            font-size: 1rem;
+        }
+
+        :global([data-slot="ai-chat-model-picker"] + [data-slot="select-popover"] [role="option"]) {
+            min-height: 2.75rem;
+        }
+    }
 </style>

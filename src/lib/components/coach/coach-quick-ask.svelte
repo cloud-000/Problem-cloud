@@ -23,13 +23,10 @@
 
     let { placement = "center", anchor = null }: CoachQuickAskProps = $props();
 
-    const mobilePortraitQuery = new MediaQuery(
-        "(max-width: 767px) and (orientation: portrait)",
-        false,
-    );
+    const mobileQuery = new MediaQuery("(max-width: 767px)", false);
 
     let effectivePlacement = $derived<FloatingPlacement>(
-        mobilePortraitQuery.current ? "sheet" : placement,
+        mobileQuery.current ? "sheet" : placement,
     );
 
     let input = $state<HTMLInputElement | null>(null);
@@ -78,10 +75,10 @@
 >
     <!-- Single, unified surface container following DESIGN.md -->
     <div
-        class="pointer-events-auto flex flex-col divide-y divide-border/30 rounded-2xl border border-border/60 bg-surface-container-lowest/85 shadow-2xl backdrop-blur-(--backdrop-blur)"
+        class="pointer-events-auto flex max-h-[80dvh] min-h-0 flex-col overflow-y-auto overscroll-contain divide-y divide-border/30 rounded-2xl border border-border/60 bg-surface-container-lowest/85 shadow-2xl backdrop-blur-(--backdrop-blur)"
     >
         <!-- Top composer row -->
-        <div class="flex items-center gap-2.5 px-3.5 py-2">
+        <div class="flex shrink-0 items-center gap-2 px-3 py-2">
             <div
                 class="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
             >
@@ -96,15 +93,15 @@
                     bind:ref={input}
                     bind:value={coach.draft}
                     type="text"
-                    placeholder="Ask Coach a question…"
+                    placeholder="Ask Coach…"
                     aria-label="Ask Coach"
                     onkeydown={keydown}
-                    class="flex-1 border-0 bg-transparent h-8 py-1 shadow-none focus-visible:ring-0 focus-visible:border-transparent dark:bg-transparent text-sm leading-5 placeholder:text-muted-foreground"
+                    class="flex-1 border-0 bg-transparent h-8 py-1 shadow-none focus-visible:ring-0 focus-visible:border-transparent dark:bg-transparent text-base md:text-sm leading-5 placeholder:text-muted-foreground"
                 />
                 <Button
                     variant="ghost"
                     size="icon-sm"
-                    class="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                    class="size-11 md:size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                     onclick={() => (coach.streaming ? coach.stop() : coach.send())}
                     disabled={!coach.streaming && !coach.draft.trim()}
                     aria-label={coach.streaming ? "Stop response" : "Send message"}
@@ -112,6 +109,15 @@
                     <Icon name={coach.streaming ? "stop" : "arrow_upward"} fontsize={16} fill />
                 </Button>
             {/if}
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                class="size-11 md:size-8 shrink-0 rounded-full text-muted-foreground"
+                onclick={() => coach.closeQuickAsk()}
+                aria-label="Close Ask Coach"
+            >
+                <Icon name="close" fontsize={16} />
+            </Button>
         </div>
 
         {#if coach.error}
@@ -179,10 +185,10 @@
         {/if}
 
         <!-- Escalation Footer -->
-        <div class="flex items-center justify-between px-2.5 py-1.5 text-xs text-muted-foreground">
+        <div class="flex flex-wrap items-center justify-between gap-x-2 px-2.5 py-1.5 text-xs text-muted-foreground">
             <button
                 type="button"
-                class="inline-flex min-h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground"
+                class="inline-flex min-h-11 md:min-h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground"
                 onclick={() =>
                     coach.inlineTargetAvailable
                         ? coach.continueInInline()
@@ -195,7 +201,7 @@
             <div class="flex items-center gap-1">
                 <button
                     type="button"
-                    class="inline-flex min-h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground"
+                    class="inline-flex min-h-11 md:min-h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-container hover:text-foreground"
                     onclick={() => coach.escalateToHistory()}
                     aria-label="Browse conversation history"
                     title="Browse conversation history"
@@ -203,7 +209,7 @@
                     <Icon name="history" fontsize={15} />
                     <span>History</span>
                 </button>
-                <kbd class="ml-1.5 rounded bg-surface-container px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground/80">Esc</kbd>
+                <kbd class="ml-1.5 hidden md:inline-block rounded bg-surface-container px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground/80">Esc</kbd>
             </div>
         </div>
     </div>

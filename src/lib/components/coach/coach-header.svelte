@@ -46,7 +46,7 @@
     onclick={handleWindowClick}
 ></svelte:window>
 
-<header class="relative flex h-12 shrink-0 items-center gap-1 border-b border-border/40 px-3">
+<header class="relative flex h-12 shrink-0 items-center gap-1 border-b border-border/40 px-3 [&_button]:size-11 md:[&_button]:size-8">
     <div class="mr-auto flex items-center gap-2">
         <div class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Icon name="auto_awesome" fontsize={15} fill />

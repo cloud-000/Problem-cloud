@@ -118,7 +118,7 @@
 
 <div class="flex h-full w-full overflow-hidden bg-background">
     <main class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header class="flex h-12 shrink-0 items-center gap-1 border-b border-border/40 px-3">
+        <header class="flex h-12 shrink-0 items-center gap-1 border-b border-border/40 px-3 [&_button]:min-h-11 md:[&_button]:min-h-8">
             <div class="mr-auto flex items-center gap-2">
                 <div
                     class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary"

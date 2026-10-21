@@ -122,9 +122,9 @@
             bind:value={controller.draft}
             rows="1"
             class={cn(
-                "block max-h-40 resize-none border-0 bg-transparent text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0",
+                "block max-h-40 resize-none border-0 bg-transparent text-base md:text-sm leading-5 shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:ring-0",
                 compact
-                    ? "min-h-8 w-full min-w-0 flex-1 px-2 py-1.5"
+                    ? "min-h-11 md:min-h-8 w-full min-w-0 flex-1 px-2 py-3 md:py-1.5"
                     : "min-h-12 w-full px-3.5 pb-1 pt-3",
             )}
             {placeholder}
@@ -149,7 +149,7 @@
     <Button
         variant="primary"
         size="icon-sm"
-        class="shrink-0 rounded-full shadow-none transition-transform enabled:hover:scale-105"
+        class="size-11 md:size-8 shrink-0 rounded-full shadow-none transition-transform enabled:hover:scale-105"
         onclick={() =>
             controller.streaming ? controller.stop() : controller.send()}
         disabled={!controller.streaming && !controller.draft.trim()}

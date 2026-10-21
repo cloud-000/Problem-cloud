@@ -925,15 +925,25 @@
    // The extra 20px is the shelf's `gap-5` that used to sit between the statement
    // and that region.
    const STATEMENT_STACK_GAP_PX = 20;
+   const MIN_STATEMENT_SHELF_PX = 48;
+   const MIN_COACH_TRANSCRIPT_PX = 96;
    let problemRegionHeight = $state(0);
    let answerBoxHeight = $state(0);
    let coachCompactHeight = $state(0);
+   let coachChromeHeight = $state(0);
    let emptyCoachFootprint = $derived(
-      answerBoxHeight > 0 ? answerBoxHeight + STATEMENT_STACK_GAP_PX : 0,
+      answerBoxHeight > 0
+         ? Math.min(
+              answerBoxHeight + STATEMENT_STACK_GAP_PX,
+              Math.max(0, problemRegionHeight - MIN_STATEMENT_SHELF_PX),
+           )
+         : 0,
    );
+   // Reserve readable transcript space after the measured controls. A viewport-only
+   // shelf cap can otherwise leave just a few pixels of reply above the composer.
    let statementShelfHeight = $derived(
       coachExpanded
-         ? "min(42dvh, 22rem)"
+         ? `min(42dvh, 22rem, ${Math.max(MIN_STATEMENT_SHELF_PX, problemRegionHeight - coachChromeHeight - MIN_COACH_TRANSCRIPT_PX)}px)`
          : problemRegionHeight > 0
            ? `${Math.max(
                 0,
@@ -2466,6 +2476,7 @@
                            quickActions={coachQuickActions}
                            onQuickAction={selectCoachQuickAction}
                            bind:composerRef={coachComposer}
+                           bind:chromeHeight={coachChromeHeight}
                         />
                      </div>
                   {/if}

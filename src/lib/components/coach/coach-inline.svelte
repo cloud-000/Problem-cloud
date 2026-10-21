@@ -20,12 +20,15 @@
          */
         onQuickAction?: (action: AIChatQuickAction) => void;
         composerRef?: HTMLTextAreaElement | null;
+        /** Space used by context, offers, and the composer, excluding the transcript. */
+        chromeHeight?: number;
         class?: string;
     }
 </script>
 
 <script lang="ts">
     import { onMount } from "svelte";
+    import { MediaQuery } from "svelte/reactivity";
     import {
         AIChatComposer,
         AIChatEmptyState,
@@ -45,6 +48,7 @@
         compact = false,
         onQuickAction = (action) => void coach.send(action.prompt),
         composerRef = $bindable(null),
+        chromeHeight = $bindable(0),
         class: className,
     }: CoachInlineProps = $props();
 
@@ -53,6 +57,12 @@
     // floats — the composer is the last row of an auto-height box — so the
     // measurement is simply unused.
     let composerHeight = $state(0);
+    let headerHeight = $state(0);
+    const mobileQuery = new MediaQuery("(max-width: 767px)", false);
+
+    $effect(() => {
+        chromeHeight = compact ? 0 : headerHeight + composerHeight;
+    });
 
     // The section runs full-bleed so the transcript's scrollbar sits on the
     // trainer's outer edge (aligned with the statement shelf above); the
@@ -91,20 +101,22 @@
         {/if}
         <CoachConnectionGate />
     {:else}
-        {#if !compact}
-            <div class={cn(rail, "shrink-0")}>
-                <CoachContextTray />
-                <CoachDebugToggle />
-                <CoachRequestInspector />
-            </div>
-        {/if}
-        {#if coach.resumePrompt}
-            <!-- Above the transcript, not over it: the choice is which thread to attach
-                 to, and the blank Coach behind it is already usable. -->
-            <div class={cn(rail, "shrink-0 px-3 pb-1 sm:px-4")}>
-                <CoachResumePrompt />
-            </div>
-        {/if}
+        <div bind:clientHeight={headerHeight} class="shrink-0">
+            {#if !compact}
+                <div class={cn(rail, "shrink-0")}>
+                    <CoachContextTray />
+                    <CoachDebugToggle />
+                    <CoachRequestInspector />
+                </div>
+            {/if}
+            {#if coach.resumePrompt}
+                <!-- Above the transcript, not over it: the choice is which thread to attach
+                     to, and the blank Coach behind it is already usable. -->
+                <div class={cn(rail, "shrink-0 px-3 pb-1 sm:px-4")}>
+                    <CoachResumePrompt />
+                </div>
+            {/if}
+        </div>
         <!-- Compact mode renders neither transcript nor empty state: the composer
              and its hint chips already say what this box is for, and a full-height
              welcome panel is exactly the relayout compact mode exists to avoid. -->
@@ -133,7 +145,7 @@
                 "z-10 mx-auto w-full max-w-[52rem]",
                 compact
                     ? "shrink-0"
-                    : "pointer-events-none absolute inset-x-0 bottom-0",
+                    : "pointer-events-none absolute inset-x-0 bottom-0 bg-background md:bg-transparent",
             )}
         >
             <AIChatQuickActions
@@ -149,8 +161,8 @@
             <AIChatComposer
                 controller={coach}
                 assistantLabel="Coach"
-                placeholder="Ask Coach about this problem…"
-                {compact}
+                placeholder={mobileQuery.current ? "Ask Coach…" : "Ask Coach about this problem…"}
+                compact={compact || mobileQuery.current}
                 bind:textareaRef={composerRef}
             />
         </div>

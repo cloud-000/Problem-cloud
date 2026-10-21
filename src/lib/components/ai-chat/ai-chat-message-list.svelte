@@ -118,7 +118,7 @@
     {#if !following && controller.messages.length > 0}
         <button
             type="button"
-            class="absolute left-1/2 z-20 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-surface-container-lowest text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+            class="absolute left-1/2 z-20 flex size-11 md:size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-surface-container-lowest text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
             style="bottom: calc(var(--ai-chat-composer-h, 0px) + 0.5rem);"
             aria-label="Jump to latest"
             onclick={() => scrollToBottom("smooth")}

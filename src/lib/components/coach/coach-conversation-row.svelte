@@ -72,7 +72,7 @@
     <button
         type="button"
         class={cn(
-            "flex w-full flex-col gap-0.5 rounded-lg py-2 pl-2.5 pr-9 text-left transition-colors",
+            "flex w-full flex-col gap-0.5 rounded-lg min-h-11 md:min-h-0 py-2 pl-2.5 pr-12 md:pr-9 text-left transition-colors",
             "hover:bg-surface-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             active && "bg-surface-container",
             disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
@@ -105,12 +105,12 @@
         {/if}
     </button>
 
-    <div bind:this={menuButtonRef} class="absolute right-1 top-1.5">
+    <div bind:this={menuButtonRef} class="absolute right-1 top-0 md:top-1.5">
         <button
             type="button"
             class={cn(
-                "flex size-6 items-center justify-center rounded-md text-muted-foreground",
-                "opacity-0 transition-opacity hover:bg-surface-container-high hover:text-foreground",
+                "flex size-11 md:size-6 items-center justify-center rounded-md text-muted-foreground",
+                "opacity-100 md:opacity-0 [@media(hover:none)]:opacity-100 transition-opacity hover:bg-surface-container-high hover:text-foreground",
                 "group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary",
                 menuOpen && "opacity-100",
                 disabled && "hidden",
@@ -128,12 +128,12 @@
     {#if menuOpen}
         <div
             bind:this={menuRef}
-            class="absolute right-1 top-8 z-70 w-36 rounded-lg border border-border/70 bg-surface-container-lowest p-1 shadow-xl"
+            class="absolute right-1 top-11 md:top-8 z-70 w-36 rounded-lg border border-border/70 bg-surface-container-lowest p-1 shadow-xl"
             role="menu"
         >
             <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium text-foreground hover:bg-surface-container"
+                class="flex min-h-11 md:min-h-0 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium text-foreground hover:bg-surface-container"
                 role="menuitem"
                 onclick={archive}
             >

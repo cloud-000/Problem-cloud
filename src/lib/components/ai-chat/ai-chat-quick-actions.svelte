@@ -52,7 +52,7 @@
                     "flex items-center gap-2 text-left backdrop-blur-(--backdrop-blur) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50",
                     layout === "stack"
                         ? "min-h-11 w-full rounded-xl bg-surface-container-low/30 px-3.5 py-2.5 text-sm leading-5 hover:bg-surface-container/45"
-                        : "min-h-8 shrink-0 whitespace-nowrap rounded-full bg-surface-container-low/30 px-3 py-1.5 text-xs leading-4 hover:bg-surface-container/45",
+                        : "min-h-11 md:min-h-8 shrink-0 whitespace-nowrap rounded-full bg-surface-container-low/30 px-3 py-1.5 text-xs leading-4 hover:bg-surface-container/45",
                 )}
                 onclick={() => onselect(action)}
             >
