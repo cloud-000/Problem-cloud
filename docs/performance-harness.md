@@ -212,3 +212,46 @@ The audit also identified follow-up work beyond these changes:
 
 Earlier October 17 optimizations (JWT InitPlans, canonical joins, catalog filter
 indexes, and raw-submission goal queries) were already present and are retained.
+
+### Production before/after: October 22, 2026
+
+Code commit `278e2ff` was pushed to `main`; the three query migrations were
+applied to the linked production Supabase project. These measurements isolate
+the database rollout. After correcting Wrangler account access, the production
+application was deployed successfully to Cloudflare Pages as
+`47953f37` (`https://47953f37.problem-cloud.pages.dev`), serving
+`https://problem-cloud.pages.dev`.
+
+The comparison uses 20 measured runs after two warm-ups per query and phase,
+the same authenticated database role/user, and a fixed report cutoff. Production
+had 31,650 problems and 259 submissions. The selected account had 198 submissions,
+46 within seven days. No synthetic production data was inserted. The original
+and revised analytics functions returned identical results for the measured
+seven-day and all-time reports.
+
+| PostgreSQL query | Median before → after | p95 before → after |
+| --- | --- | --- |
+| Library first 20 IDs | 18.127 → 0.058 ms | 22.442 → 0.066 ms |
+| Library offset 1,000 | 20.034 → 0.376 ms | 22.541 → 0.408 ms |
+| All-time state summary | 28.976 → 15.868 ms | 29.786 → 16.511 ms |
+| Seven-day analytics | 2.933 → 2.507 ms | 3.380 → 2.607 ms |
+| All-time analytics | 3.221 → 4.208 ms | 3.528 → 4.330 ms |
+
+These are `EXPLAIN ANALYZE` execution times, excluding network latency. The
+all-time analytics query regressed by about 1 ms on this small account; its
+explicit deduplication has overhead that the larger local fixture amortized.
+The live seven-day improvement is modest, unlike the 20,000-submission fixture.
+
+For an independent HTTP measurement, the anonymous catalog-ID endpoint
+(`/rest/v1/problems?select=id&order=n.asc,id.asc&limit=20`) improved from
+**83.271 → 61.119 ms median**, with **131.062 → 102.867 ms p95**, over a reused
+HTTPS connection. Response hashes matched. This is a public catalog probe, not
+an authenticated Library page-load measurement: available local benchmark
+credentials did not authenticate against production. Twenty samples provide
+a spot check, not a long-term latency SLO or controlled concurrent-load test.
+
+[Sanitized samples and measurement metadata](./performance/cloud-query-benchmark-2026-10-22.json)
+include server execution and SQL EXPLAIN round-trip samples. The latter include
+plan serialization/transfer and should not be treated as application request
+latency. Raw plans and the temporary measurement harness remain under ignored
+`tmp/cloud-query-performance/` locally.
