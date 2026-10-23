@@ -112,6 +112,10 @@ create table public.problems (
 );
 
 create index problems_test_id_idx on public.problems(test_id);
+-- Library pages order the caller-scoped index by (n, problem_id). Include the
+-- join keys used by that view so its ID-only pages can use an index-only scan
+-- instead of reading and sorting the entire, statement-heavy catalog.
+create index problems_n_id_idx on public.problems(n, id) include (test_id, canonical_id);
 create unique index problems_sync_key_idx on public.problems(sync_key);
 -- Aliases only; canonicals (the common case) are excluded so the index stays small.
 create index problems_canonical_id_idx on public.problems(canonical_id)

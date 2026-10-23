@@ -302,7 +302,10 @@
          // `ended` status can lag — a prior submit may have recorded the rows
          // but failed to end the session — so detect completion from the
          // submissions themselves, not just status, and render the results.
-         const graded = await trainerSource.getSessionHistory();
+         const [graded, problems] = await Promise.all([
+            trainerSource.getSessionHistory(),
+            trainerSource.getTestProblems(settingsForm.testId),
+         ]);
          if (s.status === "ended" || graded.length > 0) {
             // Test review: reconcile the recorded submissions against the
             // test's authoritative problem set. Database deduplication may have
@@ -310,8 +313,10 @@
             // so we match submissions by either problem.id or canonical_id.
             // This ensures all problems appear in the test's original order (1..N)
             // with the correct test title and problem numbers.
-            const problems = await trainerSource.getTestProblems(settingsForm.testId);
             history = reconcileTestHistory(problems, graded);
+            invalidateProblemRatings(graded
+               .filter((entry) => !entry.skipped && entry.isCorrect !== null)
+               .map((entry) => entry.problem.canonical_id ?? entry.problem.id));
             historyIndex = history.length - 1;
             testFinished = true;
             // Reconcile a session left active by a submit whose end-of-session
@@ -325,7 +330,6 @@
          }
 
          // Fresh / in-progress test: all problems, in order, editable.
-         const problems = await trainerSource.getTestProblems(settingsForm.testId);
          history = problems.map((problem) =>
             createPracticeHistoryEntry({
                problem,
@@ -404,7 +408,11 @@
             // constraint and the whole batch rolls back atomically. This
             // replaces a count-then-insert check that could race two submits
             // past the guard and double-count every row.
+            const gradedProblemIds = history
+               .filter((entry) => !entry.skipped && entry.correct !== null)
+               .map((entry) => entry.problem.canonical_id ?? entry.problem.id);
             await trainerSource.recordTestSubmissions(rows);
+            invalidateProblemRatings(gradedProblemIds);
             // Auto-assign the suggested mastery for every attempted problem the
             // user never rated (skips carry no knowledge signal, so they're left
             // alone). Mirrors the trainer's leave-behavior; fire-and-forget.
@@ -1436,13 +1444,27 @@
    }
 
    // The current problem's Glicko rating, for the metadata-row elo and the debug
-   // panel's match preview. Trainer draws don't embed ratings, so fetch by id
-   // whenever the shown problem changes; guard against out-of-order resolves.
+   // panel's match preview. Draws/resumes already carry normalized ratings;
+   // fetch only when missing or invalidated by a successful online grade.
    let problemRating = $state<ProblemRating | null>(null);
+
+   // A successful online grade changes the DB-owned rating. Invalidate every
+   // retained placement of those canonical problems, including after navigation.
+   // Offline grades only move the player's shadow, not the downloaded ratings.
+   function invalidateProblemRatings(canonicalIds: number[]) {
+      if (trainerSource.kind !== "online") return;
+      const ids = new Set(canonicalIds);
+      for (const p of [problem, ...history.map((entry) => entry.problem)]) {
+         if (p && ids.has(p.canonical_id ?? p.id)) p.rating = undefined;
+      }
+   }
+
    $effect(() => {
       const id = problem?.id;
-      problemRating = null;
-      if (id == null) return;
+      const rating = problem?.rating;
+      problemRating = rating ?? null;
+      // null is a loaded, unrated problem; undefined means it wasn't fetched.
+      if (id == null || rating !== undefined) return;
       let current = true;
       trainerSource.getProblem(id)
          .then((r) => {
@@ -1525,6 +1547,7 @@
          return;
       }
 
+      const submittedCanonicalId = problem.canonical_id ?? problem.id;
       let recorded: Promise<TrainerSubmissionResult> | null = null;
       if (user || trainerSource.kind === "offline" || trainerSource.kind === "guest") {
          recorded = trainerSource.recordSubmission({
@@ -1581,7 +1604,11 @@
                problem.canonical_id ?? problem.id,
             );
          }
-         void recorded.then(() => {
+         void recorded.then((result) => {
+            // Online writes can resolve with a null id after a database error.
+            if (isCorrect !== null && result.submissionId != null) {
+               invalidateProblemRatings([submittedCanonicalId]);
+            }
             if (
                trainerSource.kind === "offline" &&
                isCorrect !== null &&
@@ -1596,7 +1623,7 @@
                   isCorrect,
                );
             }
-         });
+         }).catch((e) => console.error("Failed to apply submission rating:", e));
          // Graded attempts are rated live; surface the rating movement.
          if (isCorrect !== null) {
             ratingDelta = null;

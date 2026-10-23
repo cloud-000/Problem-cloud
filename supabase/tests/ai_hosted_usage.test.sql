@@ -3,6 +3,10 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select extensions.plan(22);
 
+-- The all-users reset below counts every usage row. Isolate its fixture from
+-- existing local accounts; the final rollback restores their usage unchanged.
+delete from public.ai_hosted_usage;
+
 insert into auth.users (
   id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
 ) values

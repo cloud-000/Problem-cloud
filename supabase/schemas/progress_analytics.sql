@@ -7,8 +7,9 @@
 --     (topic / difficulty / series / test) pre-joined and attempt-ordering
 --     resolved, so "first-attempt accuracy" is derivable. Backs timeline/list
 --     drill-downs directly.
---   * `progress_breakdown(...)` — a single parameterized `group by` over that
---     view. Returns raw counts (not ratios); callers derive accuracy / avg time.
+--   * `progress_breakdown(...)` — a parameterized aggregate over filtered
+--     submissions, with indexed lifetime-first graded lookups. Returns raw
+--     counts (not ratios); callers derive accuracy / avg time.
 --     One primitive powers the Topic lens, difficulty calibration, and the
 --     weakness ranking that feeds the "drill this" loop.
 --
@@ -69,7 +70,9 @@ left join public.series se on se.id = t.series_id;
 
 grant select on public.submission_facts to authenticated;
 
--- One group-by over submission_facts, parameterized by dimension + filters.
+-- Filter submissions before resolving lifetime-first graded attempts. Using
+-- submission_facts here would compute its window functions over the user's
+-- entire history before applying the report's date/source/dimension filters.
 -- Returns raw counts; the client derives accuracy / first-accuracy / avg time
 -- (keeps division-by-zero out of SQL and the metric mix flexible per surface).
 --
@@ -107,31 +110,70 @@ stable
 security invoker
 set search_path = ''
 as $$
-  with base as (
+  with filtered_submissions as materialized (
+    select s.id, s.user_id, s.problem_id, s.skipped, s.is_correct,
+           s.tries_used, s.elapsed_ms, s.created_at
+    from public.submissions s
+    where (p_from is null or s.created_at >= p_from)
+      and (p_to is null or s.created_at < p_to)
+      and (p_source is null or s.source = p_source)
+  ), scoped_pairs as materialized (
+    -- Deduplicate before joining dimensions or looking up first attempts,
+    -- without relying on the planner to memoize per-submission joins.
+    select selected.*, p.topic, p.difficulty,
+           se.id as series_id, se.name as series_name
+    from (
+      select user_id, problem_id,
+             bool_or(not skipped and is_correct is not null) as has_graded
+      from filtered_submissions
+      group by user_id, problem_id
+    ) selected
+    -- The stored problem_id owns the dimensions, including for canonicalized
+    -- submissions; joining other placements would duplicate/misattribute rows.
+    join public.problems p on p.id = selected.problem_id
+    left join public.tests t on t.id = p.test_id
+    left join public.series se on se.id = t.series_id
+    where (p_topics is null or p.topic = any(p_topics))
+      and (p_series is null or se.id = any(p_series))
+      and (p_difficulty_min is null or p.difficulty >= p_difficulty_min)
+      and (p_difficulty_max is null or p.difficulty <= p_difficulty_max)
+      and (p_computational is null or p.is_computational = p_computational)
+  ), lifetime_first as materialized (
+    -- One indexed lookup per selected graded pair, shared by both first counts.
+    -- Keep ungraded-only pairs in the map too, so their seen/skip totals survive.
+    select pairs.*, earlier.id as first_submission_id
+    from scoped_pairs pairs
+    left join lateral (
+      -- No report filters here: first means first over the pair's lifetime.
+      select s.id
+      from public.submissions s
+      where pairs.has_graded
+        and s.user_id = pairs.user_id
+        and s.problem_id = pairs.problem_id
+        and not s.skipped
+        and s.is_correct is not null
+      order by s.created_at, s.id
+      limit 1
+    ) earlier on true
+  ), base as (
     select
       case p_dimension
-        when 'topic'      then coalesce(f.topic, 'Untagged')
-        when 'series'     then coalesce(f.series_id::text, 'none')
-        when 'difficulty' then coalesce(f.difficulty::text, '0')
-        when 'day'        then to_char((f.created_at at time zone p_tz)::date, 'YYYY-MM-DD')
+        when 'topic'      then coalesce(p.topic, 'Untagged')
+        when 'series'     then coalesce(p.series_id::text, 'none')
+        when 'difficulty' then coalesce(p.difficulty::text, '0')
+        when 'day'        then to_char((s.created_at at time zone p_tz)::date, 'YYYY-MM-DD')
       end as dim_key,
-      f.series_name,
-      f.problem_id,
-      f.skipped,
-      f.is_correct,
-      f.graded_seq,
-      f.tries_used,
-      f.elapsed_ms,
-      f.created_at
-    from public.submission_facts f
-    where (p_from is null or f.created_at >= p_from)
-      and (p_to   is null or f.created_at <  p_to)
-      and (p_topics is null or f.topic = any(p_topics))
-      and (p_series is null or f.series_id = any(p_series))
-      and (p_difficulty_min is null or f.difficulty >= p_difficulty_min)
-      and (p_difficulty_max is null or f.difficulty <= p_difficulty_max)
-      and (p_source is null or f.source = p_source)
-      and (p_computational is null or f.is_computational = p_computational)
+      p.series_name,
+      s.problem_id,
+      s.skipped,
+      s.is_correct,
+      s.id = p.first_submission_id as is_first_graded,
+      s.tries_used,
+      s.elapsed_ms,
+      s.created_at
+    from filtered_submissions s
+    join lifetime_first p
+      on p.user_id = s.user_id and p.problem_id = s.problem_id
   )
   select
     dim_key as bucket_key,
@@ -143,8 +185,8 @@ as $$
     count(*) filter (where not skipped and is_correct is not null) as graded,
     count(*) filter (where is_correct)                             as correct,
     count(*) filter (where skipped)                                as skipped,
-    count(*) filter (where graded_seq = 1)                         as first_graded,
-    count(*) filter (where graded_seq = 1 and is_correct and coalesce(tries_used, 0) = 0) as first_correct,
+    count(*) filter (where is_first_graded)                         as first_graded,
+    count(*) filter (where is_first_graded and is_correct and coalesce(tries_used, 0) = 0) as first_correct,
     count(distinct problem_id)                                     as distinct_problems,
     coalesce(sum(elapsed_ms) filter (
       where not skipped and is_correct is not null and elapsed_ms is not null

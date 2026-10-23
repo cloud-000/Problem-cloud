@@ -654,18 +654,25 @@ async function drawMatchingProblem(
     settings: ResolvedSettings,
     session: PracticeSession,
 ): Promise<ProblemRow | null> {
-    const { count, error } = await practiceIndexQuery(supabase, settings, session, { count: "exact", head: true });
-    if (error) throw error;
-    if (!count) return null;
-    const offset = settings.historyOrder === "oldest" ? 0 : Math.floor(Math.random() * count);
+    const oldest = settings.historyOrder === "oldest";
+    // Oldest draws scan forward until exhausted. Only random draws need a total
+    // to choose a uniform starting offset and wrap around to earlier candidates.
+    let ranges: [number, number][] = [[0, Infinity]];
+    if (!oldest) {
+        const { count, error } = await practiceIndexQuery(supabase, settings, session, { count: "exact", head: true });
+        if (error) throw error;
+        if (!count) return null;
+        const offset = Math.floor(Math.random() * count);
+        ranges = [[offset, count], [0, offset]];
+    }
     // Scan beyond an invalid reference key/blank statement instead of allowing
     // one malformed candidate to hide later eligible results. Hydrate only the
     // first candidate on the happy path so a normal draw fetches 1 problem row
     // instead of FALLBACK_PAGE_SIZE (25) full rows with nested embeds.
-    for (const [start, end] of [[offset, count], [0, offset]]) {
+    for (const [start, end] of ranges) {
         for (let from = start; from < end; from += FALLBACK_PAGE_SIZE) {
             let query = practiceIndexQuery(supabase, settings, session);
-            if (settings.historyOrder === "oldest") query = query.order("last_submission_at", { ascending: true, nullsFirst: true });
+            if (oldest) query = query.order("last_submission_at", { ascending: true, nullsFirst: true });
             const { data, error: pageError } = await query.order("problem_id")
                 .range(from, Math.min(end, from + FALLBACK_PAGE_SIZE) - 1);
             if (pageError) throw pageError;
@@ -674,6 +681,7 @@ async function drawMatchingProblem(
             if (first.length) return first[0];
             const rest = await eligibleIndexRows(supabase, ids.slice(1), settings);
             if (rest.length) return rest[0];
+            if (oldest && ids.length < FALLBACK_PAGE_SIZE) return null;
         }
     }
     return null;

@@ -132,3 +132,83 @@ The harness code is organized under `scripts/perf/` by concern:
 - [`scripts/perf/actions.ts`](file:///Users/cloud/CodeProjects/MathApp/problem-cloud/scripts/perf/actions.ts): Implementation of Pass 2 (in-app interactive gestures).
 - [`scripts/perf/metrics.ts`](file:///Users/cloud/CodeProjects/MathApp/problem-cloud/scripts/perf/metrics.ts): Statistical calculation functions (median computations, metric parsing).
 - [`scripts/perf/report.ts`](file:///Users/cloud/CodeProjects/MathApp/problem-cloud/scripts/perf/report.ts): Disk writing for JSON and CSV output files.
+
+## 7. Database query probes
+
+Database plans can be measured without a dev server, preview, or build:
+
+```bash
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  -X -f scripts/perf/database-queries.sql
+```
+
+The script runs in a read-only transaction as `authenticated`, with the JWT
+subject set to the local user with the most submissions. Pass `-v user_id=<uuid>`
+to select another account. It covers Library pagination, the all-time progress
+summary, and the seven-day progress breakdown. Repeat runs to distinguish cold
+reads from warm-cache execution. These are database execution times, not HTTP
+or page-load latency. SQL functions with `SET search_path` show a `Function Scan`;
+inspect their bodies separately when diagnosing internal scans and joins.
+
+### October 22, 2026 query audit
+
+On the local catalog of 31,650 placements, five warm runs after one warm-up showed:
+
+- Library's first 20 IDs: median **13.727 ms → 0.016 ms**; buffer accesses
+  **13,522 → 3**. The new `(n, id) INCLUDE (test_id, canonical_id)` index replaces
+  the full catalog scan and sort with an index-only scan. The included keys let
+  the caller-scoped view's joins be eliminated without a heap fetch.
+- Library at offset 1,000: median **12.346 ms → 0.126 ms**. Offset paging still
+  walks the preceding index entries; this is not constant-time keyset paging.
+- All-time problem-state summary: median **18.873 ms → 4.317 ms**. Its catalog
+  scan also benefits from the narrow covering index. Counts still represent
+  placements, including aliases sharing canonical progress.
+
+Oldest-first practice draws no longer issue an exact-count request before
+reading candidates. They retain the same ordering and continue past invalid
+candidates until exhaustion. Random draws still count to preserve their uniform
+starting offset and wraparound. The practice screen also reuses an already-loaded
+problem rating, including a known `null`, instead of fetching the entire problem
+again; fixed-test and older-history rows retain the lookup when the rating field
+is absent. Successful online grades invalidate retained ratings for every
+placement of the affected canonical problem. Test history and test problems now
+load concurrently.
+
+The progress breakdown now filters submission dates/source before resolving
+dimensions, groups the selected user/problem pairs, and performs one indexed
+lifetime-first graded lookup per pair. It retains the lifetime definition of
+"first attempt" even when an older attempt is outside the report filters.
+`submission_facts` keeps its original sequence semantics for other callers.
+The partial graded index supports the `(user_id, problem_id, created_at, id)`
+lookup and excludes skips/ungraded rows.
+
+A separate transaction-rolled-back fixture with 20,000 submissions across 500
+problems (200 submissions in the last seven days) compared the original function
+with the revised one in the same connection. Five warm-run medians were
+**11.743 ms → 1.753 ms** for the seven-day report and **21.601 ms → 19.070 ms**
+for all-time. Deduplicating pairs explicitly matters: relying on planner
+memoization alone regressed the all-time case in an earlier experiment. These
+fixture results are not production measurements. The 45 SQL regression
+assertions compare counts with the unchanged lifetime-window view and cover
+timestamp ties, skipped/ungraded attempts, prior attempts outside date/source
+filters, canonical aliases, and row-level isolation between users.
+
+The audit also identified follow-up work beyond these changes:
+
+- Public Library difficulty filtering occurs after pagination, which can hide
+  later matches; its query needs canonical-aware filtering before the page limit.
+- Session exclusion IDs and rating history can hit the API's 1,000-row cap.
+  Session exclusions also produce long query URLs; a server-side anti-join would
+  avoid transferring and repeating the full list.
+- Guest practice repeatedly hydrates the first 100 candidates, and adaptive
+  fallback hydrates up to 50 candidates to choose one. Both should choose from
+  lightweight candidates before fetching full content.
+- Coach history previews fetch complete message bodies for the page of threads.
+  Counts and bounded preview text should be computed near the data.
+- The existing gradeability expression index did not produce an index-only scan
+  in the measured full-catalog projection. A stored generated flag is a candidate
+  for a separate schema change; adding large statement/choice columns to an index
+  would defeat the purpose.
+
+Earlier October 17 optimizations (JWT InitPlans, canonical joins, catalog filter
+indexes, and raw-submission goal queries) were already present and are retained.

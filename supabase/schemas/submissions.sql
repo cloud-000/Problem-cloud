@@ -52,6 +52,11 @@ create table public.submissions (
 
 create index submissions_user_problem_idx
   on public.submissions(user_id, problem_id, created_at, id);
+-- Lifetime-first graded lookup for progress_breakdown, including a stable id
+-- tie-break. The partial index skips ungraded history and covers the returned id.
+create index submissions_user_problem_graded_idx
+  on public.submissions(user_id, problem_id, created_at, id)
+  where not skipped and is_correct is not null;
 create index submissions_user_created_idx on public.submissions(user_id, created_at desc);
 create index submissions_session_idx on public.submissions(session_id) where session_id is not null;
 create unique index submissions_user_client_key_uidx
