@@ -8,7 +8,9 @@
     import { MathStatement } from "#lib/components/math-statement/index.js";
     import { ProblemOrganization } from "#lib/components/problem-organization/index.js";
     import { CoachContextRegister, CoachInline } from "#lib/components/coach/index.js";
-    import { ProblemGrid, type ProblemGridCell } from "#lib/components/problem-grid/index.js";
+    import { type ProblemGridCell } from "#lib/components/problem-grid/index.js";
+    import ReviewProblemNavigation from "./ReviewProblemNavigation.svelte";
+    import { recordedTime, selectTimeEndpoint, summarizeTimeRange, type TimeRangeSelection } from "./test-time-range";
     import { SegmentBar } from "#lib/components/segment-bar/index.js";
     import { Graph } from "#lib/components/graph/index.js";
     import { formatElapsed, isMultipleChoice, cn, formatProblemText } from "#lib/utils.js";
@@ -33,6 +35,20 @@
         elapsedMs: number;
         sessionId?: number | null;
     } = $props();
+
+    let timeSelection = $state<TimeRangeSelection>(null);
+    let timeRange = $derived(summarizeTimeRange(history, timeSelection));
+
+    function markTimeEndpoint(index: number) {
+        timeSelection = selectTimeEndpoint(timeSelection, index);
+    }
+
+    function clearTimeRange(event: KeyboardEvent) {
+        if (event.key === "Escape" && timeSelection && !reviewOpen) {
+            event.preventDefault();
+            timeSelection = null;
+        }
+    }
 
     let activeProblemIndex = $state<number | null>(null);
     let userExpandedPreference = $state<boolean | null>(null);
@@ -176,7 +192,7 @@
                 skipped,
                 is_correct: entry.correct,
             });
-            const seconds = entry.elapsedMs / 1000;
+            const seconds = recordedTime(entry.elapsedMs) / 1000;
             return {
                 entry,
                 skipped,
@@ -252,6 +268,8 @@
     }
 </script>
 
+<svelte:window onkeydown={clearTimeRange} />
+
 {#snippet statChip(value: number, color: string, label: string)}
     <span
         class="inline-flex h-6 sm:h-7 min-w-6 sm:min-w-7 items-center justify-center rounded-md bg-surface-container-low px-1.5 sm:px-2 font-mono text-xs tabular-nums font-semibold"
@@ -318,12 +336,24 @@
                 ]}
             />
 
-            <ProblemGrid
+            <ReviewProblemNavigation
                 class="mt-0.5"
                 variant={isExpanded ? "grid" : "strip"}
                 {cells}
                 onSelect={scrollToProblem}
+                selection={timeSelection}
+                onEndpoint={markTimeEndpoint}
             />
+            <div aria-live="polite" aria-atomic="true">
+                {#if timeRange}
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span class="font-semibold">Problems {history[timeRange.from].problem.n + 1}–{history[timeRange.to].problem.n + 1}</span>
+                        <span class="text-muted-foreground">{timeRange.count} {timeRange.count === 1 ? "problem" : "problems"}</span>
+                        <span class="font-mono font-semibold" title="Sum of recorded problem time, excluding pauses and idle time">{formatElapsed(timeRange.totalMs)} recorded time</span>
+                        <button type="button" class="ml-auto rounded px-2 py-1 text-muted-foreground underline hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring" onclick={() => timeSelection = null}>Clear range</button>
+                    </div>
+                {/if}
+            </div>
         </div>
         
         <!-- Time per Problem Graph Card -->
@@ -361,7 +391,7 @@
                     </div>
                 </div>
 
-                <div class="bg-surface-container-low/40 border border-border/40 rounded-lg p-3 sm:p-4">
+                <div class="test-time-graph bg-surface-container-low/40 border border-border/40 rounded-lg p-3 sm:p-4">
                     <Graph
                         xCount={processedHistory.length}
                         yMin={0}
@@ -377,6 +407,7 @@
                     >
                         {#snippet children(geo)}
                             {#each processedHistory as item, i (item.entry.problem.id)}
+                                {@const rangeEndpoint = timeSelection !== null && (i === timeSelection.start || i === timeSelection.end)}
                                 {@const colWidth = geo.n === 1 ? geo.plotW : geo.plotW / (geo.n - 1)}
                                 {@const barWidth = Math.min(28, Math.max(6, colWidth * 0.55))}
                                 {@const cx = geo.x(i)}
@@ -391,6 +422,20 @@
                                         ? "var(--color-muted-foreground)"
                                         : "var(--color-unsure)"}
                                 
+                                {#if timeRange && i >= timeRange.from && i <= timeRange.to}
+                                    <rect
+                                        x={Math.max(0, cx - colWidth / 2)}
+                                        y={geo.y(yMax)}
+                                        width={Math.min(geo.width, cx + colWidth / 2) - Math.max(0, cx - colWidth / 2)}
+                                        height={geo.y(0) - geo.y(yMax)}
+                                        fill="var(--color-primary-foreground)"
+                                        fill-opacity={rangeEndpoint ? 0.22 : 0.12}
+                                        stroke="var(--color-primary-foreground)"
+                                        stroke-width={rangeEndpoint ? 3 : 1}
+                                        stroke-opacity={rangeEndpoint ? 1 : 0.65}
+                                        class="pointer-events-none"
+                                    />
+                                {/if}
                                 <!-- Highlight column background on hover -->
                                 {#if graphHoverIndex === i}
                                     <rect
@@ -414,7 +459,9 @@
                                     fill={color}
                                     class="transition-opacity duration-150 cursor-pointer"
                                     opacity={graphHoverIndex === null || graphHoverIndex === i ? 1.0 : 0.45}
-                                />
+                                >
+                                    <title>Problem {item.entry.problem.n + 1}: {formatElapsed(recordedTime(item.entry.elapsedMs))}</title>
+                                </rect>
                                 
                                 <!-- X Axis label -->
                                 {#if i % labelInterval === 0}
@@ -432,6 +479,13 @@
                         {/snippet}
                     </Graph>
                 </div>
+                {#if timeRange}
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono text-muted-foreground" aria-label="Recorded times for selected problems">
+                        {#each history.slice(timeRange.from, timeRange.to + 1) as entry (entry.problem.id)}
+                            <span>#{entry.problem.n + 1}: <span class="text-foreground">{formatElapsed(recordedTime(entry.elapsedMs))}</span></span>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         {/if}
 
@@ -687,3 +741,8 @@
         </div>
     </div>
 {/if}
+
+<style>
+    /* Graph defaults to touch-none for interactive charts. Review must allow page scrolling. */
+    .test-time-graph :global(svg) { touch-action: auto; }
+</style>

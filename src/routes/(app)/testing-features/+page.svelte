@@ -48,6 +48,12 @@
             href: "testing-features/range-slider",
         },
         {
+            icon: "schedule",
+            name: "Test Time Range",
+            description: "Consecutive problem times in test review.",
+            href: "testing-features/test-time-range",
+        },
+        {
             icon: "toggle_on",
             name: "Toggle & Switch",
             description: "Accessible toggle button and switch components.",
