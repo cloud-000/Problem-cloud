@@ -4,12 +4,6 @@ import {
     loadWelcomeProblems,
 } from "./welcome-trainer";
 
-type SeriesEmbed = {
-    id: number;
-    name: string;
-    tests: { count: number }[] | null;
-};
-
 /** The corpus is the page's strongest claim, so it is measured rather than
  *  asserted: these figures come from the database on every render and stay
  *  true as content syncs land. Both tables are world-readable (see the
@@ -24,18 +18,12 @@ export const load: PageLoad = async ({ parent }) => {
         supabase.from("problems").select("id", { count: "exact", head: true }),
         supabase
             .from("series")
-            .select("id, name, tests(count)")
+            .select("id, name")
             .order("name"),
         loadWelcomeProblems(supabase, WELCOME_PREFERRED_SERIES),
     ]);
 
-    const seriesRows = series.error
-        ? []
-        : (series.data as unknown as SeriesEmbed[]).map((row) => ({
-              id: row.id,
-              name: row.name,
-              testCount: row.tests?.[0]?.count ?? 0,
-          }));
+    const seriesRows = series.error ? [] : (series.data ?? []);
     let welcomeProblems = preferredWelcomeProblems;
     if (welcomeProblems.length === 0) {
         welcomeProblems = await loadWelcomeProblems(supabase, null);

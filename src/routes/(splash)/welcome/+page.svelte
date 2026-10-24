@@ -5,6 +5,9 @@
     import { cn } from "#lib/utils.js";
     import { markGuestSeenAppShell } from "#lib/guest-app-shell.js";
     import { prefersReducedMotion } from "svelte/motion";
+    import { fade } from "svelte/transition";
+    import { untrack } from "svelte";
+    import { initialFeaturedContest, nextFeaturedContest } from "./welcome-featured";
     import WelcomeFilters from "./WelcomeFilters.svelte";
     import WelcomeTrainer from "./WelcomeTrainer.svelte";
 
@@ -91,35 +94,47 @@
 
     type SeriesChip = (typeof data.series)[number];
 
-    function contestRows(series: SeriesChip[]): SeriesChip[][] {
-        const rows: SeriesChip[][] = [[], [], []];
-        for (let i = 0; i < series.length; i++) {
-            const item = series[i];
-            if (item) rows[i % 3]?.push(item);
-        }
-        return rows.map((row, i) => fillRow(row, series, 6 + i));
+    function isFeaturedContest(name: string): boolean {
+        return /mathcounts|purple\s*comet|mandelbrot/i.test(name);
     }
 
-    /** A short row still has to fill the ticker; repeat from the full list
-     *  rather than stretching three names across the viewport. */
-    function fillRow(
-        row: SeriesChip[],
-        all: SeriesChip[],
-        min: number,
-    ): SeriesChip[] {
-        const source = row.length > 0 ? row : all;
-        if (source.length === 0) return [];
-        const filled = [...source];
-        let i = 0;
-        while (filled.length < min) {
-            const next = source[i % source.length];
-            if (next) filled.push(next);
-            i += 1;
+    function setTickerSpeed(event: PointerEvent, speed: number) {
+        if (event.pointerType === "touch") return;
+        const track = event.currentTarget as HTMLDivElement;
+        for (const animation of track.getAnimations()) {
+            // Change speed without resetting the row's position in its loop.
+            animation.updatePlaybackRate(speed);
         }
-        return filled;
+    }
+
+    function contestRows(series: SeriesChip[]): SeriesChip[][] {
+        if (!series.length) return [];
+        return Array.from({ length: 5 }, (_, i) => {
+            // Each row visits the whole catalog before repeating. Stagger
+            // the starting points so neighboring rows show different names.
+            const offset = Math.floor((i * series.length) / 5);
+            const ordered = [...series.slice(offset), ...series.slice(0, offset)];
+            // Repeat only complete passes, preserving variety at the seam.
+            return Array.from(
+                { length: Math.ceil(16 / series.length) },
+                () => ordered,
+            ).flat();
+        });
     }
 
     let rows = $derived(contestRows(data.series));
+    let featuredContest = $state(untrack(() => initialFeaturedContest(data.series.map((series) => series.name))));
+
+    $effect(() => {
+        const names = data.series.map((series) => series.name);
+        const reducedMotion = motion === 0;
+        featuredContest = initialFeaturedContest(names);
+        if (reducedMotion || names.length < 2) return;
+        const timer = setInterval(() => {
+            featuredContest = nextFeaturedContest(names, featuredContest);
+        }, 4000);
+        return () => clearInterval(timer);
+    });
 </script>
 
 <svelte:head>
@@ -132,78 +147,129 @@
     />
 </svelte:head>
 
-<div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm pt-lg sm:px-md sm:pt-xl md:px-xl">
-    <!-- Hero -->
-    <section
-        class={cn(
-            "grid min-w-0 items-center gap-lg pb-lg sm:gap-xl sm:pb-xl lg:pb-[3.5rem]",
-            data.problems.length > 0 &&
-                "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]",
-        )}
-    >
-        <div class="rise min-w-0">
-            <p class="type-caption text-muted-foreground mb-sm">
-                Contest math.
-            </p>
-            <h1 class="type-hero text-foreground text-balance">
-                <span class="block">Every problem in one place.</span>
-                <span class="text-primary-foreground block">With free AI.</span>
-            </h1>
-
-            <div class="mt-lg flex flex-wrap items-center gap-sm">
-                <Button
-                    href={signedIn ? "/" : "/auth/signup"}
-                    size="lg"
-                    class="px-lg"
-                    id="hero-get-started-btn"
+<div class="hero relative isolate overflow-hidden">
+    {#if data.series.length}
+        <div class="hero-contests ticker" class:paused={motion === 0} aria-hidden="true">
+            {#each rows as row, i (i)}
+                <div
+                    class="ticker-track"
+                    role="presentation"
+                    class:reverse={i % 2 === 1}
+                    onpointerenter={(event) => setTickerSpeed(event, 0.2)}
+                    onpointerleave={(event) => setTickerSpeed(event, 1)}
+                    style:--ticker-duration="{80 + i * 8}s"
                 >
-                    {signedIn ? "Go!" : "Start practicing"}
-                </Button>
-                {#if signedIn}
+                    {#each [0, 1] as copy (copy)}
+                        <ul class="flex shrink-0 gap-3">
+                            {#each row as series, j (`${i}-${copy}-${j}-${series.id}`)}
+                                <li
+                                    class={cn(
+                                        "contest-chip shrink-0 rounded-lg border px-5 py-3 text-base whitespace-nowrap sm:text-lg",
+                                        isFeaturedContest(series.name)
+                                            ? "border-primary/50 bg-primary/15 text-primary-foreground font-semibold"
+                                            : "border-border/70 bg-surface-container-lowest text-muted-foreground",
+                                    )}
+                                    class:featured={isFeaturedContest(series.name)}
+                                >
+                                    {series.name}
+                                </li>
+                            {/each}
+                        </ul>
+                    {/each}
+                </div>
+            {/each}
+        </div>
+    {/if}
+    <div class="hero-content relative mx-auto w-full min-w-0 max-w-[1040px] px-sm sm:px-md md:px-xl">
+        <!-- Hero -->
+        <section
+            class={cn(
+                "grid min-w-0 items-center gap-lg sm:gap-xl",
+                data.problems.length > 0 &&
+                    "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]",
+            )}
+        >
+            <div class="rise min-w-0">
+                <p class="type-caption text-muted-foreground mb-sm">
+                    Contest math.
+                </p>
+                <h1 class="type-hero text-foreground text-balance">
+                    <span class="block">Every problem in one place.</span>
+                    <span class="text-primary-foreground block">With free AI.</span>
+                </h1>
+                <p class="type-secondary text-muted-foreground mt-md flex items-baseline gap-1.5">
+                    Featuring
+                    <span class="featured-name text-primary-foreground min-w-0 font-semibold">
+                        <!-- Reserve the largest name's footprint throughout the rotation. -->
+                        {#each data.series as series (series.id)}
+                            <span class="invisible" aria-hidden="true">{series.name}</span>
+                        {/each}
+                        {#key featuredContest.name}
+                            <span transition:fade={{ duration: 220 * motion }}>
+                                {featuredContest.name}
+                            </span>
+                        {/key}
+                    </span>
+                </p>
+
+                <div class="mt-lg flex flex-wrap items-center gap-sm">
                     <Button
-                        href="/library"
-                        variant="ghost"
-                        size="lg"
-                        class="text-muted-foreground hover:text-foreground px-md"
-                        id="hero-explore-btn"
-                    >
-                        Browse the library
-                        <Icon name="arrow_forward" fontsize="18px" />
-                    </Button>
-                {:else}
-                    <Button
-                        href="/practice"
-                        variant="outline"
+                        href={signedIn ? "/" : "/auth/signup"}
                         size="lg"
                         class="px-lg"
-                        id="hero-guest-practice-btn"
-                        onclick={markGuestSeenAppShell}
+                        id="hero-get-started-btn"
                     >
-                        Practice as a guest
+                        {signedIn ? "Go!" : "Start practicing"}
                     </Button>
+                    {#if signedIn}
+                        <Button
+                            href="/library"
+                            variant="ghost"
+                            size="lg"
+                            class="text-muted-foreground hover:text-foreground px-md"
+                            id="hero-explore-btn"
+                        >
+                            Browse the library
+                            <Icon name="arrow_forward" fontsize="18px" />
+                        </Button>
+                    {:else}
+                        <Button
+                            href="/practice"
+                            variant="outline"
+                            size="lg"
+                            class="px-lg"
+                            id="hero-guest-practice-btn"
+                            onclick={markGuestSeenAppShell}
+                        >
+                            Practice as a guest
+                        </Button>
+                    {/if}
+                </div>
+
+                {#if problemLabel}
+                    <p class="mt-lg flex flex-wrap items-baseline gap-x-sm gap-y-1">
+                        <span
+                            class="type-display text-foreground font-mono tabular-nums"
+                            >{problemLabel}</span
+                        >
+                        <span class="type-secondary text-muted-foreground"
+                            >problems</span
+                        >
+                    </p>
                 {/if}
             </div>
 
-            {#if problemLabel}
-                <p class="mt-lg flex flex-wrap items-baseline gap-x-sm gap-y-1">
-                    <span
-                        class="type-display text-foreground font-mono tabular-nums"
-                        >{problemLabel}</span
-                    >
-                    <span class="type-secondary text-muted-foreground"
-                        >problems</span
-                    >
-                </p>
+            {#if data.problems.length}
+                <div class="rise rise-late min-w-0 w-full">
+                    <WelcomeTrainer problems={data.problems} />
+                </div>
             {/if}
-        </div>
+        </section>
 
-        {#if data.problems.length}
-            <div class="rise rise-late min-w-0 w-full">
-                <WelcomeTrainer problems={data.problems} />
-            </div>
-        {/if}
-    </section>
+    </div>
+</div>
 
+<div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm sm:px-md md:px-xl">
     <section class="pb-xl" aria-labelledby="tools-heading">
         <h2
             id="tools-heading"
@@ -318,80 +384,6 @@
     </section>
 </div>
 
-{#if data.series.length}
-    <section
-        class="border-border/60 border-y py-md"
-        aria-labelledby="contests-heading"
-    >
-        <div
-            class="mx-auto w-full max-w-[1040px] px-sm sm:px-md md:px-xl"
-        >
-            <h2
-                id="contests-heading"
-                class="type-section-title text-foreground text-balance"
-            >
-                Complete contests.
-            </h2>
-        </div>
-
-        <ul class="sr-only">
-            {#each data.series as series (series.id)}
-                <li>{series.name}</li>
-            {/each}
-        </ul>
-
-        <div
-            class="ticker mx-auto mt-md w-full max-w-[1040px]"
-            class:paused={motion === 0}
-            aria-hidden="true"
-        >
-            {#if motion === 0}
-                <ul
-                    class="flex flex-wrap gap-2 px-sm sm:px-md md:px-xl"
-                >
-                    {#each data.series as series (series.id)}
-                        <li
-                            class="border-border/70 bg-surface-container-lowest type-caption text-foreground rounded-md border px-3 py-1.5"
-                        >
-                            {series.name}
-                        </li>
-                    {/each}
-                </ul>
-            {:else}
-                <div class="flex flex-col gap-2 overflow-hidden py-0.5">
-                    {#each rows as row, i (i)}
-                        <div
-                            class="ticker-track"
-                            class:reverse={i % 2 === 1}
-                            style:--ticker-duration="{28 + i * 6}s"
-                        >
-                            {#each [0, 1] as copy (copy)}
-                                <ul class="flex shrink-0 gap-2">
-                                    {#each row as series, j (`${i}-${copy}-${j}-${series.id}`)}
-                                        <li
-                                            class="border-border/70 bg-surface-container-lowest type-caption text-foreground shrink-0 rounded-md border px-3 py-1.5 whitespace-nowrap"
-                                        >
-                                            {series.name}
-                                            {#if series.testCount > 0}
-                                                <span
-                                                    class="text-muted-foreground tabular-nums"
-                                                >
-                                                    · {number.format(
-                                                        series.testCount,
-                                                    )}
-                                                </span>
-                                            {/if}
-                                        </li>
-                                    {/each}
-                                </ul>
-                            {/each}
-                        </div>
-                    {/each}
-                </div>
-            {/if}
-        </div>
-    </section>
-{/if}
 
 <div class="mx-auto w-full min-w-0 max-w-[1040px] px-sm pb-xl sm:px-md md:px-xl">
     <section aria-labelledby="filters-heading" class="pt-xl pb-xl">
@@ -408,6 +400,19 @@
             <WelcomeFilters />
         </figure>
     </section>
+
+    {#if data.series.length}
+        <section class="border-border/60 border-t py-xl" aria-labelledby="contests-heading">
+            <h2 id="contests-heading" class="type-display text-foreground">
+                Complete contests.
+            </h2>
+            <ul class="mt-lg grid gap-x-lg gap-y-sm sm:grid-cols-2 lg:grid-cols-3">
+                {#each data.series as series (series.id)}
+                    <li class="type-secondary text-muted-foreground">{series.name}</li>
+                {/each}
+            </ul>
+        </section>
+    {/if}
 
     <section class="border-border/60 border-t py-xl">
         <h2 class="type-section-title text-foreground">Common questions</h2>
@@ -504,8 +509,51 @@
         animation-delay: 90ms;
     }
 
+    .featured-name {
+        display: inline-grid;
+    }
+
+    .featured-name > span {
+        grid-area: 1 / 1;
+    }
+
+    .hero-content {
+        pointer-events: none;
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
+
+    .hero-content > section > div {
+        pointer-events: auto;
+    }
+
+    .hero-contests {
+        position: absolute;
+        z-index: -1;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        gap: 1rem;
+        user-select: none;
+    }
+
+    /* Soften only the reading area; the rows remain visible behind the hero. */
+    .hero::after {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(
+            ellipse at 40% 50%,
+            color-mix(in srgb, var(--color-background) 94%, transparent),
+            color-mix(in srgb, var(--color-background) 75%, transparent) 40%,
+            transparent 80%
+        );
+    }
+
     .ticker {
-        position: relative;
         overflow: hidden;
         overscroll-behavior: none;
         mask-image: linear-gradient(
@@ -524,25 +572,34 @@
         );
     }
 
-    .paused {
-        mask-image: none;
-        -webkit-mask-image: none;
-    }
-
     .ticker-track {
         display: flex;
         width: max-content;
-        gap: 0.5rem;
+        gap: 0.75rem;
         animation: ticker var(--ticker-duration, 32s) linear infinite;
         will-change: transform;
     }
 
-    .ticker-track.reverse {
-        animation-direction: reverse;
+    .contest-chip {
+        opacity: 0.5;
+        transition: opacity 180ms ease, background-color 180ms ease,
+            border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
     }
 
-    .ticker:hover .ticker-track {
-        animation-play-state: paused;
+    .contest-chip.featured {
+        opacity: 0.8;
+    }
+
+    .contest-chip:hover {
+        opacity: 1;
+        color: var(--color-primary-foreground);
+        background-color: color-mix(in srgb, var(--color-primary) 20%, var(--color-background));
+        border-color: var(--color-primary);
+        box-shadow: inset 0 0 0 1px var(--color-primary);
+    }
+
+    .ticker-track.reverse {
+        animation-direction: reverse;
     }
 
     .paused .ticker-track {
@@ -554,7 +611,7 @@
             transform: translateX(0);
         }
         to {
-            transform: translateX(-50%);
+            transform: translateX(calc(-50% - 0.375rem));
         }
     }
 
@@ -563,7 +620,8 @@
             animation: none;
         }
 
-        .faq :global(.chevron) {
+        .faq :global(.chevron),
+        .contest-chip {
             transition: none;
         }
 
