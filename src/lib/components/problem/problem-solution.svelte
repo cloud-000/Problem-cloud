@@ -81,7 +81,7 @@
     <div class={cn("mx-auto w-full max-w-4xl shrink-0", className)}>
         <button
             type="button"
-            class="flex w-full items-center gap-1.5 border-t border-border/50 pt-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            class="flex w-full select-none items-center gap-1.5 border-t border-border/50 pt-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             aria-expanded={expanded}
             onclick={() => (expanded = !expanded)}
         >
@@ -100,7 +100,7 @@
                         {#if useDropdown}
                             <DropdownMenu options={dropdownOptions}>
                                 <span
-                                    class="inline-flex items-center gap-1 rounded-md border border-border/60 bg-surface-container-low px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-surface-container"
+                                    class="inline-flex select-none items-center gap-1 rounded-md border border-border/60 bg-surface-container-low px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-surface-container"
                                 >
                                     Solution {selected + 1}
                                     <Icon
@@ -117,7 +117,7 @@
                                     aria-label={`Solution ${i + 1}`}
                                     aria-pressed={selected === i}
                                     class={cn(
-                                        "size-7 rounded-md text-xs font-semibold tabular-nums transition-colors",
+                                        "size-7 select-none rounded-md text-xs font-semibold tabular-nums transition-colors",
                                         selected === i
                                             ? "bg-primary/10 text-primary"
                                             : "text-muted-foreground hover:bg-muted hover:text-foreground",

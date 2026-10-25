@@ -159,7 +159,7 @@
         {/if}
     </div>
 
-    {#if view.mode === "answering" && coachAvailable}
+    {#if coachAvailable}
         <Button
             variant="outline"
             aria-pressed={coachMode}
