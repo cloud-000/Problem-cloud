@@ -277,21 +277,38 @@
             <span
                 transition:fade={{ duration: 150 }}
                 class={cn(
-                    "type-caption text-muted-foreground",
+                    "type-caption whitespace-nowrap text-muted-foreground",
                     correct === true && "text-correct",
                     correct === false && "text-destructive",
                 )}
             >
-                {correct === true ? "Correct" : correct === false ? "Incorrect" : "Recorded"}{#if playerRating && ratingDelta !== null}
-                    <span class="font-mono tabular-nums text-muted-foreground">
-                        · Rating {Math.round(playerRating.rating)} ({ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)})
+                {#if playerRating && ratingDelta !== null}
+                    <span class="hidden sm:inline">
+                        {correct === true ? "Correct" : correct === false ? "Incorrect" : "Recorded"}
+                        <span class="font-mono tabular-nums text-muted-foreground">
+                            · Rating {Math.round(playerRating.rating)}
+                        </span>
                     </span>
+                    <span
+                        class={cn(
+                            "inline-flex items-center font-mono tabular-nums text-xs font-semibold px-2 py-0.5 rounded-full border sm:border-0 sm:p-0 sm:font-normal sm:text-muted-foreground",
+                            ratingDelta > 0 && "border-correct/30 bg-correct/10 text-correct sm:bg-transparent",
+                            ratingDelta < 0 && "border-destructive/30 bg-destructive/10 text-destructive sm:bg-transparent",
+                            ratingDelta === 0 && "border-border bg-muted text-muted-foreground sm:bg-transparent",
+                        )}
+                        title={`Rating ${Math.round(playerRating.rating)} (${ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)})`}
+                    >
+                        <span class="sm:hidden">{ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)}</span>
+                        <span class="hidden sm:inline">({ratingDelta >= 0 ? "+" : ""}{Math.round(ratingDelta)})</span>
+                    </span>
+                {:else}
+                    {correct === true ? "Correct" : correct === false ? "Incorrect" : "Recorded"}
                 {/if}
             </span>
             <Button
                 variant="primary"
                 onclick={onLoadProblem}
-                class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg"
+                class="text-xs font-semibold px-4 py-2 h-9 gap-1.5 rounded-lg shrink-0"
             >
                 Next
                 <Icon name="arrow_forward" />
@@ -299,7 +316,7 @@
         {:else}
             {#if isLatest && hasAnswer && triesUsed > 0 && triesPerProblem > 1}
                 <span
-                    class="text-[11px] text-muted-foreground tabular-nums"
+                    class="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap"
                     title="Attempts remaining on this problem"
                 >
                     {triesRemaining}
@@ -311,7 +328,7 @@
                 variant="primary"
                 disabled={cannotSubmit}
                 onclick={onSubmitAnswer}
-                class="text-xs font-semibold px-4 py-2 h-9 rounded-lg"
+                class="text-xs font-semibold px-4 py-2 h-9 rounded-lg shrink-0"
             >
                 Submit
             </Button>
