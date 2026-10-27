@@ -4,7 +4,7 @@
     import { type VariantProps, tv } from "tailwind-variants";
 
     export const switchVariants = tv({
-        base: "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input/40 dark:bg-input/20 data-[state=checked]:bg-primary-foreground/90 outline-none",
+        base: "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input/60 dark:bg-surface-container-highest data-[state=checked]:bg-primary-foreground/90 outline-none",
         variants: {
             size: {
                 default: "h-6 w-11",
@@ -18,7 +18,7 @@
     });
 
     export const thumbVariants = tv({
-        base: "pointer-events-none block rounded-full bg-surface-container-lowest shadow-lg ring-0 transition-transform duration-200 ease-out data-[state=checked]:translate-x-5",
+        base: "pointer-events-none block rounded-full bg-white dark:bg-slate-100 shadow-md ring-0 transition-transform duration-200 ease-out data-[state=checked]:translate-x-5",
         variants: {
             size: {
                 default: "size-5 data-[state=checked]:translate-x-5",

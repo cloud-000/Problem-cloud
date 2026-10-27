@@ -14,7 +14,7 @@
                 lg: "h-7 w-18",
             },
             state: {
-                off: "bg-input/40 dark:bg-input/20",
+                off: "bg-input/60 dark:bg-surface-container-highest",
                 neutral: "bg-secondary/60 dark:bg-secondary/40",
                 on: "bg-primary-foreground/90",
             }
@@ -25,7 +25,7 @@
     });
 
     export const triStateThumbVariants = tv({
-        base: "pointer-events-none block rounded-full bg-surface-container-lowest shadow-lg ring-0 transition-transform duration-200 ease-out",
+        base: "pointer-events-none block rounded-full bg-white dark:bg-slate-100 shadow-md ring-0 transition-transform duration-200 ease-out",
         variants: {
             size: {
                 default: "size-5",
@@ -105,15 +105,15 @@
         class={cn(triStateThumbVariants({ size, state: value }), "flex items-center justify-center transition-colors")}
     >
         {#if value === "off"}
-            <svg class="size-2.5 opacity-40 text-muted-foreground" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <svg class="size-2.5 text-slate-400 dark:text-slate-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <circle cx="5" cy="5" r="3" />
             </svg>
         {:else if value === "neutral"}
-            <svg class="size-2.5 text-secondary-container" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <svg class="size-2.5 text-slate-700 dark:text-slate-700" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <line x1="2" y1="5" x2="8" y2="5" />
             </svg>
         {:else if value === "on"}
-            <svg class="size-2.5 text-primary-foreground" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="size-2.5 text-primary-foreground dark:text-blue-600" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 5.5 L4.5 8 L8 3" />
             </svg>
         {/if}
