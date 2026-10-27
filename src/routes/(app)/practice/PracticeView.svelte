@@ -42,7 +42,7 @@
       segmentRange,
    } from "#lib/segment-timing.js";
    import { type PracticeSessionRow } from "#lib/sessions.js";
-   import { cn, formatProblemText } from "#lib/utils.js";
+   import { cn, formatProblemText, isMultipleChoice } from "#lib/utils.js";
    import { answersMatch } from "#lib/utils/answer-matcher.js";
    import {
       hasComparableAnswer,
@@ -68,10 +68,11 @@
    import type { AIChatQuickAction } from "#lib/components/ai-chat/index.js";
    import { shell } from "#lib/state/shell.svelte.js";
    import { CoachContextRegister, CoachInline } from "#lib/components/coach/index.js";
+   import LaTeX from "#lib/components/LaTeX.svelte";
    import HintRail from "./HintRail.svelte";
    import ProblemReportModal from "./ProblemReportModal.svelte";
    import { onDestroy, onMount, untrack } from "svelte";
-   import { SvelteMap } from "svelte/reactivity";
+   import { MediaQuery, SvelteMap } from "svelte/reactivity";
    import { fade } from "svelte/transition";
    import SettingsPanel from "./SettingsPanel.svelte";
    import PauseOverlay from "./PauseOverlay.svelte";
@@ -889,6 +890,8 @@
     * turn straight after must await it, or its turn lands in a second thread for the
     * same anchor (see `takeHint`).
     */
+   const mobileQuery = new MediaQuery("(max-width: 767px)", false);
+
    function setCoachMode(enabled: boolean): Promise<void> {
       if (!problem || !coachModeAvailable) return Promise.resolve();
       coachModeProblemId = enabled ? problem.id : null;
@@ -904,7 +907,9 @@
          trainerAnchorWork(coachAnchor),
       );
       void coach.initialize();
-      queueMicrotask(() => coachComposer?.focus());
+      if (!mobileQuery.current) {
+         queueMicrotask(() => coachComposer?.focus());
+      }
       return opening;
    }
 
@@ -918,7 +923,20 @@
    // to make room for a transcript that has nothing in it. The statement gives up
    // its height at the moment the transcript earns it — which is the student's own
    // send, so the movement reads as consequence rather than as a jolt.
-   let coachExpanded = $derived(coachMode && coach.messages.length > 0);
+   let coachExpanded = $derived(
+      coachMode && (coach.messages.length > 0 || coach.historyViewOpen),
+   );
+   let coachStatementCollapsed = $state(false);
+
+   $effect(() => {
+      // Whenever problem changes, reset collapsed state
+      void problem?.id;
+      coachStatementCollapsed = false;
+   });
+
+   let hasEmbeddedChoices = $derived(
+      /\s*\$?\s*\\textbf\{\(A\)\}/.test(problem?.statement ?? "")
+   );
 
    // The problem region's full height, so the statement shelf can be given an
    // explicit px height in *both* states. Interpolating `flex-1` against a
@@ -935,10 +953,12 @@
    const STATEMENT_STACK_GAP_PX = 20;
    const MIN_STATEMENT_SHELF_PX = 48;
    const MIN_COACH_TRANSCRIPT_PX = 96;
+   const STATEMENT_SHELF_OVERHEAD_PX = 80;
    let problemRegionHeight = $state(0);
    let answerBoxHeight = $state(0);
    let coachCompactHeight = $state(0);
    let coachChromeHeight = $state(0);
+   let statementContentHeight = $state(0);
    let emptyCoachFootprint = $derived(
       answerBoxHeight > 0
          ? Math.min(
@@ -949,9 +969,12 @@
    );
    // Reserve readable transcript space after the measured controls. A viewport-only
    // shelf cap can otherwise leave just a few pixels of reply above the composer.
+   // When coachExpanded, size to content if short, or allow collapsing to MIN_STATEMENT_SHELF_PX.
    let statementShelfHeight = $derived(
       coachExpanded
-         ? `min(42dvh, 22rem, ${Math.max(MIN_STATEMENT_SHELF_PX, problemRegionHeight - coachChromeHeight - MIN_COACH_TRANSCRIPT_PX)}px)`
+         ? coachStatementCollapsed
+            ? `${MIN_STATEMENT_SHELF_PX}px`
+            : `min(${statementContentHeight > 0 ? `${statementContentHeight + STATEMENT_SHELF_OVERHEAD_PX}px` : "22rem"}, 42dvh, 22rem, ${Math.max(MIN_STATEMENT_SHELF_PX, problemRegionHeight - coachChromeHeight - MIN_COACH_TRANSCRIPT_PX)}px)`
          : problemRegionHeight > 0
            ? `${Math.max(
                 0,
@@ -2295,6 +2318,7 @@
                        mobile portrait. -->
                   <!-- Preserve each section's natural height so overflow belongs
                        to this shelf rather than shrinking the answer/solutions. -->
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                   <div
                      style="height: {statementShelfHeight};"
                      class={cn(
@@ -2302,7 +2326,13 @@
                         coachExpanded
                            ? "overscroll-contain border-b border-border/60 pb-4"
                            : "pb-6",
+                        coachExpanded && coachStatementCollapsed && "cursor-pointer overflow-hidden pb-0",
                      )}
+                     onclick={() => {
+                        if (coachExpanded && coachStatementCollapsed) {
+                           coachStatementCollapsed = false;
+                        }
+                     }}
                   >
                      <!-- Metadata row: source/series/topic on the left, review status on the right -->
                      {#key problem.id}
@@ -2350,7 +2380,10 @@
                           changing the shelf's height, which is animated, so
                           centred content glides with it instead of teleporting.
                           Do not reintroduce an alignment swap here. -->
-                     <div class="my-auto flex min-h-fit w-full flex-none items-start justify-center">
+                     <div
+                        bind:clientHeight={statementContentHeight}
+                        class="my-auto flex min-h-fit w-full flex-none flex-col items-center justify-center"
+                     >
                         {#if debugMode && showRawLatex && !focusModeActive}
                            <!-- The interpolation butts against both tags on
                                 purpose: `<pre>` preserves whitespace, so laying
@@ -2364,10 +2397,21 @@
                            <MathStatement
                               text={formatProblemText(
                                  problem.statement ?? "",
-                                 isProblemMcq,
+                                 isProblemMcq && !coachMode,
                               )}
                               class="type-problem w-full max-w-[48rem] py-4 text-left font-serif text-foreground"
                            />
+                        {/if}
+
+                        {#if coachMode && isProblemMcq && isMultipleChoice(problem.choices) && !hasEmbeddedChoices}
+                           <div class="grid w-full max-w-[48rem] grid-cols-1 gap-2 pt-2 sm:grid-cols-2 text-sm text-foreground">
+                              {#each problem.choices as choice, i}
+                                 <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-surface-container/30 px-3 py-1.5">
+                                    <span class="font-semibold text-muted-foreground">{String.fromCharCode(65 + i)}.</span>
+                                    <span class="min-w-0 flex-1"><LaTeX>${choice}$</LaTeX></span>
+                                 </div>
+                              {/each}
+                           </div>
                         {/if}
                      </div>
                      {#if !coachMode}
@@ -2504,6 +2548,9 @@
                            onQuickAction={selectCoachQuickAction}
                            bind:composerRef={coachComposer}
                            bind:chromeHeight={coachChromeHeight}
+                           statementCollapsed={coachStatementCollapsed}
+                           onToggleStatement={() => (coachStatementCollapsed = !coachStatementCollapsed)}
+                           onClose={() => void setCoachMode(false)}
                         />
                      </div>
                   {/if}

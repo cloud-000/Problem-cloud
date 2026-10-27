@@ -23,6 +23,10 @@
         /** Space used by context, offers, and the composer, excluding the transcript. */
         chromeHeight?: number;
         class?: string;
+        /** Problem statement collapse state in the trainer. */
+        statementCollapsed?: boolean;
+        onToggleStatement?: () => void;
+        onClose?: () => void;
     }
 </script>
 
@@ -35,10 +39,13 @@
         AIChatMessageList,
         AIChatQuickActions,
     } from "#lib/components/ai-chat/index.js";
+    import { Button } from "#lib/components/button/index.js";
+    import { Icon } from "#lib/components/icon/index.js";
     import { coach } from "#lib/state/coach.svelte.js";
     import { cn } from "#lib/utils.js";
     import CoachConnectionGate from "./coach-connection-gate.svelte";
     import CoachContextTray from "./coach-context-tray.svelte";
+    import CoachConversationList from "./coach-conversation-list.svelte";
     import CoachDebugToggle from "./coach-debug-toggle.svelte";
     import CoachRequestInspector from "./coach-request-inspector.svelte";
     import CoachResumePrompt from "./coach-resume-prompt.svelte";
@@ -50,6 +57,9 @@
         composerRef = $bindable(null),
         chromeHeight = $bindable(0),
         class: className,
+        statementCollapsed = false,
+        onToggleStatement,
+        onClose,
     }: CoachInlineProps = $props();
 
     // Mirrors AIChat: the composer floats over the transcript, and its measured
@@ -61,7 +71,7 @@
     const mobileQuery = new MediaQuery("(max-width: 767px)", false);
 
     $effect(() => {
-        chromeHeight = compact ? 0 : headerHeight + composerHeight;
+        chromeHeight = compact || coach.historyViewOpen ? 0 : headerHeight + composerHeight;
     });
 
     // The section runs full-bleed so the transcript's scrollbar sits on the
@@ -82,7 +92,7 @@
         compact ? "h-auto" : "h-full",
         className,
     )}
-    style="--ai-chat-composer-h: {compact ? 0 : composerHeight}px;"
+    style="--ai-chat-composer-h: {compact || coach.historyViewOpen ? 0 : composerHeight}px;"
     aria-label="Coach mode"
 >
     {#if coach.loading && !coach.initialized}
@@ -103,6 +113,69 @@
     {:else}
         <div bind:clientHeight={headerHeight} class="shrink-0">
             {#if !compact}
+                <!-- Inline Coach toolbar with statement toggle, new conversation, history, and exit -->
+                <div class="flex h-11 shrink-0 items-center justify-between border-b border-border/40 px-3 sm:px-4 bg-surface-container/20">
+                    <div class="flex items-center gap-2">
+                        <div class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <Icon name="auto_awesome" fontsize={15} fill />
+                        </div>
+                        <span class="text-xs font-semibold tracking-tight text-foreground">Coach</span>
+                    </div>
+
+                    <div class="flex items-center gap-1 [&_button]:size-8">
+                        {#if onToggleStatement}
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onclick={onToggleStatement}
+                                aria-label={statementCollapsed ? "Show problem statement" : "Collapse problem statement"}
+                                title={statementCollapsed ? "Show problem statement" : "Collapse problem statement"}
+                            >
+                                <Icon name={statementCollapsed ? "expand_more" : "expand_less"} fontsize={16} />
+                            </Button>
+                        {/if}
+
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onclick={() => coach.newConversation()}
+                            aria-label="New conversation"
+                            title="New conversation"
+                            disabled={coach.streaming}
+                        >
+                            <Icon name="add_comment" fontsize={16} />
+                        </Button>
+
+                        {#if coach.historyEnabled}
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onclick={() => coach.historyViewOpen
+                                    ? coach.closeConversationList()
+                                    : coach.openConversationList()}
+                                aria-label="Conversation history"
+                                aria-expanded={coach.historyViewOpen}
+                                class={coach.historyViewOpen ? "bg-surface-container text-foreground" : undefined}
+                                title="Conversation history"
+                            >
+                                <Icon name="history" fontsize={16} />
+                            </Button>
+                        {/if}
+
+                        {#if onClose}
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onclick={onClose}
+                                aria-label="Return to answer mode"
+                                title="Return to answer mode"
+                            >
+                                <Icon name="close" fontsize={16} />
+                            </Button>
+                        {/if}
+                    </div>
+                </div>
+
                 <div class={cn(rail, "shrink-0")}>
                     <CoachContextTray />
                     <CoachDebugToggle />
@@ -117,10 +190,13 @@
                 </div>
             {/if}
         </div>
-        <!-- Compact mode renders neither transcript nor empty state: the composer
-             and its hint chips already say what this box is for, and a full-height
-             welcome panel is exactly the relayout compact mode exists to avoid. -->
-        {#if !compact && coach.messages.length === 0}
+
+        {#if !compact && coach.historyViewOpen}
+            <!-- Replaces transcript and composer in trainer inline view when history is open -->
+            <div class={cn("min-h-0 flex-1 overflow-hidden", rail)}>
+                <CoachConversationList class="h-full min-h-0" />
+            </div>
+        {:else if !compact && coach.messages.length === 0}
             <AIChatEmptyState
                 controller={coach}
                 title="Work through this problem"
@@ -136,36 +212,39 @@
                 contentClass={rail}
             />
         {/if}
-        <!-- Floating over the transcript when there is one; the box's own last row
-             when there is not. `absolute` would collapse the compact section to
-             nothing, since an out-of-flow child contributes no height. -->
-        <div
-            bind:clientHeight={composerHeight}
-            class={cn(
-                "z-10 mx-auto w-full max-w-[52rem]",
-                compact
-                    ? "shrink-0"
-                    : "pointer-events-none absolute inset-x-0 bottom-0 bg-background md:bg-transparent",
-            )}
-        >
-            <AIChatQuickActions
-                actions={quickActions}
-                layout="row"
-                disabled={coach.streaming}
+
+        {#if !coach.historyViewOpen}
+            <!-- Floating over the transcript when there is one; the box's own last row
+                 when there is not. `absolute` would collapse the compact section to
+                 nothing, since an out-of-flow child contributes no height. -->
+            <div
+                bind:clientHeight={composerHeight}
                 class={cn(
-                    "pointer-events-auto px-3 sm:px-4",
-                    compact ? "pb-0 pt-1" : "pb-1 pt-2",
+                    "z-10 mx-auto w-full max-w-[52rem]",
+                    compact
+                        ? "shrink-0"
+                        : "pointer-events-none absolute inset-x-0 bottom-0 bg-background md:bg-transparent",
                 )}
-                onselect={(action) => onQuickAction(action)}
-            />
-            <AIChatComposer
-                controller={coach}
-                assistantLabel="Coach"
-                placeholder={mobileQuery.current ? "Ask Coach…" : "Ask Coach about this problem…"}
-                compact={compact || mobileQuery.current}
-                bind:textareaRef={composerRef}
-            />
-        </div>
+            >
+                <AIChatQuickActions
+                    actions={quickActions}
+                    layout="row"
+                    disabled={coach.streaming}
+                    class={cn(
+                        "pointer-events-auto px-3 sm:px-4",
+                        compact ? "pb-0 pt-1" : "pb-1 pt-2",
+                    )}
+                    onselect={(action) => onQuickAction(action)}
+                />
+                <AIChatComposer
+                    controller={coach}
+                    assistantLabel="Coach"
+                    placeholder={mobileQuery.current ? "Ask Coach…" : "Ask Coach about this problem…"}
+                    compact={compact || mobileQuery.current}
+                    bind:textareaRef={composerRef}
+                />
+            </div>
+        {/if}
         <div class="sr-only" aria-live="polite">
             {coach.liveAnnouncement}
         </div>
