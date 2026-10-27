@@ -131,7 +131,7 @@
                                 aria-label={statementCollapsed ? "Show problem statement" : "Collapse problem statement"}
                                 title={statementCollapsed ? "Show problem statement" : "Collapse problem statement"}
                             >
-                                <Icon name={statementCollapsed ? "expand_more" : "expand_less"} fontsize={16} />
+                                <Icon name={statementCollapsed ? "visibility" : "visibility_off"} fontsize={16} />
                             </Button>
                         {/if}
 
@@ -177,7 +177,9 @@
                 </div>
 
                 <div class={cn(rail, "shrink-0")}>
-                    <CoachContextTray />
+                    {#if !mobileQuery.current}
+                        <CoachContextTray />
+                    {/if}
                     <CoachDebugToggle />
                     <CoachRequestInspector />
                 </div>
@@ -224,18 +226,21 @@
                     compact
                         ? "shrink-0"
                         : "pointer-events-none absolute inset-x-0 bottom-0 bg-background md:bg-transparent",
+                    mobileQuery.current && "pb-[calc(0.25rem+var(--safe-area-bottom))]",
                 )}
             >
-                <AIChatQuickActions
-                    actions={quickActions}
-                    layout="row"
-                    disabled={coach.streaming}
-                    class={cn(
-                        "pointer-events-auto px-3 sm:px-4",
-                        compact ? "pb-0 pt-1" : "pb-1 pt-2",
-                    )}
-                    onselect={(action) => onQuickAction(action)}
-                />
+                {#if !mobileQuery.current || coach.messages.length === 0}
+                    <AIChatQuickActions
+                        actions={quickActions}
+                        layout="row"
+                        disabled={coach.streaming}
+                        class={cn(
+                            "pointer-events-auto px-3 sm:px-4",
+                            compact ? "pb-0 pt-1" : "pb-1 pt-2",
+                        )}
+                        onselect={(action) => onQuickAction(action)}
+                    />
+                {/if}
                 <AIChatComposer
                     controller={coach}
                     assistantLabel="Coach"

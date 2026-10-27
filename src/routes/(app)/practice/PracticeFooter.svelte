@@ -97,6 +97,7 @@
     );
 
     const portraitQuery = new MediaQuery("(orientation: portrait)", false);
+    const mobileQuery = new MediaQuery("(max-width: 767px)", false);
     let isMobilePortrait = $derived(
         deviceDetails.isMobile && portraitQuery.current,
     );
@@ -110,6 +111,7 @@
         // Standing in for the nav bar means owning its safe-area inset (home
         // indicator / Safari toolbar).
         isMobilePortrait && "pb-[calc(0.25rem+var(--safe-area-bottom))]",
+        coachMode && mobileQuery.current && "hidden",
     )}
 >
     <div class="flex min-w-0 items-center gap-1 justify-self-start">

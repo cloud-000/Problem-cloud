@@ -967,6 +967,9 @@
            )
          : 0,
    );
+   let maxShelfVh = $derived(mobileQuery.current ? "26dvh" : "42dvh");
+   let maxShelfRem = $derived(mobileQuery.current ? "13rem" : "22rem");
+   let shelfOverhead = $derived(mobileQuery.current ? 44 : STATEMENT_SHELF_OVERHEAD_PX);
    // Reserve readable transcript space after the measured controls. A viewport-only
    // shelf cap can otherwise leave just a few pixels of reply above the composer.
    // When coachExpanded, size to content if short, or allow collapsing to MIN_STATEMENT_SHELF_PX.
@@ -974,7 +977,7 @@
       coachExpanded
          ? coachStatementCollapsed
             ? `${MIN_STATEMENT_SHELF_PX}px`
-            : `min(${statementContentHeight > 0 ? `${statementContentHeight + STATEMENT_SHELF_OVERHEAD_PX}px` : "22rem"}, 42dvh, 22rem, ${Math.max(MIN_STATEMENT_SHELF_PX, problemRegionHeight - coachChromeHeight - MIN_COACH_TRANSCRIPT_PX)}px)`
+            : `min(${statementContentHeight > 0 ? `${statementContentHeight + shelfOverhead}px` : maxShelfRem}, ${maxShelfVh}, ${maxShelfRem}, ${Math.max(MIN_STATEMENT_SHELF_PX, problemRegionHeight - coachChromeHeight - MIN_COACH_TRANSCRIPT_PX)}px)`
          : problemRegionHeight > 0
            ? `${Math.max(
                 0,
@@ -2326,8 +2329,9 @@
                         coachExpanded
                            ? "overscroll-contain border-b border-border/60 pb-4"
                            : "pb-6",
-                        coachExpanded && coachStatementCollapsed && "cursor-pointer overflow-hidden pb-0",
+                        coachExpanded && coachStatementCollapsed && "cursor-pointer overflow-hidden pb-0 hover:bg-surface-container-low/40 transition-colors",
                      )}
+                     title={coachExpanded && coachStatementCollapsed ? "Click to view problem statement" : undefined}
                      onclick={() => {
                         if (coachExpanded && coachStatementCollapsed) {
                            coachStatementCollapsed = false;
@@ -2404,12 +2408,12 @@
                         {/if}
 
                         {#if coachMode && isProblemMcq && isMultipleChoice(problem.choices) && !hasEmbeddedChoices}
-                           <div class="grid w-full max-w-[48rem] grid-cols-1 gap-2 pt-2 sm:grid-cols-2 text-sm text-foreground">
+                           <div class="flex w-full max-w-[48rem] flex-wrap items-center gap-x-2.5 gap-y-1.5 pt-2 text-xs sm:text-sm text-foreground">
                               {#each problem.choices as choice, i}
-                                 <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-surface-container/30 px-3 py-1.5">
+                                 <span class="inline-flex items-center gap-1 rounded-md border border-border/50 bg-surface-container/30 px-2 py-0.5">
                                     <span class="font-semibold text-muted-foreground">{String.fromCharCode(65 + i)}.</span>
-                                    <span class="min-w-0 flex-1"><LaTeX>${choice}$</LaTeX></span>
-                                 </div>
+                                    <LaTeX>${choice}$</LaTeX>
+                                 </span>
                               {/each}
                            </div>
                         {/if}
