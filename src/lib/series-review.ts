@@ -504,7 +504,12 @@ export function compareReviewTests(a: SeriesReviewTest, b: SeriesReviewTest) {
 }
 
 export function reviewRowLabel(test: SeriesReviewTest): string {
-    const parts = [test.division, test.format].filter(
+    const isFall = /\bfall\b/i.test(test.name) && !/\bfall\b/i.test(test.format ?? "");
+    const format = test.format?.trim()
+        ? (isFall ? `Fall ${test.format.trim()}` : test.format.trim())
+        : null;
+
+    const parts = [test.division, format].filter(
         (part): part is string => Boolean(part?.trim()),
     );
     if (parts.length > 0) return parts.join(" · ");

@@ -130,7 +130,7 @@
     /**
      * Compute a consistent column width for all rows in this series based on the
      * longest label across all tests in the series (e.g. compact for "A"/"B" or "I"/"II",
-     * wider when labels like "Theory", "Sprint", or "Target" appear).
+     * moderate for "Fall A"/"Fall B", wider when labels like "Theory", "Sprint", or "Target" appear).
      */
     let maxTestLabelLength = $derived(
         Math.max(0, ...tests.map((test) => reviewRowLabel(test).length)),
@@ -138,7 +138,9 @@
     let testColumnClass = $derived(
         maxTestLabelLength <= 3
             ? { th: "w-12 text-center", cell: "max-w-12 text-center", inner: "max-w-10 text-center" }
-            : { th: "w-28 text-left", cell: "max-w-28 text-left", inner: "max-w-24 text-left" },
+            : maxTestLabelLength <= 6
+              ? { th: "w-16 text-center", cell: "max-w-16 text-center", inner: "max-w-12 text-center" }
+              : { th: "w-28 text-left", cell: "max-w-28 text-left", inner: "max-w-24 text-left" },
     );
 
     let yearGroupRowStarts = $derived.by(() => {

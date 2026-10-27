@@ -112,4 +112,65 @@ describe("series review canonical progress", () => {
         };
         expect(reviewRowLabel(mathcountsTest)).toBe("Chapter · Sprint");
     });
+
+    test("reviewRowLabel distinguishes Fall AMC tests as Fall A / Fall B", () => {
+        const springA: SeriesReviewTest = {
+            id: 52,
+            name: "2021 AMC 10A",
+            year: 2021,
+            division: null,
+            division_order: null,
+            format: "A",
+            format_order: 10,
+            problems: [],
+        };
+        const fallA: SeriesReviewTest = {
+            id: 50,
+            name: "2021 Fall AMC 10A",
+            year: 2021,
+            division: null,
+            division_order: null,
+            format: "A",
+            format_order: 10,
+            problems: [],
+        };
+        const springB: SeriesReviewTest = {
+            id: 53,
+            name: "2021 AMC 10B",
+            year: 2021,
+            division: null,
+            division_order: null,
+            format: "B",
+            format_order: 20,
+            problems: [],
+        };
+        const fallB: SeriesReviewTest = {
+            id: 51,
+            name: "2021 Fall AMC 10B",
+            year: 2021,
+            division: null,
+            division_order: null,
+            format: "B",
+            format_order: 20,
+            problems: [],
+        };
+
+        expect(reviewRowLabel(springA)).toBe("A");
+        expect(reviewRowLabel(fallA)).toBe("Fall A");
+        expect(reviewRowLabel(springB)).toBe("B");
+        expect(reviewRowLabel(fallB)).toBe("Fall B");
+
+        // Format is null fallback preserved
+        const omoFall: SeriesReviewTest = {
+            id: 515,
+            name: "2012 OMO Fall",
+            year: 2012,
+            division: null,
+            division_order: null,
+            format: null,
+            format_order: null,
+            problems: [],
+        };
+        expect(reviewRowLabel(omoFall)).toBe("OMO Fall");
+    });
 });
